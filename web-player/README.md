@@ -79,3 +79,5 @@ import { createPlayer } from './player.js';
 const story = normalizeStory(await (await fetch(url)).json());
 createPlayer(panelElement, story);   // player.css도 함께 불러옵니다
 ```
+
+iframe 패널에 넣을 때는 `index.html?embed=1`(필요하면 `&data=<경로>`)을 엽니다. 제목줄과 파일 도구를 숨기고 4:3 화면을 프레임 안에 맞춥니다. 폭이 420px 이하인 좁은 패널에서는 글자와 선택지를 줄여 화면 안에 들어가게 합니다. 서버에 등록할 경로는 `index.html`, `main.js`, `player.js`, `story.js`, `player.css`, `data/*.json`입니다.

@@ -85,3 +85,21 @@ body { margin: 0; background: var(--wp-bg); color: var(--wp-text); font-family: 
   .wp-stage, .wp-option, .wp-reset { transition: none; }
   .wp-scene-change, .wp-next { animation: none; }
 }
+
+/* Embedded in an iframe panel: drop the page chrome and fit the 4:3 screen inside the frame. */
+html[data-embed], html[data-embed] body { height: 100%; overflow: hidden; }
+html[data-embed] .wp-page { max-width: none; height: 100%; padding: 0; display: grid; place-items: center; }
+html[data-embed] .wp-tools, html[data-embed] .wp-bar { display: none; }
+html[data-embed] .wp-root { width: min(100vw, 100vh * 4 / 3); }
+html[data-embed] .wp-stage { border: 0; border-radius: 0; }
+
+/* Small screens (e.g. a narrow hub panel): tighter text so choices stay inside the 4:3 screen. */
+@container (max-width: 420px) {
+  .wp-text, .wp-question { font-size: 13px; line-height: 1.55; }
+  .wp-text { top: 9%; left: 6%; right: 6%; gap: .5em; }
+  .wp-choices { top: 7%; bottom: 5%; left: 5%; right: 5%; gap: 6px; overflow-y: auto; }
+  .wp-options { gap: 6px; }
+  .wp-question { margin-bottom: 0; }
+  .wp-option, .wp-reset { min-height: 36px; padding: .4em .7em; font-size: 13px; line-height: 1.45; }
+  .wp-scene { top: 2.5cqw; right: 2.5cqw; font-size: 10px; }
+}

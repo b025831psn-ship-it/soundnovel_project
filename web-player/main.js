@@ -8,6 +8,9 @@ import { createPlayer } from './player.js';
 const PICKED_KEY = 'soundnovel.webPlayer.pickedFile';
 const DEFAULT_DATA = 'data/sample.ko.json';
 
+// ?embed=1: only the 4:3 screen, sized to fit the frame (for the hub's iframe panel).
+if (new URLSearchParams(location.search).get('embed') === '1') document.documentElement.dataset.embed = '';
+
 const root = document.getElementById('player');
 const status = document.getElementById('source');
 const picker = document.getElementById('file');
