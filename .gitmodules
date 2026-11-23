@@ -2,3 +2,18 @@
 	path = majo-tach-sfc-kor
 	url = https://github.com/b025831psn-ship-it/kor_patch.git
 	branch = feature/sfc-localization
+[submodule "zakuro-sfc-kor"]
+	path = zakuro-sfc-kor
+	url = https://github.com/b025831psn-ship-it/zakuro-sfc-kor.git
+[submodule "otogirisou-sfc-kor"]
+	path = otogirisou-sfc-kor
+	url = https://github.com/b025831psn-ship-it/otogirisou-sfc-kor.git
+[submodule "kamaitachi-sfc-kor"]
+	path = kamaitachi-sfc-kor
+	url = https://github.com/b025831psn-ship-it/kamaitachi-sfc-kor.git
+[submodule "yakouchuu-sfc-kor"]
+	path = yakouchuu-sfc-kor
+	url = https://github.com/b025831psn-ship-it/yakouchuu-sfc-kor.git
+[submodule "anubis-sfc-kor"]
+	path = anubis-sfc-kor
+	url = https://github.com/b025831psn-ship-it/anubis-sfc-kor.git
