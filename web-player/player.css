@@ -14,7 +14,39 @@ body { margin: 0; background: var(--wp-bg); color: var(--wp-text); font-family: 
 
 .wp-root { display: flex; flex-direction: column; gap: 8px; }
 .wp-bar { display: flex; align-items: center; justify-content: space-between; }
-.wp-title { margin: 0; font-size: 15px; font-weight: 600; }
+.wp-bar { gap: 12px; min-height: 36px; }
+.wp-title { margin: 0; min-width: 0; font-size: 15px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.wp-tools-bar { display: flex; gap: 6px; flex: none; }
+.wp-tool {
+  min-height: 36px; min-width: 52px; padding: 0 12px; border: 1px solid #4a4e58; border-radius: 8px;
+  background: transparent; color: var(--wp-text); font: inherit; font-size: 13px; font-weight: 600; cursor: pointer;
+  touch-action: manipulation;
+}
+.wp-tool:hover { border-color: var(--wp-accent); }
+.wp-tool:focus-visible { outline: 2px solid var(--wp-accent); outline-offset: 2px; }
+.wp-sub { display: block; font-family: "Noto Serif JP", serif; font-size: .7em; line-height: 1.5; color: #cfcac1; }
+
+/* Backlog: a modal over the player, closed with Esc, the close button, or a click outside. */
+.wp-dialog {
+  width: min(640px, calc(100vw - 32px)); max-height: min(80vh, 720px); padding: 0;
+  border: 1px solid var(--wp-line); border-radius: 12px; background: var(--wp-panel); color: var(--wp-text);
+}
+.wp-dialog[open] { display: flex; flex-direction: column; }
+.wp-dialog::backdrop { background: rgba(0, 0, 0, .6); }
+.wp-log-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 12px 12px 18px; border-bottom: 1px solid var(--wp-line); }
+.wp-log-title { margin: 0; font-size: 15px; font-weight: 600; }
+.wp-log-list { margin: 0; padding: 14px 18px 18px; list-style: none; overflow-y: auto; display: flex; flex-direction: column; gap: .7em; font-family: "Noto Serif KR", serif; font-size: 15px; line-height: 1.7; }
+.wp-log-q { color: var(--wp-muted); }
+.wp-slot-list { margin: 0; padding: 12px 18px; list-style: none; display: flex; flex-direction: column; gap: 10px; overflow-y: auto; }
+.wp-slot { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; padding: 12px; border: 1px solid var(--wp-line); border-radius: 10px; background: var(--wp-bg); }
+.wp-slot-info { flex: 1 1 220px; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.wp-slot-name { font-size: 14px; font-weight: 600; }
+.wp-slot-meta { font-size: 12px; color: var(--wp-muted); }
+.wp-slot-preview { font-family: "Noto Serif KR", serif; font-size: 14px; line-height: 1.6; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.wp-slot-actions { display: flex; gap: 6px; }
+.wp-tool:disabled { opacity: .4; cursor: default; border-color: var(--wp-line); }
+.wp-saves-msg { margin: 0; padding: 0 18px 14px; min-height: 1.4em; font-size: 13px; color: var(--wp-muted); }
+.wp-log-pick { padding-left: .8em; border-left: 2px solid var(--wp-accent); }
 
 /* 4:3 stage, sized by its container so it can sit in a side panel later. */
 .wp-stage {
@@ -89,15 +121,17 @@ body { margin: 0; background: var(--wp-bg); color: var(--wp-text); font-family: 
 /* Embedded in an iframe panel: drop the page chrome and fit the 4:3 screen inside the frame. */
 html[data-embed], html[data-embed] body { height: 100%; overflow: hidden; }
 html[data-embed] .wp-page { max-width: none; height: 100%; padding: 0; display: grid; place-items: center; }
-html[data-embed] .wp-tools, html[data-embed] .wp-bar { display: none; }
-html[data-embed] .wp-root { width: min(100vw, 100vh * 4 / 3); }
+html[data-embed] .wp-tools, html[data-embed] .wp-title { display: none; }
+html[data-embed] .wp-bar { justify-content: flex-end; min-height: 32px; padding: 0 2px; }
+html[data-embed] .wp-tool { min-height: 30px; min-width: 44px; padding: 0 8px; font-size: 12px; }
+html[data-embed] .wp-root { width: min(100vw, (100vh - 40px) * 4 / 3); gap: 6px; }
 html[data-embed] .wp-stage { border: 0; border-radius: 0; }
 
 /* Small screens (e.g. a narrow hub panel): tighter text so choices stay inside the 4:3 screen. */
 @container (max-width: 420px) {
   .wp-text, .wp-question { font-size: 13px; line-height: 1.55; }
-  .wp-text { top: 9%; left: 6%; right: 6%; gap: .5em; }
-  .wp-choices { top: 7%; bottom: 5%; left: 5%; right: 5%; gap: 6px; overflow-y: auto; }
+  .wp-text { top: 14%; left: 6%; right: 6%; gap: .5em; }
+  .wp-choices { top: 14%; bottom: 4%; left: 5%; right: 5%; gap: 6px; overflow-y: auto; }
   .wp-options { gap: 6px; }
   .wp-question { margin-bottom: 0; }
   .wp-option, .wp-reset { min-height: 36px; padding: .4em .7em; font-size: 13px; line-height: 1.45; }

@@ -7,8 +7,9 @@
 //   choice node: { kind?: "choice", scene?, text | question, options: [{ key?, label, to }] }
 //   text node:   { kind?: "passage", scene?, pages: [page, ...], to? }
 //   `kind` decides the node type when present; otherwise `options` means a choice.
-//   page: array of sentences, a single sentence string,
-//         or an object with `lines` / `sentences` / `text`.
+//   page: array of sentences, a single sentence, or an object with `lines` / `sentences`.
+//   sentence: a string, or { ko | text | target, ja? } when the original Japanese is included.
+//   Sentences are normalized to { ko, ja } (ja is null when there is no original).
 
 export class StoryFormatError extends Error {}
 
@@ -19,8 +20,14 @@ function firstDefined(obj, keys) {
   return undefined;
 }
 
+function isSentenceObject(page) {
+  return page && typeof page === 'object' && !Array.isArray(page)
+    && firstDefined(page, ['lines', 'sentences']) === undefined
+    && (typeof page.ko === 'string' || typeof page.target === 'string' || typeof page.text === 'string');
+}
+
 function normalizePage(page, where) {
-  if (typeof page === 'string') return [page];
+  if (typeof page === 'string' || isSentenceObject(page)) return [toSentence(page, where)];
   if (Array.isArray(page)) return page.map((s, i) => toSentence(s, `${where}[${i}]`));
   if (page && typeof page === 'object') {
     const lines = firstDefined(page, ['lines', 'sentences', 'text']);
@@ -30,10 +37,11 @@ function normalizePage(page, where) {
 }
 
 function toSentence(s, where) {
-  if (typeof s === 'string') return s;
+  if (typeof s === 'string') return { ko: s, ja: null };
   if (s && typeof s === 'object') {
-    const t = firstDefined(s, ['text', 'target', 'ko']);
-    if (typeof t === 'string') return t;
+    const ko = firstDefined(s, ['ko', 'text', 'target']);
+    const ja = firstDefined(s, ['ja', 'source', 'original']);
+    if (typeof ko === 'string') return { ko, ja: typeof ja === 'string' && ja ? ja : null };
   }
   throw new StoryFormatError(`${where}: 문장이 문자열이 아닙니다.`);
 }
@@ -78,7 +86,7 @@ export function normalizeStory(raw) {
         id,
         kind: 'choice',
         scene,
-        question: String(firstDefined(n, ['question', 'prompt', 'text']) ?? ''),
+        question: toSentence(firstDefined(n, ['question', 'prompt', 'text']) ?? '', `${id}.text`),
         options: options.map((o, i) => ({
           key: String(firstDefined(o, ['key', 'id']) ?? String.fromCharCode(65 + i)),
           label: toSentence(firstDefined(o, ['label', 'text']) ?? '', `${id}.options[${i}].label`),
@@ -108,8 +116,13 @@ export function normalizeStory(raw) {
     }
   }
 
+  const hasOriginal = Object.values(nodes).some((n) => (n.kind === 'choice'
+    ? [n.question, ...n.options.map((o) => o.label)]
+    : n.pages.flat()).some((t) => t.ja));
+
   return {
     schemaVersion,
+    hasOriginal,
     gameId: String(gameId),
     title: String(raw.title || gameId),
     entry,
