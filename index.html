@@ -39,7 +39,9 @@
     frame.hidden = !selected;
     if (selected) {
       frame.title = selected.getAttribute('aria-label');
-      frame.src = '/play/' + selected.hash.slice(1) + '/';
+      frame.src = selected.hash === '#kamaitachi'
+        ? '/web-player/index.html?embed=1&data=/kamaitachi-gba-kor/data/first-choice.ko.json'
+        : '/play/' + selected.hash.slice(1) + '/';
     } else {
       frame.removeAttribute('src');
     }
