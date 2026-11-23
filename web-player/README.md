@@ -59,16 +59,19 @@ Codex가 확인한 `first-choice.ko.json`과 같은 형식입니다. 저장소�
 - `kind`가 `choice`면 `text`(질문)와 `options`를, `passage`면 `pages`를 읽습니다.
 - 선택하면 `to` 노드의 `pages[0]`부터 보여주고, 입력마다 다음 페이지로 넘어갑니다. 마지막 페이지 다음에는 `to`로 이동하고, `to`가 `null`이면 구간을 끝내고 **첫 선택지로 돌아가기**를 보여줍니다.
 - `title`과 `scenes`는 선택 항목입니다. `scenes`에 이름이 없으면 `scene` 값을 그대로 장면명으로 표시합니다.
+- 문장(페이지, 질문, 선택지 라벨)은 문자열이거나 원문을 함께 담은 `{ "ko": "번역", "ja": "原文" }`입니다. 한 데이터 안에서 섞어 써도 됩니다. 원문이 하나라도 있으면 위쪽 막대에 **번역/병기/원문** 전환 버튼이 나타나고, 원문이 없는 문장은 어느 모드에서든 번역으로 표시합니다.
 - 호환을 위해 `nodes` 배열(각 노드에 `id`), `choices`, `question`, 문장 배열이나 `{ "lines": [...] }` 형태의 페이지도 받습니다.
 
 ## 진행 저장
 
-`localStorage`의 `soundnovel.webPlayer.<gameId>` 키 하나에 `gameId`, `schemaVersion`, 현재 노드, 페이지, 문장 위치를 저장합니다. 불러올 때 `gameId`·`schemaVersion`이 다르거나 노드·문장이 데이터에 없으면 처음부터 시작합니다. **첫 선택지로 돌아가기**는 이 키만 지웁니다.
+`localStorage`의 `soundnovel.webPlayer.<gameId>` 키 하나에 `gameId`, `schemaVersion`, 현재 노드, 페이지, 문장 위치를 저장합니다. 불러올 때 `gameId`·`schemaVersion`이 다르거나 노드·문장이 데이터에 없으면 처음부터 시작합니다. 지나온 노드와 고른 선택지(`trail`)도 함께 저장해 백로그를 다시 만듭니다. **첫 선택지로 돌아가기**는 이 키만 지웁니다. 표시 언어는 모든 작품에 공통인 `soundnovel.webPlayer.settings`에 저장합니다.
 
 ## 조작
 
 - 선택지: 첫 포커스는 첫 번째 선택지. 클릭·터치, 방향키로 이동, Enter로 선택.
-- 본문: 화면 클릭·터치, Enter, Space, 아래·오른쪽 방향키로 한 페이지(문장)씩 진행.
+- 본문: 화면 클릭·터치, Enter, Space, 아래·오른쪽 방향키로 한 페이지(문장)씩 진행. 위 방향키나 PageUp은 백로그를 엽니다.
+- 백로그: 위쪽 막대의 **백로그** 버튼. 질문, 고른 선택지, 지금까지 읽은 문장을 순서대로 보여줍니다. Esc, **닫기**, 바깥 클릭으로 닫으면 읽던 곳으로 돌아가고 Enter로 바로 이어 읽을 수 있습니다.
+- 버튼은 모두 4:3 원작 화면 바깥(위쪽 막대)에 있습니다.
 
 ## 허브에 넣기
 
@@ -80,4 +83,4 @@ const story = normalizeStory(await (await fetch(url)).json());
 createPlayer(panelElement, story);   // player.css도 함께 불러옵니다
 ```
 
-iframe 패널에 넣을 때는 `index.html?embed=1`(필요하면 `&data=<경로>`)을 엽니다. 제목줄과 파일 도구를 숨기고 4:3 화면을 프레임 안에 맞춥니다. 폭이 420px 이하인 좁은 패널에서는 글자와 선택지를 줄여 화면 안에 들어가게 합니다. 서버에 등록할 경로는 `index.html`, `main.js`, `player.js`, `story.js`, `player.css`, `data/*.json`입니다.
+iframe 패널에 넣을 때는 `index.html?embed=1`(필요하면 `&data=<경로>`)을 엽니다. 제목과 파일 도구를 숨기고, 버튼 막대와 4:3 화면을 프레임 안에 맞춥니다. 폭이 420px 이하인 좁은 패널에서는 글자와 선택지를 줄여 화면 안에 들어가게 합니다. 서버에 등록할 경로는 `index.html`, `main.js`, `player.js`, `story.js`, `player.css`, `data/*.json`입니다.
