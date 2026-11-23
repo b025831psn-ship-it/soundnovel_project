@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="dark">
+<meta name="theme-color" content="#0e0f12">
+<title>사운드노벨 웹 플레이어</title>
+<link rel="stylesheet" href="player.css">
+</head>
+<body>
+<main class="wp-page">
+  <div id="player" class="wp-mount"></div>
+  <footer class="wp-tools">
+    <span id="source" class="wp-source"></span>
+    <label class="wp-file">JSON 파일 열기<input id="file" type="file" accept="application/json,.json"></label>
+    <button id="use-default" type="button" class="wp-link" hidden>기본 예문으로 돌아가기</button>
+  </footer>
+</main>
+<script type="module" src="main.js"></script>
+</body>
+</html>

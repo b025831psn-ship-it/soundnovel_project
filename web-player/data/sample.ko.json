@@ -1,0 +1,71 @@
+{
+  "schemaVersion": 1,
+  "gameId": "sample-first-choice",
+  "title": "예문 데모: 산장의 밤",
+  "entry": "intro-choice",
+  "scenes": {
+    "living-room": {
+      "name": "거실"
+    },
+    "guest-room": {
+      "name": "객실"
+    },
+    "hall": {
+      "name": "현관 홀"
+    }
+  },
+  "nodes": {
+    "intro-choice": {
+      "kind": "choice",
+      "scene": "hall",
+      "text": {
+        "ko": "벽시계가 열 시를 알렸다. 우리는…….",
+        "ja": "柱時計が十時を告げた。僕たちは……。"
+      },
+      "options": [
+        {
+          "key": "A",
+          "label": {
+            "ko": "거실에 남아 이야기를 듣기로 했다.",
+            "ja": "居間に残って話を聞くことにした。"
+          },
+          "to": "living"
+        },
+        {
+          "key": "B",
+          "label": {
+            "ko": "객실로 올라가 잠시 쉬기로 했다.",
+            "ja": "客室へ上がって少し休むことにした。"
+          },
+          "to": "room"
+        }
+      ]
+    },
+    "living": {
+      "kind": "passage",
+      "scene": "living-room",
+      "pages": [
+        "거실에 남아 이야기를 듣기로 했다.",
+        "난롯불이 작게 튀는 소리만 이어졌다.",
+        "누군가 찻잔을 내려놓으며 입을 열었다."
+      ],
+      "to": null
+    },
+    "room": {
+      "kind": "passage",
+      "scene": "guest-room",
+      "pages": [
+        {
+          "ko": "객실로 올라가 잠시 쉬기로 했다.",
+          "ja": "客室へ上がって少し休むことにした。"
+        },
+        {
+          "ko": "계단 끝 복도는 생각보다 어두웠다.",
+          "ja": "階段の先の廊下は思ったより暗かった。"
+        },
+        "문을 닫자 바깥의 웃음소리가 멀어졌다."
+      ],
+      "to": null
+    }
+  }
+}
