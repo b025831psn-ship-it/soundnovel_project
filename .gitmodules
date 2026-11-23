@@ -1,0 +1,15 @@
+[submodule "sfc/zakuro-sfc-kor"]
+	path = sfc/zakuro-sfc-kor
+	url = https://github.com/b025831psn-ship-it/zakuro-sfc-kor.git
+[submodule "sfc/otogirisou-sfc-kor"]
+	path = sfc/otogirisou-sfc-kor
+	url = https://github.com/b025831psn-ship-it/otogirisou-sfc-kor.git
+[submodule "sfc/kamaitachi-sfc-kor"]
+	path = sfc/kamaitachi-sfc-kor
+	url = https://github.com/b025831psn-ship-it/kamaitachi-sfc-kor.git
+[submodule "sfc/yakouchuu-sfc-kor"]
+	path = sfc/yakouchuu-sfc-kor
+	url = https://github.com/b025831psn-ship-it/yakouchuu-sfc-kor.git
+[submodule "sfc/anubis-sfc-kor"]
+	path = sfc/anubis-sfc-kor
+	url = https://github.com/b025831psn-ship-it/anubis-sfc-kor.git
