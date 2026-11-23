@@ -4,8 +4,9 @@
 // Accepted input (see README.md for the full format):
 //   { schemaVersion, gameId, title?, entry, scenes?, nodes }
 //   nodes: object keyed by id, or an array of nodes that each carry `id`.
-//   choice node: { scene?, question, options: [{ key?, label, to }] }
-//   text node:   { scene?, pages: [page, ...], to? }
+//   choice node: { kind?: "choice", scene?, text | question, options: [{ key?, label, to }] }
+//   text node:   { kind?: "passage", scene?, pages: [page, ...], to? }
+//   `kind` decides the node type when present; otherwise `options` means a choice.
 //   page: array of sentences, a single sentence string,
 //         or an object with `lines` / `sentences` / `text`.
 
@@ -70,7 +71,9 @@ export function normalizeStory(raw) {
       scenes[scene] = { id: scene, name };
     }
     const options = firstDefined(n, ['options', 'choices']);
-    if (Array.isArray(options)) {
+    const isChoice = n.kind ? n.kind === 'choice' : Array.isArray(options);
+    if (isChoice) {
+      if (!Array.isArray(options) || !options.length) throw new StoryFormatError(`${id}: 선택지 노드에 options가 없습니다.`);
       nodes[id] = {
         id,
         kind: 'choice',

@@ -37,12 +37,16 @@ const sceneName = (n) => {
   const s = story.scenes && (Array.isArray(story.scenes) ? story.scenes.find((x) => x.id === id) : story.scenes[id]);
   return (s && (s.name || s.label)) || (typeof n.scene === 'object' ? n.scene.name : n.scene);
 };
-const firstPage = (n) => {
-  const p = n.pages[0];
+// The sentence that appears at each input, in reading order across pages.
+const pageLines = (p) => {
   const lines = Array.isArray(p) ? p : typeof p === 'string' ? [p] : (p.lines || p.sentences || p.text);
-  return lines.map((s) => (typeof s === 'string' ? s : s.text || s.target || s.ko));
+  return (Array.isArray(lines) ? lines : [lines]).map((s) => (typeof s === 'string' ? s : s.text || s.target || s.ko));
 };
+const steps = (n) => n.pages.flatMap((p) => pageLines(p));
+const firstPage = steps;
+const lastVisible = async () => (await texts()).at(-1);
 const opts = entry.options || entry.choices;
+const question = entry.question ?? entry.prompt ?? entry.text;
 
 let failures = 0;
 const check = (ok, msg) => { console.log(`${ok ? 'PASS' : 'FAIL'} ${msg}`); if (!ok) failures++; };
@@ -65,6 +69,7 @@ await page.goto(base);
 await page.waitForSelector('.wp-option');
 const labels = await page.locator('.wp-option-label').allTextContents();
 check(JSON.stringify(labels) === JSON.stringify(opts.map((o) => o.label || o.text)), `선택지가 데이터 순서대로 표시됨: ${labels.join(' / ')}`);
+check((await page.locator('.wp-question').textContent()) === question, `질문 표시: ${question}`);
 check(await page.evaluate(() => document.activeElement?.dataset.key) === String(opts[0].key || opts[0].id || 'A'), '첫 포커스가 첫 번째 선택지(A)');
 
 for (const [i, how] of [[0, 'click'], [1, 'keys']]) {
@@ -81,13 +86,14 @@ for (const [i, how] of [[0, 'click'], [1, 'keys']]) {
   check((await scene()) === sceneName(target), `${opts[i].key || 'AB'[i]} 장면명: ${await scene()}`);
   if (i === 1) {
     await page.keyboard.press('Enter');
-    check((await texts()).length === 2 && (await texts())[1] === expected[1], `입력 한 번에 한 문장 진행 (2번째: "${expected[1]}")`);
+    check((await lastVisible()) === expected[1], `입력 한 번에 한 문장 진행 (2번째: "${expected[1]}")`);
+    const before = await texts();
     await page.reload();
     await page.waitForSelector('.wp-text p');
     const after = await texts();
-    check(after.length === 2 && after[1] === expected[1] && (await scene()) === sceneName(target), 'B의 두 번째 문장에서 새로고침 후 같은 위치로 재개');
+    check(JSON.stringify(after) === JSON.stringify(before) && after.at(-1) === expected[1] && (await scene()) === sceneName(target), 'B의 두 번째 문장에서 새로고침 후 같은 위치로 재개');
     const saved = await page.evaluate((k) => JSON.parse(localStorage.getItem(k)), `soundnovel.webPlayer.${story.gameId}`);
-    check(saved && saved.gameId === story.gameId && saved.schemaVersion === story.schemaVersion && saved.node === opts[1].to && saved.line === 1, `저장 내용: ${JSON.stringify(saved)}`);
+    check(saved && saved.gameId === story.gameId && saved.schemaVersion === story.schemaVersion && saved.node === opts[1].to && saved.page * 1000 + saved.line > 0, `저장 내용: ${JSON.stringify(saved)}`);
     for (let k = 2; k < expected.length; k++) await page.locator('.wp-advance').click();
     if (target.to === null || target.to === undefined) {
       await page.keyboard.press('Enter');

@@ -31,32 +31,35 @@ node tests/e2e.mjs data/local/first-choice.ko.json  # 실제 데이터
 
 ## 데이터 형식
 
+Codex가 확인한 `first-choice.ko.json`과 같은 형식입니다. 저장소의 `data/sample.ko.json`은 같은 형식에 직접 쓴 예문을 넣은 것입니다.
+
 ```json
 {
   "schemaVersion": 1,
   "gameId": "sample-first-choice",
-  "title": "표시할 제목",
-  "entry": "intro.choice",
-  "scenes": { "living": { "name": "거실" } },
+  "title": "표시할 제목 (선택)",
+  "entry": "intro-choice",
+  "scenes": { "living-room": { "name": "거실" } },
   "nodes": {
-    "intro.choice": {
-      "scene": "living",
-      "question": "질문",
+    "intro-choice": {
+      "kind": "choice",
+      "scene": "hall",
+      "text": "질문",
       "options": [
-        { "key": "A", "label": "선택지 A", "to": "branch.a" },
-        { "key": "B", "label": "선택지 B", "to": "branch.b" }
+        { "key": "A", "label": "선택지 A", "to": "living" },
+        { "key": "B", "label": "선택지 B", "to": "room" }
       ]
     },
-    "branch.a": { "scene": "living", "pages": [["문장 1", "문장 2"]], "to": null }
+    "living": { "kind": "passage", "scene": "living-room", "pages": ["문장 1", "문장 2"], "to": null }
   }
 }
 ```
 
-- 노드 ID, 제목, 장면 이름은 모두 JSON에서 읽습니다. 플레이어 코드에는 고정된 값이 없습니다.
-- `nodes`는 ID를 키로 한 객체나 `id`를 가진 노드 배열 모두 받습니다.
-- 선택지 노드는 `options`(또는 `choices`), 본문 노드는 `pages`를 가집니다. 페이지는 문장 배열, 문자열 하나, 또는 `lines`/`sentences`/`text` 필드를 가진 객체를 받습니다.
-- `scene`은 `scenes`의 키이거나, `scenes`가 없으면 문자열 그대로 장면 이름으로 씁니다.
-- 본문 노드는 페이지를 차례로 재생한 뒤 `to`로 이동하고, `to`가 `null`이면 구간을 끝내고 **첫 선택지로 돌아가기**를 보여줍니다.
+- `nodes`는 노드 ID를 키로 쓰는 객체이고, `entry`와 선택지의 `to`는 그 키를 가리킵니다. 노드 ID, 제목, 장면 이름은 모두 JSON에서 읽으며 플레이어 코드에는 고정된 값이 없습니다.
+- `kind`가 `choice`면 `text`(질문)와 `options`를, `passage`면 `pages`를 읽습니다.
+- 선택하면 `to` 노드의 `pages[0]`부터 보여주고, 입력마다 다음 페이지로 넘어갑니다. 마지막 페이지 다음에는 `to`로 이동하고, `to`가 `null`이면 구간을 끝내고 **첫 선택지로 돌아가기**를 보여줍니다.
+- `title`과 `scenes`는 선택 항목입니다. `scenes`에 이름이 없으면 `scene` 값을 그대로 장면명으로 표시합니다.
+- 호환을 위해 `nodes` 배열(각 노드에 `id`), `choices`, `question`, 문장 배열이나 `{ "lines": [...] }` 형태의 페이지도 받습니다.
 
 ## 진행 저장
 
@@ -65,7 +68,7 @@ node tests/e2e.mjs data/local/first-choice.ko.json  # 실제 데이터
 ## 조작
 
 - 선택지: 첫 포커스는 첫 번째 선택지. 클릭·터치, 방향키로 이동, Enter로 선택.
-- 본문: 화면 클릭·터치, Enter, Space, 아래·오른쪽 방향키로 한 문장씩 진행.
+- 본문: 화면 클릭·터치, Enter, Space, 아래·오른쪽 방향키로 한 페이지(문장)씩 진행.
 
 ## 허브에 넣기
 

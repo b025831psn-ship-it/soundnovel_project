@@ -2,39 +2,38 @@
   "schemaVersion": 1,
   "gameId": "sample-first-choice",
   "title": "예문 데모: 산장의 밤",
-  "entry": "intro.choice",
+  "entry": "intro-choice",
   "scenes": {
-    "living": { "name": "거실" },
-    "guestroom": { "name": "객실" }
+    "living-room": { "name": "거실" },
+    "guest-room": { "name": "객실" }
   },
   "nodes": {
-    "intro.choice": {
-      "scene": "living",
-      "question": "벽시계가 열 시를 알렸다. 이제 어떻게 할까?",
+    "intro-choice": {
+      "kind": "choice",
+      "scene": "hall",
+      "text": "벽시계가 열 시를 알렸다. 우리는…….",
       "options": [
-        { "key": "A", "label": "거실에 남아 이야기를 듣는다", "to": "branch.a" },
-        { "key": "B", "label": "객실로 올라가 쉰다", "to": "branch.b" }
+        { "key": "A", "label": "거실에 남아 이야기를 듣기로 했다.", "to": "living" },
+        { "key": "B", "label": "객실로 올라가 잠시 쉬기로 했다.", "to": "room" }
       ]
     },
-    "branch.a": {
-      "scene": "living",
+    "living": {
+      "kind": "passage",
+      "scene": "living-room",
       "pages": [
-        [
-          "거실에 남아 이야기를 듣는다.",
-          "난롯불이 작게 튀는 소리만 이어졌다.",
-          "누군가 찻잔을 내려놓으며 입을 열었다."
-        ]
+        "거실에 남아 이야기를 듣기로 했다.",
+        "난롯불이 작게 튀는 소리만 이어졌다.",
+        "누군가 찻잔을 내려놓으며 입을 열었다."
       ],
       "to": null
     },
-    "branch.b": {
-      "scene": "guestroom",
+    "room": {
+      "kind": "passage",
+      "scene": "guest-room",
       "pages": [
-        [
-          "객실로 올라가 쉰다.",
-          "계단 끝 복도는 생각보다 어두웠다.",
-          "문을 닫자 바깥의 웃음소리가 멀어졌다."
-        ]
+        "객실로 올라가 잠시 쉬기로 했다.",
+        "계단 끝 복도는 생각보다 어두웠다.",
+        "문을 닫자 바깥의 웃음소리가 멀어졌다."
       ],
       "to": null
     }
