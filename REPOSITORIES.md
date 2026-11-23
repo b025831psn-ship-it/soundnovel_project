@@ -10,6 +10,7 @@
 | `zakuro-sfc-kor` | 석류의 맛 (SFC) | |
 | `otogirisou-sfc-kor` | 오토기리소우 (SFC) | |
 | `kamaitachi-sfc-kor` | 카마이타치의 밤 (SFC) | |
+| `kamaitachi-gba-kor` | 카마이타치의 밤 어드밴스 (GBA) | 비공개. 웹 플레이어가 쓰는 실제 대사 데이터가 이 리포에 있음 |
 | `yakouchuu-sfc-kor` | 야광충 (SFC) | |
 | `anubis-sfc-kor` | 아누비스 (SFC) | |
 
