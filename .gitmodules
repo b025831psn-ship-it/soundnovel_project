@@ -1,6 +1,6 @@
 [submodule "majo-tach-sfc-kor"]
 	path = majo-tach-sfc-kor
-	url = https://github.com/b025831psn-ship-it/kor_patch.git
+	url = https://github.com/b025831psn-ship-it/majo-tach-sfc-kor.git
 	branch = feature/sfc-localization
 [submodule "zakuro-sfc-kor"]
 	path = zakuro-sfc-kor
