@@ -22,8 +22,9 @@ const server = http.createServer(async (req, res) => {
   const file = url.pathname === '/__story.json' ? storyPath : path.join(webRoot, decodeURIComponent(url.pathname === '/' ? '/index.html' : url.pathname));
   if (!file.startsWith(webRoot) && file !== storyPath) { res.writeHead(403).end(); return; }
   try {
+    const bytes = await readFile(file);
     res.writeHead(200, { 'content-type': types[path.extname(file)] || 'application/octet-stream' });
-    res.end(await readFile(file));
+    res.end(bytes);
   } catch { res.writeHead(404).end(); }
 });
 await new Promise((r) => server.listen(0, '127.0.0.1', r));
@@ -86,9 +87,10 @@ for (const [i, how] of [[0, 'click'], [1, 'keys']]) {
   if (i === 1) {
     // Finish path A's passage. If the segment ends there, return from the end screen;
     // if it continues, check that it moves on to its `to` node, then start over.
-    for (let k = 0; k < steps(target).length; k++) await page.locator('.wp-advance').click();
-    if (target.to) {
-      const nx = nodes[target.to];
+    const firstTarget = nodes[opts[0].to];
+    for (let k = 0; k < steps(firstTarget).length; k++) await page.locator('.wp-advance').click();
+    if (firstTarget.to) {
+      const nx = nodes[firstTarget.to];
       const shown = nx.pages ? (await texts())[0] : await page.locator('.wp-question').textContent();
       const want = nx.pages ? steps(nx)[0] : ko(nx.question ?? nx.prompt ?? nx.text);
       check(shown === want, `A 구간 끝에서 다음 노드로 이어짐: "${want}"`);
