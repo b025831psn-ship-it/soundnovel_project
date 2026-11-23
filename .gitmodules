@@ -1,0 +1,4 @@
+[submodule "majo-tach-sfc-kor"]
+	path = majo-tach-sfc-kor
+	url = https://github.com/b025831psn-ship-it/kor_patch.git
+	branch = feature/sfc-localization
