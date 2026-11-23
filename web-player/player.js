@@ -7,6 +7,7 @@
 
 const PALETTE = ['#1d2633', '#33251f', '#1f2f28', '#2c2238', '#332d1c'];
 const SETTINGS_KEY = 'soundnovel.webPlayer.settings';
+const SLOT_COUNT = 3;
 const LANGS = [
   { id: 'ko', label: '번역', aria: '번역문만 표시' },
   { id: 'both', label: '병기', aria: '원문과 번역문 함께 표시' },
@@ -60,20 +61,31 @@ export function createPlayer(root, story, { storage = safeStorage() } = {}) {
 
   const langBtn = el('button', { type: 'button', class: 'wp-tool wp-lang' });
   const logBtn = el('button', { type: 'button', class: 'wp-tool wp-log-open', 'aria-haspopup': 'dialog', text: '백로그' });
+  const savesBtn = el('button', { type: 'button', class: 'wp-tool wp-saves-open', 'aria-haspopup': 'dialog', text: '저장' });
   if (!story.hasOriginal) langBtn.hidden = true;
-  const tools = el('div', { class: 'wp-tools-bar' }, [langBtn, logBtn]);
+  const tools = el('div', { class: 'wp-tools-bar' }, [langBtn, logBtn, savesBtn]);
   const titleBar = el('header', { class: 'wp-bar' }, [el('h1', { class: 'wp-title', text: story.title }), tools]);
 
   const logList = el('ol', { class: 'wp-log-list' });
   const logClose = el('button', { type: 'button', class: 'wp-tool wp-log-close', text: '닫기' });
   const logTitle = el('h2', { class: 'wp-log-title', id: `wp-log-${uid}`, text: '백로그' });
-  const logDialog = el('dialog', { class: 'wp-log', 'aria-labelledby': logTitle.id }, [
+  const logDialog = el('dialog', { class: 'wp-dialog wp-log', 'aria-labelledby': logTitle.id }, [
     el('div', { class: 'wp-log-head' }, [logTitle, logClose]),
     logList,
   ]);
 
+  const slotList = el('ol', { class: 'wp-slot-list' });
+  const savesClose = el('button', { type: 'button', class: 'wp-tool wp-saves-close', text: '닫기' });
+  const savesTitle = el('h2', { class: 'wp-log-title', id: `wp-saves-${uid}`, text: '저장 · 불러오기' });
+  const savesMsg = el('p', { class: 'wp-saves-msg', role: 'status' });
+  const savesDialog = el('dialog', { class: 'wp-dialog wp-saves', 'aria-labelledby': savesTitle.id }, [
+    el('div', { class: 'wp-log-head' }, [savesTitle, savesClose]),
+    slotList,
+    savesMsg,
+  ]);
+
   root.classList.add('wp-root');
-  root.replaceChildren(titleBar, stage, logDialog);
+  root.replaceChildren(titleBar, stage, logDialog, savesDialog);
 
   let settings = loadSettings();
   let state = load() || initial();
@@ -107,34 +119,104 @@ export function createPlayer(root, story, { storage = safeStorage() } = {}) {
   function load() {
     if (!storage) return null;
     try {
-      const saved = JSON.parse(storage.getItem(key) || 'null');
-      if (!saved || saved.gameId !== story.gameId || saved.schemaVersion !== story.schemaVersion) return null;
-      const node = story.nodes[saved.node];
-      if (!node) return null;
-      if (node.kind === 'text') {
-        const page = node.pages[saved.page];
-        if (!page || !Number.isInteger(saved.line) || saved.line < 0 || saved.line >= page.length) return null;
-      }
-      return {
-        node: saved.node, page: saved.page | 0, line: saved.line | 0, done: !!saved.done, trail: validTrail(saved.trail),
-      };
+      return fromSaved(JSON.parse(storage.getItem(key) || 'null'));
     } catch {
       return null;
     }
   }
 
+  // A saved position (auto-save or slot) back into a state, or null if it no longer fits this data.
+  function fromSaved(saved) {
+    if (!saved || saved.gameId !== story.gameId || saved.schemaVersion !== story.schemaVersion) return null;
+    const node = story.nodes[saved.node];
+    if (!node) return null;
+    if (node.kind === 'text') {
+      const page = node.pages[saved.page];
+      if (!page || !Number.isInteger(saved.line) || saved.line < 0 || saved.line >= page.length) return null;
+    }
+    return {
+      node: saved.node, page: saved.page | 0, line: saved.line | 0, done: !!saved.done, trail: validTrail(saved.trail),
+    };
+  }
+
+
+  function snapshot() {
+    return {
+      gameId: story.gameId,
+      schemaVersion: story.schemaVersion,
+      node: state.node,
+      page: state.page,
+      line: state.line,
+      done: state.done,
+      trail: state.trail,
+    };
+  }
+
+  const slotsKey = `${key}.slots`;
+
+  function readSlots() {
+    try {
+      const raw = JSON.parse(storage?.getItem(slotsKey) || '[]');
+      return Array.from({ length: SLOT_COUNT }, (_, i) => (raw[i] && typeof raw[i] === 'object' ? raw[i] : null));
+    } catch {
+      return Array(SLOT_COUNT).fill(null);
+    }
+  }
+
+  // The sentence on screen now (or the question), used as the slot's preview.
+  function currentLine() {
+    const node = story.nodes[state.node];
+    if (node.kind === 'choice') return node.question.ko;
+    return node.pages[state.page][state.line].ko;
+  }
+
+  function saveSlot(i) {
+    const slots = readSlots();
+    slots[i] = { ...snapshot(), savedAt: new Date().toISOString(), preview: currentLine() };
+    try {
+      storage.setItem(slotsKey, JSON.stringify(slots));
+      savesMsg.textContent = `${i + 1}번 칸에 저장했습니다.`;
+    } catch {
+      savesMsg.textContent = '저장 공간을 쓸 수 없어 저장하지 못했습니다.';
+    }
+    renderSlots();
+    slotList.querySelector(`[data-slot="${i + 1}"] .wp-slot-save`)?.focus();
+  }
+
+  function loadSlot(i) {
+    const next = fromSaved(readSlots()[i]);
+    if (!next) return;
+    closeDialog(savesDialog);
+    setState(next, { focus: false });
+  }
+
+  function renderSlots() {
+    const slots = readSlots();
+    slotList.replaceChildren(...slots.map((slot, i) => {
+      const next = slot && fromSaved(slot);
+      const node = next && story.nodes[next.node];
+      const scene = node?.scene ? story.scenes[node.scene].name : '';
+      const when = slot?.savedAt ? new Date(slot.savedAt) : null;
+      const whenText = when && !Number.isNaN(+when) ? when.toLocaleString('ko-KR', { dateStyle: 'short', timeStyle: 'short' }) : '';
+      const info = el('div', { class: 'wp-slot-info' }, [
+        el('span', { class: 'wp-slot-name', text: `${i + 1}번 칸` }),
+        el('span', { class: 'wp-slot-meta', text: next ? [scene, whenText].filter(Boolean).join(' · ') : slot ? '이 데이터와 맞지 않는 기록' : '비어 있음' }),
+      ]);
+      if (next && slot.preview) info.append(el('span', { class: 'wp-slot-preview', text: slot.preview }));
+      const saveB = el('button', { type: 'button', class: 'wp-tool wp-slot-save', text: '여기에 저장', 'aria-label': `${i + 1}번 칸에 저장` });
+      const loadB = el('button', { type: 'button', class: 'wp-tool wp-slot-load', text: '불러오기', 'aria-label': `${i + 1}번 칸 불러오기` });
+      if (!next) loadB.disabled = true;
+      if (!storage) saveB.disabled = true;
+      saveB.addEventListener('click', () => saveSlot(i));
+      loadB.addEventListener('click', () => loadSlot(i));
+      return el('li', { class: 'wp-slot', 'data-slot': String(i + 1) }, [info, el('div', { class: 'wp-slot-actions' }, [saveB, loadB])]);
+    }));
+  }
+
   function save() {
     if (!storage) return;
     try {
-      storage.setItem(key, JSON.stringify({
-        gameId: story.gameId,
-        schemaVersion: story.schemaVersion,
-        node: state.node,
-        page: state.page,
-        line: state.line,
-        done: state.done,
-        trail: state.trail,
-      }));
+      storage.setItem(key, JSON.stringify(snapshot()));
     } catch { /* storage full or blocked: keep playing without saving */ }
   }
 
@@ -264,17 +346,27 @@ export function createPlayer(root, story, { storage = safeStorage() } = {}) {
     logList.replaceChildren(...items);
   }
 
-  function openLog() {
-    renderLog();
-    if (typeof logDialog.showModal === 'function') logDialog.showModal();
-    else logDialog.setAttribute('open', '');
-    logDialog.querySelector('.wp-log-list').lastElementChild?.scrollIntoView({ block: 'end' });
-    logClose.focus();
+  function openDialog(d, focusEl) {
+    if (typeof d.showModal === 'function') d.showModal();
+    else d.setAttribute('open', '');
+    focusEl.focus();
   }
 
-  function closeLog() {
-    if (typeof logDialog.close === 'function') logDialog.close();
-    else logDialog.removeAttribute('open');
+  function closeDialog(d) {
+    if (typeof d.close === 'function') d.close();
+    else d.removeAttribute('open');
+  }
+
+  function openLog() {
+    renderLog();
+    openDialog(logDialog, logClose);
+    logList.lastElementChild?.scrollIntoView({ block: 'end' });
+  }
+
+  function openSaves() {
+    savesMsg.textContent = '';
+    renderSlots();
+    openDialog(savesDialog, savesClose);
   }
 
   function moveFocus(delta) {
@@ -294,19 +386,23 @@ export function createPlayer(root, story, { storage = safeStorage() } = {}) {
     render(false);
   });
   logBtn.addEventListener('click', openLog);
-  logClose.addEventListener('click', closeLog);
-  // Back to the story, not to the backlog button, so Enter keeps reading instead of reopening it.
-  // The browser restores focus to the opener after 'close', so move it on the next task.
-  logDialog.addEventListener('close', () => setTimeout(() => {
-    const mode = stage.dataset.mode;
-    (mode === 'choice' ? optionList.querySelector('button') : mode === 'end' ? resetBtn : advanceBtn)
-      ?.focus({ preventScroll: true });
-  }));
-  logDialog.addEventListener('click', (e) => { if (e.target === logDialog) closeLog(); });
+  savesBtn.addEventListener('click', openSaves);
+  logClose.addEventListener('click', () => closeDialog(logDialog));
+  savesClose.addEventListener('click', () => closeDialog(savesDialog));
+  for (const d of [logDialog, savesDialog]) {
+    // Back to the story, not to the opener, so Enter keeps reading instead of reopening the dialog.
+    // The browser restores focus to the opener after 'close', so move it on the next task.
+    d.addEventListener('close', () => setTimeout(() => {
+      const mode = stage.dataset.mode;
+      (mode === 'choice' ? optionList.querySelector('button') : mode === 'end' ? resetBtn : advanceBtn)
+        ?.focus({ preventScroll: true });
+    }));
+    d.addEventListener('click', (e) => { if (e.target === d) closeDialog(d); });
+  }
 
   root.addEventListener('keydown', (e) => {
     if (e.altKey || e.ctrlKey || e.metaKey) return;
-    if (logDialog.open) return; // the dialog handles its own keys (Esc closes it)
+    if (logDialog.open || savesDialog.open) return; // dialogs handle their own keys (Esc closes them)
     if (e.target instanceof HTMLButtonElement && tools.contains(e.target)) return;
     const mode = stage.dataset.mode;
     if (mode === 'choice') {
@@ -334,5 +430,6 @@ export function createPlayer(root, story, { storage = safeStorage() } = {}) {
     reset,
     advance,
     openLog,
+    openSaves,
   };
 }

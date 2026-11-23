@@ -130,6 +130,20 @@ for (const [i, how] of [[0, 'click'], [1, 'keys']]) {
     }
     const saved = await page.evaluate((k) => JSON.parse(localStorage.getItem(k)), `soundnovel.webPlayer.${story.gameId}`);
     check(saved && saved.gameId === story.gameId && saved.schemaVersion === story.schemaVersion && saved.node === opts[1].to && saved.page * 1000 + saved.line > 0, `저장 내용: ${JSON.stringify(saved)}`);
+    // Save slots: save here to slot 1, move on, then load slot 1 back.
+    await page.locator('.wp-saves-open').click();
+    check(await page.locator('.wp-slot').count() === 3 && await page.locator('.wp-slot-load').first().isDisabled(), '저장 칸 3개, 빈 칸은 불러오기 비활성');
+    await page.locator('.wp-slot-save').first().click();
+    check((await page.locator('.wp-slot').first().locator('.wp-slot-preview').textContent()) === expected[1], `1번 칸에 지금 문장이 미리보기로 저장: "${expected[1]}"`);
+    await page.keyboard.press('Escape');
+    await page.waitForFunction(() => document.activeElement?.classList.contains('wp-advance'));
+    await page.keyboard.press('Enter');
+    const moved = await page.evaluate((k) => JSON.parse(localStorage.getItem(k)), `soundnovel.webPlayer.${story.gameId}`);
+    await page.locator('.wp-saves-open').click();
+    await page.locator('.wp-slot-load').first().click();
+    check(!(await page.locator('.wp-saves').isVisible()) && (await lastVisible()) === expected[1] && JSON.stringify(moved) !== JSON.stringify(saved), '1번 칸을 불러오면 저장한 문장으로 돌아감');
+    await page.waitForFunction(() => document.activeElement?.classList.contains('wp-advance'));
+
     // Backlog: question, the picked option, and the sentences read so far, in order.
     await page.locator('.wp-log-open').click();
     const log = await logItems();
@@ -152,6 +166,7 @@ for (const [i, how] of [[0, 'click'], [1, 'keys']]) {
       await page.locator('.wp-reset').click();
       check(await page.locator('.wp-option').count() === opts.length, '첫 선택지로 돌아감');
       check(await page.evaluate(() => localStorage.getItem('unrelated.key')) === 'keep', '초기화는 이 데모의 기록만 지움');
+      check(await page.evaluate((k) => !!JSON.parse(localStorage.getItem(k) || '[]')[0], `soundnovel.webPlayer.${story.gameId}.slots`), '첫 선택지로 돌아가도 저장 칸은 남음');
       const aTarget = nodes[opts[0].to];
       await page.locator('.wp-option').first().click();
       check((await texts())[0] === firstPage(aTarget)[0] && (await scene()) === sceneName(aTarget), '돌아간 뒤 A를 다시 고를 수 있음');
