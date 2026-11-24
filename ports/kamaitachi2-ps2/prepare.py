@@ -108,9 +108,10 @@ def title_textures(data, out):
 
 
 def summer_movies(disc, stage):
-    reunion = stage / "my0006.m2v"
-    reunion.write_bytes(disc.read(disc.files["GRA/MY/my0006.m2v"]))
-    video(reunion, reunion.with_suffix(".mp4"))
+    for name in ("my0006", "my0008"):
+        source = stage / f"{name}.m2v"
+        source.write_bytes(disc.read(disc.files[f"GRA/MY/{name}.m2v"]))
+        video(source, source.with_suffix(".mp4"))
     for name in ("my0003", "my0005"):
         package = disc.read(disc.files[f"GRA/MY/{name}.mmv"])
         for index in range(2):

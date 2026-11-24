@@ -98,7 +98,7 @@ def scenario_strings(data):
     story = {}
     for current, following in zip(labels, labels[1:]):
         name = (current[1] or current[2] or current[3]).decode("ascii")
-        if name in {"my02_0015", "my02_0120", "my02_0030", "my02_0035", "my02_0040", "my02_0075", "my02_0080", "my02_0083", "my02_0085", "my02_0090", "my02_0110", "myb02_0010", "myb02_0120", "myb02_0030", "myb02_0140", "myb02_0150"}:
+        if name in {"my02_0015", "my02_0150", "my02_0120", "my02_0030", "my02_0035", "my02_0040", "my02_0075", "my02_0080", "my02_0083", "my02_0085", "my02_0090", "my02_0110", "myb02_0010", "myb02_0120", "myb02_0030", "myb02_0140", "myb02_0150"}:
             block = data[current.end():following.start()]
             intro = re.match(rb"\x73\x07my0003\x00\x74\x0amy0003_00\x00\x1e\x50(.{4})"
                              rb"\x72\x07my0005\x00\x50(.{4})\x73\x07my0005\x00"
@@ -128,8 +128,16 @@ def scenario_strings(data):
                 if len(lines) != 2 or block[pos] != 0x16 or not block.endswith(suffix):
                     raise ValueError("Unexpected culprit reply layout")
                 block = block[pos+1:-len(suffix)]
-            if name not in {"my02_0040", "myb02_0140", "myb02_0150"} and intro is None:
+            if name not in {"my02_0040", "my02_0150", "myb02_0140", "myb02_0150"} and intro is None:
                 raise ValueError("Unexpected summer scene introduction")
+            ruby = []
+            if name == "my02_0150":
+                def read_ruby(match):
+                    readings = [text.decode("cp932") for text in re.findall(rb"\x02([^\x03]+)\x03", match[1])]
+                    base = match[2].decode("cp932")
+                    ruby.append({"word": base[:len(readings)], "readings": readings})
+                    return b"\x02" + match[2] + b"\x03"
+                block = re.sub(rb"\x06((?:\x02[^\x03]+\x03)+)\x07\x02([^\x03]+)\x03", read_ruby, block)
             events = []
             pos = intro.end() if intro else 0
             while pos < len(block):
@@ -172,6 +180,8 @@ def scenario_strings(data):
                 else:
                     raise ValueError(f"Unexpected summer dialogue opcode {opcode:#x}")
             story[name] = {"introWaits": [int.from_bytes(v, "big") for v in intro.groups()] if intro else [], "events": events}
+            if ruby:
+                story[name]["ruby"] = ruby
         if name == "my02_0100":
             block = data[current.end():following.start()]
             reaction = re.fullmatch(
@@ -238,7 +248,7 @@ def scenario_strings(data):
             expected = 0x12 if name.endswith("0047") else 0x13
             if data[following.start() - 1] != expected:
                 raise ValueError(f"Unexpected name command in {name}")
-    if len(story) != 38:
+    if len(story) != 39:
         raise ValueError("Opening labels could not be resolved")
     return story
 

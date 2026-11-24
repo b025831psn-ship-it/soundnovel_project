@@ -186,7 +186,10 @@ function narrationPages(reunion, final) {
 }
 
 function makePages(s) {
-  const sharedNarration = narrationPages(s.my02_0120, true);
+  const sharedNarration = narrationPages(s.my02_0120, false);
+  const authorQuestion = narrationPages(s.my02_0150, true);
+  authorQuestion[0].movie = s.my02_0150.events.find(event => event.scene).scene;
+  for (const block of authorQuestion) block.rubies = s.my02_0150.ruby;
   const sharedBackground = s.my02_0120.events.find(event => event.scene).scene;
   for (const block of sharedNarration) Object.assign(block, {background:sharedBackground, retainMovie:false});
   sharedNarration[0].target = 'my02_0120';
@@ -307,6 +310,7 @@ function makePages(s) {
       return pages;
     }),
     ...sharedNarration,
+    ...authorQuestion,
   ];
 }
 
@@ -423,13 +427,13 @@ function drawStory(time) {
   const y = block.center ? 189 : origin.y;
   const x = block.center ? (640 - screen.width(storyText(), .91)) / 2 : origin.x;
   const end = screen.text(text, x, y, {scale:.91, max:Math.min(580, 640 - x)});
-  if (block.ruby) {
-    const start = storyText().indexOf(block.ruby.word);
+  for (const ruby of block.rubies ?? (block.ruby ? [block.ruby] : [])) {
+    const start = storyText().indexOf(ruby.word);
     const lineStart = storyText().lastIndexOf('\n', start) + 1;
     const rubyY = (lineStart === 0 ? y : end.y) - 10;
     let left = x + screen.width(storyText().slice(lineStart, start), .91);
-    block.ruby.readings.forEach((reading, i) => {
-      const width = screen.width(block.ruby.word[i], .91);
+    ruby.readings.forEach((reading, i) => {
+      const width = screen.width(ruby.word[i], .91);
       if (start + i < text.length) screen.centered(reading, left + width / 2, rubyY, .38);
       left += width;
     });

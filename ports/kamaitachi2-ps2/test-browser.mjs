@@ -262,8 +262,11 @@ try {
       await key('Enter');
       await page.waitForTimeout(100);
     }
-    await at('complete');
     assert.match(await label(), /あの時、我孫子なんてやつは泊まっていなかった。$/);
+    await advanceTo('complete', 150);
+    assert.match(await label(), /「我孫子武丸って誰なんだろう」/);
+    assert.match(await label(), /真理は自信ありげに言った。$/);
+    assert.ok([...requests].some(url => url.endsWith('/my0008.mp4')));
   } else {
     await key('ArrowDown');
     const bossReply = await label();
