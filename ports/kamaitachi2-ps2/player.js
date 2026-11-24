@@ -32,7 +32,7 @@ function enter(next, selected = 0) {
 }
 
 function announce() {
-  const story = scene === 'story' || scene === 'complete';
+  const story = ['story','complete','choice-wait'].includes(scene);
   const label = scene === 'choice' ? pages[page].choice[index].text : story ? storyText() : editor && ['name','confirm'].includes(scene)
     ? (role === 0 ? '주인공 ' : '여자친구 ') + editor.value : scene;
   canvas.setAttribute('aria-label', label);
@@ -293,7 +293,7 @@ function makePages(s) {
     ...data.followupChoice.flatMap(route => {
       const pages = narrationPages(s[route.target], true);
       pages[0].target = route.target;
-      if (route.target === 'myb02_0120') Object.assign(pages.at(-1), {end:false, choice:data.culpritChoice});
+      if (route.target === 'myb02_0120') Object.assign(pages.at(-1), {end:false, choice:data.culpritChoice, choiceWait:data.culpritChoiceWait});
       return pages;
     }),
     ...data.culpritChoice.flatMap(route => {
@@ -364,7 +364,7 @@ function step(key) {
     if (key === 'circle' || key === 'start') {
       if (revealed < storyText().length) revealed = textWaits[0]?.offset ?? storyText().length;
       else if (textWaits.length) return;
-      else if (scene === 'story' && pages[page].choice) enter('choice');
+      else if (scene === 'story' && pages[page].choice) enter(pages[page].choiceWait ? 'choice-wait' : 'choice');
       else if (scene === 'story') { page++; printPage(); }
     }
     return;
@@ -448,7 +448,10 @@ function frame(now) {
     screen.title(index, Boolean(saved));
     if (now - entered >= 4801 * 1000 / 59.94) opening(true);
   } else if (['autosave','slot','file-select','created','save-note'].includes(scene)) screen.autosave(scene, index, slot, names[0]);
-  else if (scene === 'choice') {
+  else if (scene === 'choice-wait') {
+    drawStory(time);
+    if (now - entered >= pages[page].choiceWait * 1000 / 59.94) enter('choice');
+  } else if (scene === 'choice') {
     if (!pages[page].retainMovie) screen.background('my0645', true, time);
     pages[page].choice.forEach((route, i) => {
       const y = 60 + 64 * i;

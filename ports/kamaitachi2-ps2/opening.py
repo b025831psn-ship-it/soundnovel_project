@@ -259,6 +259,14 @@ def scenario_choice(data, source):
     return choices
 
 
+def culprit_choice_wait(data):
+    marker = b"\x85\x0c\x0dmyb02_0126\x00\x22"
+    pos = data.index(marker) + len(marker)
+    if data[pos] != 0x50 or data[pos+5] != 0x6c:
+        raise ValueError("Expected a wait immediately before the culprit selection")
+    return struct.unpack_from(">I", data, pos + 1)[0]
+
+
 def invitation_origin(data):
     origins = set()
     for label in (b"my01_0078", b"my01_0079", b"my01_0080"):
@@ -356,6 +364,7 @@ def opening_assets(disc, out, encode):
         "prologueChoice": scenario_choice(scenario, b"my01_0070"),
         "summerChoice": scenario_choice(scenario, b"my02_0100"),
         "followupChoice": scenario_choice(scenario, b"myb02_0010"),
+        "culpritChoiceWait": culprit_choice_wait(scenario),
         "culpritChoice": scenario_choice(scenario, b"myb02_0126"),
         "invitationOrigin": invitation_origin(scenario),
         "titleMusic": title_music,

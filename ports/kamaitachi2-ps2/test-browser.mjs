@@ -250,7 +250,10 @@ try {
   await at('choice');
   assert.match(await label(), /もちろん犯人当てだよ」$/);
   if (process.env.K2_CULPRIT_ROUTE) {
-    await key('Enter'); await at('story'); await advanceTo('choice', 100);
+    await key('Enter'); await at('story'); await advanceTo('choice-wait', 50);
+    await key('ArrowDown'); await key('Enter');
+    assert.equal(await canvas.getAttribute('data-scene'), 'choice-wait');
+    await at('choice');
     assert.match(await label(), /当然だよ」/);
     await key('ArrowDown');
     assert.match(await label(), /チャレンジしてみるよ」/);
