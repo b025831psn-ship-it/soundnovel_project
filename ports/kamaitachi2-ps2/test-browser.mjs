@@ -176,6 +176,13 @@ try {
   await page.clock.fastForward(1200);
   await at('attract');
   assert.ok(await page.locator('video').evaluate(v => v.src.endsWith('/pre_dv.mp4')));
+  for (const phase of ['title-entry', 'title']) {
+    await page.locator('video').evaluate(v => { v.playbackRate = 12; });
+    await at(phase);
+  }
+  await page.clock.fastForward(80200);
+  await at('attract');
+  assert.ok(await page.locator('video').evaluate(v => v.src.endsWith('/opening.mp4')));
   assert.deepEqual(unexpected,[]);
   const isoRequests = [...requests].filter(url => /\.iso(?:$|[?#])/i.test(url));
   assert.equal(isoRequests.length,0);
