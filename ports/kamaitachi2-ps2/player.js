@@ -134,6 +134,29 @@ function printPage() {
   }
 }
 
+function summerDialogue(sceneData) {
+  const blocks = [];
+  let text = '';
+  let waits = [{offset:0, remaining:sceneData.introWaits[2] * 1000 / 59.94}];
+  let speeds = [];
+  for (const event of sceneData.events) {
+    if (event.text) text += event.text;
+    else if (event.wait) waits.push({offset:text.length, remaining:event.wait * 1000 / 59.94});
+    else if (event.speed !== undefined) speeds.push({offset:text.length, speed:event.speed});
+    else if (event.command === 4) text += '\n';
+    else if (event.command === 9 || event.command === 11) {
+      const visible = text.trimEnd();
+      const pauses = waits;
+      blocks.push({retainMovie:true, append:blocks.length > 0, end:event.command === 11,
+        text: () => visible, speeds, waits: () => pauses.map(pause => ({...pause}))});
+      waits = [];
+      speeds = [];
+    }
+  }
+  Object.assign(blocks[0], {movie:'my0005-1', loopMovie:'my0005-2'});
+  return blocks;
+}
+
 function makePages(s) {
   const start = s.my01_0010, first = s.my01_0012, hero = s.my01_0040;
   const second = s.my01_0055, last = s.my01_0070;
@@ -216,9 +239,7 @@ function makePages(s) {
     { movie:'my0003-1', loopMovie:'my0003-2', music:'k2h003.ogg', autoAdvance:true,
       waits: () => [{offset:0, remaining:(s.my02_0015.introWaits[0] + s.my02_0015.introWaits[1]) * 1000 / 59.94}],
       text: () => '' },
-    { movie:'my0005-1', loopMovie:'my0005-2', end:true,
-      waits: () => [{offset:0, remaining:s.my02_0015.introWaits[2] * 1000 / 59.94}],
-      text: () => s.my02_0015.events[0].text },
+    ...summerDialogue(s.my02_0015),
   ];
 }
 
@@ -378,7 +399,10 @@ function frame(now) {
     if (wait && revealed >= wait.offset) {
       wait.remaining -= dt;
       if (wait.remaining <= 0) textWaits.shift();
-    } else revealed = Math.min(wait?.offset ?? storyText().length, revealed + dt / 35);
+    } else {
+      const speed = pages[page].speeds?.findLast(change => change.offset <= revealed)?.speed ?? 1;
+      revealed = Math.min(wait?.offset ?? storyText().length, revealed + dt / (35 * speed));
+    }
     drawStory(time);
     if (pages[page].autoAdvance && !textWaits.length && revealed >= storyText().length) { page++; printPage(); }
   } else if (scene === 'name' || scene === 'confirm') {

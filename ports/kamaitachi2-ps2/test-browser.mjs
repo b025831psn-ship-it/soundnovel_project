@@ -173,8 +173,18 @@ try {
       return v.src.endsWith('/' + name + '.mp4') && v.videoWidth === 640 && v.currentTime > 0;
     }, clip);
   }
-  await at('complete');
   assert.equal(await label(), '「暑いわね」');
+  const summerLines = ['「ほんとだ。こう暑くっちゃやりきれないよ」','「あら、私は夏は暑いほうが好きよ」',
+    'え？','「だって、すがすがしいじゃない」','「・・・・・・そ、そうだよね」'];
+  for (const line of summerLines) {
+    const previous = await label();
+    for (let i=0; i<20 && await label() === previous; i++) {
+      await key('Enter');
+      await page.waitForTimeout(80);
+    }
+    assert.equal(await label(), previous + '\n' + line);
+  }
+  await at('complete');
   assert.ok([...requests].some(url => url.endsWith('/k2h003.ogg')));
   const saved = await page.evaluate(()=>JSON.parse(localStorage.getItem('soundnovel.slps25132.opening.v1')));
   assert.deepEqual(saved,{names:['透ああああぁ','真理'],slot:1});
