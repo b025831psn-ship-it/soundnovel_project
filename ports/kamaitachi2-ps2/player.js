@@ -23,6 +23,14 @@ const padDown = new Set();
 const padRepeat = new DirectionRepeat();
 const keyboardRepeat = new DirectionRepeat();
 const heldArrows = new Set();
+const keyboardEdits = new Set();
+const editPriority = ['circle', 'cross', 'triangle'];
+
+function flushKeyboardEdit() {
+  const action = editPriority.find(key => keyboardEdits.has(key));
+  keyboardEdits.clear();
+  if (action && scene === 'name') step(action);
+}
 
 function moveKeyboardCursor(now) {
   const horizontal = heldArrows.has('left') ? 'left' : heldArrows.has('right') ? 'right' : '';
@@ -35,6 +43,7 @@ function moveKeyboardCursor(now) {
 const images = {};
 
 function enter(next, selected = 0) {
+  keyboardEdits.clear();
   heldArrows.clear();
   keyboardRepeat.advance('', performance.now());
   scene = next;
@@ -534,6 +543,7 @@ function drawStory(time) {
 
 function frame(now) {
   if (scene === 'name') moveKeyboardCursor(now);
+  flushKeyboardEdit();
   const dt = Math.min(100, now - (lastFrame ?? now));
   lastFrame = now;
   const time = now / 1000;
@@ -587,7 +597,7 @@ function frame(now) {
   }
   if (scene === 'name') {
     const group = ['r1', 'l1'].find(action => actions.includes(action));
-    const edit = ['circle', 'cross', 'triangle'].find(action => actions.includes(action));
+    const edit = editPriority.find(action => actions.includes(action));
     const up = padDown.has('12'), down = padDown.has('13');
     const left = padDown.has('14'), right = padDown.has('15');
     // EE 0x11BFE8 picks a diagonal first, then up/down/left/right.
@@ -619,6 +629,10 @@ document.addEventListener('keydown', e => {
   const action = keys[e.code];
   if (!action || e.altKey || e.ctrlKey || e.metaKey || scene === 'loading') return;
   e.preventDefault();
+  if (scene === 'name' && editPriority.includes(action)) {
+    if (!e.repeat) keyboardEdits.add(action);
+    return;
+  }
   if (scene === 'name' && e.code.startsWith('Arrow')) {
     if (!e.repeat) {
       heldArrows.add(action);
@@ -629,9 +643,11 @@ document.addEventListener('keydown', e => {
   if (!e.repeat || ['up','down','left','right'].includes(action)) step(action);
 });
 document.addEventListener('keyup', e => {
+  if (keyboardEdits.has(keys[e.code])) flushKeyboardEdit();
   if (heldArrows.delete(keys[e.code])) moveKeyboardCursor(performance.now());
 });
 window.addEventListener('blur', () => {
+  keyboardEdits.clear();
   heldArrows.clear();
   keyboardRepeat.advance('', performance.now());
 });
