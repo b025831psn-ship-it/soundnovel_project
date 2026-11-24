@@ -194,7 +194,7 @@ function makePages(s) {
   const kobayashiReply = narrationPages(s.my02_0180, false);
   kobayashiReply[0].movie = s.my02_0180.events.find(event => event.scene).scene;
   const innBackground = s.my02_0210.events.find(event => event.scene).scene;
-  const innHistory = [...narrationPages(s.my02_0210, false), ...narrationPages(s.my02_0215, true)];
+  const innHistory = [...narrationPages(s.my02_0210, false), ...narrationPages(s.my02_0215, false)];
   for (const block of innHistory) Object.assign(block, {background:innBackground, retainMovie:false});
   innHistory.at(-1).rubies = s.my02_0215.ruby;
   const sharedBackground = s.my02_0120.events.find(event => event.scene).scene;
@@ -324,6 +324,9 @@ function makePages(s) {
     ...kobayashiReply,
     ...narrationPages(s.my02_0190, false),
     ...innHistory,
+    ...narrationPages(s.my02_0217, true).map((block, i) => ({
+      ...block, rubies:s.my02_0217.ruby, ...(i === 0 ? {movie:'my0010', music:'k1a004.ogg'} : {}),
+    })),
   ];
 }
 

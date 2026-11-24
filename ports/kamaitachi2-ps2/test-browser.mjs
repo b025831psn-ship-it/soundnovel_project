@@ -289,8 +289,10 @@ try {
     assert.ok([...discussion].some(line => line.includes('いい宣伝になってるよ')));
     assert.ok([...discussion].some(line => line.endsWith('小林さんは、ニヤニヤ笑って返事をしない。')));
     assert.ok([...discussion].some(line => line.includes('ペンション「シュプール」のオーナー')));
-    assert.match(await label(), /今日子さんは、料理はからきしダメなのだ。$/);
-    assert.ok(await page.locator('video').evaluate(video => video.hidden));
+    assert.ok([...discussion].some(line => line.endsWith('今日子さんは、料理はからきしダメなのだ。')));
+    assert.match(await label(), /真理がたずねた。/);
+    assert.match(await label(), /いいのか、そんなことで。$/);
+    assert.ok([...requests].some(url => url.endsWith('/k1a004.ogg')));
     assert.ok([...requests].some(url => url.endsWith('/my0010.mp4')));
     assert.ok([...requests].some(url => url.endsWith('/my0008.mp4')));
   } else {
