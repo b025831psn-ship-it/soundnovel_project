@@ -98,7 +98,7 @@ def scenario_strings(data):
     story = {}
     for current, following in zip(labels, labels[1:]):
         name = (current[1] or current[2] or current[3]).decode("ascii")
-        if name in {"my02_0015", "my02_0160", "my02_0170", "my02_0180", "my02_0190", "my02_0210", "my02_0215", "my02_0217", "my02_0240", "my02_0150", "my02_0120", "my02_0030", "my02_0035", "my02_0040", "my02_0075", "my02_0080", "my02_0083", "my02_0085", "my02_0090", "my02_0110", "myb02_0010", "myb02_0120", "myb02_0030", "myb02_0140", "myb02_0150"}:
+        if name in {"my02_0015", "my02_0160", "my02_0170", "my02_0180", "my02_0190", "my02_0210", "my02_0215", "my02_0217", "my02_0240", "my02_0250", "my02_0260", "my02_0150", "my02_0120", "my02_0030", "my02_0035", "my02_0040", "my02_0075", "my02_0080", "my02_0083", "my02_0085", "my02_0090", "my02_0110", "myb02_0010", "myb02_0120", "myb02_0030", "myb02_0140", "myb02_0150"}:
             block = data[current.end():following.start()]
             intro = re.match(rb"\x73\x07my0003\x00\x74\x0amy0003_00\x00\x1e\x50(.{4})"
                              rb"\x72\x07my0005\x00\x50(.{4})\x73\x07my0005\x00"
@@ -128,7 +128,7 @@ def scenario_strings(data):
                 if len(lines) != 2 or block[pos] != 0x16 or not block.endswith(suffix):
                     raise ValueError("Unexpected culprit reply layout")
                 block = block[pos+1:-len(suffix)]
-            if name not in {"my02_0180", "my02_0190", "my02_0210", "my02_0215", "my02_0217", "my02_0240", "my02_0170", "my02_0040", "my02_0150", "myb02_0140", "myb02_0150"} and intro is None:
+            if name not in {"my02_0180", "my02_0190", "my02_0210", "my02_0215", "my02_0217", "my02_0240", "my02_0250", "my02_0260", "my02_0170", "my02_0040", "my02_0150", "myb02_0140", "myb02_0150"} and intro is None:
                 raise ValueError("Unexpected summer scene introduction")
             ruby = []
             if name in {"my02_0150", "my02_0170", "my02_0215", "my02_0217"}:
@@ -157,6 +157,11 @@ def scenario_strings(data):
                     key = {0x72: "prepareScene", 0x73: "scene", 0x74: "caption"}[opcode]
                     events.append({key: field[:-1].decode("ascii")})
                     pos += size + 1
+                elif opcode == 0x75:
+                    if block[pos:pos+1] != b"\x03" or pos + 4 > len(block):
+                        raise ValueError("Unexpected 0x75 operand")
+                    events.append({"rgb": list(block[pos+1:pos+4])})
+                    pos += 4
                 elif opcode == 0x6f:
                     size = block[pos]
                     operand = block[pos+1:pos+1+size]
@@ -248,7 +253,7 @@ def scenario_strings(data):
             expected = 0x12 if name.endswith("0047") else 0x13
             if data[following.start() - 1] != expected:
                 raise ValueError(f"Unexpected name command in {name}")
-    if len(story) != 47:
+    if len(story) != 49:
         raise ValueError("Opening labels could not be resolved")
     return story
 
