@@ -230,7 +230,9 @@ export class Screen {
 
   editor(editor, role) {
     const glyph = (ch, x, y, dim = false) => {
-      this.text(ch, x, y, dim ? editorDimInk : editorInk);
+      const width = this.data.font[ch]?.[2] ?? 16;
+      const inset = Math.max(0, Math.floor((32 - width) / 2));
+      this.text(ch, x + inset, y, dim ? editorDimInk : editorInk);
     };
     this.rect(0, 28, 640, 36);
     this.sprite('name_e01', 0, role ? 33 : 0, role ? 183 : 94, 32, role ? 63 : 123, 29, role ? 150 : 91, 34);
@@ -239,9 +241,7 @@ export class Screen {
     glyph('＿', 352 + 32 * insertionColumn, 33);
     for (let i = 0; i < 6; i++) {
       const ch = editor.value[i] ?? '＊';
-      const width = this.data.font[ch]?.[2] ?? 16;
-      const inset = Math.max(0, Math.floor((32 - width) / 2));
-      glyph(ch, 352 + 32 * i + inset, 31, i >= editor.value.length);
+      glyph(ch, 352 + 32 * i, 31, i >= editor.value.length);
     }
     this.rect(136, 74, 368, 32);
     this.sprite('name_e01', 0, 234, 31, 21, 80, 80);
@@ -249,7 +249,7 @@ export class Screen {
     this.sprite('name_e01', 242, 65, 14, 22, 119, 79, 13, 19);
     this.sprite('name_e01', 242, 90, 14, 22, 506, 79, 13, 19);
     editor.groups.forEach((g, i) => {
-      glyph(g[0][0], 145 + 32 * i, 76, i !== editor.group);
+      glyph(g[0][0], 144 + 32 * i, 75, i !== editor.group);
     });
     this.rect(75, 116, 490, 262);
     for (let r = editor.scroll; r < Math.min(editor.rows.length, editor.scroll + 8); r++) {
@@ -268,7 +268,7 @@ export class Screen {
           this.rect(x + 2, y + 1, 28, 1, '#4c4c4c');
           this.rect(x + 2, y + 2, 28, 28, '#3b3b3b');
         }
-        glyph(ch, x + 1, y + 1);
+        glyph(ch, x, y);
       });
     }
     if (editor.scroll > 0) this.sprite('name_e01', 50, 136, 28, 15, 306, 106);
