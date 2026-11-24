@@ -140,6 +140,8 @@ function makePages(s) {
   const partnerLine = () => last[0] + names[1] + last[1];
   const classmates = () => partnerLine() + '\n' + last[2] + names[1] + last[3];
   const north = s.my01_0076;
+  const middle = s.my01_0079, closing = s.my01_0080;
+  const sceneryRuby = {word:middle[4].slice(0, 4), readings:middle.slice(0, 4)};
   const letter = s.my01_0077;
   const correspondence = () => letter[0] + names[1] + letter[1] + '\n' + letter[2];
   const outcome = target => data.prologueChoice.find(route => route.target === target).text;
@@ -173,7 +175,13 @@ function makePages(s) {
     { text: correspondence },
     { append:true, book:true, text: () => correspondence() + '\n' + letter[3] },
     { background:'my0000', text: () => s.my01_0078.slice(0, 2).join('\n') },
-    { background:'my0000', append:true, end:true, book:true, text: () => s.my01_0078.join('\n') },
+    { background:'my0000', append:true, book:true, text: () => s.my01_0078.join('\n') },
+    { background:'my0000', ruby:sceneryRuby, text: () => middle.slice(4, 7).join('\n') },
+    { background:'my0000', ruby:sceneryRuby, append:true, book:true, text: () => middle.slice(4).join('\n') },
+    { background:'my0000', text: () => closing[0] },
+    { background:'my0000', append:true, text: () => closing.slice(0, 4).join('\n') },
+    { background:'my0000', append:true, end:true, book:true, ruby:{word:closing[11], readings:closing.slice(6, 11)},
+      text: () => [...closing.slice(0, 6), closing[11]].join('\n') },
   ];
 }
 
@@ -281,6 +289,17 @@ function drawStory(time) {
   const y = block.center ? 189 : 31;
   const x = block.center ? (640 - screen.width(storyText(), .91)) / 2 : 32;
   const end = screen.text(text, x, y, {scale:.91, max:580});
+  if (block.ruby) {
+    const start = storyText().indexOf(block.ruby.word);
+    const lineStart = storyText().lastIndexOf('\n', start) + 1;
+    const rubyY = (lineStart === 0 ? y : end.y) - 10;
+    let left = x + screen.width(storyText().slice(lineStart, start), .91);
+    block.ruby.readings.forEach((reading, i) => {
+      const width = screen.width(block.ruby.word[i], .91);
+      if (start + i < text.length) screen.centered(reading, left + width / 2, rubyY, .38);
+      left += width;
+    });
+  }
   if (revealed >= storyText().length) {
     const tick = Math.floor(time * 6);
     if (block.book) {
