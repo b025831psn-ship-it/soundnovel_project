@@ -80,7 +80,7 @@ def scenario_strings(data):
     story = {}
     for current, following in zip(labels, labels[1:]):
         name = (current[1] or current[2]).decode("ascii")
-        if name in {"my02_0015", "my02_0030"}:
+        if name in {"my02_0015", "my02_0030", "my02_0035"}:
             block = data[current.end():following.start()]
             intro = re.match(rb"\x73\x07my0003\x00\x74\x0amy0003_00\x00\x1e\x50(.{4})"
                              rb"\x72\x07my0005\x00\x50(.{4})\x73\x07my0005\x00"
@@ -90,6 +90,8 @@ def scenario_strings(data):
                 intro = re.match(rb"\x7b\x0c\x13sh01_0010\x00\x06\x73\x07my0006\x00"
                                  rb"\x72\x08my0006b\x00\x74\x0amy0006_00\x00\x50(.{4})",
                                  block, re.DOTALL)
+            if name == "my02_0035":
+                intro = re.match(rb"\x7b\x0c\x13sh01_0010\x00\x06", block)
             if intro is None:
                 raise ValueError("Unexpected summer scene introduction")
             events = []
@@ -166,7 +168,7 @@ def scenario_strings(data):
             expected = 0x12 if name.endswith("0047") else 0x13
             if data[following.start() - 1] != expected:
                 raise ValueError(f"Unexpected name command in {name}")
-    if len(story) != 23:
+    if len(story) != 24:
         raise ValueError("Opening labels could not be resolved")
     return story
 

@@ -184,11 +184,10 @@ try {
     }
     assert.equal(await label(), previous + '\n' + line);
   }
-  for (let i=0; i<40 && await canvas.getAttribute('data-scene') !== 'complete'; i++) {
+  for (let i=0; i<40 && !(await label()).endsWith('またきれいになっていた。'); i++) {
     await key('Enter');
     await page.waitForTimeout(100);
   }
-  await at('complete');
   assert.deepEqual((await label()).split('\n'), [
     '真理らしい受け答えだ。',
     'ぼくは、あらためて、本物の真理が目の前にいることを実感した。',
@@ -196,6 +195,11 @@ try {
     '彼女は、またきれいになっていた。',
   ]);
   assert.ok(await page.locator('video').evaluate(v => v.src.endsWith('/my0006.mp4') && v.videoWidth === 640));
+  await advanceTo('complete');
+  const description = (await label()).split('\n');
+  assert.equal(description.length, 4);
+  assert.equal(description[0], 'ショートパンツにＴシャツ……。');
+  assert.equal(description[3], 'ひさしぶりに会ったぼくは、その輝かしさに圧倒されていた。');
   assert.ok([...requests].some(url => url.endsWith('/k2h003.ogg')));
   const saved = await page.evaluate(()=>JSON.parse(localStorage.getItem('soundnovel.slps25132.opening.v1')));
   assert.deepEqual(saved,{names:['透ああああぁ','真理'],slot:1});
