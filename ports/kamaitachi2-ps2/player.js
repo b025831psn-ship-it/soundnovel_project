@@ -478,11 +478,17 @@ function step(key) {
     if (key === 'cross' || (key === 'circle' && index === 1)) enter('name');
     else if (key === 'circle') {
       names[role] = editor.value;
-      if (role === 1 && autosave) {
-        saved = {names:[...names], slot};
-        try { localStorage.setItem(saveKey, JSON.stringify(saved)); } catch { /* Play continues without storage. */ }
-      }
       page++; printPage();
+      if (role === 1 && autosave) {
+        const checkpoint = {names:[...names], slot};
+        try {
+          localStorage.setItem(saveKey, JSON.stringify(checkpoint));
+          saved = checkpoint;
+        } catch {
+          userNotice = '자동 저장에 실패했습니다. 현재 게임은 계속할 수 있습니다.';
+          announce();
+        }
+      }
     }
   }
 }
