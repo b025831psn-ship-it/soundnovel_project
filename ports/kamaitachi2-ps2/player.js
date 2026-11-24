@@ -528,8 +528,9 @@ function drawStory(time) {
   if (block.movie && !text) return;
   if (!block.movie && !block.retainMovie) screen.background(background, background === 'my0645', time);
   const origin = block.background === 'my0000' ? data.invitationOrigin : {x:32, y:31};
-  const y = block.center ? 189 : origin.y;
-  const x = block.center ? (640 - screen.width(storyText(), .91)) / 2 : origin.x;
+  const scale = block.center ? .96 : .91;
+  const y = block.center ? 192 : origin.y;
+  const x = block.center ? (640 - screen.width(storyText(), scale)) / 2 : origin.x;
   const rubies = block.rubies ?? (block.ruby ? [block.ruby] : []);
   const readings = rubies.length ? new Map() : undefined;
   for (const ruby of rubies) {
@@ -540,7 +541,7 @@ function drawStory(time) {
   if (!block.movie && !block.retainMovie && ['my0007', 'my0645'].includes(background)) {
     screen.c.filter = 'brightness(86%)';
   }
-  const end = screen.text(text, x, y, {scale:.91, max:Math.min(580, 640 - x), readings, colors:textColors});
+  const end = screen.text(text, x, y, {scale, max:Math.min(580, 640 - x), readings, colors:textColors});
   screen.c.restore();
   if (revealed >= storyText().length) {
     const tick = Math.floor(time * 6);
