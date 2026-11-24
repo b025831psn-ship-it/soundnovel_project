@@ -15,6 +15,7 @@ export const HANDLERS = {
   0x0d: "08003CF0",
   0x0e: "08003DF0",
   0x0f: "08003E58",
+  0x12: "08004008",
   0x13: "080040A0",
   0x14: "0800411C",
   0x15: "08004154",
@@ -39,6 +40,8 @@ export const HANDLERS = {
   0x2f: "08004C34",
   0x40: "080051B4",
   0x41: "08005264",
+  0x43: "08005290",
+  0x44: "080053DC",
   0x30: "08004C8C",
   0x31: "08004CDC",
   0x32: "08004D4C",
@@ -420,6 +423,11 @@ export class VM {
           this.branch(row);
         break;
       }
+      case 0x12:
+        // 08004008: composite six-slot fade, menu command 00, and restore.
+        // Rendering is host-owned; nativeWait preserves its 36-frame span.
+        this.system?.cue?.(0x12, 0, this.ram);
+        break;
       case 0x13:
       case 0x57:
         args.push(...this.choice(opcode));
@@ -704,6 +712,17 @@ export class VM {
         this.write("vars", index, value);
         break;
       }
+      case 0x43: {
+        const command = this.word();
+        args.push(command);
+        this.system?.cue?.(0x43, command, this.ram);
+        break;
+      }
+      case 0x44:
+        // 080053DC: the native flowchart UI returns through bank 27 row 0.
+        this.system?.cue?.(0x44, 39000, this.ram);
+        this.branch(39000);
+        break;
       case 0x45: {
         args.push(this.word(), this.word());
         if (

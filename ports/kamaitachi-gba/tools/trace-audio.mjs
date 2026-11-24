@@ -1,6 +1,6 @@
 // Replays the scenario on the native timeline and compares every audio call with mGBA.
 //
-//   node tools/trace-audio.mjs <port-data> <native.tsv> [frames]
+//   node tools/trace-audio.mjs <port-data> <native.tsv> [frames] [choice-index] [timing-json]
 //
 // native.tsv comes from kamaitachi-gba-kor/tools/mgba_scene_audio_probe.c. The port starts at
 // entry row 27000; the native log reaches it at its first bank-1B dispatch, which becomes frame 0.
@@ -14,8 +14,9 @@ import path from "node:path";
 import { VM } from "../src/vm.js";
 import { M4A, Memory } from "../sound/m4a.js";
 
-const [data, nativePath, framesText = "30000"] = process.argv.slice(2);
-if (!nativePath) throw new Error("usage: trace-audio.mjs <port-data> <native.tsv> [frames]");
+const [data, nativePath, framesText = "30000", choiceIndexText = "0", timingPath] = process.argv.slice(2);
+if (!nativePath) throw new Error("usage: trace-audio.mjs <port-data> <native.tsv> [frames] [choice-index] [timing-json]");
+const choiceIndex = Number(choiceIndexText);
 const read = (name) => fs.readFileSync(path.join(data, name));
 const banks = {};
 for (const name of fs.readdirSync(path.join(data, "scenario")))
@@ -25,8 +26,9 @@ const memory = new Memory(new Uint8Array(read("sound/m4a.bin")), config.base);
 const engine = new M4A(memory, config);
 const tables = JSON.parse(read("sound/scene-audio.json"));
 tables.effectBytes = new Uint8Array(read("sound/effects.bin"));
-const transitionTimings = fs.existsSync(path.join(data, "scenario-timing.json"))
-  ? JSON.parse(read("scenario-timing.json")) : null;
+const selectedTimingPath = timingPath ?? path.join(data, "scenario-timing.json");
+const transitionTimings = fs.existsSync(selectedTimingPath)
+  ? JSON.parse(fs.readFileSync(selectedTimingPath)) : null;
 
 const BUFFER = 0x020067f4; // RAM copy of the current bank; 020006F4 points into it
 const hex = (v) => (v >>> 0).toString(16);
@@ -38,13 +40,14 @@ const start = Number(rows.find((r) => r[1] === "op" && parseInt(r[2], 16) === 0x
 const players = new Map(), songs = new Map();
 for (let i = 0; i < config.playerCount; i++) players.set(memory.u32(config.players + 12 * i), i);
 for (let i = 0; i < config.songCount; i++) songs.set(memory.u32(config.songTable + 8 * i), i);
-const native = [], gate = [], marks = new Map();
+const native = [], nativeOps = [], gate = [], marks = new Map();
 let inner = false;
 for (const r of rows) {
   const frame = Number(r[0]) - start;
   if (frame < 0) continue;
   if (r[1] === "op") {
     gate.push(frame);
+    nativeOps.push({ bank: parseInt(r[2], 16), offset: parseInt(r[3], 16) - BUFFER });
     native.push(`${frame}\top\t${hex(parseInt(r[2], 16))}\t${hex(parseInt(r[3], 16) - BUFFER)}\t${r[4]}`);
   } else if (r[1] === "ram") native.push(`${frame}\tram\t${r.slice(2).join("\t")}`);
   else if (["frame", "irq", "effects"].includes(r[2])) {
@@ -98,7 +101,17 @@ vm.step = () => {
 let last = "";
 for (; frame < Number(framesText) && !vm.halted && index < gate.length; frame++) {
   if (vm.waiting === "click") vm.resume();
-  if (vm.waiting === "choice") vm.resume(0);
+  if (vm.waiting === "choice") {
+    // Follow the branch the cartridge actually took. Some 57/16 blocks use a
+    // precomputed result and continue after 16 instead of jumping to an entry;
+    // an unmatched next native cursor is represented by resume(-1).
+    const next = nativeOps[index];
+    const selected = vm.choiceState?.entries.findIndex(({ row }) => {
+      const bank = Math.floor(row / 1000), index = row % 1000;
+      return bank === next?.bank && vm.rows[bank]?.[index] === next.offset;
+    });
+    vm.resume(selected >= 0 ? selected : (next ? -1 : choiceIndex));
+  }
   vm.skipAudioIrq = !marks.get(frame)?.has("irq");
   vm.skipAudioFrame = !marks.get(frame)?.has("frame");
   vm.vblank();
