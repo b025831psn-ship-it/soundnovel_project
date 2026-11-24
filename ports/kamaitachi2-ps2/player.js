@@ -21,9 +21,22 @@ let textSpeeds = [];
 let textColors;
 const padDown = new Set();
 const padRepeat = new DirectionRepeat();
+const keyboardRepeat = new DirectionRepeat();
+const heldArrows = new Set();
+
+function moveKeyboardCursor(now) {
+  const horizontal = heldArrows.has('left') ? 'left' : heldArrows.has('right') ? 'right' : '';
+  const vertical = heldArrows.has('up') ? 'up' : heldArrows.has('down') ? 'down' : '';
+  if (keyboardRepeat.advance(horizontal + vertical, now)) {
+    if (horizontal) step(horizontal);
+    if (vertical) step(vertical);
+  }
+}
 const images = {};
 
 function enter(next, selected = 0) {
+  heldArrows.clear();
+  keyboardRepeat.advance('', performance.now());
   scene = next;
   index = selected;
   entered = performance.now();
@@ -513,6 +526,7 @@ function drawStory(time) {
 }
 
 function frame(now) {
+  if (scene === 'name') moveKeyboardCursor(now);
   const dt = Math.min(100, now - (lastFrame ?? now));
   lastFrame = now;
   const time = now / 1000;
@@ -596,7 +610,21 @@ document.addEventListener('keydown', e => {
   const action = keys[e.code];
   if (!action || e.altKey || e.ctrlKey || e.metaKey || scene === 'loading') return;
   e.preventDefault();
+  if (scene === 'name' && e.code.startsWith('Arrow')) {
+    if (!e.repeat) {
+      heldArrows.add(action);
+      moveKeyboardCursor(performance.now());
+    }
+    return;
+  }
   if (!e.repeat || ['up','down','left','right'].includes(action)) step(action);
+});
+document.addEventListener('keyup', e => {
+  if (heldArrows.delete(keys[e.code])) moveKeyboardCursor(performance.now());
+});
+window.addEventListener('blur', () => {
+  heldArrows.clear();
+  keyboardRepeat.advance('', performance.now());
 });
 document.querySelector('nav').addEventListener('click', e => {
   if (e.target.dataset.key) { step(e.target.dataset.key); canvas.focus(); }

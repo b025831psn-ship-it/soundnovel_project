@@ -68,6 +68,18 @@ try {
   await advanceTo('name');
   assert.equal(await label(),'주인공 透');
   await check('hero');
+  // OS-generated repeats before the EE's 18-tick delay must not move again.
+  await page.evaluate(() => {
+    const send = (type, repeat = false) => document.dispatchEvent(
+      new KeyboardEvent(type, {code:'ArrowRight', repeat, bubbles:true}));
+    send('keydown'); send('keydown', true); send('keyup');
+  });
+  await key('Enter');
+  const afterRepeatedKey = await label();
+  // Reset to the original heading before taking a single-step reference.
+  await key('Escape'); await key('q'); await key('w'); await key('ArrowRight'); await key('Enter');
+  assert.equal(await label(), afterRepeatedKey);
+  await key('Escape'); await key('ArrowLeft');
   await key('ArrowRight');
   for (let i=0; i<9; i++) await key('ArrowDown');
   await page.getByRole('button',{name:'L1',exact:true}).click();
