@@ -121,6 +121,7 @@ function storyText() {
 
 function printPage() {
   const block = pages[page];
+  if (block.background && !movie.hidden) stopMovie();
   if (block.name !== undefined) {
     role = block.name;
     editor = new NameEditor(groups, names[role]);
@@ -192,6 +193,10 @@ function makePages(s) {
   for (const block of authorQuestion) block.rubies = s.my02_0150.ruby;
   const kobayashiReply = narrationPages(s.my02_0180, false);
   kobayashiReply[0].movie = s.my02_0180.events.find(event => event.scene).scene;
+  const innBackground = s.my02_0210.events.find(event => event.scene).scene;
+  const innHistory = [...narrationPages(s.my02_0210, false), ...narrationPages(s.my02_0215, true)];
+  for (const block of innHistory) Object.assign(block, {background:innBackground, retainMovie:false});
+  innHistory.at(-1).rubies = s.my02_0215.ruby;
   const sharedBackground = s.my02_0120.events.find(event => event.scene).scene;
   for (const block of sharedNarration) Object.assign(block, {background:sharedBackground, retainMovie:false});
   sharedNarration[0].target = 'my02_0120';
@@ -317,7 +322,8 @@ function makePages(s) {
     ...narrationPages(s.my02_0170, false).map((block, index, pages) =>
       index === pages.length - 1 ? {...block, rubies:s.my02_0170.ruby} : block),
     ...kobayashiReply,
-    ...narrationPages(s.my02_0190, true),
+    ...narrationPages(s.my02_0190, false),
+    ...innHistory,
   ];
 }
 
@@ -554,7 +560,7 @@ try {
   const response = await fetch(asset('opening.json'));
   if (!response.ok) throw new Error('Missing opening data');
   data = await response.json();
-  await Promise.all(['font','copyrigh','title_00','my0000','my0002','my0007','my0645','mo0000','name_e01','mark','sys_fc01','sys_cd01','sys_cd02','sys_jo01','sys_jo02','sys_jo03','sys_save','sys_wa01'].map(async name => {
+  await Promise.all(['font','copyrigh','title_00','my0000','my0002','my0007','my0011','my0645','mo0000','name_e01','mark','sys_fc01','sys_cd01','sys_cd02','sys_jo01','sys_jo02','sys_jo03','sys_save','sys_wa01'].map(async name => {
     const image = new Image(); image.src = asset(name + '.png'); await image.decode(); images[name] = image;
   }));
   groups = keyboardGroups(data.rows); pages = makePages(data.story);

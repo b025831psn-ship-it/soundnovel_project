@@ -275,7 +275,10 @@ try {
     assert.ok([...discussion].some(line => line.includes('香山さんが透ああああぁに就職の世話')));
     assert.ok([...discussion].some(line => line.endsWith('もう一人の乗客である小林二郎さんに言った。')));
     assert.ok([...discussion].some(line => line.includes('いい宣伝になってるよ')));
-    assert.match(await label(), /小林さんは、ニヤニヤ笑って返事をしない。$/);
+    assert.ok([...discussion].some(line => line.endsWith('小林さんは、ニヤニヤ笑って返事をしない。')));
+    assert.ok([...discussion].some(line => line.includes('ペンション「シュプール」のオーナー')));
+    assert.match(await label(), /今日子さんは、料理はからきしダメなのだ。$/);
+    assert.ok(await page.locator('video').evaluate(video => video.hidden));
     assert.ok([...requests].some(url => url.endsWith('/my0010.mp4')));
     assert.ok([...requests].some(url => url.endsWith('/my0008.mp4')));
   } else {
