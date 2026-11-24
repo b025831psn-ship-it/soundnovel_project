@@ -13,6 +13,31 @@
 
 export class StoryFormatError extends Error {}
 
+// Flags: `set` is { name: value } applied on arrival (node) or when picked (option).
+// `next` is a list of { if?: { name: value }, to } checked top to bottom; the first match wins.
+// A plain `to` is the same as next: [{ to }]. Values are strings, numbers or booleans.
+function normalizeSet(raw, where) {
+  if (raw === undefined || raw === null) return null;
+  if (typeof raw !== 'object' || Array.isArray(raw)) throw new StoryFormatError(`${where}.set: 객체가 아닙니다.`);
+  for (const [k, v] of Object.entries(raw)) {
+    if (!['string', 'number', 'boolean'].includes(typeof v)) throw new StoryFormatError(`${where}.set.${k}: 값은 문자열·숫자·참거짓이어야 합니다.`);
+  }
+  return { ...raw };
+}
+
+function normalizeNext(obj, where) {
+  if (Array.isArray(obj.next)) {
+    if (!obj.next.length) throw new StoryFormatError(`${where}.next가 비어 있습니다.`);
+    return obj.next.map((r, i) => {
+      if (!r || typeof r !== 'object') throw new StoryFormatError(`${where}.next[${i}]: 객체가 아닙니다.`);
+      const cond = r.if ?? null;
+      if (cond !== null && (typeof cond !== 'object' || Array.isArray(cond))) throw new StoryFormatError(`${where}.next[${i}].if: 객체가 아닙니다.`);
+      return { if: cond, to: r.to ?? null };
+    });
+  }
+  return [{ if: null, to: obj.to ?? null }];
+}
+
 function firstDefined(obj, keys) {
   for (const k of keys) {
     if (obj && obj[k] !== undefined && obj[k] !== null) return obj[k];
@@ -86,11 +111,13 @@ export function normalizeStory(raw) {
         id,
         kind: 'choice',
         scene,
+        set: normalizeSet(n.set, id),
         question: toSentence(firstDefined(n, ['question', 'prompt', 'text']) ?? '', `${id}.text`),
         options: options.map((o, i) => ({
           key: String(firstDefined(o, ['key', 'id']) ?? String.fromCharCode(65 + i)),
           label: toSentence(firstDefined(o, ['label', 'text']) ?? '', `${id}.options[${i}].label`),
-          to: o.to ?? null,
+          next: normalizeNext(o, `${id}.options[${i}]`),
+          set: normalizeSet(o.set, `${id}.options[${i}]`),
         })),
       };
     } else {
@@ -102,15 +129,16 @@ export function normalizeStory(raw) {
         id,
         kind: 'text',
         scene,
+        set: normalizeSet(n.set, id),
         pages: pages.map((p, i) => normalizePage(p, `${id}.pages[${i}]`)),
-        to: n.to ?? null,
+        next: normalizeNext(n, id),
       };
     }
   }
 
   if (!nodes[entry]) throw new StoryFormatError(`entry "${entry}" 노드가 없습니다.`);
   for (const n of Object.values(nodes)) {
-    const targets = n.kind === 'choice' ? n.options.map((o) => o.to) : [n.to];
+    const targets = (n.kind === 'choice' ? n.options.flatMap((o) => o.next) : n.next).map((r) => r.to);
     for (const t of targets) {
       if (t !== null && !nodes[t]) throw new StoryFormatError(`${n.id}: 이동할 노드 "${t}"가 없습니다.`);
     }

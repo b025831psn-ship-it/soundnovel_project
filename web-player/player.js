@@ -95,7 +95,18 @@ export function createPlayer(root, story, { storage = safeStorage(), startMenu =
   let lastScene = null;
 
   function initial() {
-    return { node: story.entry, page: 0, line: 0, done: false, trail: [] };
+    return { node: story.entry, page: 0, line: 0, done: false, trail: [], flags: { ...story.nodes[story.entry].set } };
+  }
+
+  // First rule whose `if` matches every listed flag; its `to` (null means the data ends here).
+  function resolve(rules, flags) {
+    const hit = rules.find((r) => !r.if || Object.entries(r.if).every(([k, v]) => flags[k] === v));
+    return hit ? hit.to : null;
+  }
+
+  function validFlags(flags) {
+    if (!flags || typeof flags !== 'object' || Array.isArray(flags)) return {};
+    return Object.fromEntries(Object.entries(flags).filter(([, v]) => ['string', 'number', 'boolean'].includes(typeof v)));
   }
 
   function loadSettings() {
@@ -139,6 +150,7 @@ export function createPlayer(root, story, { storage = safeStorage(), startMenu =
     }
     return {
       node: saved.node, page: saved.page | 0, line: saved.line | 0, done: !!saved.done, trail: validTrail(saved.trail),
+      flags: validFlags(saved.flags),
     };
   }
 
@@ -152,6 +164,7 @@ export function createPlayer(root, story, { storage = safeStorage(), startMenu =
       line: state.line,
       done: state.done,
       trail: state.trail,
+      flags: state.flags,
     };
   }
 
@@ -229,15 +242,21 @@ export function createPlayer(root, story, { storage = safeStorage(), startMenu =
     render(focus);
   }
 
-  function goTo(nodeId, step) {
-    setState({ node: nodeId, page: 0, line: 0, done: false, trail: [...state.trail, step] });
+  // Arriving at a node applies its `set`.
+  function goTo(nodeId, step, flags = state.flags) {
+    setState({
+      node: nodeId, page: 0, line: 0, done: false, trail: [...state.trail, step], flags: { ...flags, ...story.nodes[nodeId].set },
+    });
   }
 
-  // An option without `to` is where the data ends: record the pick and show the end screen.
+  // Picking applies the option's `set`, then its `next` rules decide where to go.
+  // No destination means the data ends here: record the pick and show the end screen.
   function choose(option) {
     const step = { node: state.node, pick: option.key };
-    if (option.to) goTo(option.to, step);
-    else setState({ ...state, done: true, trail: [...state.trail, step] });
+    const flags = { ...state.flags, ...option.set };
+    const to = resolve(option.next, flags);
+    if (to) goTo(to, step, flags);
+    else setState({ ...state, done: true, trail: [...state.trail, step], flags });
   }
 
   function advance() {
@@ -246,7 +265,8 @@ export function createPlayer(root, story, { storage = safeStorage(), startMenu =
     const page = node.pages[state.page];
     if (state.line < page.length - 1) return setState({ ...state, line: state.line + 1 });
     if (state.page < node.pages.length - 1) return setState({ ...state, page: state.page + 1, line: 0 });
-    if (node.to) return goTo(node.to, { node: state.node });
+    const to = resolve(node.next, state.flags);
+    if (to) return goTo(to, { node: state.node });
     setState({ ...state, done: true });
   }
 
