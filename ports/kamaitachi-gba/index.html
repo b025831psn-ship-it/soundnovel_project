@@ -13,6 +13,7 @@
 <main class="shell">
   <!-- The cartridge's 240x160 screen, scaled by whole numbers. Nothing is drawn over it. -->
   <div class="stage" id="stage">
+    <canvas id="glow" width="24" height="16" aria-hidden="true"></canvas>
     <canvas id="screen" aria-label="게임 화면 240×160"></canvas>
     <p class="loading" id="loading" role="status">불러오는 중…</p>
   </div>

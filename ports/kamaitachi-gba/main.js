@@ -3,6 +3,7 @@ import { Assets, SceneLoader } from "./src/scene.js";
 import { NativeFont, TextWindow } from "./src/font.js";
 import { GBAInput } from "./src/input.js";
 import { VM } from "./src/vm.js";
+import { PageText } from "./src/page-text.js";
 import { createSound } from "./sound/output.js";
 
 const base = "../../kamaitachi-gba-kor/port-data";
@@ -35,7 +36,8 @@ const choiceView = {
   hide: () => screen.clearChoices(),
 };
 const vm = new VM({ banks, scene, text, musicMap: music.request_to_song, audio: sound, audioTables, choiceView });
-window.kamaitachi = { vm, screen, assets, font, input, sound };
+const page = new PageText(screen, font, text);
+window.kamaitachi = { vm, screen, assets, font, input, sound, page };
 
 let last = performance.now();
 let accumulated = 0;
@@ -47,8 +49,9 @@ function loop(now) {
     const pressed = (key) => input.pressed(key) && !previous.has(key);
     if (pressed("UP")) vm.moveChoice(-1);
     if (pressed("DOWN")) vm.moveChoice(1);
-    if (pressed("A") && (vm.waiting === "click" || vm.waiting === "choice")) vm.resume();
+    if (pressed("A") && ((vm.waiting === "click" && !page.typing) || vm.waiting === "choice")) vm.resume();
     vm.vblank();
+    page.frame(Boolean(screen.choiceOverlay));
     for (const key of ["A", "UP", "DOWN"]) {
       if (input.pressed(key)) previous.add(key); else previous.delete(key);
     }

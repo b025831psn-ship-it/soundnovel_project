@@ -29,6 +29,15 @@ whenReady(({ input, sound }) => {
   $("loading").hidden = true;
   stage.classList.add("ready");
 
+  // The glow behind the screen follows its colors a few times a second.
+  const glow = $("glow").getContext("2d");
+  glow.imageSmoothingEnabled = true;
+  let tick = 0;
+  (function follow() {
+    if (tick++ % 8 === 0) glow.drawImage(canvas, 0, 0, 24, 16);
+    requestAnimationFrame(follow);
+  })();
+
   // Touch buttons press the same GBA keys as the keyboard.
   for (const button of document.querySelectorAll("[data-key]")) {
     const key = button.dataset.key;
