@@ -77,7 +77,7 @@ check(t.patternLevel === 1, '패턴 호출로 한 단계 들어감');
 for (let f = 0; f < 3; f++) e.vblank();
 check(t.patternLevel === 0, '3틱 뒤 PEND로 복귀');
 check(t.repN === 0 && t.cmdPtr > rept, 'REPT 2는 한 번 되돌아간 뒤 다음으로 진행');
-check(live() === 1 && ch.key === 62 && ch.gateTime === 0, 'TIE 음은 길이 없이 시작');
+check(live() === 1 && ch.key === 60 && ch.midiKey === 62 && ch.gateTime === 0, 'TIE 음은 길이 없이 시작');
 for (let f = 0; f < 6; f++) e.vblank();
 check(!(ch.status & 0xc7) || (ch.status & 0x40), 'EOT 62로 TIE 음 해제');
 for (let f = 0; f < 3; f++) e.vblank();

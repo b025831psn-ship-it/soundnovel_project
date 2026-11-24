@@ -59,6 +59,7 @@ export class VM {
     this.audio = audio;
     this.musicMap = musicMap;
     this.currentSong = null;
+    this.currentRequest = null;
     this.trace = trace;
     this.frame = 0;
     this.halted = false;
@@ -72,6 +73,7 @@ export class VM {
       group: 0,
       slot: 0xffff,
       pending: 0,
+      effectBypass: 0,
     };
     this.gotoRow(entryRow);
   }
@@ -282,14 +284,23 @@ export class VM {
         args.push(rawSpeed, request);
         const speed =
           (rawSpeed > 99 ? Math.floor(rawSpeed / 16) : rawSpeed) * 10;
-        if (request <= 999) this.audio?.fadeOut(0, speed);
+        if (request !== 0xffff && request <= 999) {
+          this.audio?.fadeOut(0, speed);
+          this.currentRequest = null;
+        } else if (request >= 1000 && request !== 0xffff) {
+          this.audio?.fadeOutEffect?.(request - 1000, speed);
+        }
         break;
       }
       case 0x32: {
         const rawSpeed = this.word();
         const request = this.word();
         args.push(rawSpeed, request);
-        this.startAudio(request);
+        const speed =
+          (rawSpeed > 99 ? Math.floor(rawSpeed / 16) : rawSpeed) * 10;
+        this.pendingAudio = { request, speed };
+        this.waitFrames = 1;
+        this.waiting = "audio-start";
         break;
       }
       case 0x34: {
@@ -326,7 +337,11 @@ export class VM {
       }
       case 0x45: {
         args.push(this.word(), this.word());
-        if (this.banks[this.bank][this.offset] === 0x0a) this.offset += 2;
+        if (
+          this.ram.effectBypass !== 1 &&
+          this.banks[this.bank][this.offset] === 0x0a
+        )
+          this.offset += 2;
         break;
       }
       case 0x4d: {
@@ -381,16 +396,24 @@ export class VM {
     return !this.halted;
   }
 
-  startAudio(request) {
-    if (request >= 1000) return;
+  startAudio(request, speed = 0) {
+    if (request >= 1000) {
+      this.audio?.startEffect?.(request - 1000, speed);
+      return;
+    }
+    if (request === this.currentRequest) return;
     const song = this.musicMap[request] ?? -1;
     if (song < 0) {
       if (this.currentSong !== null) this.audio?.stopSong(this.currentSong);
       this.currentSong = null;
+      this.currentRequest = request;
       return;
     }
+    if (this.currentSong !== null) this.audio?.stopSong(this.currentSong);
     this.audio?.startSong(song);
+    if (speed) this.audio?.fadeInSong?.(song, speed);
     this.currentSong = song;
+    this.currentRequest = request;
   }
 
   resume(rowIndex = null) {
@@ -407,6 +430,12 @@ export class VM {
     this.frame++;
     if (this.waiting === "delay" && --this.waitFrames <= 0)
       this.waiting = "none";
+    if (this.waiting === "audio-start" && --this.waitFrames <= 0) {
+      const { request, speed } = this.pendingAudio;
+      this.startAudio(request, speed);
+      this.pendingAudio = null;
+      this.waiting = "none";
+    }
     for (let count = 0; count < budget && this.step(); count++);
   }
 }

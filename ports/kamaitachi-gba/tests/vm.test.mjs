@@ -125,6 +125,7 @@ test("30/31/32 map scenario requests to the MP2K API", () => {
     startSong: (song) => calls.push(["start", song]),
     stopSong: (song) => calls.push(["stop", song]),
     fadeOut: (player, speed) => calls.push(["fade", player, speed]),
+    fadeInSong: (song, speed) => calls.push(["fade-in", song, speed]),
   };
   const vm = new VM({
     banks: {
@@ -135,13 +136,31 @@ test("30/31/32 map scenario requests to the MP2K API", () => {
     musicMap: [5, 8, 13, -1],
     audio,
   });
+  vm.step();
+  vm.step();
+  vm.step();
+  assert.equal(vm.waiting, "audio-start");
+  vm.vblank();
   while (vm.step());
   assert.deepEqual(calls, [
     ["start", 8],
     ["fade", 0, 100],
+    ["stop", 8],
     ["start", 13],
+    ["fade-in", 13, 200],
     ["stop", 13],
   ]);
+});
+
+test("45 skips the following 0A only outside effect-bypass state", () => {
+  const row = [0x45, 1, 0, 2, 0, 0x0a, 7, 0x04, 3, 0, 0x03];
+  const normal = new VM({ banks: { 27: bank([row]) } });
+  normal.step();
+  assert.equal(normal.banks[normal.bank][normal.offset], 0x04);
+  const bypass = new VM({ banks: { 27: bank([row]) } });
+  bypass.ram.effectBypass = 1;
+  bypass.step();
+  assert.equal(bypass.banks[bypass.bank][bypass.offset], 0x0a);
 });
 
 test("opening effect opcodes preserve alignment through the first choice", () => {
