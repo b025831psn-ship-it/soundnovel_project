@@ -178,8 +178,11 @@ export class Screen {
       } else {
         this.sprite('sys_save', 0, 82, 23, 20, 49, 137);
         this.sprite('sys_cd01', 0, 64, 95, 63, 79, 112);
-        this.text('わらべ唄篇', 200, 119, {scale:.76});
+        this.text('わらべ唄篇', 201, 119, {scale:.76, widthScale:.74});
         this.text('１章', 326, 119, {scale:.8});
+        this.rect(177, 144, 194, 6, 'rgba(0,0,0,.52)');
+        this.rect(179, 146, 191, 2, '#838689');
+        this.rect(178, 142, 3, 6, '#999');
         this.rect(376, 111, 215, 39, 'rgba(17,26,40,.46)');
         this.text(initialName, 394, 114);
         this.sprite('sys_save', 399, 130, 91, 22, 159, 159);
