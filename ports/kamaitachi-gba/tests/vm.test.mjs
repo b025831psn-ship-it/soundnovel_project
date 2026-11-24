@@ -179,6 +179,32 @@ test("2D loads its native effect id without introducing a wait", () => {
   assert.equal(vm.halted, false);
 });
 
+test("2D bypass conditions set only the shared update flag", () => {
+  for (const field of ["effectDisabled", "effectBypass"]) {
+    const calls = [];
+    const vm = new VM({
+      banks: { 27: bank([[0x2d, 0, 0x20, 0]]) },
+      scene: { overlay: (request) => calls.push(request) },
+    });
+    vm.ram[field] = 1;
+    vm.ram.overlayMasks[0] = 0x2000;
+    vm.step();
+    assert.deepEqual(calls, []);
+    assert.equal(vm.ram.updatePending, 1);
+    assert.equal(vm.ram.overlayActive, 0);
+    assert.equal(vm.ram.overlayMasks[0], 0x2000);
+  }
+});
+
+test("2D compares the native mask entries as signed halfwords", () => {
+  const vm = new VM({
+    banks: { 27: bank([[0x2d, 0, 0x80, 0]]) },
+  });
+  vm.ram.overlayMasks[0] = 0x8000;
+  vm.step();
+  assert.equal(vm.ram.overlayMasks[0], 0x8000);
+});
+
 test("2F swaps its request bytes and stops the matching audio class", () => {
   const calls = [];
   const vm = new VM({
@@ -197,6 +223,29 @@ test("2F swaps its request bytes and stops the matching audio class", () => {
     ["effect", 100],
   ]);
   assert.equal(vm.waiting, "none");
+  assert.equal(vm.ram.updatePending, 1);
+  assert.equal(vm.currentRequest, null);
+  assert.equal(vm.ram.audioRequest, 0xffff);
+  vm.vblank(0);
+  assert.equal(vm.ram.updatePending, 0);
+});
+
+test("2F bypass conditions preserve audio state and set update pending", () => {
+  for (const field of ["effectDisabled", "effectBypass"]) {
+    const calls = [];
+    const vm = new VM({
+      banks: { 27: bank([[0x2f, 0, 1]]) },
+      audio: { stopSong: (song) => calls.push(song) },
+    });
+    vm.currentSong = 3;
+    vm.currentRequest = 1;
+    vm.ram[field] = 1;
+    vm.step();
+    assert.deepEqual(calls, []);
+    assert.equal(vm.currentSong, 3);
+    assert.equal(vm.currentRequest, 1);
+    assert.equal(vm.ram.updatePending, 1);
+  }
 });
 
 test("opening effect opcodes preserve alignment through the first choice", () => {

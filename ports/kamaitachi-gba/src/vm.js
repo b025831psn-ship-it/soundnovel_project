@@ -75,9 +75,12 @@ export class VM {
       group: 0,
       slot: 0xffff,
       pending: 0,
+      effectDisabled: 0,
       effectBypass: 0,
+      updatePending: 0,
       overlayActive: 0,
       overlayMasks: new Uint16Array(4),
+      audioRequest: 0xffff,
     };
     this.gotoRow(entryRow);
   }
@@ -278,13 +281,21 @@ export class VM {
         const raw = this.word();
         const request = ((raw & 0xff) << 8) | (raw >> 8);
         args.push(raw, request);
+        if (this.ram.effectDisabled === 1 || this.ram.effectBypass === 1) {
+          this.ram.updatePending = 1;
+          this.writes.push("updatePending=1");
+          break;
+        }
         if (request <= 999) {
           if (this.currentSong !== null) this.audio?.stopSong(this.currentSong);
           this.currentSong = null;
           this.currentRequest = null;
+          this.ram.audioRequest = 0xffff;
         } else if (request !== 0xffff) {
           this.audio?.stopEffect?.(request - 1000);
         }
+        this.ram.updatePending = 1;
+        this.writes.push("updatePending=1");
         break;
       }
       case 0x2c:
@@ -295,11 +306,20 @@ export class VM {
         const request =
           ((high << 8) + ((lowPair & 0xff) << 8) + (lowPair >> 8)) & 0xffff;
         args.push(high, lowPair, request);
+        if (this.ram.effectDisabled === 1 || this.ram.effectBypass === 1) {
+          this.ram.updatePending = 1;
+          this.writes.push("updatePending=1");
+          break;
+        }
         this.scene?.overlay?.(request, this.ram);
         this.ram.overlayActive = 1;
         for (let index = 0; index < this.ram.overlayMasks.length; index++) {
           const value = this.ram.overlayMasks[index];
-          if (value === request || (request === 0 && value === 13))
+          const signedValue = (value << 16) >> 16;
+          if (
+            signedValue === request ||
+            (request === 0 && signedValue === 13)
+          )
             this.ram.overlayMasks[index] = 0xffff;
         }
         this.writes.push(`overlay=${request}`);
@@ -435,6 +455,7 @@ export class VM {
       return;
     }
     if (request === this.currentRequest) return;
+    this.ram.audioRequest = request;
     const song = this.musicMap[request] ?? -1;
     if (song < 0) {
       if (this.currentSong !== null) this.audio?.stopSong(this.currentSong);
@@ -461,6 +482,7 @@ export class VM {
 
   vblank(budget = 1024) {
     this.frame++;
+    this.ram.updatePending = 0;
     if (this.waiting === "delay" && --this.waitFrames <= 0)
       this.waiting = "none";
     if (this.waiting === "audio-start" && --this.waitFrames <= 0) {
