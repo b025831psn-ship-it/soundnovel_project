@@ -288,8 +288,9 @@ export class Screen {
     this.sprite('name_e01', 160, 0, 32, 32, 302, 29);
     this.sprite('name_e01', 185, 32, 67, 32, 335, 29);
     const left = role ? 48 : 112;
-    this.text(this.data.prompts[role] + name + '。', left, 144, {...editorInk, scale:.96});
-    this.text(this.data.prompts[2], 176, 199, {...editorInk, scale:.96});
+    const promptStyle = {...editorInk, scale:.96, widthScale:1, spacing:0};
+    this.text(this.data.prompts[role] + name + '。', left, 143, promptStyle);
+    this.text(this.data.prompts[2], 176, 199, promptStyle);
     this.rect(235, 252, 138, 72);
     this.c.save();
     this.c.filter = 'brightness(86%)'; // Peak label intensity is 219/255 in the PS2 capture.
