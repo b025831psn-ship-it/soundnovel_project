@@ -23,6 +23,9 @@ export class SceneLoader {
     }
     await this.load(request);
   }
+  async overlay(request) {
+    this.screen.setEffect?.(request);
+  }
   async load(request) {
     const { image, variant } = this.resolve(request),
       [tiles, palette] = await Promise.all([

@@ -163,6 +163,42 @@ test("45 skips the following 0A only outside effect-bypass state", () => {
   assert.equal(bypass.banks[bypass.bank][bypass.offset], 0x0a);
 });
 
+test("2D loads its native effect id without introducing a wait", () => {
+  const calls = [];
+  const vm = new VM({
+    banks: { 27: bank([[0x2d, 0x00, 0x20, 0x00, 0x3e]]) },
+    scene: { overlay: (request) => calls.push(request) },
+  });
+  vm.ram.overlayMasks.set([0x2000, 13, 7, 0]);
+  vm.step();
+  assert.deepEqual(calls, [0x2000]);
+  assert.equal(vm.waiting, "none");
+  assert.equal(vm.ram.overlayActive, 1);
+  assert.deepEqual([...vm.ram.overlayMasks], [0xffff, 13, 7, 0]);
+  vm.step();
+  assert.equal(vm.halted, false);
+});
+
+test("2F swaps its request bytes and stops the matching audio class", () => {
+  const calls = [];
+  const vm = new VM({
+    banks: { 27: bank([[0x2f, 0x00, 0x57, 0x2f, 0x04, 0x4c]]) },
+    audio: {
+      stopSong: (song) => calls.push(["song", song]),
+      stopEffect: (effect) => calls.push(["effect", effect]),
+    },
+  });
+  vm.currentSong = 3;
+  vm.currentRequest = 9;
+  vm.step();
+  vm.step();
+  assert.deepEqual(calls, [
+    ["song", 3],
+    ["effect", 100],
+  ]);
+  assert.equal(vm.waiting, "none");
+});
+
 test("opening effect opcodes preserve alignment through the first choice", () => {
   const row = [
     0x29, 2, 0xf6, 0x00, 0x2e, 1, 10, 0x5f, 3, 0, 0x58, 4, 0, 0x15, 0x2c, 0x35,

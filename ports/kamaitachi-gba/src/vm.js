@@ -22,7 +22,9 @@ export const HANDLERS = {
   0x25: "08003F30",
   0x29: "080048C0",
   0x2c: "080049FC",
+  0x2d: "08004B10",
   0x2e: "08004B98",
+  0x2f: "08004C34",
   0x40: "080051B4",
   0x41: "08005264",
   0x30: "08004C8C",
@@ -74,6 +76,8 @@ export class VM {
       slot: 0xffff,
       pending: 0,
       effectBypass: 0,
+      overlayActive: 0,
+      overlayMasks: new Uint16Array(4),
     };
     this.gotoRow(entryRow);
   }
@@ -270,8 +274,37 @@ export class VM {
         args.push(this.byte(), this.byte());
         break;
       }
+      case 0x2f: {
+        const raw = this.word();
+        const request = ((raw & 0xff) << 8) | (raw >> 8);
+        args.push(raw, request);
+        if (request <= 999) {
+          if (this.currentSong !== null) this.audio?.stopSong(this.currentSong);
+          this.currentSong = null;
+          this.currentRequest = null;
+        } else if (request !== 0xffff) {
+          this.audio?.stopEffect?.(request - 1000);
+        }
+        break;
+      }
       case 0x2c:
         break;
+      case 0x2d: {
+        const high = this.byte();
+        const lowPair = this.word();
+        const request =
+          ((high << 8) + ((lowPair & 0xff) << 8) + (lowPair >> 8)) & 0xffff;
+        args.push(high, lowPair, request);
+        this.scene?.overlay?.(request, this.ram);
+        this.ram.overlayActive = 1;
+        for (let index = 0; index < this.ram.overlayMasks.length; index++) {
+          const value = this.ram.overlayMasks[index];
+          if (value === request || (request === 0 && value === 13))
+            this.ram.overlayMasks[index] = 0xffff;
+        }
+        this.writes.push(`overlay=${request}`);
+        break;
+      }
       case 0x30: {
         const request = this.word();
         args.push(request);
