@@ -80,6 +80,34 @@ def scenario_strings(data):
     story = {}
     for current, following in zip(labels, labels[1:]):
         name = (current[1] or current[2]).decode("ascii")
+        if name == "my02_0015":
+            block = data[current.end():following.start()]
+            intro = re.match(rb"\x73\x07my0003\x00\x74\x0amy0003_00\x00\x1e\x50(.{4})"
+                             rb"\x72\x07my0005\x00\x50(.{4})\x73\x07my0005\x00"
+                             rb"\x72\x07my0006\x00\x74\x0amy0005_00\x00\x50(.{4})",
+                             block, re.DOTALL)
+            if intro is None:
+                raise ValueError("Unexpected summer scene introduction")
+            events = []
+            pos = intro.end()
+            while pos < len(block):
+                opcode = block[pos]
+                pos += 1
+                if opcode == 0x02:
+                    end = block.index(b"\x03", pos)
+                    events.append({"text": block[pos:end].decode("cp932")})
+                    pos = end + 1
+                elif opcode in (0x40, 0x50):
+                    size = 1 if opcode == 0x40 else 4
+                    if pos + size > len(block):
+                        raise ValueError("Truncated summer dialogue operand")
+                    events.append({"speed" if size == 1 else "wait": int.from_bytes(block[pos:pos+size], "big")})
+                    pos += size
+                elif opcode in (0x04, 0x09, 0x0b):
+                    events.append({"command": opcode})
+                else:
+                    raise ValueError(f"Unexpected summer dialogue opcode {opcode:#x}")
+            story[name] = {"introWaits": [int.from_bytes(v, "big") for v in intro.groups()], "events": events}
         if name == "my02_0010":
             block = data[current.end():following.start()]
             card = re.fullmatch(
@@ -132,7 +160,7 @@ def scenario_strings(data):
             expected = 0x12 if name.endswith("0047") else 0x13
             if data[following.start() - 1] != expected:
                 raise ValueError(f"Unexpected name command in {name}")
-    if len(story) != 21:
+    if len(story) != 22:
         raise ValueError("Opening labels could not be resolved")
     return story
 
