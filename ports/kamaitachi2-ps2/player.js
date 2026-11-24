@@ -25,11 +25,14 @@ const keyboardRepeat = new DirectionRepeat();
 const heldArrows = new Set();
 const keyboardEdits = new Set();
 const editPriority = ['circle', 'cross', 'triangle'];
+const confirmPriority = ['circle', 'cross', 'square', 'up', 'down'];
 
 function flushKeyboardEdit() {
-  const action = editPriority.find(key => keyboardEdits.has(key));
+  if (!keyboardEdits.size) return;
+  const priority = scene === 'confirm' ? confirmPriority : editPriority;
+  const action = priority.find(key => keyboardEdits.has(key));
   keyboardEdits.clear();
-  if (action && scene === 'name') step(action);
+  if (action) step(action);
 }
 
 function moveKeyboardCursor(now) {
@@ -611,7 +614,7 @@ function frame(now) {
     }
     if (edit) step(edit);
   } else if (scene === 'confirm') {
-    const action = ['circle', 'cross', 'square', 'up', 'down'].find(key => actions.includes(key));
+    const action = confirmPriority.find(key => actions.includes(key));
     if (action) step(action);
   } else {
     padRepeat.advance('', now);
@@ -632,7 +635,8 @@ document.addEventListener('keydown', e => {
   const action = keys[e.code];
   if (!action || e.altKey || e.ctrlKey || e.metaKey || scene === 'loading') return;
   e.preventDefault();
-  if (scene === 'name' && editPriority.includes(action)) {
+  if ((scene === 'name' && editPriority.includes(action)) ||
+      (scene === 'confirm' && confirmPriority.includes(action))) {
     if (!e.repeat) keyboardEdits.add(action);
     return;
   }
