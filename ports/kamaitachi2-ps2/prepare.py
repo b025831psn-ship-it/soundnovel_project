@@ -107,6 +107,22 @@ def title_textures(data, out):
         image.save(out / (name + ".png"))
 
 
+def summer_movies(disc, stage):
+    for name in ("my0003", "my0005"):
+        package = disc.read(disc.files[f"GRA/MY/{name}.mmv"])
+        for index in range(2):
+            offset = 64 * index
+            path = package[offset:offset + 56].split(b"\0", 1)[0]
+            length, sector = struct.unpack_from("<II", package, offset + 56)
+            segment = package[sector * SECTOR:sector * SECTOR + length]
+            if (not path.endswith(f"/{name}.{index + 1}.m2v".encode()) or
+                    len(segment) != length or not segment.startswith(b"\0\0\1\xb3")):
+                raise ValueError(f"Invalid {name} movie segment {index + 1}")
+            source = stage / f"{name}-{index + 1}.m2v"
+            source.write_bytes(segment)
+            video(source, source.with_suffix(".mp4"))
+
+
 def prepare(image, output):
     disc = Disc(image).open_index()
     disc.verify()
@@ -140,6 +156,7 @@ def prepare(image, output):
         recollection = stage / "mo0001.m2v"
         recollection.write_bytes(asset("GRA/MO/mo0001.m2v"))
         video(recollection, stage / "mo0001.mp4")
+        summer_movies(disc, stage)
         opening_assets(disc, stage, encode)
         for file in stage.iterdir():
             if file.suffix in {".mp4", ".png", ".ogg", ".json"} or file.name in {"move.wav", "confirm.wav", "cancel.wav"}:

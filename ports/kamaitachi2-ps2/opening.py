@@ -263,7 +263,7 @@ def opening_assets(disc, out, encode):
         still_png(asset(f"GRA/MY/{name}.ipu"), out, out / f"{name}.png", encode)
     still_png(asset("GRA/MO/mo0000.ipu"), out, out / "mo0000.png", encode)
     title_music = elf_string(disc.elf, 0x219c08)
-    for name in (title_music, "k1a001.ogg", "k2h017.ogg"):
+    for name in (title_music, "k1a001.ogg", "k2h017.ogg", "k2h003.ogg"):
         (out / name).write_bytes(asset("SOUND/VORBIS/" + name))
     button_sounds(disc, out, encode)
     for name in ("name_e01", "mark"):
