@@ -92,6 +92,24 @@ def scenario_strings(data):
     return story
 
 
+def prologue_choice(data):
+    """Resolve CommandSelect destinations in script order and read their first lines."""
+    label = rb"\x85\x0b\x0c(my01_[0-9]{4})\x00\x22"
+    labels = list(re.finditer(label, data))
+    blocks = {a[1]: data[a.end():b.start()] for a, b in zip(labels, labels[1:])}
+    command = re.search(rb"\x6c\x1b\x01\x02\x00\x00\x0c(my01_\d{4})\x00\x00\x0c(my01_\d{4})\x00",
+                        blocks[b"my01_0070"])
+    if command is None:
+        raise ValueError("Missing two-destination CommandSelect in my01_0070")
+    choices = []
+    for target in command.groups():
+        line = re.match(rb"\x6a\x07\x0c_my\d+\x00\x02([^\x00-\x1f]+)\x03\x04", blocks[target])
+        if line is None:
+            raise ValueError(f"Missing destination text in {target!r}")
+        choices.append({"target": target.decode("ascii"), "text": line[1].decode("cp932")})
+    return choices
+
+
 def still_png(data, work, destination, encode):
     if data[:4] != b"ipum" or struct.unpack_from("<I", data, 12)[0] != 1:
         raise ValueError("Expected a single-frame IPU image")
@@ -148,12 +166,14 @@ def opening_assets(disc, out, encode):
         texture(asset(f"EFFECT/{name}.ctf")).save(out / f"{name}.png")
     for name in ("sys_fc01", "sys_cd01", "sys_cd02", "sys_jo01", "sys_jo02", "sys_jo03", "sys_save", "sys_wa01"):
         texture(asset(f"SYS_MENU/{name}.ctf")).save(out / f"{name}.png")
+    scenario = asset("SCENARIO/scenario.sn4")
     config = {
         "font": font_atlas(asset("SCENARIO/sn4.fnt"), out),
         "rows": asset("SCENARIO/namkan.txt").decode("cp932").strip("\n").split("\n\n"),
         "defaults": [elf_string(disc.elf, va) for va in (0x224628, 0x224630)],
         "prompts": [elf_string(disc.elf, va) for va in (0x1ff090, 0x1ff0a0, 0x1ff0d8)],
-        "story": scenario_strings(asset("SCENARIO/scenario.sn4")),
+        "story": scenario_strings(scenario),
+        "prologueChoice": prologue_choice(scenario),
         "titleMusic": title_music,
     }
     (out / "opening.json").write_text(json.dumps(config, ensure_ascii=False), encoding="utf-8")
