@@ -49,6 +49,19 @@ class MipsReferenceTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "truncated"):
             mips_refs.find_references(bytes(data), 0)
 
+    def test_u32_jump_table(self):
+        data = executable([0x80044470, 0x80044488, 0x80044850])
+        table = mips_refs.read_u32_table(data, 0x80010000, 3)
+        self.assertEqual(table[1], {
+            "index": 1,
+            "address": "0x80010004",
+            "value": "0x80044488",
+        })
+
+    def test_u32_jump_table_must_be_in_text(self):
+        with self.assertRaisesRegex(ValueError, "outside"):
+            mips_refs.read_u32_table(executable([0]), 0x8000FFFC, 1)
+
 
 if __name__ == "__main__":
     unittest.main()

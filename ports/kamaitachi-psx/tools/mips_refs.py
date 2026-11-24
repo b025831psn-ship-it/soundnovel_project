@@ -68,16 +68,39 @@ def find_references(data: bytes, target: int) -> list[dict]:
     return references
 
 
+def read_u32_table(data: bytes, address: int, count: int) -> list[dict]:
+    if count < 0:
+        raise ValueError("table count must not be negative")
+    base, text = psx_exe_text(data)
+    offset = address - base
+    size = count * 4
+    if offset < 0 or offset + size > len(text):
+        raise ValueError("table is outside PS-X EXE text")
+    return [
+        {"index": index, "address": _hex(address + index * 4), "value": _hex(value)}
+        for index, (value,) in enumerate(struct.iter_unpack("<I", text[offset : offset + size]))
+    ]
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("exe", type=Path)
     parser.add_argument("target", type=lambda value: int(value, 0))
+    parser.add_argument("--table", type=lambda value: int(value, 0), metavar="COUNT")
     args = parser.parse_args()
-    result = {
-        "schema": "soundnovel.psx-mips-references.v1",
-        "target": _hex(args.target),
-        "references": find_references(args.exe.read_bytes(), args.target),
-    }
+    data = args.exe.read_bytes()
+    if args.table is None:
+        result = {
+            "schema": "soundnovel.psx-mips-references.v1",
+            "target": _hex(args.target),
+            "references": find_references(data, args.target),
+        }
+    else:
+        result = {
+            "schema": "soundnovel.psx-u32-table.v1",
+            "address": _hex(args.target),
+            "entries": read_u32_table(data, args.target, args.table),
+        }
     print(json.dumps(result, indent=2))
 
 
