@@ -71,5 +71,15 @@ a PS-X EXE. It emits addresses only and never copies executable payloads.
 `tools/pac_index.py FILE.PAC --records ID` additionally inventories a member's
 nested little-endian `u16` record table. Output contains offsets and sizes only.
 
+`tools/psx_vram.py` converts an already extracted, tightly packed PS1 VRAM
+rectangle into an RGBA PNG. It supports 4bpp and 8bpp CLUT textures plus direct
+16bpp BGR555/STP pixels. This is a build-time converter: the web player consumes
+its PNG output and never reads VRAM dumps or disc images at runtime.
+
+```sh
+python3 ports/kamaitachi-psx/tools/psx_vram.py texture.bin texture.png \
+  --width 320 --height 240 --bpp 8 --clut palette.bin
+```
+
 Static control-flow findings and their current confidence boundary are tracked
 in `ANALYSIS.md`.
