@@ -264,7 +264,7 @@ try {
     }
     assert.match(await label(), /あの時、我孫子なんてやつは泊まっていなかった。$/);
     const discussion = new Set();
-    for (let i=0; i<120 && await canvas.getAttribute('data-scene') === 'story'; i++) {
+    for (let i=0; i<200 && await canvas.getAttribute('data-scene') === 'story'; i++) {
       discussion.add(await label());
       await key('Enter');
       await page.waitForTimeout(100);
@@ -273,7 +273,10 @@ try {
     assert.ok([...discussion].some(line => line.includes('「我孫子武丸って誰なんだろう」')));
     assert.ok([...discussion].some(line => line.endsWith('真理は自信ありげに言った。')));
     assert.ok([...discussion].some(line => line.includes('香山さんが透ああああぁに就職の世話')));
-    assert.match(await label(), /もう一人の乗客である小林二郎さんに言った。$/);
+    assert.ok([...discussion].some(line => line.endsWith('もう一人の乗客である小林二郎さんに言った。')));
+    assert.ok([...discussion].some(line => line.includes('いい宣伝になってるよ')));
+    assert.match(await label(), /小林さんは、ニヤニヤ笑って返事をしない。$/);
+    assert.ok([...requests].some(url => url.endsWith('/my0010.mp4')));
     assert.ok([...requests].some(url => url.endsWith('/my0008.mp4')));
   } else {
     await key('ArrowDown');
