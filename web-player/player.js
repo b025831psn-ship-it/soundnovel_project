@@ -89,13 +89,15 @@ export function createPlayer(root, story, { storage = safeStorage(), startMenu =
   root.classList.add('wp-root');
   root.replaceChildren(titleBar, stage, logDialog, savesDialog);
 
+  const defaultNames = () => Object.fromEntries(story.names.map((name) => [name.id, name.value]));
+
   let settings = loadSettings();
   const saved = load();
   let state = saved || initial();
   let lastScene = null;
 
-  function initial() {
-    return { node: story.entry, page: 0, line: 0, done: false, trail: [] };
+  function initial(names = defaultNames()) {
+    return { node: story.entry, page: 0, line: 0, done: false, trail: [], names };
   }
 
   function loadSettings() {
@@ -139,6 +141,10 @@ export function createPlayer(root, story, { storage = safeStorage(), startMenu =
     }
     return {
       node: saved.node, page: saved.page | 0, line: saved.line | 0, done: !!saved.done, trail: validTrail(saved.trail),
+      names: Object.fromEntries(story.names.map((name) => [
+        name.id,
+        typeof saved.names?.[name.id] === 'string' && saved.names[name.id] ? saved.names[name.id] : name.value,
+      ])),
     };
   }
 
@@ -152,6 +158,7 @@ export function createPlayer(root, story, { storage = safeStorage(), startMenu =
       line: state.line,
       done: state.done,
       trail: state.trail,
+      names: state.names,
     };
   }
 
@@ -230,7 +237,7 @@ export function createPlayer(root, story, { storage = safeStorage(), startMenu =
   }
 
   function goTo(nodeId, step) {
-    setState({ node: nodeId, page: 0, line: 0, done: false, trail: [...state.trail, step] });
+    setState({ ...state, node: nodeId, page: 0, line: 0, done: false, trail: [...state.trail, step] });
   }
 
   // An option without `to` is where the data ends: record the pick and show the end screen.
@@ -296,7 +303,7 @@ export function createPlayer(root, story, { storage = safeStorage(), startMenu =
   }
 
   // Title screen: drawn in place of the original's own title, so it stays inside the 4:3 screen.
-  function showMenu(step = 'top') {
+  function showMenu(step = 'top', draft = defaultNames()) {
     stage.dataset.mode = 'menu';
     tools.style.visibility = 'hidden'; // keep the bar's height so the screen does not jump
     sceneLabel.textContent = '';
@@ -308,21 +315,35 @@ export function createPlayer(root, story, { storage = safeStorage(), startMenu =
     };
     if (step === 'top') {
       const resume = btn('이어하기', enterGame, !saved);
-      const fresh = btn('새 게임', () => (story.names.length ? showMenu('names') : startNew()));
+      const fresh = btn('새 게임', () => (story.names.length ? showMenu('name', draft) : startNew()));
       menu.replaceChildren(el('h2', { class: 'wp-menu-title', text: story.title }), el('div', { class: 'wp-menu-list' }, [fresh, resume]));
       (saved ? resume : fresh).focus();
-    } else {
-      const begin = btn('기본 이름으로 시작', startNew);
+    } else if (step.startsWith('name')) {
+      const index = Number(step.split(':')[1] || 0);
+      const slot = story.names[index];
+      const input = el('input', {
+        class: 'wp-name-input', type: 'text', value: draft[slot.id], maxlength: String(slot.maxLength),
+        'aria-label': `${slot.label} 이름`, autocomplete: 'off', spellcheck: 'false',
+      });
+      const confirm = btn(index + 1 < story.names.length ? '다음' : '결정', () => {
+        const value = input.value.trim();
+        if (!value) { input.focus(); return; }
+        const next = { ...draft, [slot.id]: value };
+        if (index + 1 < story.names.length) showMenu(`name:${index + 1}`, next);
+        else startNew(next);
+      });
       menu.replaceChildren(
-        el('p', { class: 'wp-menu-names', text: story.names.join(' · ') }),
-        el('div', { class: 'wp-menu-list' }, [begin, btn('뒤로', () => showMenu('top'))]),
+        el('p', { class: 'wp-menu-name-label', text: slot.label }),
+        input,
+        el('div', { class: 'wp-menu-list' }, [confirm, btn('뒤로', () => (index ? showMenu(`name:${index - 1}`, draft) : showMenu('top', draft)))]),
       );
-      begin.focus();
+      input.focus();
+      input.select();
     }
   }
 
-  function startNew() {
-    state = initial();
+  function startNew(names = defaultNames()) {
+    state = initial(names);
     save();
     enterGame();
   }

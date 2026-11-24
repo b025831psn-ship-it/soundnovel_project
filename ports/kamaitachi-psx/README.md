@@ -4,6 +4,12 @@ This directory contains only clean-room tooling and synthetic tests. Do not
 commit a game disc, BIOS, save, trace, extracted executable, media, text, or
 other copyrighted game data here.
 
+These tools are build-time analysis and parity aids only. The shipped web
+player must consume converted, game-specific manifests and web assets; it must
+not mount, fetch, or ask the player for a BIN/CUE, ISO, BIOS, or PS-X EXE.
+`src/r3000a.js` is therefore not a production dependency of the standalone
+player in `web-player/`.
+
 ## First-pass inventory
 
 Run the inventory against a locally owned CUE sheet:

@@ -7,6 +7,10 @@
     "hero": "민준",
     "heroine": "서연"
   },
+  "nameLabels": {
+    "hero": "주인공",
+    "heroine": "파트너"
+  },
   "scenes": {
     "living-room": {
       "name": "거실"
