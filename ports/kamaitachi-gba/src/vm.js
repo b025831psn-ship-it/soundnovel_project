@@ -180,6 +180,20 @@ export class VM {
     }
   }
 
+  // 0800337C: opcodes 30/32 consume and execute an immediately following
+  // opcode 00 through the native handler table before continuing audio work.
+  followingText() {
+    if (this.banks[this.bank][this.offset] !== 0x00) return "none";
+    this.offset++;
+    const raw = this.textBytes();
+    if (this.ram.choiceActive && this.collectingChoice !== undefined) {
+      this.text?.collectChoice?.(this.collectingChoice, raw);
+      return "none";
+    }
+    this.writes.push(`inline-text=${raw.length}`);
+    return this.text?.feed?.(raw) ?? "none";
+  }
+
   write(kind, index, value) {
     this.ram[kind][index] = value;
     this.writes.push(`${kind}:${index}=${value}`);
@@ -444,8 +458,10 @@ export class VM {
         const request = this.word();
         args.push(request);
         if (this.suppressed(opcode)) break;
+        const afterText = this.followingText(); // 0800337C before 08004C80
         this.sound.play(request, 0); // 08004C8C -> 0800A510
         this.syncAudio();
+        if (afterText !== "none") this.waiting = afterText;
         break;
       }
       case 0x31: {
@@ -462,8 +478,9 @@ export class VM {
         const request = this.word();
         args.push(rawSpeed, request);
         if (this.suppressed(opcode)) break;
-        // 08004D4C: one frame (08003044(1)), then 0800A510 with the converted speed.
-        this.pendingAudio = { request, speed: audioSpeed(rawSpeed) };
+        const afterText = this.followingText(); // 0800337C before the one-frame wait
+        // 08004D4C: inline 00, one frame (08003044(1)), then 0800A510.
+        this.pendingAudio = { request, speed: audioSpeed(rawSpeed), afterText };
         this.waitFrames = 1;
         this.waiting = "audio-start";
         break;
@@ -632,11 +649,11 @@ export class VM {
     if (this.waiting === "delay" && --this.waitFrames <= 0)
       this.waiting = "none";
     if (this.waiting === "audio-start" && --this.waitFrames <= 0) {
-      const { request, speed } = this.pendingAudio;
+      const { request, speed, afterText } = this.pendingAudio;
       this.sound.play(request, speed);
       this.syncAudio();
       this.pendingAudio = null;
-      this.waiting = "none";
+      this.waiting = afterText ?? "none";
     }
     for (let slot = 0; slot < this.ram.brightness.length; slot++) {
       const effect = this.ram.brightness[slot];

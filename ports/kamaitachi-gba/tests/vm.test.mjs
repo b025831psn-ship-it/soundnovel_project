@@ -203,6 +203,33 @@ test("30/31/32 run the native audio controller (0800A510, 0800A4CC)", () => {
   assert.equal(vm.ram.audioRequest, 2);
 });
 
+test("30 and 32 execute an immediately following 00 before audio work", () => {
+  for (const opcode of [0x30, 0x32]) {
+    const events = [], audio = recorder();
+    audio.startSong = (song) => events.push(["audio", song]);
+    const header = opcode === 0x30 ? [opcode, 1, 0] : [opcode, 0, 0, 1, 0];
+    const vm = new VM({
+      banks: { 27: bank([[...header, 0x00, 0x82, 0xa0, 0x72, 0x00, 0x03]]) },
+      text: { feed: (raw) => { events.push(["text", ...raw]); return "click"; } },
+      audio,
+      audioTables,
+    });
+    vm.step();
+    assert.deepEqual(events[0], ["text", 0x82, 0xa0, 0x72], `opcode ${opcode}`);
+    assert.equal(vm.banks[vm.bank][vm.offset], 0x03, `opcode ${opcode}`);
+    if (opcode === 0x30) {
+      assert.deepEqual(events[1], ["audio", 8]);
+      assert.equal(vm.waiting, "click");
+    } else {
+      assert.equal(events.length, 1);
+      assert.equal(vm.waiting, "audio-start");
+      vm.vblank(0);
+      assert.deepEqual(events[1], ["audio", 8]);
+      assert.equal(vm.waiting, "click");
+    }
+  }
+});
+
 test("34 waits while a request with a play length is playing", () => {
   const audio = recorder();
   const vm = new VM({
@@ -246,6 +273,16 @@ test("2D loads its native effect id without introducing a wait", () => {
   assert.deepEqual([...vm.ram.overlayMasks], [0xffff, 13, 7, 0]);
   vm.step();
   assert.equal(vm.halted, false);
+});
+
+test("2D combines its high byte with the little-endian effect word", () => {
+  const calls = [];
+  const vm = new VM({
+    banks: { 27: bank([[0x2d, 0x12, 0x56, 0x34]]) },
+    scene: { overlay: (request) => calls.push(request) },
+  });
+  vm.step();
+  assert.deepEqual(calls, [0x4656]);
 });
 
 test("2D bypass conditions set only the shared update flag", () => {
