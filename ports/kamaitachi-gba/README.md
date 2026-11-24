@@ -15,3 +15,12 @@ Implemented foundations: original-width bank reader, native RAM-shaped state, ha
 The VM resolves entry row 27000 through each bank's native LE16 row table. To include the cartridge's pre-story boot path, open the player with `?entryRow=31000`, or pass `31000` as the third argument to `tools/trace-scenario.mjs` after the data path and command limit. `tools/trace-scenario.mjs` reaches the first `57` after 171 commands, executes the original 47-command candidate collection block with the native `0200077E` suppression state, and opens the choice at `16` after 218 commands with no unimplemented opcode. Opcode `2D` forms its effect ID as `(high << 8) + LE16`, updates the overlay state without adding a wait, and both first-choice branches now continue to the next choice. Opcode `2F` reads its request as LE16 and stops the selected audio class. Both commands honor the native `0200077E`/`0200078E` suppression gates and `02000781` update flag; `2D` also compares mask slots as signed halfwords. Opcodes `30` and `32` execute an immediately following `00` text command through the native `0800337C` ordering before starting their audio work.
 
 Trace columns are: `frame, bank, offset, opcode, argument values, group(02004606), slot(020006FC), pending(020117C4), sp, writes, wait`. `tools/compare-traces.mjs --ignore-frame` compares command order before text timing is calibrated. Both runners use `tests/fixtures/input.tsv` as their input schedule.
+
+`trace-scenario.mjs` stops at a choice unless a comma-separated choice-index
+sequence is supplied as its fourth positional argument. These commands replay
+the initial A and B branches respectively and stop at the following choice:
+
+```sh
+node tools/trace-scenario.mjs ../../kamaitachi-gba-kor/port-data 2000 27000 0
+node tools/trace-scenario.mjs ../../kamaitachi-gba-kor/port-data 2000 27000 1
+```
