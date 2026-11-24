@@ -59,6 +59,16 @@ public class OpeningChecks extends GhidraScript {
             directCall(0x11c588, 0x11bea0);
             directCall(0x11c5a4, 0x11bf58);
             directCall(0x11c5d8, 0x11c190);
+            // Both confirmation prompts pass the selected name to the same text loop.
+            directCall(0x11d864, 0x11d978);
+            directCall(0x11d8ec, 0x11d978);
+            directCall(0x11d9c0, 0x16f808);
+            directCall(0x16f9a8, 0x16dcd0);
+            // Compare the character with CP932 full-width space and branch to 0x16dd10.
+            if (getInt(va(0x16dcd4)) != 0x34028140 || getInt(va(0x16dce4)) != 0x10a2000a)
+                throw new Exception("Unexpected full-width space dispatch");
+            directCall(0x16f9b4, 0x16c580);
+            directCall(0x16f9c0, 0x16c4e0);
             // The command switch indexes its table by (opcode - 2).
             if (getInt(va(0x21a240 + 4 * (0x6c - 2))) != 0x10f6c0 ||
                 getInt(va(0x213578 + 12)) != 0x127858)
