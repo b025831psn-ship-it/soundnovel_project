@@ -104,6 +104,16 @@ function normalizeInput(raw, node, id) {
   };
 }
 
+// Media on a node: `bg` (image) and `bgm` (looping audio), relative to top-level `assets`.
+// They stay until another node changes them; "" or null clears. Kept as "media:*" flags so saves carry them.
+function withMedia(set, n) {
+  const out = { ...(set || {}) };
+  for (const k of ['bg', 'bgm']) {
+    if (n[k] !== undefined) out[`media:${k}`] = typeof n[k] === 'string' ? n[k] : '';
+  }
+  return Object.keys(out).length ? out : null;
+}
+
 function sceneId(raw) {
   if (raw === undefined || raw === null) return null;
   if (typeof raw === 'object') return String(firstDefined(raw, ['id', 'name']) ?? '');
@@ -148,7 +158,7 @@ export function normalizeStory(raw) {
         id,
         kind: 'choice',
         scene,
-        set: normalizeSet(n.set, id),
+        set: withMedia(normalizeSet(n.set, id), n),
         question: toSentence(firstDefined(n, ['question', 'prompt', 'text']) ?? '', `${id}.text`),
         options: options.map((o, i) => ({
           key: String(firstDefined(o, ['key', 'id']) ?? String.fromCharCode(65 + i)),
@@ -168,7 +178,7 @@ export function normalizeStory(raw) {
         id,
         kind: 'text',
         scene,
-        set: normalizeSet(n.set, id),
+        set: withMedia(normalizeSet(n.set, id), n),
         pages: pages.map((p, i) => normalizePage(p, `${id}.pages[${i}]`)),
         next: normalizeNext(n, id),
       };
@@ -197,6 +207,7 @@ export function normalizeStory(raw) {
   return {
     schemaVersion,
     lang: typeof raw.lang === 'string' && raw.lang ? raw.lang : 'ko',
+    assets: typeof raw.assets === 'string' ? raw.assets : '',
     hasOriginal,
     names,
     gameId: String(gameId),

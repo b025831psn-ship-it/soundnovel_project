@@ -58,8 +58,10 @@ export function createPlayer(root, story, { storage = safeStorage(), startMenu =
   const endMsg = el('p', { class: 'wp-end-msg', text: '이 테스트 구간은 여기까지입니다.' });
   const end = el('div', { class: 'wp-end' }, [endMsg, resetBtn]);
   const menu = el('div', { class: 'wp-menu' });
+  const bgImg = el('img', { class: 'wp-bg', alt: '', 'aria-hidden': 'true' });
+  const bgm = el('audio', { class: 'wp-bgm', loop: '', preload: 'auto' });
   const stage = el('section', { class: 'wp-stage', 'aria-label': story.title }, [
-    sceneLabel, advanceBtn, text, nextHint, choices, end, menu,
+    bgImg, bgm, sceneLabel, advanceBtn, text, nextHint, choices, end, menu,
   ]);
 
   const langBtn = el('button', { type: 'button', class: 'wp-tool wp-lang' });
@@ -360,6 +362,22 @@ export function createPlayer(root, story, { storage = safeStorage(), startMenu =
     return out;
   }
 
+  // Background and music follow the "media:*" flags; music only starts after a click (autoplay rules).
+  function renderMedia() {
+    const url = (v) => (v ? new URL(story.assets + v, document.baseURI).href : '');
+    const bg = url(state.flags['media:bg']);
+    if (bgImg.dataset.src !== bg) {
+      bgImg.dataset.src = bg;
+      if (bg) bgImg.src = bg; else bgImg.removeAttribute('src');
+      bgImg.hidden = !bg;
+    }
+    const music = url(state.flags['media:bgm']);
+    if (bgm.dataset.src !== music) {
+      bgm.dataset.src = music;
+      if (music) { bgm.src = music; bgm.play?.().catch(() => { /* waits for a user gesture */ }); } else { bgm.pause?.(); bgm.removeAttribute('src'); }
+    }
+  }
+
   function renderScene(node) {
     const id = node.scene;
     stage.dataset.scene = id || '';
@@ -424,6 +442,7 @@ export function createPlayer(root, story, { storage = safeStorage(), startMenu =
     renderTools();
     const node = story.nodes[state.node];
     renderScene(node);
+    renderMedia();
     stage.dataset.mode = state.done ? 'end' : node.kind === 'choice' ? 'choice' : 'text';
 
     if (state.done) {
