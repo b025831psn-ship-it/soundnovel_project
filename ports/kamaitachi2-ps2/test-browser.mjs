@@ -305,7 +305,7 @@ try {
     assert.match(await label(), /何で三日月島って言うんですか/);
     await key('Enter'); await at('story');
     const captainLines = new Set();
-    for (let i=0; i<100 && await canvas.getAttribute('data-scene') === 'story'; i++) {
+    for (let i=0; i<220 && await canvas.getAttribute('data-scene') === 'story'; i++) {
       captainLines.add(await label());
       await key('Enter'); await page.waitForTimeout(100);
     }
@@ -314,8 +314,11 @@ try {
     assert.ok([...captainLines].some(line => line.endsWith('そう言ったまま口をつぐんでしまった。')));
     assert.ok([...captainLines].some(line => line.endsWith('船長さんは、しぶしぶといった表情で言った。')));
     assert.ok([...captainLines].some(line => line.includes('『監獄島』って呼んどるよ')));
-    assert.match(await label(), /私設監獄を建てたんだ/);
-    assert.match(await label(), /ぼくは思わず聞き返した。$/);
+    assert.ok([...captainLines].some(line => line.includes('私設監獄を建てたんだ')));
+    assert.ok([...captainLines].some(line => line.endsWith('ぼくは思わず聞き返した。')));
+    assert.ok([...captainLines].some(line => line.includes('真理が唾を飲み込む音が聞こえた。')));
+    assert.match(await label(), /岸猿家は監獄を廃止した。/);
+    assert.match(await label(), /船長さんは追い打ちをかける。$/);
     assert.ok([...requests].some(url => url.endsWith('/my0018.mp4')));
     assert.ok([...requests].some(url => url.endsWith('/my0012.mp4')));
     assert.ok([...requests].some(url => url.endsWith('/my0004.mp4')));

@@ -351,11 +351,15 @@ function makePages(s) {
       nickname[0].movie = 'my0012';
       nickname[1].music = 'k2t002.ogg';
       nickname[1].movie = 'my0012';
-      const history = narrationPages(s.my02_0400, true);
+      const history = narrationPages(s.my02_0400, false);
       for (const block of nickname) Object.assign(block, {rubies:s.myb02_0340.ruby, firstRuby:true});
       for (const block of history) Object.assign(block, {rubies:s.my02_0400.ruby, firstRuby:true});
+      const factory = [s.my02_0410, s.my02_0430, s.my02_0450, s.my02_0460].flatMap((scene, i) =>
+        narrationPages(scene, i === 3).map(block => ({
+          ...block, background:'my0016b', retainMovie:false, rubies:scene.ruby, firstRuby:true,
+        })));
       return [...pages, ...narrationPages(s.myb02_0330, false), ...narrationPages(s.myb02_0335, false),
-        ...nickname, ...history];
+        ...nickname, ...history, ...factory];
     }),
   ];
 }
@@ -587,7 +591,7 @@ try {
   const response = await fetch(asset('opening.json'));
   if (!response.ok) throw new Error('Missing opening data');
   data = await response.json();
-  await Promise.all(['font','copyrigh','title_00','my0000','my0002','my0007','my0011','my0645','mo0000','name_e01','mark','sys_fc01','sys_cd01','sys_cd02','sys_jo01','sys_jo02','sys_jo03','sys_save','sys_wa01'].map(async name => {
+  await Promise.all(['font','copyrigh','title_00','my0000','my0002','my0007','my0011','my0016b','my0645','mo0000','name_e01','mark','sys_fc01','sys_cd01','sys_cd02','sys_jo01','sys_jo02','sys_jo03','sys_save','sys_wa01'].map(async name => {
     const image = new Image(); image.src = asset(name + '.png'); await image.decode(); images[name] = image;
   }));
   groups = keyboardGroups(data.rows); pages = makePages(data.story);
