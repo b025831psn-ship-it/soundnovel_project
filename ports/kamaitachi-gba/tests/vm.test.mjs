@@ -66,6 +66,32 @@ test("08 and 09 install native-duration brightness transitions", () => {
   assert.equal(vm.ram.brightness[1].duration, 30);
 });
 
+test("0B waits for its brightness slot to reach the native target", () => {
+  const vm = new VM({
+    banks: { 27: bank([[0x09, 0x28, 0, 1, 0x0b, 1, 0x41, 2, 7, 0x03]]) },
+  });
+  vm.step();
+  vm.step();
+  assert.equal(vm.waiting, "brightness");
+  assert.equal(vm.ram.vars[2], 0);
+  for (let frame = 0; frame < 29; frame++) vm.vblank(0);
+  assert.equal(vm.waiting, "brightness");
+  vm.vblank();
+  assert.equal(vm.waiting, "none");
+  assert.equal(vm.ram.vars[2], 7);
+});
+
+test("suppressed 0B consumes its slot without waiting", () => {
+  const vm = new VM({ banks: { 27: bank([[0x0b, 1, 0x41, 2, 7, 0x03]]) } });
+  vm.ram.effectDisabled = 1;
+  vm.ram.brightness[1].target = 0x8000;
+  vm.step();
+  assert.equal(vm.waiting, "none");
+  assert.equal(vm.ram.updatePending, 1);
+  vm.step();
+  assert.equal(vm.ram.vars[2], 7);
+});
+
 test("LE row IDs, jump, call and return use row tables", () => {
   const banks = {
     27: bank([

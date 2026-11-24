@@ -318,8 +318,14 @@ export class VM {
         break;
       }
       case 0x0b: {
-        args.push(this.byte());
-        this.suppressed(opcode);
+        const slot = this.byte();
+        args.push(slot);
+        if (this.suppressed(opcode)) break;
+        const effect = this.ram.brightness[slot];
+        if (effect && effect.current !== effect.target) {
+          this.brightnessWaitSlot = slot;
+          this.waiting = "brightness";
+        }
         break;
       }
       case 0x0c: {
@@ -667,6 +673,13 @@ export class VM {
         ? effect.target
         : effect.current + effect.delta;
       this.scene?.brightness?.(slot, effect.current, effect.maximum);
+    }
+    if (this.waiting === "brightness") {
+      const effect = this.ram.brightness[this.brightnessWaitSlot];
+      if (!effect || effect.current === effect.target) {
+        this.brightnessWaitSlot = undefined;
+        this.waiting = "none";
+      }
     }
     for (let count = 0; count < budget && this.step(); count++);
     // 0800A414 runs in the frame wait (08002FB8) after the frame's dispatches and before the
