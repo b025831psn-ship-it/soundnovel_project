@@ -83,6 +83,11 @@ export class R3000A {
     }
     return false;
   }
+  setHardwareInterrupt(active) {
+    if (active) return this.interrupt(0x400);
+    this.cop0[13] = u32(this.cop0[13] & ~0x400);
+    return false;
+  }
   jump(target) { this.nextPc = u32(target); }
   step() {
     const hook = this.hooks.get(this.pc);
