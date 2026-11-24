@@ -23,6 +23,7 @@ const font = new NativeFont(
 const music = await assets.json("sound/scenario-map.json");
 const audioTables = await assets.json("sound/scene-audio.json");
 audioTables.effectBytes = await assets.bin("sound/effects.bin");
+const transitionTimings = await assets.json("scenario-timing.json");
 // Browsers start audio only after a user gesture; until then m4a runs silently in the worklet.
 const sound = await createSound(new URL(`${base}/sound/`, location.href));
 for (const type of ["keydown", "pointerdown"]) addEventListener(type, () => sound.resume(), { once: true });
@@ -34,7 +35,8 @@ const choiceView = {
   show: (choices, selected) => screen.showChoices(font, text.pageRaw, choices, selected),
   hide: () => screen.clearChoices(),
 };
-const vm = new VM({ banks, scene, text, musicMap: music.request_to_song, audio: sound, audioTables, choiceView });
+const vm = new VM({ banks, scene, text, musicMap: music.request_to_song, audio: sound,
+  audioTables, choiceView, transitionTimings });
 window.kamaitachi = { vm, screen, assets, font, input, sound };
 
 let last = performance.now();
