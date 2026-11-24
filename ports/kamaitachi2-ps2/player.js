@@ -185,7 +185,8 @@ function makePages(s) {
     { background:'my0000', append:true, book:true, ruby:{word:closing[11], readings:closing.slice(6, 11)},
       text: () => [...closing.slice(0, 6), closing[11]].join('\n') },
     { background:'my0002', text:introduction },
-    { background:'my0002', append:true, end:true, book:true, text: () => introduction() + '\n' + author.slice(9).join('') },
+    { background:'my0002', append:true, book:true, text: () => introduction() + '\n' + author.slice(9).join('') },
+    { background:'my0002', end:true, text: () => s.my01_0082[0] + names[1] + s.my01_0082[1] },
   ];
 }
 

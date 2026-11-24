@@ -142,9 +142,11 @@ try {
   assert.match(await label(), /八月十五日\nから十六日まで/);
   for (let i=0; i<8 && !(await label()).endsWith('我孫子武丸'); i++) await key('Enter');
   assert.match(await label(), /八月吉日\n三日月館当主\n我孫子武丸$/);
-  await advanceTo('complete');
+  for (let i=0; i<8 && !(await label()).endsWith('出会ったことがないからだ。'); i++) await key('Enter');
   assert.match(await label(), /^この『我孫子武丸』というのは、『かまいたちの夜』/);
   assert.match(await label(), /出会ったことがないからだ。$/);
+  await advanceTo('complete');
+  assert.equal(await label(), 'この招待状は、真理にも届いているのだろうか。');
   const saved = await page.evaluate(()=>JSON.parse(localStorage.getItem('soundnovel.slps25132.opening.v1')));
   assert.deepEqual(saved,{names:['透ああああぁ','真理'],slot:1});
   await page.reload(); await page.getByRole('button',{name:'게임 시작'}).click();
