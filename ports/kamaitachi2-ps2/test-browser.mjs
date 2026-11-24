@@ -263,9 +263,17 @@ try {
       await page.waitForTimeout(100);
     }
     assert.match(await label(), /あの時、我孫子なんてやつは泊まっていなかった。$/);
-    await advanceTo('complete', 150);
-    assert.match(await label(), /「我孫子武丸って誰なんだろう」/);
-    assert.match(await label(), /真理は自信ありげに言った。$/);
+    const discussion = new Set();
+    for (let i=0; i<120 && await canvas.getAttribute('data-scene') === 'story'; i++) {
+      discussion.add(await label());
+      await key('Enter');
+      await page.waitForTimeout(100);
+    }
+    await at('complete');
+    assert.ok([...discussion].some(line => line.includes('「我孫子武丸って誰なんだろう」')));
+    assert.ok([...discussion].some(line => line.endsWith('真理は自信ありげに言った。')));
+    assert.ok([...discussion].some(line => line.includes('香山さんが透ああああぁに就職の世話')));
+    assert.match(await label(), /もう一人の乗客である小林二郎さんに言った。$/);
     assert.ok([...requests].some(url => url.endsWith('/my0008.mp4')));
   } else {
     await key('ArrowDown');
