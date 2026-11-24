@@ -78,7 +78,7 @@ function playMovie(file, next, loop = false) {
   movie.src = asset(file + '.mp4');
   movie.hidden = false;
   movie.loop = loop;
-  movie.onerror = () => fail('영상을 읽을 수 없습니다. 로컬 미디어 준비 결과를 확인해 주세요.');
+  movie.onerror = () => fail('게임 영상을 불러오지 못했습니다.');
   movie.onended = next;
   movie.play().catch(error => { if (error.name !== 'AbortError') fail('브라우저에서 영상을 재생할 수 없습니다.'); });
 }
@@ -601,7 +601,9 @@ function frame(now) {
 }
 
 function fail(message) {
-  stopMovie(); music.pause(); enter('error'); cover.hidden = false; start.textContent = message; start.disabled = true;
+  stopMovie(); music.pause(); enter('error'); cover.hidden = false;
+  start.textContent = message + ' 다시 시도';
+  start.disabled = false;
 }
 
 const keys = {ArrowLeft:'left',ArrowRight:'right',ArrowUp:'up',ArrowDown:'down',Enter:'circle',
@@ -630,7 +632,10 @@ document.querySelector('nav').addEventListener('click', e => {
   if (e.target.dataset.key) { step(e.target.dataset.key); canvas.focus(); }
 });
 canvas.addEventListener('click', () => step('circle'));
-start.addEventListener('click', intro);
+start.addEventListener('click', () => {
+  if (scene === 'error') location.reload();
+  else intro();
+});
 try {
   const response = await fetch(asset('opening.json'));
   if (!response.ok) throw new Error('Missing opening data');
@@ -642,4 +647,4 @@ try {
   screen = new Screen(canvas, images, data);
   enter('ready'); start.disabled = false; start.textContent = '게임 시작';
   requestAnimationFrame(frame);
-} catch { fail('게임 데이터를 열 수 없습니다. ISO로 로컬 미디어를 준비해 주세요.'); }
+} catch { fail('게임 데이터를 불러오지 못했습니다.'); }
