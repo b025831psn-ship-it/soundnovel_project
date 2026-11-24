@@ -133,6 +133,12 @@ bytes를 `$5000`으로, `$04:879F`는 `$7F0000`에서 `$1E00` bytes를 `$4000`�
 entered-name strip의 `$7F0E20` → VRAM `$6C00` 전송도 별도 descriptor로 보존한다.
 호출 edge와 buffer 계약은 비공개 `data/name-font-map.json`에서 검증한다.
 
+게임 고유 system-call 기반도 native vector에서 재검증했다. COP `$00:8149`는
+operand와 inline bytes로 direct-page frame을 만들고, BRK `$00:8185`는 signature
+`$00..$1D`를 `$01:82DF`의 30-entry table로 dispatch한다. BRK table 값은 RTL의
+자동 증가를 고려한 target-minus-one이다. 따라서 service 0의 `$00:81B4`는 실제
+entry `$00:81B5`를 뜻한다. 전수 표는 비공개 `data/system-call-map.json`에 있다.
+
 ## 기준 코어 probe 대조
 
 native Snes9x probe에서 CHUN SOFT logo, SFC title, 음향 설정, 기본 이름 확인
