@@ -136,6 +136,8 @@ function makePages(s) {
   const partnerLine = () => last[0] + names[1] + last[1];
   const classmates = () => partnerLine() + '\n' + last[2] + names[1] + last[3];
   const north = s.my01_0076;
+  const letter = s.my01_0077;
+  const correspondence = () => letter[0] + names[1] + letter[1] + '\n' + letter[2];
   const outcome = target => data.prologueChoice.find(route => route.target === target).text;
   return [
     { center:true, book:true, text: () => start.join('') },
@@ -154,7 +156,9 @@ function makePages(s) {
     { target:'my01_0073', end:true, text: () => outcome('my01_0073') },
     { target:'my01_0075', book:true, text: () => outcome('my01_0075') },
     { text: () => north[0] },
-    { append:true, end:true, book:true, text: () => north[0] + '\n' + north[1] + names[1] + north[2] + '\n' + north[3] + names[1] + north[4] },
+    { append:true, book:true, text: () => north[0] + '\n' + north[1] + names[1] + north[2] + '\n' + north[3] + names[1] + north[4] },
+    { text: correspondence },
+    { append:true, end:true, book:true, text: () => correspondence() + '\n' + letter[3] },
   ];
 }
 
