@@ -31,9 +31,18 @@ export class NameEditor {
   move(dx, dy) {
     if (dy) {
       const onHeading = this.column === 0;
+      const previousRow = this.row;
+      const visibleRow = this.row - this.scroll;
       do {
         this.row = (this.row + dy + this.rows.length) % this.rows.length;
       } while (onHeading && this.rows[this.row][0] === null);
+      if (onHeading) {
+        const lastScroll = Math.max(0, this.rows.length - 8);
+        const wrapped = dy > 0 ? this.row <= previousRow : this.row >= previousRow;
+        if (wrapped) this.scroll = dy > 0 ? 0 : lastScroll;
+        else this.scroll = Math.max(0, Math.min(lastScroll, this.row - visibleRow));
+        return;
+      }
     }
     const line = this.rows[this.row];
     const first = line[0] === null ? 1 : 0;
