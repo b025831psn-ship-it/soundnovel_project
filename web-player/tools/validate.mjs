@@ -77,7 +77,7 @@ report.stats = {
   sentences,
   withJa,
   flagsSet: setFlags.size,
-  flagsUnused: neverUsed,
+  flagsUnused: neverUsed.filter((f) => !f.startsWith("media:")), // media:* drive the screen, not branches
   endings: [...reached].filter((id) => canEndHere(nodes[id])).length,
 };
 finish();
