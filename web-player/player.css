@@ -157,3 +157,17 @@ html[data-embed] .wp-stage { border: 0; border-radius: 0; }
   .wp-menu-list { gap: 6px; }
   .wp-menu-item { min-height: 36px; font-size: 13px; }
 }
+
+/* "Open your ROM" screen: same 4:3 box as the game screen, before any game content exists. */
+.wp-rom {
+  position: relative; width: 100%; aspect-ratio: 4 / 3; container-type: inline-size;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px;
+  padding: 6%; border: 1px solid var(--wp-line); border-radius: 6px; background: #1d2633; text-align: center;
+}
+.wp-rom-files { margin: 0; padding: 0; list-style: none; font-size: max(13px, 2.6cqw); color: var(--wp-muted); }
+.wp-rom-pick { position: relative; display: inline-flex; align-items: center; justify-content: center; width: min(70%, 320px); }
+.wp-rom-pick:focus-within { outline: 2px solid var(--wp-accent); outline-offset: 2px; border-color: var(--wp-accent); }
+.wp-rom-input { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
+.wp-rom-note { margin: 0; word-break: keep-all; font-size: max(12px, 2.2cqw); color: var(--wp-muted); }
+.wp-rom-error { margin: 0; min-height: 1.4em; font-size: max(12px, 2.4cqw); color: #f08a7f; }
+html[data-embed] .wp-rom { border: 0; border-radius: 0; }

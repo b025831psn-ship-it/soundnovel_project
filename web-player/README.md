@@ -106,3 +106,16 @@ createPlayer(panelElement, story);   // player.css도 함께 불러옵니다
 `?start=1`을 붙이면 4:3 화면 안에 시작 화면(**새 게임** / **이어하기**)을 먼저 보여줍니다. 자동 저장이 있으면 이어하기에 포커스가 가고, 없으면 이어하기는 비활성입니다. 새 게임은 데이터에 `names`가 있으면 기본 이름을 확인한 뒤 첫 선택지부터 시작합니다.
 
 iframe 패널에 넣을 때는 `index.html?embed=1`(필요하면 `&data=<경로>`)을 엽니다. 제목과 파일 도구를 숨기고, 버튼 막대와 4:3 화면을 프레임 안에 맞춥니다. 폭이 420px 이하인 좁은 패널에서는 글자와 선택지를 줄여 화면 안에 들어가게 합니다. 서버에 등록할 경로는 `index.html`, `main.js`, `player.js`, `story.js`, `player.css`, `data/*.json`입니다.
+
+## 내 ROM에서 재생 (`?rom=<어댑터 id>`)
+
+원작 대사는 저장소나 배포물에 넣지 않습니다. 대신 사용자가 가진 ROM을 브라우저에서 읽어 그 자리에서 대본 JSON을 만듭니다.
+
+- `index.html?rom=sample-rom` → ROM이 없으면 게임 화면 자리에 "ROM 파일 열기"가 나옵니다. 파일은 서버로 보내지 않습니다.
+- 변환 결과는 이 브라우저의 IndexedDB(`soundnovel.webPlayer.rom`)에만 저장되어 다음부터 바로 재생됩니다. 아래 "변환한 데이터 지우기"로 지울 수 있습니다.
+- 작품마다 어댑터 하나(`rom/*-adapter.js`)를 `rom/adapters.js`에 등록합니다.
+  - `id`, `title`, `files: [{role, label, required}]`
+  - `identify(bytes) → role | null`: 헤더(`rom/gba.js`의 `gbaHeader`)나 해시로 어떤 파일인지 판별
+  - `convert({role: Uint8Array}) → 대본 JSON`: 결과는 `normalizeStory`로 검사됩니다
+- `rom/sample-adapter.js`는 형식 설명용 어댑터입니다. 시험 ROM은 직접 쓴 문장으로 만듭니다: `node tests/fixtures/make-sample-rom.mjs out.gba`
+- 검사: `node tests/rom.mjs` (잘못된 파일 거부, 변환·재생, 새로고침 시 캐시 사용, ROM 미전송, 지우기)
