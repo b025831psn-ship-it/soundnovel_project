@@ -12,7 +12,12 @@ const routes = new Map([
     const types = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.json': 'application/json' };
     return ['/web-player/' + file, [path.join(__dirname, 'web-player', file), types[path.extname(file)] + '; charset=utf-8']];
   }),
-  ['/kamaitachi-gba-kor/data/first-choice.ko.json', [path.join(__dirname, 'kamaitachi-gba-kor/data/first-choice.ko.json'), 'application/json; charset=utf-8']],
+  ['/kamaitachi-gba-kor/data/kamaitachi.ja.json', [path.join(__dirname, 'kamaitachi-gba-kor/data/kamaitachi.ja.json'), 'application/json; charset=utf-8']],
+  // MP2K sound module and the cartridge's sound data (kamaitachi-gba-kor/tools/extract_sound.py)
+  ...['index.html', 'm4a.js', 'output.js', 'worklet.js'].map(file => ['/ports/kamaitachi-gba/sound/' + file,
+    [path.join(__dirname, 'ports/kamaitachi-gba/sound', file), (file.endsWith('.html') ? 'text/html' : 'text/javascript') + '; charset=utf-8']]),
+  ['/kamaitachi-gba-kor/port-data/sound/m4a.json', [path.join(__dirname, 'kamaitachi-gba-kor/port-data/sound/m4a.json'), 'application/json; charset=utf-8']],
+  ['/kamaitachi-gba-kor/port-data/sound/m4a.bin', [path.join(__dirname, 'kamaitachi-gba-kor/port-data/sound/m4a.bin'), 'application/octet-stream']],
   ['/style.css', [path.join(__dirname, 'style.css'), 'text/css; charset=utf-8']],
   ['/games.js', [path.join(__dirname, 'games.js'), 'text/javascript; charset=utf-8']],
   ['/AGB-AHZJ.gba', [path.join(__dirname, '..', 'AGB-AHZJ.gba'), 'application/octet-stream']],
@@ -20,7 +25,10 @@ const routes = new Map([
 ]);
 
 http.createServer((request, response) => {
-  const route = routes.get(request.url.split('?')[0]);
+  const url = request.url.split('?')[0];
+  // scene images from kamaitachi-gba-kor/tools/export_images.py: NNN.png and palette variants NNN-v.png
+  const bg = /^\/kamaitachi-gba-kor\/assets\/bg\/(\d{3}(?:-[1-3])?\.png)$/.exec(url);
+  const route = bg ? [path.join(__dirname, 'kamaitachi-gba-kor', 'assets', 'bg', bg[1]), 'image/png'] : routes.get(url);
   if (!route || !['HEAD', 'GET'].includes(request.method)) {
     response.writeHead(404).end();
     return;

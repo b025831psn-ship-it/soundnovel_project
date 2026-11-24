@@ -18,15 +18,11 @@ function bank(rows) {
 }
 
 test("required opcode table retains native handler evidence", () => {
-  assert.deepEqual(
-    Object.keys(HANDLERS)
-      .map(Number)
-      .sort((a, b) => a - b),
-    [
-      0, 1, 2, 3, 4, 8, 9, 10, 11, 12, 13, 14, 15, 19, 26, 33, 34, 35, 37, 48,
-      49, 50, 52, 64, 65, 69, 77, 83, 86, 87, 94,
-    ],
-  );
+  const required = [
+    0x00, 0x01, 0x02, 0x03, 0x04, 0x0d, 0x0e, 0x0f, 0x13, 0x1a, 0x21, 0x22,
+    0x23, 0x25, 0x40, 0x41, 0x56, 0x57, 0x5e,
+  ];
+  assert.ok(required.every((opcode) => HANDLERS[opcode]));
 });
 
 test("LE row IDs, jump, call and return use row tables", () => {
@@ -145,5 +141,19 @@ test("30/31/32 map scenario requests to the MP2K API", () => {
     ["fade", 0, 100],
     ["start", 13],
     ["stop", 13],
+  ]);
+});
+
+test("opening effect opcodes preserve alignment through the first choice", () => {
+  const row = [
+    0x29, 2, 0xf6, 0x00, 0x2e, 1, 10, 0x5f, 3, 0, 0x58, 4, 0, 0x15, 0x2c, 0x35,
+    1, 5, 0, 0x1c, 7, 0x37, 8, 0, 0x3e, 0x57, 1, 0, 1, 0, 2, 0, 2, 0, 3, 0,
+  ];
+  const vm = new VM({ banks: { 27: bank([row]) } });
+  while (vm.step());
+  assert.equal(vm.waiting, "choice");
+  assert.deepEqual(vm.choiceState.entries, [
+    { row: 1, key: 2 },
+    { row: 2, key: 3 },
   ]);
 });

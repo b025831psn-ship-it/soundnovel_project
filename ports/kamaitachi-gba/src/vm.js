@@ -13,23 +13,33 @@ export const HANDLERS = {
   0x0e: "08003DF0",
   0x0f: "08003E58",
   0x13: "080040A0",
+  0x15: "08004154",
   0x1a: "08003D30",
+  0x1c: "08004574",
   0x21: "08003D70",
   0x22: "08003DB0",
   0x23: "080046D4",
   0x25: "08003F30",
+  0x29: "080048C0",
+  0x2c: "080049FC",
+  0x2e: "08004B98",
   0x40: "080051B4",
   0x41: "08005264",
   0x30: "08004C8C",
   0x31: "08004CDC",
   0x32: "08004D4C",
   0x34: "08004DD0",
+  0x35: "08004E28",
+  0x37: "08004EE0",
+  0x3e: "08005110",
   0x45: "08005214",
   0x4d: "080057EC",
   0x53: "08005914",
   0x56: "08005B1C",
   0x57: "08005BA8",
+  0x58: "08005C30",
   0x5e: "08005DE0",
+  0x5f: "080059C0",
 };
 
 export class VM {
@@ -222,11 +232,17 @@ export class VM {
       case 0x57:
         args.push(...this.choice(opcode));
         break;
+      case 0x15:
+        break;
       case 0x21:
       case 0x22: {
         const index = this.byte();
         args.push(index);
         this.write("bits", index, opcode === 0x21 ? 1 : 0);
+        break;
+      }
+      case 0x1c: {
+        args.push(this.byte());
         break;
       }
       case 0x23: {
@@ -244,6 +260,16 @@ export class VM {
         if (this.ram.bits[index]) this.branch(row);
         break;
       }
+      case 0x29: {
+        args.push(this.byte(), this.word());
+        break;
+      }
+      case 0x2e: {
+        args.push(this.byte(), this.byte());
+        break;
+      }
+      case 0x2c:
+        break;
       case 0x30: {
         const request = this.word();
         args.push(request);
@@ -273,6 +299,16 @@ export class VM {
           this.waiting = "audio";
         break;
       }
+      case 0x35: {
+        args.push(this.byte(), this.word());
+        break;
+      }
+      case 0x37: {
+        args.push(this.word());
+        break;
+      }
+      case 0x3e:
+        break;
       case 0x40: {
         const index = this.byte();
         const value = this.byte();
@@ -315,6 +351,14 @@ export class VM {
         const key = this.word();
         args.push(index, row, key);
         if (this.ram.bits[index]) this.branch(row);
+        break;
+      }
+      case 0x5f: {
+        args.push(this.word());
+        break;
+      }
+      case 0x58: {
+        args.push(this.word());
         break;
       }
       default:
