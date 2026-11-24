@@ -121,6 +121,12 @@ current/target grid position이며, d-pad는 `$0F00` mask로 상반 방향 동�
 거부한다. 제출 완료 bit `$2000`과 OAM/tilemap redraw flag도 비공개
 `data/name-input-map.json`에서 opcode signature로 검증한다.
 
+이름 화면의 PPU 전송은 COP inline descriptor 그대로 유지한다. `$04:863E`는
+`$7F18A0`에서 `$0400` bytes를 VRAM word `$7000`으로, `$04:86FF`는 `$0800`
+bytes를 `$5000`으로, `$04:879F`는 `$7F0000`에서 `$1E00` bytes를 `$4000`으로
+보낸다. COP `$09` OAM 전송 둘과 COP `$0A` VRAM 전송 셋의 descriptor는 비공개
+`data/name-dma-map.json`에서 검증하며, 입력 후 redraw는 DP `$0B` bit 7이 묶는다.
+
 ## 기준 코어 probe 대조
 
 native Snes9x probe에서 CHUN SOFT logo, SFC title, 음향 설정, 기본 이름 확인
