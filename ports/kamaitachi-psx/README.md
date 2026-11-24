@@ -42,3 +42,11 @@ events using stable fields: CPU PC/opcode and writes, CD LBA reads, GP0/GP1
 commands and VRAM/CLUT transfers, SPU register/DMA activity, XA/STR sectors,
 VBlank, and controller samples. No inferred screen recreation is accepted as
 evidence of parity.
+
+## R3000A execution core
+
+`src/r3000a.js` loads a PS-X EXE directly into 2 MiB RAM and implements the
+integer, branch-delay, load/store, and BIOS-hook subset needed to begin tracing
+the original entry code. It intentionally has no guessed high-level game
+logic. GPU, CD, SPU, COP0, exceptions, and the remaining unaligned/multiply
+instructions are added only when a native trace reaches them.
