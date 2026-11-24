@@ -118,7 +118,10 @@ def scenario_strings(data):
                     operand = block[pos+1:pos+1+size]
                     if len(operand) != size:
                         raise ValueError("Truncated 0x6f scene operand")
-                    events.append({"opcode": opcode, "operand": list(operand)})
+                    if size < 5 or size != 5 + 4 * operand[4]:
+                        raise ValueError("Invalid CommandWipe parameter count")
+                    events.append({"wipe": int.from_bytes(operand[:4], "big"),
+                                   "args": [n for (n,) in struct.iter_unpack(">I", operand[5:])]})
                     pos += size + 1
                 elif opcode in (0x40, 0x46, 0x4c, 0x50, 0x55, 0x65):
                     key, size = {0x40: ("speed", 1), 0x46: ("spacing", 1), 0x4c: ("fontArgs", 2),
