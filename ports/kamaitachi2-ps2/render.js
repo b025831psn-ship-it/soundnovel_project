@@ -225,8 +225,18 @@ export class Screen {
       editor.rows[r].forEach((ch, col) => {
         if (!ch) return;
         const x = 80 + 32 * col, y = 119 + 32 * (r - editor.scroll);
-        if (col === editor.column && r === editor.row) this.rect(x, y, 32, 32, '#395d18');
-        else if (!col) this.rect(x, y, 31, 31, '#444954');
+        if (col === editor.column && r === editor.row) {
+          this.rect(x, y - 2, 32, 1, 'rgba(39,71,0,.25)');
+          this.rect(x, y - 1, 32, 1, 'rgba(39,71,0,.75)');
+          this.rect(x, y, 32, 30, '#274700');
+          this.rect(x, y + 30, 32, 1, 'rgba(39,71,0,.75)');
+          this.rect(x, y + 31, 32, 1, 'rgba(39,71,0,.25)');
+        } else if (!col) {
+          this.rect(x, y, 30, 30, '#808080');
+          this.rect(x + 2, y, 28, 1, '#6f6f6f');
+          this.rect(x + 2, y + 1, 28, 1, '#4c4c4c');
+          this.rect(x + 2, y + 2, 28, 28, '#3b3b3b');
+        }
         glyph(ch, x + 1, y + 1);
       });
     }
