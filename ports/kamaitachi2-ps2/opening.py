@@ -98,7 +98,7 @@ def scenario_strings(data):
     story = {}
     for current, following in zip(labels, labels[1:]):
         name = (current[1] or current[2] or current[3]).decode("ascii")
-        if name in {"my02_0015", "my02_0030", "my02_0035", "my02_0040", "my02_0075", "my02_0080", "my02_0083", "my02_0085", "my02_0090", "my02_0110", "myb02_0010", "myb02_0120", "myb02_0030", "myb02_0140", "myb02_0150"}:
+        if name in {"my02_0015", "my02_0120", "my02_0030", "my02_0035", "my02_0040", "my02_0075", "my02_0080", "my02_0083", "my02_0085", "my02_0090", "my02_0110", "myb02_0010", "myb02_0120", "myb02_0030", "myb02_0140", "myb02_0150"}:
             block = data[current.end():following.start()]
             intro = re.match(rb"\x73\x07my0003\x00\x74\x0amy0003_00\x00\x1e\x50(.{4})"
                              rb"\x72\x07my0005\x00\x50(.{4})\x73\x07my0005\x00"
@@ -108,7 +108,7 @@ def scenario_strings(data):
                 intro = re.match(rb"\x7b\x0c\x13sh01_0010\x00\x06\x73\x07my0006\x00"
                                  rb"\x72\x08my0006b\x00\x74\x0amy0006_00\x00\x50(.{4})",
                                  block, re.DOTALL)
-            if name in {"my02_0035", "my02_0075", "my02_0080", "my02_0083", "my02_0085", "my02_0090"}:
+            if name in {"my02_0120", "my02_0035", "my02_0075", "my02_0080", "my02_0083", "my02_0085", "my02_0090"}:
                 intro = re.match(rb"\x7b\x0c\x13sh01_0010\x00\x06", block)
             if name in {"my02_0110", "myb02_0010", "myb02_0120", "myb02_0030"}:
                 intro = re.match(rb"(?:\x7b\x0c\x13sh01_0010\x00\x06)?(?:\x73\x08myb0001\x00\x74\x0bmyb0001_10\x00)?\x6a\x07(?:\x0c_my18|\x0d_myb[016])\x00\x02[^\x03]+\x03\x04\x16", block)
@@ -238,7 +238,7 @@ def scenario_strings(data):
             expected = 0x12 if name.endswith("0047") else 0x13
             if data[following.start() - 1] != expected:
                 raise ValueError(f"Unexpected name command in {name}")
-    if len(story) != 37:
+    if len(story) != 38:
         raise ValueError("Opening labels could not be resolved")
     return story
 

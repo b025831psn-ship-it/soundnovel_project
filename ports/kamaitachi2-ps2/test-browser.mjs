@@ -257,8 +257,13 @@ try {
     assert.match(await label(), /当然だよ」/);
     await key('ArrowDown');
     assert.match(await label(), /チャレンジしてみるよ」/);
-    await key('Enter'); await at('story'); await advanceTo('complete', 100);
-    assert.match(await label(), /遠慮しとくよ」$/);
+    await key('Enter'); await at('story');
+    for (let i=0; i<100 && !(await label()).endsWith('泊まっていなかった。'); i++) {
+      await key('Enter');
+      await page.waitForTimeout(100);
+    }
+    await at('complete');
+    assert.match(await label(), /あの時、我孫子なんてやつは泊まっていなかった。$/);
   } else {
     await key('ArrowDown');
     const bossReply = await label();

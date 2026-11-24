@@ -186,6 +186,10 @@ function narrationPages(reunion, final) {
 }
 
 function makePages(s) {
+  const sharedNarration = narrationPages(s.my02_0120, true);
+  const sharedBackground = s.my02_0120.events.find(event => event.scene).scene;
+  for (const block of sharedNarration) Object.assign(block, {background:sharedBackground, retainMovie:false});
+  sharedNarration[0].target = 'my02_0120';
   const reunionPages = narrationPages(s.my02_0030, false);
   Object.assign(reunionPages[0], {movie:'my0006',
     waits: () => [{offset:0, remaining:s.my02_0030.introWaits[0] * 1000 / 59.94}]});
@@ -287,7 +291,7 @@ function makePages(s) {
       const pages = narrationPages(s[route.target], true);
       pages[0].target = route.target;
       if (route.target === 'myb02_0010') pages.at(-1).choice = data.followupChoice;
-      else pages.at(-1).end = true;
+      else Object.assign(pages.at(-1), {end:false, nextTarget:'my02_0120'});
       return pages;
     }),
     ...data.followupChoice.flatMap(route => {
@@ -299,8 +303,10 @@ function makePages(s) {
     ...data.culpritChoice.flatMap(route => {
       const pages = narrationPages(s[route.target], true);
       pages[0].target = route.target;
+      if (route.target === 'myb02_0140') Object.assign(pages.at(-1), {end:false, nextTarget:'my02_0120'});
       return pages;
     }),
+    ...sharedNarration,
   ];
 }
 
@@ -365,7 +371,12 @@ function step(key) {
       if (revealed < storyText().length) revealed = textWaits[0]?.offset ?? storyText().length;
       else if (textWaits.length) return;
       else if (scene === 'story' && pages[page].choice) enter(pages[page].choiceWait ? 'choice-wait' : 'choice');
-      else if (scene === 'story') { page++; printPage(); }
+      else if (scene === 'story') {
+        const target = pages[page].nextTarget;
+        page = target ? pages.findIndex(block => block.target === target) : page + 1;
+        if (target && pages[page].background) stopMovie();
+        printPage();
+      }
     }
     return;
   }
