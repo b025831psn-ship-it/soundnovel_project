@@ -59,6 +59,11 @@ public class OpeningChecks extends GhidraScript {
             directCall(0x11c588, 0x11bea0);
             directCall(0x11c5a4, 0x11bf58);
             directCall(0x11c5d8, 0x11c190);
+            // The command switch indexes its table by (opcode - 2).
+            if (getInt(va(0x21a240 + 4 * (0x6c - 2))) != 0x10f6c0 ||
+                getInt(va(0x213578 + 12)) != 0x127858)
+                throw new Exception("Unexpected CommandSelect dispatch");
+            directCall(0x10f6cc, 0x127618);
         } finally {
             decompiler.dispose();
         }
