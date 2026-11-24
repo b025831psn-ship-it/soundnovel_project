@@ -158,16 +158,15 @@ export class Screen {
       this.rect(63, 95, 512, 248);
       this.sprite('sys_fc01', 397, 318, 87, 24, 272, 109);
       const lines = [
-        [0, 0, 250, 0, 231], [0, 26, 246, 26, 225], [0, 53, 222, 52, 251],
-        [0, 78, 224, 79, 159], [0, 103, 246, 105, 226], [0, 130, 203, 131, 174],
+        [78,141,311,140], [78,166,310,166], [79,190,311,190], [78,216,311,216],
+        [79,240,311,240], [79,265,311,265], [79,290,310,291],
       ];
-      lines.forEach(([sx, sy, w, ty, tw], i) => {
-        this.sprite('sys_jo02', sx, sy, w, 25, 84, 140 + i * 25);
-        this.sprite('sys_wa01', 0, ty, tw, 25, 84 + w, 140 + i * 25);
+      lines.forEach(([leftX, leftY, rightX, rightY], i) => {
+        const sy = 3 + 25 * i;
+        this.sprite('sys_jo02', 0, sy, 256, 24, leftX, leftY);
+        this.sprite('sys_wa01', 0, sy, 256, 24, rightX, rightY);
       });
       this.sprite('sys_save', 399, 129, 90, 23, 86, 289);
-      this.sprite('sys_jo02', 95, 155, 154, 25, 176, 289);
-      this.sprite('sys_wa01', 0, 156, 104, 24, 329, 290);
       this.footer(false, true);
       return;
     }
