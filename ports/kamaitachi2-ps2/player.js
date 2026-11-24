@@ -616,9 +616,17 @@ function frame(now) {
   } else if (scene === 'confirm') {
     const action = confirmPriority.find(key => actions.includes(key));
     if (action) step(action);
+  } else if (scene === 'title' && actions.length) {
+    const confirm = actions.find(key => ['circle', 'start', 'l2'].includes(key));
+    const direction = index > 0 && actions.includes('left') ? 'left' : 'right';
+    step(confirm ?? (actions.includes(direction) ? direction : actions[0]));
   } else {
     padRepeat.advance('', now);
-    for (const action of actions) step(action);
+    const initialScene = scene;
+    for (const action of actions) {
+      step(action);
+      if (scene !== initialScene) break;
+    }
   }
   requestAnimationFrame(frame);
 }
