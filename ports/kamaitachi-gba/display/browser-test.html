@@ -2,6 +2,7 @@
 <script type="module">
 import { upscaleHandheld25x } from "./reference.js";
 import { Handheld25xRenderer } from "./webgl.js";
+import { DisplayAdapter } from "./adapter.js";
 
 const width = 240, height = 160;
 const source = new Uint8ClampedArray(width * height * 4);
@@ -40,6 +41,28 @@ for (let run = 0; run < 3; run++) {
   samples.push((performance.now() - start) / 10);
 }
 samples.sort((a, b) => a - b);
+
+const nativeSource = document.createElement("canvas");
+nativeSource.width = width;
+nativeSource.height = height;
+nativeSource.getContext("2d").putImageData(new ImageData(source, width, height), 0, 0);
+const nativeInput = nativeSource.getContext("2d").getImageData(0, 0, width, height).data;
+const nativeMount = document.createElement("div");
+const nativeAdapter = new DisplayAdapter(nativeSource, nativeMount);
+nativeAdapter.render();
+const nativeOutput = nativeAdapter.output.getContext("2d").getImageData(0, 0, width, height).data;
+let nativeMismatch = -1;
+for (let index = 0; index < nativeInput.length; index++) if (nativeInput[index] !== nativeOutput[index]) { nativeMismatch = index; break; }
+
+const originalGetContext = HTMLCanvasElement.prototype.getContext;
+HTMLCanvasElement.prototype.getContext = function (type, options) {
+  return type === "webgl" ? null : originalGetContext.call(this, type, options);
+};
+const fallbackMount = document.createElement("div");
+const fallbackAdapter = new DisplayAdapter(nativeSource, fallbackMount, "handheld-2.5x");
+fallbackAdapter.render();
+HTMLCanvasElement.prototype.getContext = originalGetContext;
+
 document.body.textContent = JSON.stringify({
   ok: mismatch < 0,
   mismatch,
@@ -49,5 +72,8 @@ document.body.textContent = JSON.stringify({
   alphaAtLastPixel: actual.at(-1),
   medianMillisecondsPerFrame: samples[2],
   renderer: gl.getParameter(gl.RENDERER),
+  nativeMismatch,
+  fallbackMode: fallbackAdapter.mode,
+  fallbackSize: [fallbackAdapter.output.width, fallbackAdapter.output.height],
 });
 </script>

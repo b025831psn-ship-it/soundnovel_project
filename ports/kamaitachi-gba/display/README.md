@@ -1,6 +1,7 @@
 # GBA display modes
 
 `DisplayAdapter` takes the renderer's unchanged 240×160 canvas as its input. `native` is the default and copies that frame without transformation. `handheld-2.5x` renders 600×400 with WebGL; construction or shader failure falls back to `native`.
+Loss of an active WebGL context also replaces the output with a native canvas and redraws the current source frame.
 
 The CPU implementation in `reference.js` is deliberately test-only. Run the real shader comparison and benchmark with:
 

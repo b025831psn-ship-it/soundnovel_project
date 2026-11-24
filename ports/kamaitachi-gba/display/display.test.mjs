@@ -107,6 +107,9 @@ test("actual WebGL output exactly matches CPU reference", { timeout: 30_000 }, a
   assert.equal(result.ok, true, JSON.stringify(result));
   assert.deepEqual(result.size, [600, 400]);
   assert.equal(result.alphaAtLastPixel, 20);
+  assert.equal(result.nativeMismatch, -1, "native adapter must preserve every RGBA byte");
+  assert.equal(result.fallbackMode, "native");
+  assert.deepEqual(result.fallbackSize, [240, 160]);
   assert.ok(result.medianMillisecondsPerFrame < 1000 / 60, JSON.stringify(result));
   console.log("WebGL benchmark", result);
 });

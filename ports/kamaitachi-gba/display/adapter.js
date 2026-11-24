@@ -26,6 +26,14 @@ export class DisplayAdapter {
     this.output?.remove();
     this.output = output;
     this.mount.append(output);
+    if (this.renderer) {
+      output.addEventListener("webglcontextlost", (event) => {
+        event.preventDefault();
+        if (this.output !== output) return;
+        this.setMode(DEFAULT_DISPLAY_MODE);
+        this.render();
+      }, { once: true });
+    }
     return this.mode;
   }
 
