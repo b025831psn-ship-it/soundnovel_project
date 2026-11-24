@@ -178,7 +178,7 @@ export class Screen {
   }
 
   editor(editor, role, time) {
-    this.rect(0, 28, 640, 37);
+    this.rect(0, 28, 640, 36);
     this.sprite('name_e01', 0, role ? 33 : 0, role ? 183 : 94, 32, role ? 63 : 123, 29, role ? 150 : 91, 34);
     this.sprite('name_e01', 160, 0, 93, 32, 215, 29, 96, 34);
     for (let i = 0; i < 6; i++) {
@@ -187,7 +187,7 @@ export class Screen {
     }
     this.c.globalAlpha = 1;
     if (time % 1 < .65) this.rect(352 + 32 * Math.min(5, editor.value.length), 61, 28, 2, '#eee');
-    this.rect(136, 75, 368, 32);
+    this.rect(136, 74, 368, 32);
     this.sprite('name_e01', 0, 234, 31, 21, 80, 80);
     this.sprite('name_e01', 32, 234, 31, 21, 528, 80);
     this.sprite('name_e01', 242, 65, 14, 22, 119, 79, 13, 19);
