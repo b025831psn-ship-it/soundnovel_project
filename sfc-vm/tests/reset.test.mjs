@@ -68,3 +68,37 @@ test('maps the cartridge SRAM window used by the reset checksum', () => {
   assert.equal(bus.read16(0xf00800), 0x1234, 'high-bank SRAM mirror');
   assert.equal(bus.events.length, 0, 'SRAM writes are not I/O events');
 });
+
+test('exposes the SPC700 IPL ready word and echoes transfer tokens', () => {
+  const bus = new SfcBus(fixture());
+  assert.equal(bus.read16(0x2140), 0xbbaa);
+  bus.write8(0x2140, 0xcc);
+  assert.equal(bus.read8(0x2140), 0xcc);
+  assert.deepEqual(bus.events.at(-1), { kind: 'apu-write', address: 0x2140, value: 0xcc });
+});
+
+test('answers the uploaded sound driver identity handshake', () => {
+  const bus = new SfcBus(fixture());
+  for (const [port, value] of [0x43, 0x68, 0x75, 0x6e].entries())
+    bus.write8(0x2140 + port, value);
+  assert.deepEqual([...bus.apuPorts], [0x53, 0x4f, 0x46, 0x54]);
+});
+
+test('enters the native NMI vector with a restorable interrupt frame', () => {
+  const rom = fixture();
+  rom[0x7fea] = 0x34;
+  rom[0x7feb] = 0x12;
+  const bus = new SfcBus(rom);
+  const cpu = new Cpu65816(bus);
+  cpu.e = false;
+  cpu.pbr = 2;
+  cpu.pc = 0x4567;
+  const stack = cpu.s;
+  cpu.nmi();
+  assert.equal(cpu.address(), 0x001234);
+  assert.equal(cpu.s, stack - 4);
+  cpu.pc = 0x8000;
+  rom[0] = 0x40; // RTI
+  cpu.step();
+  assert.equal(cpu.address(), 0x024567);
+});

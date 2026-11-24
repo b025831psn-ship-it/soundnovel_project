@@ -10,8 +10,11 @@
 
 ```sh
 node --test sfc-vm/tests
+node sfc-vm/tools/trace-boot.mjs path/to/original.sfc 2000000
 ```
 
 초기 구현은 reset 직후의 CPU 모드 전환, WRAM 상태 비교, PPU/DMA 레지스터 설정과
 LoROM SRAM checksum 진입까지 실제 opcode로 실행합니다. 미구현 opcode는 즉시
 예외를 내므로, reference trace와 대조하면서 한 명령씩 범위를 넓힐 수 있습니다.
+장시간 runner는 trace 객체를 전부 보관하지 않고 마지막 상태만 유지하며, 원본의
+`$00:825D` VBlank 대기 루프에서 native NMI vector를 호출합니다.

@@ -31,7 +31,10 @@ reset preamble 뒤에는 `$01:829E`의 4-word 표를 WRAM `$03E1`과 비교하�
 DMA channel 0을 `$01:829C`에서 PPU `$2180`으로 향하도록 설정한다. 이어
 `$70:0800/$70:1000/$70:1800`의 LoROM SRAM 세 구간을 XOR해 초기화 상태를
 판정한다. VM은 header의 SRAM size code `$03`에 맞춰 이 창을 8 KiB로
-미러링한다. 현재 실제 ROM 실행은 `$00:8231`까지 172명령을 통과한다.
+미러링한다. 현재 VM은 BRK/COP 시스템 호출과 native NMI frame을 실행하며,
+SPC700 IPL 업로드와 `Chun` → `SOFT` 드라이버 identity handshake를 통과한다.
+VBlank NMI를 공급한 실제 ROM 실행은 166 frame, 126만 명령 이상을 지나
+타이틀 초기화용 데이터 처리 루틴까지 진행한다.
 
 ## 관통 조건
 
