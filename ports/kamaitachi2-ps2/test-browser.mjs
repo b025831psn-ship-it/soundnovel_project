@@ -208,7 +208,9 @@ try {
   }
   await at('complete');
   assert.ok(seen.has('「どうしたの、透ああああぁ」'));
-  assert.match(await label(), /やる気がしなかったのだ。$/);
+  assert.ok([...seen].some(line => line.endsWith('やる気がしなかったのだ。')));
+  assert.ok([...seen].some(line => line.endsWith('真理もそうだろ」')));
+  assert.match(await label(), /私はけっこう面白かったわ。すごく売れてるみたいよ」$/);
   assert.ok([...requests].some(url => url.endsWith('/k2h003.ogg')));
   const saved = await page.evaluate(()=>JSON.parse(localStorage.getItem('soundnovel.slps25132.opening.v1')));
   assert.deepEqual(saved,{names:['透ああああぁ','真理'],slot:1});

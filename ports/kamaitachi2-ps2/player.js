@@ -276,7 +276,9 @@ function makePages(s) {
     ...narrationPages(s.my02_0040, false),
     ...narrationPages(s.my02_0075, false),
     ...narrationPages(s.my02_0080, false),
-    ...narrationPages(s.my02_0083, true),
+    ...narrationPages(s.my02_0083, false),
+    ...narrationPages(s.my02_0085, false),
+    ...narrationPages(s.my02_0090, true),
   ];
 }
 
