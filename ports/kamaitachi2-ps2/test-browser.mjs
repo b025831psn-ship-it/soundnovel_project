@@ -105,8 +105,10 @@ try {
     const clip = document.querySelector('video');
     return clip.src.endsWith('/mo0001.mp4') && clip.ended && clip.videoWidth === 640;
   });
-  await advanceTo('complete'); await key('Enter');
+  for (let i=0; i<3 && !(await label()).startsWith('ぴしゃ'); i++) await key('Enter');
   assert.equal(await label(), 'ぴしゃ'.repeat(63));
+  await advanceTo('complete');
+  assert.equal(await label(), '波が船を舐める音だ。\nそうだ。ぼくは。\nぼくは船に乗っている。\nぼくは船に……。');
   assert.equal(await page.evaluate(()=>localStorage.getItem('soundnovel.slps25132.opening.v1')),null);
   await page.reload(); await page.getByRole('button',{name:'게임 시작'}).click();
   await key('Space'); await at('title'); await key('Enter'); await at('autosave');

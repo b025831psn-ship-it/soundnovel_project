@@ -162,7 +162,11 @@ function makePages(s) {
     { append:true, book:true, text: () => s.mo01_0011.join('\n') },
     { background:'mo0000', book:true, text: () => s.mo01_0012[0] },
     { movie:'mo0001', music:'k2h017.ogg', book:true, text: () => s.mo02_0010[0] },
-    { positioned:s.mo02_0012, end:true, text: () => s.mo02_0012.map(run => run.text).join('') },
+    { positioned:s.mo02_0012, text: () => s.mo02_0012.map(run => run.text).join('') },
+    ...s.mo02_0015.map((_, i, lines) => ({
+      retainMovie:true, append:i > 0, end:i === lines.length - 1, book:i === lines.length - 1,
+      text: () => lines.slice(0, i + 1).join('\n'),
+    })),
     { target:'my01_0075', book:true, text: () => outcome('my01_0075') },
     { text: () => north[0] },
     { append:true, book:true, text: () => north[0] + '\n' + north[1] + names[1] + north[2] + '\n' + north[3] + names[1] + north[4] },
@@ -271,7 +275,7 @@ function drawStory(time) {
     }
     return;
   }
-  if (!block.movie) screen.background(background, background === 'my0645', time);
+  if (!block.movie && !block.retainMovie) screen.background(background, background === 'my0645', time);
   const y = block.center ? 189 : 31;
   const x = block.center ? (640 - screen.width(storyText(), .91)) / 2 : 32;
   const end = screen.text(text, x, y, {scale:.91, max:580});
