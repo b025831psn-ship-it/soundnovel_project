@@ -33,7 +33,7 @@ export class Screen {
       }
       px += advance;
     }
-    return py;
+    return {x:px, y:py};
   }
 
   centered(str, mid, y, scale = 1) {

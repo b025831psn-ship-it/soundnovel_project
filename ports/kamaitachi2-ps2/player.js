@@ -9,6 +9,7 @@ const status = document.querySelector('#status');
 const asset = name => new URL('assets/' + name, import.meta.url).href;
 const music = new Audio();
 music.loop = true;
+const cues = Object.fromEntries(['confirm','move'].map(name => [name, new Audio(asset(name + '.wav'))]));
 const saveKey = 'soundnovel.slps25132.opening.v1';
 let saved = readSave();
 let data, screen, groups, editor, pages;
@@ -39,6 +40,13 @@ function playMusic(file) {
   if (music.src === asset(file) && !music.paused) return;
   music.src = asset(file);
   music.play().catch(() => { status.textContent = '오디오를 재생하려면 화면을 눌러 주세요.'; });
+}
+
+function cue(name) {
+  const sound = cues[name];
+  sound.currentTime = 0;
+  sound.volume = .6;
+  sound.play().catch(() => {});
 }
 
 function stopMovie() {
@@ -115,7 +123,7 @@ function printPage() {
     editor = new NameEditor(groups, names[role]);
     enter('name');
   } else {
-    revealed = 0;
+    revealed = block.append ? pages[page - 1].text().length : 0;
     enter(block.end ? 'complete' : 'story');
   }
 }
@@ -126,15 +134,15 @@ function makePages(s) {
   const heroLine = () => second[0] + names[0] + second[1];
   const partnerLead = () => second.slice(2, 5).join('');
   return [
-    { center:true, text: () => start.join('') },
+    { center:true, book:true, text: () => start.join('') },
     { text: () => first[0] },
-    { text: () => first[0] + '\n' + first[1] + s.my01_0022[0] },
+    { append:true, book:true, nextLine:true, text: () => first[0] + '\n' + first[1] + s.my01_0022[0] },
     { text: () => hero[1] },
-    { text: () => hero[1] + '\n' + hero[2] },
+    { append:true, book:true, text: () => hero[1] + '\n' + hero[2] },
     { name:0 },
     { text: heroLine },
-    { text: () => heroLine() + '\n' + partnerLead() },
-    { text: () => heroLine() + '\n' + partnerLead() + '\n' + second[5] },
+    { append:true, text: () => heroLine() + '\n' + partnerLead() },
+    { append:true, book:true, text: () => heroLine() + '\n' + partnerLead() + '\n' + second[5] },
     { name:1 },
     { end:true, text: () => last[0] + names[1] + last[1] },
   ];
@@ -149,10 +157,13 @@ function step(key) {
   if (scene === 'title') {
     if (key === 'left' || key === 'right') {
       const delta = key === 'left' ? -1 : 1;
-      index = Math.max(0, Math.min(2, index + delta));
+      const next = Math.max(0, Math.min(2, index + delta));
+      if (index !== next) cue('move');
+      index = next;
       userNotice = '';
       entered = performance.now();
     } else if (key === 'circle' || key === 'start') {
+      cue('confirm');
       if (!index) newGame();
       else if (index === 1 && saved) {
         names = [...saved.names]; stopMovie(); playMusic('k1a001.ogg');
@@ -196,7 +207,8 @@ function step(key) {
     else if (key === 'triangle') { editor.finish(); enter('confirm', 1); }
     announce();
   } else if (scene === 'confirm') {
-    if (key === 'up' || key === 'down') index = 1 - index;
+    if (key === 'up' || key === 'down') { index = 1 - index; cue('move'); }
+    if (key === 'circle') cue('confirm');
     if (key === 'cross' || (key === 'circle' && index === 1)) enter('name');
     else if (key === 'circle') {
       names[role] = editor.value;
@@ -215,9 +227,16 @@ function drawStory(time) {
   const y = block.center ? 189 : 31;
   const x = block.center ? (640 - screen.width(storyText(), .91)) / 2 : 32;
   const end = screen.text(text, x, y, {scale:.91, max:580});
-  if (revealed >= storyText().length && time % 1 < .78) {
-    if (block.center) screen.text('▼', x + screen.width(text,.91) + 7, y + 4, {scale:.6});
-    else screen.pointer(34, end + 44);
+  if (revealed >= storyText().length) {
+    const tick = Math.floor(time * 6);
+    if (block.book) {
+      const nextLine = block.nextLine || end.x + 25 > 610;
+      const frame = tick % 7;
+      screen.sprite('mark', (frame % 5) * 24, 48 + Math.floor(frame / 5) * 24, 24, 24,
+                    nextLine ? 32 : end.x + 7, end.y + (nextLine ? 43 : 5));
+    } else {
+      screen.sprite('mark', tick % 8 * 16, 0, 16, 24, 34, end.y + 44);
+    }
   }
 }
 
@@ -276,7 +295,7 @@ try {
   const response = await fetch(asset('opening.json'));
   if (!response.ok) throw new Error('Missing opening data');
   data = await response.json();
-  await Promise.all(['font','copyrigh','title_00','my0007','my0645','name_e01','sys_fc01','sys_cd01','sys_cd02','sys_jo01','sys_jo02','sys_jo03','sys_save','sys_wa01'].map(async name => {
+  await Promise.all(['font','copyrigh','title_00','my0007','my0645','name_e01','mark','sys_fc01','sys_cd01','sys_cd02','sys_jo01','sys_jo02','sys_jo03','sys_save','sys_wa01'].map(async name => {
     const image = new Image(); image.src = asset(name + '.png'); await image.decode(); images[name] = image;
   }));
   groups = keyboardGroups(data.rows); pages = makePages(data.story);

@@ -5,6 +5,7 @@ import re
 import struct
 
 from PIL import Image
+from disc import Extent, SECTOR
 
 
 def elf_string(elf, va):
@@ -103,6 +104,36 @@ def still_png(data, work, destination, encode):
     encode(["-i", str(source), "-frames:v", "1"], destination)
 
 
+def button_sounds(disc, out, encode):
+    sequence = disc.read(disc.files["SOUND/SEB/se000.seb"])
+    sectors = disc.read(disc.files["SOUND/WAVE_WD/wave_wd.sec"])
+    wave = disc.files["SOUND/WAVE_WD/wave_wd.dat"]
+    first, following = struct.unpack_from("<II", sectors, 1000 * 4)
+    bank = disc.read(Extent(wave.lba + first, (following - first) * SECTOR))
+    if bank[:4] != b"WD\xe8\x03" or sequence[:8] != b"SeBlock ":
+        raise ValueError("Unexpected system sound bank")
+    samples, regions = struct.unpack_from("<II", bank, 8)
+    table = struct.unpack_from(f"<{samples}I", bank, 32)
+    data_start = table[0] + regions * 32
+    sound_table = 16 + 4 * struct.unpack_from("<H", sequence, 10)[0]
+    for effect, name in ((2, "confirm"), (4, "move")):
+        offset = sound_table + struct.unpack_from("<I", sequence, 16 + 4 * effect)[0]
+        if (sequence[offset] != 1 or struct.unpack_from("<I", sequence, offset + 1)[0] != 1000
+                or sequence[offset + 7:offset + 9] != b"\0\x22" or sequence[offset + 10:offset + 12] != b"\0\x20"):
+            raise ValueError("Unexpected system sound sequence")
+        instrument = struct.unpack_from("<H", sequence, offset + 12)[0]
+        start = struct.unpack_from("<I", bank, table[instrument] + 4)[0]
+        end = struct.unpack_from("<I", bank, table[instrument + 1] + 4)[0]
+        raw = bank[data_start + start:data_start + end]
+        if len(raw) != end - start or len(raw) % 16:
+            raise ValueError("Invalid SPU sample extent")
+        # VAG is a container for the bank's mono PS-ADPCM blocks.
+        header = struct.pack(">4sIIII", b"VAGp", 0x20, 0, len(raw), 48000).ljust(48, b"\0")
+        source = out / "effect.vag"
+        source.write_bytes(header + raw)
+        encode(["-i", str(source), "-c:a", "pcm_s16le"], out / f"{name}.wav")
+
+
 def opening_assets(disc, out, encode):
     def asset(name):
         return disc.read(disc.files[name])
@@ -112,7 +143,9 @@ def opening_assets(disc, out, encode):
     title_music = elf_string(disc.elf, 0x219c08)
     for name in (title_music, "k1a001.ogg"):
         (out / name).write_bytes(asset("SOUND/VORBIS/" + name))
-    texture(asset("EFFECT/name_e01.ctf")).save(out / "name_e01.png")
+    button_sounds(disc, out, encode)
+    for name in ("name_e01", "mark"):
+        texture(asset(f"EFFECT/{name}.ctf")).save(out / f"{name}.png")
     for name in ("sys_fc01", "sys_cd01", "sys_cd02", "sys_jo01", "sys_jo02", "sys_jo03", "sys_save", "sys_wa01"):
         texture(asset(f"SYS_MENU/{name}.ctf")).save(out / f"{name}.png")
     config = {

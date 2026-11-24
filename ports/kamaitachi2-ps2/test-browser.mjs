@@ -12,6 +12,19 @@ if (captures) await mkdir(captures, {recursive:true});
 const browser = await chromium.launch();
 const page = await browser.newPage({viewport:{width:960,height:768}});
 const errors = [];
+const requests = new Set();
+const unexpected = [];
+const site = new URL('./', base);
+await page.route('**/*', route => {
+  const url = new URL(route.request().url());
+  requests.add(url.href);
+  const local = url.origin === site.origin && url.pathname.startsWith(site.pathname);
+  const relative = url.pathname.slice(site.pathname.length);
+  const resource = /^(?:|index\.html|player\.css|(?:player|render|names)\.js|favicon\.ico|assets\/[\w.-]+\.(?:json|png|mp4|ogg|wav))$/.test(relative);
+  if (local && resource) return route.continue();
+  unexpected.push(url.href);
+  return route.abort();
+});
 page.on('pageerror', error => errors.push(error.message));
 page.on('response', r => { if (r.status() >= 400 && !r.url().endsWith('/favicon.ico')) errors.push(r.url()); });
 const canvas = page.locator('canvas');
@@ -31,6 +44,7 @@ async function advanceTo(target) {
 }
 try {
   await page.goto(base);
+  assert.equal(await page.locator('input[type=file]').count(),0);
   await page.getByRole('button', {name:'게임 시작'}).click();
   await at('logo');
   await page.waitForFunction(() => document.querySelector('video').currentTime > .25);
@@ -38,12 +52,18 @@ try {
   await at('copyright'); await check('copyright');
   await at('opening');
   await page.waitForFunction(() => document.querySelector('video').currentTime > .25);
-  await key('Space'); await at('title');
+  // Let the video emit its real ended event, including on local servers that
+  // do not implement byte-range seeking.
+  await page.locator('video').evaluate(v => { v.playbackRate = 8; });
+  await at('title-entry');
+  await page.waitForFunction(() => document.querySelector('video').currentTime > .25);
+  await at('title');
   await page.waitForFunction(() => document.querySelector('video').currentTime > .3);
   await check('title');
   await key('Enter'); await at('autosave'); await check('autosave');
   await key('Enter'); await at('slot'); await key('Escape'); await at('autosave');
   await key('ArrowDown'); await key('Enter'); await at('story');
+  await key('Enter'); await check('prologue');
   await advanceTo('name');
   assert.equal(await label(),'주인공 透');
   await check('hero');
@@ -78,6 +98,13 @@ try {
   await at('complete');
   const saved = await page.evaluate(()=>JSON.parse(localStorage.getItem('soundnovel.slps25132.opening.v1')));
   assert.deepEqual(saved,{names:['透ああああぁ','真理'],slot:1});
+  assert.deepEqual(unexpected,[]);
+  const isoRequests = [...requests].filter(url => /\.iso(?:$|[?#])/i.test(url));
+  assert.equal(isoRequests.length,0);
+  for (const asset of ['chunlogo.mp4','opening.mp4','title-1.mp4','title.mp4','opening.json','font.png','k2t002.ogg','k1a001.ogg']) {
+    assert.ok([...requests].some(url => new URL(url).pathname.endsWith('/' + asset)), asset);
+  }
+  console.log('PASS standalone HTTP site: ' + requests.size + ' distinct URLs, ' + isoRequests.length + ' ISO requests, ' + unexpected.length + ' requests outside the prepared site, no file picker');
   assert.deepEqual(errors,[]);
   console.log('PASS real intro playback, title, new game, both name commands, defaults, six-character overwrite, both confirmation directions, story substitution and browser checkpoint');
 } finally { await browser.close(); }

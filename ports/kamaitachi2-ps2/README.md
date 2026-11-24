@@ -2,6 +2,8 @@
 
 일본 한정판 게임 디스크의 새 게임 경로를 브라우저에서 재생한다. 현재 범위는 로고, 저작권 표시, 오프닝 영상, 타이틀, 자동 저장 선택, 도입부와 두 사람의 이름 확정까지다. 마지막 화면은 여자친구의 이름이 대사에 반영되는 지점이다. HTML 비디오가 영상을 재생하고 Canvas와 JavaScript가 입력·분기·텍스트를 처리한다.
 
+**플레이하는 사람은 웹 주소만 열면 된다.** 제작자가 ISO로 한 번 빌드하면 `web/` 폴더 하나가 독립적인 정적 사이트가 된다. 게임을 제공하는 서버에도 이 폴더만 있으면 된다. 아래 Python·FFmpeg·Ghidra 절차는 제작·검증용이다.
+
 ## 실행
 
 Python 3.11 이상과 Pillow, IPU 디코더 및 libx264 인코더가 있는 FFmpeg와 ffprobe가 필요하다. 저장소 루트에서 실행한다. 준비기는 디스크를 읽어서 미디어와 문자표를 로컬 웹 폴더에 생성한다. 브라우저에서는 준비된 폴더만 서비스하면 된다.
@@ -46,6 +48,8 @@ FAD 레코드의 상대 섹터는 `DISC.FAD`의 시작 LBA 1,173을 기준으로
 
 오프닝 PSS의 MPEG-2 영상과 private stream 1의 `SShd/SSbd` 스테레오 PCM을 함께 변환한다. 음원은 48kHz, 16비트 리틀 엔디언이고 채널별로 512바이트씩 번갈아 저장된다. 첫 오디오 PTS와 첫 비디오 PTS의 차이를 유지한다.
 
+타이틀의 결정과 커서 이동은 각각 `0x00108BB4`와 `0x00108C78`에서 공통 효과음 함수에 ID 2와 4를 전달한다. 이름 확인창에서도 같은 ID를 사용한다. `se000.seb`에서 단일 보이스 시퀀스의 악기 번호를 읽고 WD 뱅크 1000의 해당 PS-ADPCM 샘플을 디코딩한다. 원본 실행에서 대기가 끝나는 위치를 대조해 대사 뒤의 책과 화살표도 디스크의 `EFFECT/mark.ctf`로 표시한다. [VGMTrans의 PS2 WD 뱅크 정의](https://github.com/vgmtrans/vgmtrans/blob/master/src/main/formats/SquarePS2/WD.cpp)
+
 ## 재현과 검증 범위
 
 Ghidra 12.2와 Emotion Engine 확장의 `r5900:LE:32:default` 언어로 함수 10개를 디컴파일하고 직접 호출 10곳을 확인했다. 아래에서 `$headless`는 설치된 Ghidra의 `support/analyzeHeadless.bat` 경로다. 실행 파일과 Ghidra 데이터베이스는 로컬 출력 경로에 보관한다.
@@ -57,7 +61,7 @@ python -B ports/kamaitachi2-ps2/disc.py "$iso" --elf outputs/kamaitachi2-ps2-kor
 
 원본 ISO를 로컬 Play! 브라우저 런타임에서 별도로 실행해 새 게임, 자동 저장을 쓰거나 건너뛰는 경로, 두 입력창의 기본 이름, 취소와 확정, 변경된 이름이 다음 문장에 들어가는 지점을 대조했다. PCSX2에서는 메모리 카드 미삽입 시의 안내도 관찰했다. 이 웹 빌드는 사용 가능한 가상 카드로 시작한다. [Play! 공식 브라우저 런타임](https://playjs.purei.org/)
 
-웹 회귀 검사는 준비한 빌드와 Playwright의 Chromium을 사용한다. 공통 테스트 환경과 같은 위치인 `web-player/node_modules`나 그 상위에 Playwright를 설치한다. 두 번째 인자로 디렉터리를 넘기면 검사 화면을 로컬에 기록한다.
+웹 회귀 검사는 준비한 빌드와 Playwright의 새 Chromium 세션을 사용한다. 테스트는 준비된 사이트의 HTML·JS·CSS·JSON·미디어만 허용하고 ISO 요청 건수와 파일 선택창 유무도 확인한다. 공통 테스트 환경과 같은 위치인 `web-player/node_modules`나 그 상위에 Playwright를 설치한다. 두 번째 인자로 디렉터리를 넘기면 검사 화면을 로컬에 기록한다.
 
 ```powershell
 $env:PLAYWRIGHT_BROWSERS_PATH = '0'

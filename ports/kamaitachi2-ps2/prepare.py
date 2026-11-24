@@ -139,7 +139,7 @@ def prepare(image, output):
                 raise ValueError("Unrecognized title loop in MMV")
         opening_assets(disc, stage, encode)
         for file in stage.iterdir():
-            if file.suffix in {".mp4", ".png", ".ogg", ".json"}:
+            if file.suffix in {".mp4", ".png", ".ogg", ".json"} or file.name in {"move.wav", "confirm.wav"}:
                 os.replace(file, assets / file.name)
     for filename in ("index.html", "player.css", "player.js", "render.js", "names.js"):
         shutil.copyfile(Path(__file__).with_name(filename), output / filename)
