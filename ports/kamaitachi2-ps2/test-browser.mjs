@@ -195,11 +195,20 @@ try {
     '彼女は、またきれいになっていた。',
   ]);
   assert.ok(await page.locator('video').evaluate(v => v.src.endsWith('/my0006.mp4') && v.videoWidth === 640));
-  await advanceTo('complete');
+  for (let i=0; i<12 && !(await label()).endsWith('圧倒されていた。'); i++) await key('Enter');
   const description = (await label()).split('\n');
   assert.equal(description.length, 4);
   assert.equal(description[0], 'ショートパンツにＴシャツ……。');
   assert.equal(description[3], 'ひさしぶりに会ったぼくは、その輝かしさに圧倒されていた。');
+  const seen = new Set();
+  for (let i=0; i<100 && await canvas.getAttribute('data-scene') !== 'complete'; i++) {
+    seen.add(await label());
+    await key('Enter');
+    await page.waitForTimeout(75);
+  }
+  await at('complete');
+  assert.ok(seen.has('「どうしたの、透ああああぁ」'));
+  assert.match(await label(), /やる気がしなかったのだ。$/);
   assert.ok([...requests].some(url => url.endsWith('/k2h003.ogg')));
   const saved = await page.evaluate(()=>JSON.parse(localStorage.getItem('soundnovel.slps25132.opening.v1')));
   assert.deepEqual(saved,{names:['透ああああぁ','真理'],slot:1});

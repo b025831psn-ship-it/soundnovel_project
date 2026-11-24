@@ -160,13 +160,19 @@ function summerDialogue(sceneData) {
 function narrationPages(reunion, final) {
   const reunionPages = [];
   const reunionParts = [];
+  let waits = [];
   for (const event of reunion.events) {
     if (event.text || event.name !== undefined) reunionParts.push(event);
+    else if (event.wait) waits.push({parts:reunionParts.slice(), ticks:event.wait});
     else if (event.command === 4) reunionParts.push({text:'\n'});
     else if (event.command === 9 || event.command === 11) {
       const parts = reunionParts.slice();
+      const pauses = waits;
+      const resolve = fragments => fragments.map(part => part.text ?? names[part.name]).join('');
       reunionPages.push({retainMovie:true, append:reunionPages.length > 0, end:final && event.command === 11,
-        text: () => parts.map(part => part.text ?? names[part.name]).join('').trimEnd()});
+        waits: () => pauses.map(pause => ({offset:resolve(pause.parts).length, remaining:pause.ticks * 1000 / 59.94})),
+        text: () => resolve(parts).trimEnd()});
+      waits = [];
     }
   }
   return reunionPages;
@@ -259,7 +265,11 @@ function makePages(s) {
       text: () => '' },
     ...summerDialogue(s.my02_0015),
     ...reunionPages,
-    ...narrationPages(s.my02_0035, true),
+    ...narrationPages(s.my02_0035, false),
+    ...narrationPages(s.my02_0040, false),
+    ...narrationPages(s.my02_0075, false),
+    ...narrationPages(s.my02_0080, false),
+    ...narrationPages(s.my02_0083, true),
   ];
 }
 
