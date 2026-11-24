@@ -8,6 +8,20 @@ export class Screen {
     this.images = images;
     this.data = data;
     this.tintedGlyphs = new Map();
+    // Brightness above the stationary background around a flake in the PS2 name screen.
+    const snowProfile = [
+      [0,1,2,5,1,0], [0,1,6,13,1,0], [3,22,27,34,22,5],
+      [10,62,64,66,62,13], [14,82,82,82,82,18], [17,82,82,82,82,18],
+      [13,62,64,66,62,13], [5,22,27,34,23,5], [0,2,6,14,3,0], [0,0,2,4,0,0],
+    ];
+    this.flake = document.createElement('canvas');
+    this.flake.width = snowProfile[0].length;
+    this.flake.height = snowProfile.length;
+    const flakeContext = this.flake.getContext('2d');
+    snowProfile.forEach((row, y) => row.forEach((alpha, x) => {
+      flakeContext.fillStyle = `rgba(255,255,255,${alpha / 255})`;
+      flakeContext.fillRect(x, y, 1, 1);
+    }));
   }
 
   rect(x, y, w, h, color = blue) {
@@ -73,12 +87,17 @@ export class Screen {
     this.rect(0, 0, 640, 448, shade);
     if (!snow) return;
     // Snow continues behind both the printed text and the name editor.
+    this.c.save();
+    this.c.globalCompositeOperation = 'lighter';
     for (let i = 1; i <= 108; i++) {
       const speed = 18 + (i * 17 % 69);
       const y = (i * 183.7 + time * speed) % 463 - 8;
       const x = (i * 713.3 + Math.sin(time * .45 + i) * 13 + 640) % 640;
-      this.rect(x, y, 2 + i % 3, 2 + i % 5, 'rgba(206,210,216,.32)');
+      const size = .45 + (i % 11) * .055;
+      this.c.globalAlpha = .65 + (i % 8) * .05;
+      this.c.drawImage(this.flake, x, y, this.flake.width * size, this.flake.height * size);
     }
+    this.c.restore();
   }
 
   title(index, hasSave) {
