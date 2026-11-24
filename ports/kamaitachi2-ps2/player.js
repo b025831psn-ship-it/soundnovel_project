@@ -286,7 +286,7 @@ function makePages(s) {
       waits:() => [{offset:heroLine().length + 1 + second[2].length, remaining:20 * 1000 / 59.94}] },
     { append:true, book:true, text: () => heroLine() + '\n' + partnerLead() + '\n' + second[5] },
     { name:1 },
-    { checkpoint:true, nativeGlyphWidth:true, text: partnerLine },
+    { checkpoint:true, nativeGlyphWidth:true, advanceMark:{x:40, y:77}, text: partnerLine },
     { append:true, nativeGlyphWidth:true, text: classmates },
     { append:true, nativeGlyphWidth:true, choice:data.prologueChoice, text: () => classmates() + '\n' + last[4] + names[1] + last[5] + '\n' + last[6] },
     { target:'my01_0073', book:true, text: () => outcome('my01_0073') },
