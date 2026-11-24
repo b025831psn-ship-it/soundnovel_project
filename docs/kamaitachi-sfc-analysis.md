@@ -162,3 +162,12 @@ critical-section NMI의 정확한 phase는 계속 reference trace와 대조한�
 
 위 이벤트를 같은 ROM 해시와 frame/cycle 기준으로 대조한다. 현재 환경에는
 reference emulator가 설치되어 있지 않아 probe 실행기를 별도로 준비 중이다.
+
+## 첫 관통 어셈블리 분석 상태
+
+reset→새 게임→이름 입력과 이 구간이 사용하는 CPU·PPU·SPC 경로의 정적
+어셈블리 분석은 완료 상태다. 비공개 `data/first-traversal-manifest.json`이
+10개 기계 판독 분석 산출물을 ROM SHA-256
+`3228a3b35f7d234a7bf91f8159ccc56518199222e84d258c14a153f54f9fcbc7` 아래 묶어
+교차 검증한다. 이 완료 표시는 첫 관통 구현 범위에 한정되며 후반 모든 분기와
+cycle-exact trace parity까지 완료했다는 뜻은 아니다.
