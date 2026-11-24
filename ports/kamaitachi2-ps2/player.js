@@ -141,6 +141,8 @@ function makePages(s) {
   const classmates = () => partnerLine() + '\n' + last[2] + names[1] + last[3];
   const north = s.my01_0076;
   const middle = s.my01_0079, closing = s.my01_0080;
+  const author = s.my01_0081;
+  const introduction = () => author.slice(0, 9).join('');
   const sceneryRuby = {word:middle[4].slice(0, 4), readings:middle.slice(0, 4)};
   const letter = s.my01_0077;
   const correspondence = () => letter[0] + names[1] + letter[1] + '\n' + letter[2];
@@ -180,8 +182,10 @@ function makePages(s) {
     { background:'my0000', ruby:sceneryRuby, append:true, book:true, text: () => middle.slice(4).join('\n') },
     { background:'my0000', text: () => closing[0] },
     { background:'my0000', append:true, text: () => closing.slice(0, 4).join('\n') },
-    { background:'my0000', append:true, end:true, book:true, ruby:{word:closing[11], readings:closing.slice(6, 11)},
+    { background:'my0000', append:true, book:true, ruby:{word:closing[11], readings:closing.slice(6, 11)},
       text: () => [...closing.slice(0, 6), closing[11]].join('\n') },
+    { background:'my0002', text:introduction },
+    { background:'my0002', append:true, end:true, book:true, text: () => introduction() + '\n' + author.slice(9).join('') },
   ];
 }
 
@@ -376,7 +380,7 @@ try {
   const response = await fetch(asset('opening.json'));
   if (!response.ok) throw new Error('Missing opening data');
   data = await response.json();
-  await Promise.all(['font','copyrigh','title_00','my0000','my0007','my0645','mo0000','name_e01','mark','sys_fc01','sys_cd01','sys_cd02','sys_jo01','sys_jo02','sys_jo03','sys_save','sys_wa01'].map(async name => {
+  await Promise.all(['font','copyrigh','title_00','my0000','my0002','my0007','my0645','mo0000','name_e01','mark','sys_fc01','sys_cd01','sys_cd02','sys_jo01','sys_jo02','sys_jo03','sys_save','sys_wa01'].map(async name => {
     const image = new Image(); image.src = asset(name + '.png'); await image.decode(); images[name] = image;
   }));
   groups = keyboardGroups(data.rows); pages = makePages(data.story);
