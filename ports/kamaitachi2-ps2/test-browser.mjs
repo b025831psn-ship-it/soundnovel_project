@@ -303,9 +303,16 @@ try {
     assert.match(await label(), /いつも送迎をしてるんですか/);
     await key('ArrowDown');
     assert.match(await label(), /何で三日月島って言うんですか/);
-    await key('Enter'); await at('story'); await advanceTo('complete', 150);
-    assert.match(await label(), /あの島は、三日月の形をしとるから/);
-    assert.match(await label(), /あんな島に行くとはのう」$/);
+    await key('Enter'); await at('story');
+    const captainLines = new Set();
+    for (let i=0; i<100 && await canvas.getAttribute('data-scene') === 'story'; i++) {
+      captainLines.add(await label());
+      await key('Enter'); await page.waitForTimeout(100);
+    }
+    await at('complete');
+    assert.ok([...captainLines].some(line => line.includes('あの島は、三日月の形をしとるから')));
+    assert.ok([...captainLines].some(line => line.endsWith('そう言ったまま口をつぐんでしまった。')));
+    assert.match(await label(), /船長さんは、しぶしぶといった表情で言った。$/);
     assert.ok([...requests].some(url => url.endsWith('/my0018.mp4')));
     assert.ok([...requests].some(url => url.endsWith('/my0012.mp4')));
     assert.ok([...requests].some(url => url.endsWith('/my0004.mp4')));

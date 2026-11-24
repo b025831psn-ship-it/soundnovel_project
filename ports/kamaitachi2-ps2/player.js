@@ -343,10 +343,11 @@ function makePages(s) {
     ...narrationPages(s.my02_0300, false).map((block, i) => i === 0 ? {...block, movie:'my0018'} : block),
     {retainMovie:true, text:() => s.my02_0330.text, choice:data.captainChoice},
     ...data.captainChoice.flatMap(route => {
-      const pages = narrationPages(s[route.target], true);
+      const pages = narrationPages(s[route.target], false);
       pages[0].target = route.target;
       pages[1].movie = 'my0014';
-      return pages;
+      if (route.target === 'my02_0340') return [...pages, ...narrationPages(s.my02_0350, true)];
+      return [...pages, ...narrationPages(s.myb02_0330, false), ...narrationPages(s.myb02_0335, true)];
     }),
   ];
 }
