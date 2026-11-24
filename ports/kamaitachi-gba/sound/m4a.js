@@ -120,10 +120,11 @@ export class M4A {
   fadeInSong(song, speed) {
     const player = this.players[this.mem.u16(this.cfg.songTable + 8 * song + 4)];
     if (!player || !speed) return;
-    player.fadeIn = { elapsed: 0, frames: speed };
+    // Native volume starts at one quarter of the fixed-point scale.
+    player.fadeIn = { remaining: speed, value: 0x4000, delta: Math.floor(0x10000 / speed) };
     for (const t of player.tracks) {
       if (!(t.flags & FLG_EXIST)) continue;
-      t.volX = 0;
+      t.volX = 16;
       t.flags |= FLG_VOLSET;
     }
   }
@@ -172,13 +173,16 @@ export class M4A {
   mplayMain(p) {
     if (p.status & 0x80000000) return;
     if (p.fadeIn) {
-      const volume = Math.min(64, Math.floor((64 * ++p.fadeIn.elapsed) / p.fadeIn.frames));
+      const fade = p.fadeIn;
+      // The native routine decrements the timer before applying the increment.
+      if (--fade.remaining > 0) fade.value = Math.min(0x10000, fade.value + fade.delta);
+      const volume = (fade.value >> 11) * 2;
       for (const t of p.tracks) {
         if (!(t.flags & FLG_EXIST)) continue;
         t.volX = volume;
         t.flags |= FLG_VOLSET;
       }
-      if (p.fadeIn.elapsed >= p.fadeIn.frames) p.fadeIn = null;
+      if (!fade.remaining) p.fadeIn = null;
     }
     if (p.fadeOI) this.fadeOutBody(p);
     p.tempoC += p.tempoI;
