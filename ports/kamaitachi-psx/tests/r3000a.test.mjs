@@ -65,6 +65,24 @@ test("32-bit MMIO devices observe register reads and writes", () => {
   assert.equal(written, 0x89abcdef);
 });
 
+test("16-bit MMIO devices observe register reads and writes", () => {
+  const memory = new PsxMemory();
+  let written = 0;
+  memory.map16(0x1f801074, { read: () => 0x5678, write: (value) => { written = value; } });
+  assert.equal(memory.u16(0xbf801074), 0x5678);
+  memory.set16(0x1f801074, 0xabcd);
+  assert.equal(written, 0xabcd);
+});
+
+test("8-bit MMIO devices observe register reads and writes", () => {
+  const memory = new PsxMemory();
+  let written = 0;
+  memory.map8(0x1f801800, { read: () => 0x34, write: (value) => { written = value; } });
+  assert.equal(memory.u8(0xbf801800), 0x34);
+  memory.set8(0x1f801800, 0xab);
+  assert.equal(written, 0xab);
+});
+
 test("PS-X EXE loader copies payload and exposes entry registers", () => {
   const exe = new Uint8Array(0x808);
   exe.set(new TextEncoder().encode("PS-X EXE"));
@@ -78,4 +96,27 @@ test("PS-X EXE loader copies payload and exposes entry registers", () => {
   assert.equal(loaded.pc, 0x80010004);
   assert.equal(loaded.stackAddress, 0x801ffff0);
   assert.deepEqual([...loaded.memory.bytes.subarray(0x10000, 0x10008)], [1, 2, 3, 4, 5, 6, 7, 8]);
+});
+
+test("variable shifts and multiply/divide use R3000A HI/LO", () => {
+  const cpu = cpuWith([]);
+  cpu.regs[1] = 4;
+  cpu.regs[2] = 3;
+  cpu.execute(r(1, 2, 3, 0, 0x04), cpu.pc);
+  assert.equal(cpu.regs[3], 48);
+  cpu.execute(r(1, 2, 0, 0, 0x18), cpu.pc);
+  assert.equal(cpu.lo, 12);
+  assert.equal(cpu.hi, 0);
+  cpu.regs[1] = 13;
+  cpu.regs[2] = 5;
+  cpu.execute(r(1, 2, 0, 0, 0x1a), cpu.pc);
+  assert.equal(cpu.lo, 2);
+  assert.equal(cpu.hi, 3);
+});
+
+test("syscall delegates to the configured exception hook", () => {
+  let code = null;
+  const cpu = cpuWith([0x0001230c], 0x80010000, { syscall: (_cpu, value) => { code = value; } });
+  cpu.step();
+  assert.equal(code, 0x48c);
 });

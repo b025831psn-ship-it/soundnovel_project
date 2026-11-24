@@ -7,8 +7,12 @@ export class PsxMemory {
   constructor(size = RAM_SIZE) {
     this.bytes = new Uint8Array(size);
     this.view = new DataView(this.bytes.buffer);
+    this.io8 = new Map();
+    this.io16 = new Map();
     this.io32 = new Map();
   }
+  map8(address, device) { this.io8.set(address & 0x1fffffff, device); }
+  map16(address, device) { this.io16.set(address & 0x1fffffff, device); }
   map32(address, device) { this.io32.set(address & 0x1fffffff, device); }
   offset(address, width = 1) {
     let physical = address & 0x1fffffff;
@@ -18,14 +22,28 @@ export class PsxMemory {
       throw new RangeError(`unmapped PS1 address 0x${u32(address).toString(16)}`);
     return physical;
   }
-  u8(a) { return this.bytes[this.offset(a)]; }
-  u16(a) { return this.view.getUint16(this.offset(a, 2), true); }
+  u8(a) {
+    const device = this.io8.get(a & 0x1fffffff);
+    return device ? (device.read?.() ?? 0) & 0xff : this.bytes[this.offset(a)];
+  }
+  u16(a) {
+    const device = this.io16.get(a & 0x1fffffff);
+    return device ? (device.read?.() ?? 0) & 0xffff : this.view.getUint16(this.offset(a, 2), true);
+  }
   u32(a) {
     const device = this.io32.get(a & 0x1fffffff);
     return device ? u32(device.read?.() ?? 0) : this.view.getUint32(this.offset(a, 4), true);
   }
-  set8(a, v) { this.bytes[this.offset(a)] = v; }
-  set16(a, v) { this.view.setUint16(this.offset(a, 2), v, true); }
+  set8(a, v) {
+    const device = this.io8.get(a & 0x1fffffff);
+    if (device) { device.write?.(v & 0xff); return; }
+    this.bytes[this.offset(a)] = v;
+  }
+  set16(a, v) {
+    const device = this.io16.get(a & 0x1fffffff);
+    if (device) { device.write?.(v & 0xffff); return; }
+    this.view.setUint16(this.offset(a, 2), v, true);
+  }
   set32(a, v) {
     const device = this.io32.get(a & 0x1fffffff);
     if (device) { device.write?.(u32(v)); return; }
@@ -34,7 +52,7 @@ export class PsxMemory {
 }
 
 export class R3000A {
-  constructor({ memory = new PsxMemory(), pc = 0, hooks = new Map(), trace = null } = {}) {
+  constructor({ memory = new PsxMemory(), pc = 0, hooks = new Map(), syscall = null, trace = null } = {}) {
     this.memory = memory;
     this.regs = new Uint32Array(32);
     this.hi = 0;
@@ -42,6 +60,7 @@ export class R3000A {
     this.pc = u32(pc);
     this.nextPc = u32(pc + 4);
     this.hooks = hooks;
+    this.syscall = syscall;
     this.trace = trace;
     this.instructions = 0;
   }
@@ -74,8 +93,43 @@ export class R3000A {
         case 0x00: this.regs[rd] = u32(this.regs[rt] << shift); return;
         case 0x02: this.regs[rd] = this.regs[rt] >>> shift; return;
         case 0x03: this.regs[rd] = u32(this.regs[rt] >> shift); return;
+        case 0x04: this.regs[rd] = u32(this.regs[rt] << (this.regs[rs] & 31)); return;
+        case 0x06: this.regs[rd] = this.regs[rt] >>> (this.regs[rs] & 31); return;
+        case 0x07: this.regs[rd] = u32(this.regs[rt] >> (this.regs[rs] & 31)); return;
         case 0x08: this.jump(this.regs[rs]); return;
         case 0x09: this.regs[rd || 31] = u32(at + 8); this.jump(this.regs[rs]); return;
+        case 0x0c:
+          if (!this.syscall) throw new Error(`R3000A syscall at 0x${at.toString(16)}`);
+          this.syscall(this, word >>> 6);
+          return;
+        case 0x10: this.regs[rd] = this.hi; return;
+        case 0x11: this.hi = this.regs[rs]; return;
+        case 0x12: this.regs[rd] = this.lo; return;
+        case 0x13: this.lo = this.regs[rs]; return;
+        case 0x18: {
+          const value = BigInt(this.regs[rs] | 0) * BigInt(this.regs[rt] | 0);
+          this.lo = Number(BigInt.asUintN(32, value));
+          this.hi = Number(BigInt.asUintN(32, value >> 32n));
+          return;
+        }
+        case 0x19: {
+          const value = BigInt(this.regs[rs]) * BigInt(this.regs[rt]);
+          this.lo = Number(BigInt.asUintN(32, value));
+          this.hi = Number(BigInt.asUintN(32, value >> 32n));
+          return;
+        }
+        case 0x1a: {
+          const left = this.regs[rs] | 0, right = this.regs[rt] | 0;
+          if (right === 0) { this.lo = left >= 0 ? 0xffffffff : 1; this.hi = u32(left); }
+          else { this.lo = u32(Math.trunc(left / right)); this.hi = u32(left % right); }
+          return;
+        }
+        case 0x1b: {
+          const left = this.regs[rs], right = this.regs[rt];
+          if (right === 0) { this.lo = 0xffffffff; this.hi = left; }
+          else { this.lo = u32(Math.floor(left / right)); this.hi = u32(left % right); }
+          return;
+        }
         case 0x21: this.regs[rd] = u32(this.regs[rs] + this.regs[rt]); return;
         case 0x23: this.regs[rd] = u32(this.regs[rs] - this.regs[rt]); return;
         case 0x24: this.regs[rd] = this.regs[rs] & this.regs[rt]; return;
@@ -87,6 +141,16 @@ export class R3000A {
       }
     }
     switch (op) {
+      case 0x01: {
+        const signed = this.regs[rs] | 0;
+        const link = rt === 0x10 || rt === 0x11;
+        const take = (rt === 0x00 || rt === 0x10) ? signed < 0 : signed >= 0;
+        if (![0x00, 0x01, 0x10, 0x11].includes(rt))
+          throw new Error(`unimplemented R3000A REGIMM 0x${rt.toString(16)} at 0x${at.toString(16)}`);
+        if (link) this.regs[31] = u32(at + 8);
+        if (take) this.jump(branch());
+        break;
+      }
       case 0x02: this.jump((this.pc & 0xf0000000) | ((word & 0x03ffffff) << 2)); break;
       case 0x03: this.regs[31] = u32(at + 8); this.jump((this.pc & 0xf0000000) | ((word & 0x03ffffff) << 2)); break;
       case 0x04: if (this.regs[rs] === this.regs[rt]) this.jump(branch()); break;
