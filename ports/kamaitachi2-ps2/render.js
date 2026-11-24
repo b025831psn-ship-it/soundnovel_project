@@ -20,11 +20,11 @@ export class Screen {
     return Array.from(str).reduce((w, ch) => w + ((this.data.font[ch]?.[2] ?? 16) + 1) * scale, 0);
   }
 
-  text(str, x, y, { scale = 1, max = Infinity, leading = 40, readings } = {}) {
+  text(str, x, y, { scale = 1, max = Infinity, leading = 40, spacing = 1, readings } = {}) {
     let px = x, py = y, offset = 0;
     for (const ch of str) {
       const glyph = this.data.font[ch];
-      const advance = ((glyph?.[2] ?? 16) + 1) * scale;
+      const advance = ((glyph?.[2] ?? 16) + spacing) * scale;
       if (ch === '\n' || px + advance > x + max) { px = x; py += leading; }
       const reading = readings?.get(offset);
       offset += ch.length;
@@ -227,8 +227,8 @@ export class Screen {
     this.text(this.data.prompts[role] + name + '。', left, 144, {scale:.96});
     this.text(this.data.prompts[2], 176, 199, {scale:.96});
     this.rect(235, 252, 138, 72);
-    this.sprite('sys_fc01', 134, 72, 48, 24, 274, 259, 59, 25);
-    this.sprite('sys_fc01', 191, 72, 60, 24, 273, 290, 74, 27);
+    this.text('はい', 272, 254, {spacing:0});
+    this.text('いいえ', 272, 286, {spacing:0});
     this.sprite('sys_fc01', 0, 73, 15, 22, 248, 265 + 32 * selection, 15, 14);
     this.footer(false);
   }
