@@ -136,7 +136,8 @@ export function normalizeStory(raw) {
       };
     } else {
       const pages = firstDefined(n, ['pages']);
-      if (!Array.isArray(pages) || !pages.length) {
+      // An empty `pages` list is allowed: such a node only applies `set` and moves on (flag checks).
+      if (!Array.isArray(pages)) {
         throw new StoryFormatError(`${id}: options나 pages가 필요합니다.`);
       }
       nodes[id] = {

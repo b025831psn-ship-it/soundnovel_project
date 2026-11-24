@@ -106,7 +106,19 @@ export function createPlayer(root, story, { storage = safeStorage(), startMenu =
   }
 
   function initial() {
-    return { node: story.entry, page: 0, line: 0, done: false, trail: [], flags: { ...story.nodes[story.entry].set, ...loadGlobal() } };
+    return settle({ node: story.entry, page: 0, line: 0, done: false, trail: [], flags: { ...story.nodes[story.entry].set, ...loadGlobal() } });
+  }
+
+  // Nodes without sentences only set flags and branch: pass through them right away.
+  function settle(st) {
+    for (let guard = 0; guard < 1000; guard++) {
+      const node = story.nodes[st.node];
+      if (node.kind !== 'text' || node.pages.length || st.done) return st;
+      const to = resolve(node.next, st.flags);
+      if (!to) return { ...st, done: true };
+      st = { ...st, node: to, trail: [...st.trail, { node: st.node }], flags: { ...st.flags, ...story.nodes[to].set } };
+    }
+    return { ...st, done: true };
   }
 
   // First rule whose `if` matches every listed flag; its `to` (null means the data ends here).
@@ -194,7 +206,7 @@ export function createPlayer(root, story, { storage = safeStorage(), startMenu =
   function currentLine() {
     const node = story.nodes[state.node];
     if (node.kind === 'choice') return node.question.ko;
-    return node.pages[state.page][state.line].ko;
+    return node.pages[state.page]?.[state.line]?.ko ?? "";
   }
 
   function saveSlot(i) {
@@ -256,9 +268,9 @@ export function createPlayer(root, story, { storage = safeStorage(), startMenu =
 
   // Arriving at a node applies its `set`.
   function goTo(nodeId, step, flags = state.flags) {
-    setState({
+    setState(settle({
       node: nodeId, page: 0, line: 0, done: false, trail: [...state.trail, step], flags: { ...flags, ...story.nodes[nodeId].set },
-    });
+    }));
   }
 
   // Picking applies the option's `set`, then its `next` rules decide where to go.
@@ -384,7 +396,7 @@ export function createPlayer(root, story, { storage = safeStorage(), startMenu =
 
     if (state.done) {
       if (node.kind === 'choice') text.replaceChildren();
-      else text.replaceChildren(...lines(node.pages[state.page].slice(0, state.line + 1)));
+      else text.replaceChildren(...lines((node.pages[state.page] || []).slice(0, state.line + 1)));
       endMsg.textContent = node.ending !== undefined ? `엔딩 ${node.ending}` : '이 테스트 구간은 여기까지입니다.';
       if (focus) resetBtn.focus({ preventScroll: true });
       return;
