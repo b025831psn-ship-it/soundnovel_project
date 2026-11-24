@@ -51,6 +51,22 @@ try {
   await page.waitForFunction(() => document.querySelector('video').currentTime > .25);
   assert.equal(await page.locator('video').evaluate(v=>v.videoWidth), 640);
   await at('copyright'); await check('copyright');
+  const copyrightMatches = await canvas.evaluate(async screen => {
+    const image = new Image();
+    image.src = 'assets/copyrigh.png';
+    await image.decode();
+    await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    if (screen.width !== image.width || screen.height !== image.height) return false;
+    const reference = document.createElement('canvas');
+    reference.width = image.width;
+    reference.height = image.height;
+    const context = reference.getContext('2d');
+    context.drawImage(image, 0, 0);
+    const expected = context.getImageData(0, 0, image.width, image.height).data;
+    const actual = screen.getContext('2d').getImageData(0, 0, screen.width, screen.height).data;
+    return actual.every((channel, i) => channel === expected[i]);
+  });
+  assert.ok(copyrightMatches, 'copyright canvas matches the extracted image');
   await at('opening');
   await page.waitForFunction(() => document.querySelector('video').currentTime > .25);
   // Let the video emit its real ended event, including on local servers that
