@@ -84,17 +84,18 @@ def scenario_strings(data):
             block = data[current.end():following.start()]
             card = re.fullmatch(
                 rb"\x73\x08my0002i\x00\x74\x0bmy0002i_00\x00\x50(.{4})"
-                rb"\x4c(.{4})\x5a(.{4})\x66(.{4})\x02([^\x00-\x1f]+)\x03\x04"
+                rb"\x4c(.{2})\x40(.)\x5a(.{4})\x66(.{4})\x02([^\x00-\x1f]+)\x03\x04"
                 rb"\x66(.{4})\x02([^\x00-\x1f]+)\x03\x32\x74\x0bmy0002i_10\x00"
                 rb"\x15\x50(.{4})\x5c(.{4})\x15\x0c", block, re.DOTALL)
             if card is None:
                 raise ValueError("Unexpected date card in my02_0010")
             lines = []
-            for position, text in ((card[4], card[5]), (card[6], card[7])):
+            for position, text in ((card[5], card[6]), (card[7], card[8])):
                 x, y = struct.unpack(">hh", position)
                 lines.append({"x": x, "y": y, "text": text.decode("cp932")})
             story[name] = {"lines": lines, "waitBefore": int.from_bytes(card[1], "big"),
-                           "waitAfter": int.from_bytes(card[8], "big")}
+                           "waitAfter": int.from_bytes(card[9], "big"),
+                           "fontArgs": list(card[2]), "speed": card[3][0]}
         if name == "mo02_0012":
             block = data[current.end():following.start()]
             runs = []
