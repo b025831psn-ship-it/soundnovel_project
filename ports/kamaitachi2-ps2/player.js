@@ -15,7 +15,7 @@ let saved = readSave();
 let data, screen, groups, editor, pages;
 let scene = 'loading', index = 0, role = 0, page = 0, revealed = 0;
 let names = [], autosave = false, slot = 0, entered = 0, lastFrame, userNotice = '';
-let idleMovie = 'pre_dv';
+let idleMovie = 'opening';
 let textWaits = [];
 let textSpeeds = [];
 let textColors;
@@ -93,8 +93,9 @@ function intro() {
 function opening(attract = false) {
   music.pause();
   enter(attract ? 'attract' : 'opening');
-  playMovie(attract ? idleMovie : 'opening', () => title(true));
-  if (attract) idleMovie = idleMovie === 'pre_dv' ? 'opening' : 'pre_dv';
+  const file = attract ? idleMovie : 'opening';
+  playMovie(file, () => title(true));
+  idleMovie = file === 'pre_dv' ? 'opening' : 'pre_dv';
 }
 
 function title(animate) {
