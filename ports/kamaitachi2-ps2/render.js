@@ -228,7 +228,7 @@ export class Screen {
     this.footer(false);
   }
 
-  editor(editor, role, time) {
+  editor(editor, role) {
     const glyph = (ch, x, y, dim = false) => {
       this.text(ch, x, y, dim ? editorDimInk : editorInk);
     };
@@ -238,7 +238,10 @@ export class Screen {
     const insertionColumn = Math.min(5, editor.value.length);
     glyph('＿', 352 + 32 * insertionColumn, 33);
     for (let i = 0; i < 6; i++) {
-      glyph(editor.value[i] ?? '＊', 352 + 32 * i, 31, i >= editor.value.length);
+      const ch = editor.value[i] ?? '＊';
+      const width = this.data.font[ch]?.[2] ?? 16;
+      const inset = Math.max(0, Math.floor((32 - width) / 2));
+      glyph(ch, 352 + 32 * i + inset, 31, i >= editor.value.length);
     }
     this.rect(136, 74, 368, 32);
     this.sprite('name_e01', 0, 234, 31, 21, 80, 80);

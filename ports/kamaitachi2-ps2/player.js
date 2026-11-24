@@ -600,7 +600,7 @@ function frame(now) {
     if (pages[page].autoAdvance && !textWaits.length && revealed >= storyText().length) { page++; printPage(); }
   } else if (scene === 'name' || scene === 'confirm') {
     screen.background('my0645', true, time);
-    if (scene === 'name') screen.editor(editor, role, time);
+    if (scene === 'name') screen.editor(editor, role);
     else screen.confirm(editor.value, role, index);
   }
   if (userNotice) {
