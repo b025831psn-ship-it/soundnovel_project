@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="color-scheme" content="dark">
+<title>카마이타치의 밤 SFC 플레이어</title>
+<link rel="stylesheet" href="/sfc-player/player.css">
+</head>
+<body>
+<main>
+  <header>
+    <div><p class="eyebrow">SUPER FAMICOM · 원본 실행</p><h1>카마이타치의 밤</h1></div>
+    <label class="open">ROM 열기<input id="rom" type="file" accept=".sfc,.smc,application/octet-stream"></label>
+  </header>
+  <section id="stage" aria-label="게임 화면"><p id="empty">검증된 원본 SFC ROM을 선택하세요.</p></section>
+  <p id="status" role="status">ROM은 브라우저 안에서만 읽으며 서버로 전송하지 않습니다.</p>
+  <details>
+    <summary>조작 방법</summary>
+    <p>방향키: 이동 · X: B · S: A · Z: Y · A: X · Enter: Start · 오른쪽 Shift: Select</p>
+  </details>
+</main>
+<script type="module" src="/sfc-player/main.js"></script>
+</body>
+</html>

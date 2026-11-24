@@ -14,13 +14,26 @@ const routes = new Map([
   }),
   ['/kamaitachi-gba-kor/data/first-choice.ko.json', [path.join(__dirname, 'kamaitachi-gba-kor/data/first-choice.ko.json'), 'application/json; charset=utf-8']],
   ['/style.css', [path.join(__dirname, 'style.css'), 'text/css; charset=utf-8']],
+  ['/sfc-player/', [path.join(__dirname, 'sfc-player', 'index.html'), 'text/html; charset=utf-8']],
+  ['/sfc-player/main.js', [path.join(__dirname, 'sfc-player', 'main.js'), 'text/javascript; charset=utf-8']],
+  ['/sfc-player/player.css', [path.join(__dirname, 'sfc-player', 'player.css'), 'text/css; charset=utf-8']],
   ['/games.js', [path.join(__dirname, 'games.js'), 'text/javascript; charset=utf-8']],
   ['/AGB-AHZJ.gba', [path.join(__dirname, '..', 'AGB-AHZJ.gba'), 'application/octet-stream']],
   ['/AGB-AKZJ.gba', [path.join(__dirname, '..', 'AGB-AKZJ.gba'), 'application/octet-stream']]
 ]);
 
 http.createServer((request, response) => {
-  const route = routes.get(request.url.split('?')[0]);
+  const pathname = request.url.split('?')[0];
+  let route = routes.get(pathname);
+  if (!route && pathname.startsWith('/vendor/snes9x/')) {
+    const relative = pathname.slice('/vendor/snes9x/'.length);
+    const root = path.join(__dirname, 'node_modules', '@wasm-gaming', 'snes9x-wasm', 'dist', 'snes9x');
+    const file = path.resolve(root, relative);
+    if (file.startsWith(root + path.sep)) {
+      const types = { '.js': 'text/javascript', '.wasm': 'application/wasm', '.css': 'text/css', '.png': 'image/png' };
+      route = [file, types[path.extname(file)] || 'application/octet-stream'];
+    }
+  }
   if (!route || !['HEAD', 'GET'].includes(request.method)) {
     response.writeHead(404).end();
     return;

@@ -83,6 +83,10 @@ test('answers the uploaded sound driver identity handshake', () => {
   for (const [port, value] of [0x43, 0x68, 0x75, 0x6e].entries())
     bus.write8(0x2140 + port, value);
   assert.deepEqual([...bus.apuPorts], [0x53, 0x4f, 0x46, 0x54]);
+  bus.write8(0x2141, 0xaa);
+  assert.equal(bus.read8(0x2141), 0x4f, 'CPU input does not overwrite the SPC output latch');
+  bus.write8(0x2140, 0);
+  assert.deepEqual([...bus.apuPorts], [0, 0, 0, 0]);
 });
 
 test('enters the native NMI vector with a restorable interrupt frame', () => {

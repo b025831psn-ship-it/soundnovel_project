@@ -55,6 +55,22 @@ auto-joypad `$4218/$4219`는 하드웨어 순서인
 `$1000`, A는 `$0080`이다. runner는 frame별 controller mask를 공급해 첫 입력
 소비 위치를 찾을 수 있다.
 
+## 기준 코어 웹 관통
+
+분석 VM의 cycle 정확도가 완성되기 전에도 원본 UI를 검증할 수 있도록 Snes9x
+WASM 기준 코어를 `/sfc-player/`에 연결했다. 브라우저에서 위 기준 SHA-256을
+확인한 ROM만 받아 원본 65c816/PPU/SPC700을 실행하며, ROM이나 추출 이미지를
+배포하지 않는다. 실제 브라우저 검증에서 CHUN SOFT logo, SFC title, 음향 설정,
+기본 이름 확인 메뉴를 지나 주인공 이름 문자판까지 진입했다. 여자친구 이름은
+같은 원본 이름 설정 흐름의 다음 단계다.
+
+기준 코어 WRAM과 VM snapshot을 비교하면 `$0408`의 SPC stream callback 설치는
+양쪽 모두 같은 초기 frame에 관측된다. 최초 차이는 CPU→APU와 APU→CPU port
+latch를 한 배열로 취급하던 모델과, IPL 동안 실제 frame/NMI가 흐르지 않던 runner
+시간축이었다. 두 port 방향을 분리하고 runner를 instruction-time frame으로
+변경했다. 다만 instruction 수는 실제 65c816 cycle과 같지 않으므로 `$02:DF63`
+critical-section NMI의 정확한 phase는 계속 reference trace와 대조한다.
+
 ## 관통 조건
 
 - reference emulator와 JS VM의 instruction trace(PC/opcode/P/E/M/X/A/X/Y/S/D/DBR)

@@ -1,0 +1,11 @@
+{
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test:sfc": "node --test sfc-vm/tests/*.test.mjs",
+    "serve": "node serve.cjs"
+  },
+  "dependencies": {
+    "@wasm-gaming/snes9x-wasm": "0.3.1"
+  }
+}

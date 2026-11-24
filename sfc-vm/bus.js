@@ -10,6 +10,8 @@ export class SfcBus {
     // Minimal SPC700 IPL port state. The IPL announces $BBAA and acknowledges
     // each CPU token on port 0; the full SPC700 core will replace this shim.
     this.apuPorts = Uint8Array.from([0xaa, 0xbb, 0x00, 0x00]);
+    this.apuInputPorts = new Uint8Array(4);
+    this.apuPhase = 'ipl';
     this.vram = new Uint8Array(64 * 1024);
     this.cgram = new Uint8Array(512);
     this.oam = new Uint8Array(544);
@@ -19,6 +21,7 @@ export class SfcBus {
     this.events = [];
     this.eventLimit = eventLimit;
     this.dmaStats = {};
+    this.readStats = {};
   }
 
   recordEvent(event) {
@@ -44,7 +47,21 @@ export class SfcBus {
     if ((bank & 0x40) === 0 && word < 0x2000) return this.wram[word];
     if ((bank & 0x40) === 0 && word >= 0x2140 && word <= 0x2143)
       return this.apuPorts[word - 0x2140];
-    if ((bank & 0x40) === 0 && word >= 0x2000 && word < 0x8000) return this.io[word - 0x2000];
+    if ((bank & 0x40) === 0 && word >= 0x2000 && word < 0x8000) {
+      const value = this.io[word - 0x2000];
+      if (word === 0x4212 || (word >= 0x4218 && word <= 0x421b)) {
+        const stat = this.readStats[`0x${word.toString(16)}`] ??= {
+          reads: 0, nonzeroReads: 0, last: 0, lastNonzero: 0,
+        };
+        stat.reads++;
+        stat.last = value;
+        if (value) {
+          stat.nonzeroReads++;
+          stat.lastNonzero = value;
+        }
+      }
+      return value;
+    }
     const offset = loRomOffset(address, this.rom.length);
     return offset === null ? 0xff : this.rom[offset];
   }
@@ -63,13 +80,21 @@ export class SfcBus {
       this.sram[word & (this.sram.length - 1)] = value;
     else if ((bank & 0x40) === 0 && word < 0x2000) this.wram[word] = value;
     else if ((bank & 0x40) === 0 && word >= 0x2140 && word <= 0x2143) {
-      this.apuPorts[word - 0x2140] = value;
+      const port = word - 0x2140;
+      this.apuInputPorts[port] = value;
       this.recordEvent({ kind: 'apu-write', address: word, value });
+      // CPU->APU input and APU->CPU output ports are distinct latches. During
+      // IPL upload the SPC echoes the transfer token on port 0. The uploaded
+      // driver later acknowledges only commit/toggle writes on that port.
+      if (port === 0) this.apuPorts[0] = value;
       // The uploaded winter/Chunsoft driver replaces the IPL handshake with
       // a four-byte identity exchange: CPU "Chun", SPC700 "SOFT".
-      if (word === 0x2143 && this.apuPorts.every((byte, index) =>
-        byte === [0x43, 0x68, 0x75, 0x6e][index]))
+      if (this.apuPhase === 'ipl' && word === 0x2143 && this.apuInputPorts.every((byte, index) =>
+        byte === [0x43, 0x68, 0x75, 0x6e][index])) {
         this.apuPorts.set([0x53, 0x4f, 0x46, 0x54]);
+        this.apuPhase = 'driver';
+      } else if (this.apuPhase === 'driver' && port === 0 && value === 0)
+        this.apuPorts.fill(0);
     }
     else if ((bank & 0x40) === 0 && word >= 0x2000 && word < 0x8000) {
       this.io[word - 0x2000] = value;
