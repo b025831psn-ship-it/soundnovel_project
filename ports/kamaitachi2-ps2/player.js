@@ -536,7 +536,12 @@ function drawStory(time) {
     const start = block.firstRuby ? storyText().indexOf(ruby.word) : storyText().lastIndexOf(ruby.word);
     if (start >= 0) ruby.readings.forEach((reading, i) => readings.set(start + i, reading));
   }
+  screen.c.save();
+  if (!block.movie && !block.retainMovie && ['my0007', 'my0645'].includes(background)) {
+    screen.c.filter = 'brightness(86%)';
+  }
   const end = screen.text(text, x, y, {scale:.91, max:Math.min(580, 640 - x), readings, colors:textColors});
+  screen.c.restore();
   if (revealed >= storyText().length) {
     const tick = Math.floor(time * 6);
     if (block.book) {
