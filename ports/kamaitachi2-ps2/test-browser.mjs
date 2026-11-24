@@ -158,8 +158,16 @@ try {
   assert.equal(await canvas.getAttribute('data-scene'), 'story');
   await page.waitForTimeout(3000);
   await key('Enter');
-  await at('complete');
   assert.match(await label(), /真理？ひさしぶりだね……」$/);
+  await at('complete');
+  assert.equal(await label(), '八月十五日正午');
+  await page.waitForFunction(() => {
+    const ctx = document.querySelector('canvas').getContext('2d');
+    return [[220,150],[270,230]].every(([x,y]) => {
+      const pixels = ctx.getImageData(x,y,60,44).data;
+      return pixels.some((value,i) => i % 4 === 0 && value > 200);
+    });
+  });
   const saved = await page.evaluate(()=>JSON.parse(localStorage.getItem('soundnovel.slps25132.opening.v1')));
   assert.deepEqual(saved,{names:['透ああああぁ','真理'],slot:1});
   await page.reload(); await page.getByRole('button',{name:'게임 시작'}).click();

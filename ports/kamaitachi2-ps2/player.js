@@ -208,7 +208,10 @@ function makePages(s) {
     { background:'my0002', append:true, text:phoneCall },
     { background:'my0002', append:true, text:beforeGreeting },
     { background:'my0002', append:true, text:greeting, waits:greetingWaits },
-    { background:'my0002', append:true, end:true, text: () => greeting() + s.phoneGreeting.at(-1).text },
+    { background:'my0002', append:true, autoAdvance:true, text: () => greeting() + s.phoneGreeting.at(-1).text },
+    { background:'my0000', positioned:s.my02_0010.lines, end:true,
+      waits: () => [{offset:0, remaining:s.my02_0010.waitBefore * 1000 / 59.94}],
+      text: () => s.my02_0010.lines.map(run => run.text).join('') },
   ];
 }
 
@@ -304,6 +307,7 @@ function drawStory(time) {
   const block = pages[page], text = storyText().slice(0, Math.floor(revealed));
   const background = block.background ?? (block.center ? 'my0007' : 'my0645');
   if (block.positioned) {
+    if (block.background) screen.background(block.background, false, time);
     let remaining = text.length;
     for (const run of block.positioned) {
       if (remaining <= 0) break;
@@ -367,6 +371,7 @@ function frame(now) {
       if (wait.remaining <= 0) textWaits.shift();
     } else revealed = Math.min(wait?.offset ?? storyText().length, revealed + dt / 35);
     drawStory(time);
+    if (pages[page].autoAdvance && revealed >= storyText().length) { page++; printPage(); }
   } else if (scene === 'name' || scene === 'confirm') {
     screen.background('my0645', true, time);
     if (scene === 'name') screen.editor(editor, role, time);
