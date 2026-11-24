@@ -1,1 +1,59 @@
-<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>AKZJ JS port</title><style>html,body{height:100%;margin:0;background:#111;display:grid;place-items:center}canvas{width:min(100vw,720px);height:auto;image-rendering:pixelated;touch-action:none}</style><canvas id="screen" aria-label="240 by 160 game screen"></canvas><script type="module" src="main.js"></script>
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>카마이타치의 밤 어드밴스</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+KR:wght@400;500;600&display=swap">
+<link rel="stylesheet" href="shell.css">
+</head>
+<body>
+<main class="shell">
+  <!-- The cartridge's 240x160 screen, scaled by whole numbers. Nothing is drawn over it. -->
+  <div class="stage" id="stage">
+    <canvas id="screen" aria-label="게임 화면 240×160"></canvas>
+    <p class="loading" id="loading" role="status">불러오는 중…</p>
+  </div>
+
+  <!-- Touch buttons for phones and tablets; keyboard players never see them. -->
+  <div class="pad" id="pad" aria-label="게임 버튼">
+    <div class="dpad">
+      <button type="button" data-key="UP" aria-label="위"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 15l6-6 6 6"/></svg></button>
+      <button type="button" data-key="LEFT" aria-label="왼쪽"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 6l-6 6 6 6"/></svg></button>
+      <button type="button" data-key="RIGHT" aria-label="오른쪽"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg></button>
+      <button type="button" data-key="DOWN" aria-label="아래"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg></button>
+    </div>
+    <div class="system">
+      <button type="button" data-key="START" class="pill">START</button>
+    </div>
+    <div class="face">
+      <button type="button" data-key="B" class="round">B</button>
+      <button type="button" data-key="A" class="round primary">A</button>
+    </div>
+  </div>
+
+  <footer class="bar">
+    <p class="keys" id="keys">
+      <span><kbd>Z</kbd> 결정</span>
+      <span><kbd>X</kbd> 취소</span>
+      <span><kbd>↑</kbd><kbd>↓</kbd> 선택</span>
+      <span><kbd>Enter</kbd> START</span>
+    </p>
+    <div class="controls">
+      <button type="button" class="icon" id="mute" aria-pressed="false" aria-label="소리 끄기">
+        <svg viewBox="0 0 24 24" aria-hidden="true" class="on"><path d="M4 9v6h4l5 4V5L8 9z"/><path d="M16.5 8.5a5 5 0 0 1 0 7M19 6a8.5 8.5 0 0 1 0 12"/></svg>
+        <svg viewBox="0 0 24 24" aria-hidden="true" class="off"><path d="M4 9v6h4l5 4V5L8 9z"/><path d="M17 9l5 6M22 9l-5 6"/></svg>
+      </button>
+      <label class="volume"><span class="sr">음량</span><input id="volume" type="range" min="0" max="100" value="80"></label>
+      <button type="button" class="icon" id="fullscreen" aria-label="전체 화면">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg>
+      </button>
+    </div>
+  </footer>
+</main>
+<script type="module" src="shell.js"></script>
+<script type="module" src="main.js"></script>
+</body>
+</html>

@@ -26,10 +26,10 @@ const routes = new Map([
 
 // The native-bytecode port (ports/kamaitachi-gba) and its extracted cartridge data (port-data).
 const portTypes = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8',
-  '.json': 'application/json; charset=utf-8', '.bin': 'application/octet-stream' };
+  '.css': 'text/css; charset=utf-8', '.json': 'application/json; charset=utf-8', '.bin': 'application/octet-stream' };
 function portRoute(url) {
   for (const [prefix, dir, exts] of [
-    ['/ports/kamaitachi-gba/', path.join(__dirname, 'ports', 'kamaitachi-gba'), ['.html', '.js']],
+    ['/ports/kamaitachi-gba/', path.join(__dirname, 'ports', 'kamaitachi-gba'), ['.html', '.js', '.css']],
     ['/kamaitachi-gba-kor/port-data/', path.join(__dirname, 'kamaitachi-gba-kor', 'port-data'), ['.json', '.bin']],
   ]) {
     if (!url.startsWith(prefix)) continue;

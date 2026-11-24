@@ -1,33 +1,70 @@
 <!doctype html>
 <html lang="ko">
+<head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<title>사운드노벨 · GBA 작품 선택</title>
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>사운드노벨</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+KR:wght@400;500;600&family=Noto+Serif+KR:wght@500;600&family=Noto+Serif+JP:wght@500&display=swap">
 <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<header class="top">
+  <a class="brand" href="/">사운드노벨</a>
+  <span class="platform">GAME BOY ADVANCE</span>
+</header>
+
 <main class="hub">
-<header><h1>사운드노벨</h1><span>GAME BOY ADVANCE</span></header>
-<div class="workspace"><nav aria-label="작품 선택">
-<article>
-  <a class="logo" href="#kamaitachi" aria-label="카마이타치의 밤 어드밴스 실행"><img src="/art/kamaitachi.png?logo" alt="かまいたちの夜 ADVANCE"></a>
-  <div><h2>카마이타치의 밤 어드밴스 <small>(2002)</small></h2>
-  <div class="meta"><span>GBA · 일본어 원작 (한글화 예정)</span>
-  <a target="_blank" rel="noopener" href="https://www.spike-chunsoft.co.jp/pages/games/kamagba/">소개</a>
-  <a target="_blank" rel="noopener" href="https://78514.com/games/kama/kama_endlist.html">공략</a></div></div>
-</article>
-<article>
-  <a class="logo" href="#higanbana" aria-label="피안화 실행"><img src="/art/higanbana.png?logo" alt="彼岸花"></a>
-  <div><h2>피안화 <small>(2002)</small></h2>
-  <div class="meta"><span>GBA · 한글 패치 미적용</span>
-  <a target="_blank" rel="noopener" href="https://geo-online.co.jp/store_info/item/5032708/">소개</a>
-  <a target="_blank" rel="noopener" href="https://www.chinaavg.com/forum.php?mod=viewthread&amp;tid=8789">공략</a></div></div>
-</article>
-</nav>
-<section class="player" aria-label="게임 실행기">
-  <p id="prompt">목록에서 작품 로고를 선택해 주세요.</p>
-  <iframe hidden title="GBA 실행기" allow="autoplay; fullscreen; gamepad" allowfullscreen></iframe>
-</section></div>
+  <nav class="library" aria-label="작품 선택">
+    <h2 class="label">작품</h2>
+    <article class="work">
+      <a class="pick" href="#kamaitachi" aria-label="카마이타치의 밤 어드밴스 실행">
+        <span class="cover">
+          <img src="/art/kamaitachi.png?logo" alt="" onerror="this.remove()">
+          <span class="cover-text" lang="ja">かまいたちの夜<small>ADVANCE</small></span>
+        </span>
+        <span class="info">
+          <span class="title">카마이타치의 밤 어드밴스</span>
+          <span class="sub">2002 · 춘소프트</span>
+          <span class="status ready">원작 엔진 이식 · 일본어</span>
+        </span>
+      </a>
+      <p class="links">
+        <a target="_blank" rel="noopener" href="https://www.spike-chunsoft.co.jp/pages/games/kamagba/">소개</a>
+        <a target="_blank" rel="noopener" href="https://78514.com/games/kama/kama_endlist.html">공략</a>
+      </p>
+    </article>
+    <article class="work">
+      <a class="pick" href="#higanbana" aria-label="피안화 실행">
+        <span class="cover">
+          <img src="/art/higanbana.png?logo" alt="" onerror="this.remove()">
+          <span class="cover-text" lang="ja">彼岸花</span>
+        </span>
+        <span class="info">
+          <span class="title">피안화</span>
+          <span class="sub">2002</span>
+          <span class="status">준비 중</span>
+        </span>
+      </a>
+      <p class="links">
+        <a target="_blank" rel="noopener" href="https://geo-online.co.jp/store_info/item/5032708/">소개</a>
+        <a target="_blank" rel="noopener" href="https://www.chinaavg.com/forum.php?mod=viewthread&amp;tid=8789">공략</a>
+      </p>
+    </article>
+  </nav>
+
+  <section class="player" aria-label="게임 실행기">
+    <div class="empty" id="prompt">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="6" width="18" height="12" rx="2"/><path d="M7 12h3M8.5 10.5v3M15 11h.01M17 13h.01"/></svg>
+      <p>왼쪽 목록에서 작품을 고르면<br>이 자리에서 바로 시작합니다.</p>
+    </div>
+    <iframe hidden title="게임 실행기" allow="autoplay; fullscreen; gamepad" allowfullscreen></iframe>
+  </section>
+</main>
+
 <script>
-  const links = Array.from(document.querySelectorAll('.logo'));
+  const links = Array.from(document.querySelectorAll('.pick'));
   const frame = document.querySelector('iframe');
   function showSelection() {
     const selected = links.find(link => link.hash === location.hash);
@@ -37,11 +74,14 @@
     }
     document.querySelector('#prompt').hidden = Boolean(selected);
     frame.hidden = !selected;
+    document.body.classList.toggle('playing', Boolean(selected));
     if (selected) {
       frame.title = selected.getAttribute('aria-label');
-      frame.src = selected.hash === '#kamaitachi'
+      const src = selected.hash === '#kamaitachi'
         ? '/ports/kamaitachi-gba/index.html'
         : '/play/' + selected.hash.slice(1) + '/';
+      if (frame.getAttribute('src') !== src) frame.src = src;
+      frame.focus();
     } else {
       frame.removeAttribute('src');
     }
@@ -49,5 +89,5 @@
   window.addEventListener('hashchange', showSelection);
   showSelection();
 </script>
-</main>
+</body>
 </html>

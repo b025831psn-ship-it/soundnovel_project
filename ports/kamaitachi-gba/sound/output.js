@@ -9,7 +9,9 @@ export async function createSound(dataDir) {
   const ctx = new AudioContext();
   await ctx.audioWorklet.addModule(new URL('./worklet.js', import.meta.url));
   const node = new AudioWorkletNode(ctx, 'm4a-player', { outputChannelCount: [2] });
-  node.connect(ctx.destination);
+  // Player volume outside the game (the cartridge's own mixing is untouched inside the worklet).
+  const gain = new GainNode(ctx, { gain: 1 });
+  node.connect(gain).connect(ctx.destination);
   node.port.postMessage({ type: 'init', config, bytes }, [bytes]);
   // Stopped bits reported by the worklet; a report older than the last start/stop sent is ignored.
   let stopped = ~0, seq = 0;
@@ -19,6 +21,7 @@ export async function createSound(dataDir) {
     node,
     songCount: config.songCount,
     resume: () => ctx.resume(),
+    setVolume: (value) => gain.gain.setTargetAtTime(value, ctx.currentTime, 0.02),
     startSong: (song) => node.port.postMessage({ type: 'start', song }),
     stopSong: (song) => node.port.postMessage({ type: 'stop', song }),
     stopAll: () => node.port.postMessage({ type: 'stopAll' }),
