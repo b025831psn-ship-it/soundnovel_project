@@ -93,6 +93,30 @@ def answer_header(block):
     return lines, pos
 
 
+def song_page(block):
+    header = re.match(rb"\x73\x07my0023\x00\x74\x0amy0023_00\x00\x50(.{4})"
+                      rb"\x73\x08my0023a\x00\x74\x0bmy0023a_00\x00\x4c(.{2})\x5a(.{4})\x40\x00", block, re.S)
+    if not header:
+        raise ValueError("Unexpected song page introduction")
+    pos = header.end()
+    placements = []
+    glyph = re.compile(rb"\x66(.{4})(?:\x06\x02([^\x03]+)\x03\x07)?\x02([^\x03]+)\x03\x04", re.S)
+    while match := glyph.match(block, pos):
+        x, y = struct.unpack(">hh", match[1])
+        placement = {"x": x, "y": y, "text": match[3].decode("cp932")}
+        if match[2]:
+            placement["reading"] = match[2].decode("cp932")
+        placements.append(placement)
+        pos = match.end()
+    footer = re.fullmatch(rb"\x40\x01\x50(.{4})\x32\x15\x1e\x66(.{4})\x0b\x5c(.{4})\x15", block[pos:], re.S)
+    if not placements or not footer:
+        raise ValueError("Unexpected song page layout or closing commands")
+    return {"placements": placements, "introWait": int.from_bytes(header[1], "big"),
+            "fontArgs": list(header[2]), "command5a": int.from_bytes(header[3], "big"),
+            "hold": int.from_bytes(footer[1], "big"), "endPosition": list(struct.unpack(">hh", footer[2])),
+            "command5c": int.from_bytes(footer[3], "big")}
+
+
 def scenario_strings(data):
     labels = list(re.finditer(rb"\x85(?:\x0b\x0c(my0[123]_[0-9]{4})|\x0b\x0a(mo0[12]_[0-9]{4})|\x0c\x0d(myb02_[0-9]{4}))\x00\x22", data))
     story = {}
@@ -207,6 +231,8 @@ def scenario_strings(data):
             story[name] = {"introWaits": [int.from_bytes(v, "big") for v in intro.groups()] if intro else [], "events": events}
             if ruby:
                 story[name]["ruby"] = ruby
+        if name == "my03_0040":
+            story[name] = song_page(data[current.end():following.start()])
         if name == "my02_0330":
             prompt = re.match(rb"\x02([^\x03]+)\x03\x04\x09\x70", data[current.end():following.start()])
             if not prompt:
@@ -278,7 +304,7 @@ def scenario_strings(data):
             expected = 0x12 if name.endswith("0047") else 0x13
             if data[following.start() - 1] != expected:
                 raise ValueError(f"Unexpected name command in {name}")
-    if len(story) != 69:
+    if len(story) != 70:
         raise ValueError("Opening labels could not be resolved")
     return story
 
