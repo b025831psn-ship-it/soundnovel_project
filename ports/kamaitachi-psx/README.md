@@ -64,3 +64,6 @@ a PS-X EXE. It emits addresses only and never copies executable payloads.
 
 `tools/pac_index.py FILE.PAC --records ID` additionally inventories a member's
 nested little-endian `u16` record table. Output contains offsets and sizes only.
+
+Static control-flow findings and their current confidence boundary are tracked
+in `ANALYSIS.md`.
