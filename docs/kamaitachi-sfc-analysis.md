@@ -106,6 +106,14 @@ runtime streamer의 실제 store opcode 위치도 다시 고정했다. `$00:E746
 `$00:E755`, `$00:E764`가 APUIO1/2/3에 세 byte를 쓰고 `$00:E778`이 APUIO0에 commit/toggle을
 쓴다.
 
+SPC700 측은 IPL descriptor로 ARAM을 재구성해 `$0B97` main loop, `$0BA7`의
+25-entry CPU-command table, `$0BD9` dispatcher를 원본 opcode로 검증했다.
+`$11C6..$12D6` receiver는 APUIO mirror `$F4..$F7`과 handshake `$9B`를 사용하며,
+transfer state `$97`에 따라 `$00/$01/$02/$03/$04/$80` 여섯 경로로 나뉜다.
+destination `$8C/$8D`와 remaining length `$8E/$8F`를 갱신하는 경로 및 `$12EC`
+acknowledge까지 비공개 `data/spc-driver-map.json`에 고정했다. CPU queue의 29개
+message와 SPC command 25개는 서로 다른 dispatch 계층이다.
+
 ## 기준 코어 probe 대조
 
 native Snes9x probe에서 CHUN SOFT logo, SFC title, 음향 설정, 기본 이름 확인
