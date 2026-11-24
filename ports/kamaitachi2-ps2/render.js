@@ -208,14 +208,17 @@ export class Screen {
     this.sprite('sys_save', 0, 104, 69, 25, 458, 222);
     for (let i = 0; i < 2; i++) {
       const x = 63 + 263 * i;
-      this.rect(x, 270, 248, 105, state === 'slot' && selection === i ? blue : '#142438');
+      const selected = state === 'slot' && selection === i;
+      this.rect(x, 270, 248, 105, selected ? blue : '#132238');
+      this.c.save();
+      this.c.filter = selected ? 'none' : 'brightness(50%)';
       this.sprite('sys_jo01', 0, 97, 96, 30, x, 255, 215, 30);
-      this.c.globalAlpha = state === 'slot' && selection === i ? 1 : .72;
+      this.c.filter = selected ? 'brightness(101.4%)' : 'brightness(50.2%)';
       this.sprite('sys_save', 72, 104, 203, 25, x + 5, 255);
       if (i) this.sprite('sys_save', 284, 104, 86, 25, x + 123, 255);
       this.sprite('sys_save', 0, 129, 41, 49, x + 16, 301);
       this.sprite('sys_save', 349, 74, 119, 24, x + 65, 309);
-      this.c.globalAlpha = 1;
+      this.c.restore();
     }
     this.footer(false);
   }
