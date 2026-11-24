@@ -44,7 +44,7 @@ async function waitForPrologueText() {
     return ink > 800;
   });
 }
-async function advanceTo(target, interval = 0) {
+async function advanceTo(target, interval = target === 'name' ? 80 : 0) {
   for (let i = 0; i < 30; i++) {
     if ((await canvas.getAttribute('data-scene')) === target) return;
     assert.equal(await canvas.getAttribute('data-scene'), 'story');
