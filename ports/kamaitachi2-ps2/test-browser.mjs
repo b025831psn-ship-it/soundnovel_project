@@ -201,16 +201,22 @@ try {
   assert.equal(description[0], 'ショートパンツにＴシャツ……。');
   assert.equal(description[3], 'ひさしぶりに会ったぼくは、その輝かしさに圧倒されていた。');
   const seen = new Set();
-  for (let i=0; i<100 && await canvas.getAttribute('data-scene') !== 'complete'; i++) {
+  for (let i=0; i<100 && await canvas.getAttribute('data-scene') !== 'choice'; i++) {
     seen.add(await label());
     await key('Enter');
     await page.waitForTimeout(75);
   }
-  await at('complete');
+  await at('choice');
   assert.ok(seen.has('「どうしたの、透ああああぁ」'));
   assert.ok([...seen].some(line => line.endsWith('やる気がしなかったのだ。')));
   assert.ok([...seen].some(line => line.endsWith('真理もそうだろ」')));
-  assert.match(await label(), /私はけっこう面白かったわ。すごく売れてるみたいよ」$/);
+  assert.ok([...seen].some(line => line.endsWith('すごく売れてるみたいよ」')));
+  assert.match(await label(), /今度貸してよ」$/);
+  await key('ArrowDown');
+  const reply = await label();
+  assert.match(reply, /なかなか面白かったよね」$/);
+  await key('Enter'); await at('complete');
+  assert.equal(await label(), reply);
   assert.ok([...requests].some(url => url.endsWith('/k2h003.ogg')));
   const saved = await page.evaluate(()=>JSON.parse(localStorage.getItem('soundnovel.slps25132.opening.v1')));
   assert.deepEqual(saved,{names:['透ああああぁ','真理'],slot:1});

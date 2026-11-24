@@ -32,7 +32,7 @@ function enter(next, selected = 0) {
 
 function announce() {
   const story = scene === 'story' || scene === 'complete';
-  const label = scene === 'choice' ? data.prologueChoice[index].text : story ? storyText() : editor && ['name','confirm'].includes(scene)
+  const label = scene === 'choice' ? pages[page].choice[index].text : story ? storyText() : editor && ['name','confirm'].includes(scene)
     ? (role === 0 ? '주인공 ' : '여자친구 ') + editor.value : scene;
   canvas.setAttribute('aria-label', label);
   status.textContent = userNotice || label;
@@ -217,6 +217,8 @@ function makePages(s) {
   const sceneryRuby = {word:middle[4].slice(0, 4), readings:middle.slice(0, 4)};
   const letter = s.my01_0077;
   const correspondence = () => letter[0] + names[1] + letter[1] + '\n' + letter[2];
+  const reaction = narrationPages(s.my02_0100, false);
+  reaction.at(-1).choice = data[s.my02_0100.choice];
   const outcome = target => data.prologueChoice.find(route => route.target === target).text;
   return [
     { center:true, book:true, text: () => start.join('') },
@@ -231,7 +233,7 @@ function makePages(s) {
     { name:1 },
     { checkpoint:true, text: partnerLine },
     { append:true, text: classmates },
-    { append:true, choice:true, text: () => classmates() + '\n' + last[4] + names[1] + last[5] + '\n' + last[6] },
+    { append:true, choice:data.prologueChoice, text: () => classmates() + '\n' + last[4] + names[1] + last[5] + '\n' + last[6] },
     { target:'my01_0073', book:true, text: () => outcome('my01_0073') },
     { text: () => s.mo01_0011[0] },
     { append:true, book:true, text: () => s.mo01_0011.join('\n') },
@@ -278,7 +280,9 @@ function makePages(s) {
     ...narrationPages(s.my02_0080, false),
     ...narrationPages(s.my02_0083, false),
     ...narrationPages(s.my02_0085, false),
-    ...narrationPages(s.my02_0090, true),
+    ...narrationPages(s.my02_0090, false),
+    ...reaction,
+    ...data.summerChoice.map(route => ({target:route.target, retainMovie:true, end:true, text: () => route.text})),
   ];
 }
 
@@ -330,10 +334,10 @@ function step(key) {
   if (scene === 'save-note') { if (key === 'circle') beginStory(); return; }
   if (scene === 'choice') {
     if (key === 'up' || key === 'down') {
-      index = (index + (key === 'up' ? -1 : 1) + data.prologueChoice.length) % data.prologueChoice.length;
+      index = (index + (key === 'up' ? -1 : 1) + pages[page].choice.length) % pages[page].choice.length;
       cue('move'); announce();
     } else if (key === 'circle') {
-      page = pages.findIndex(block => block.target === data.prologueChoice[index].target);
+      page = pages.findIndex(block => block.target === pages[page].choice[index].target);
       cue('confirm'); printPage();
     }
     return;
@@ -427,8 +431,8 @@ function frame(now) {
     if (now - entered >= 4801 * 1000 / 59.94) opening(true);
   } else if (['autosave','slot','file-select','created','save-note'].includes(scene)) screen.autosave(scene, index, slot, names[0]);
   else if (scene === 'choice') {
-    screen.background('my0645', true, time);
-    data.prologueChoice.forEach((route, i) => {
+    if (!pages[page].retainMovie) screen.background('my0645', true, time);
+    pages[page].choice.forEach((route, i) => {
       const y = 60 + 64 * i;
       if (i === index) screen.rect(24, y - 4, 592, 49);
       screen.text(route.text, 32, y, {scale:.91, max:580});
