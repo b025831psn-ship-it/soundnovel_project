@@ -182,18 +182,19 @@ def scenario_strings(data):
     return story
 
 
-def prologue_choice(data):
+def scenario_choice(data, source):
     """Resolve CommandSelect destinations in script order and read their first lines."""
-    label = rb"\x85\x0b\x0c(my01_[0-9]{4})\x00\x22"
+    label = rb"\x85[\x0b\x0c][\x0c\x0d](myb?0[12]_[0-9]{4})\x00\x22"
     labels = list(re.finditer(label, data))
     blocks = {a[1]: data[a.end():b.start()] for a, b in zip(labels, labels[1:])}
-    command = re.search(rb"\x6c\x1b\x01\x02\x00\x00\x0c(my01_\d{4})\x00\x00\x0c(my01_\d{4})\x00",
-                        blocks[b"my01_0070"])
+    command = re.search(rb"\x6c[\x1b\x1c]\x01\x02\x00\x00\x0c(my0[12]_\d{4})\x00\x00"
+                        rb"[\x0c\x0d](myb?0[12]_\d{4})\x00", blocks[source])
     if command is None:
-        raise ValueError("Missing two-destination CommandSelect in my01_0070")
+        raise ValueError(f"Missing two-destination CommandSelect in {source!r}")
     choices = []
     for target in command.groups():
-        line = re.match(rb"\x6a\x07\x0c_my\d+\x00\x02([^\x00-\x1f]+)\x03\x04", blocks[target])
+        line = re.match(rb"(?:\x7b\x0c\x13sh01_0010\x00\x06)?\x6a\x07[\x0c\x0d]_myb?\d+\x00"
+                        rb"\x02([^\x00-\x1f]+)\x03\x04", blocks[target])
         if line is None:
             raise ValueError(f"Missing destination text in {target!r}")
         choices.append({"target": target.decode("ascii"), "text": line[1].decode("cp932")})
@@ -294,7 +295,8 @@ def opening_assets(disc, out, encode):
         "defaults": [elf_string(disc.elf, va) for va in (0x224628, 0x224630)],
         "prompts": [elf_string(disc.elf, va) for va in (0x1ff090, 0x1ff0a0, 0x1ff0d8)],
         "story": scenario_strings(scenario),
-        "prologueChoice": prologue_choice(scenario),
+        "prologueChoice": scenario_choice(scenario, b"my01_0070"),
+        "summerChoice": scenario_choice(scenario, b"my02_0100"),
         "invitationOrigin": invitation_origin(scenario),
         "titleMusic": title_music,
     }
