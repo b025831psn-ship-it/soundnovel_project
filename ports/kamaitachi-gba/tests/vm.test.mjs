@@ -21,6 +21,7 @@ test("required opcode table retains native handler evidence", () => {
   const required = [
     0x00, 0x01, 0x02, 0x03, 0x04, 0x0d, 0x0e, 0x0f, 0x13, 0x1a, 0x21, 0x22,
     0x14, 0x15, 0x16, 0x1e, 0x23, 0x25, 0x40, 0x41, 0x4b, 0x4c, 0x56, 0x57, 0x5e,
+    0x3c, 0x3d, 0x4e, 0x63,
   ];
   assert.ok(required.every((opcode) => HANDLERS[opcode]));
 });
@@ -383,6 +384,20 @@ test("1D consumes its command and delegates the native system table", () => {
   assert.deepEqual(calls, [4]);
   assert.equal(vm.ram.inputReady, 1);
   vm.step();
+  assert.equal(vm.ram.vars[2], 7);
+});
+
+test("boot-path opcodes 3C, 3D, 4E and 63 preserve native alignment", () => {
+  const calls = [];
+  const vm = new VM({
+    banks: { 31: bank([[0x3c, 4, 9, 0x3d, 0x4e, 0x63, 0x41, 2, 7]]) },
+    entryRow: 31000,
+    trace: ({ opcode, args }) => calls.push([opcode, args]),
+  });
+  while (vm.step());
+  assert.deepEqual(calls.slice(0, 4), [
+    [0x3c, [4, 9]], [0x3d, []], [0x4e, []], [0x63, []],
+  ]);
   assert.equal(vm.ram.vars[2], 7);
 });
 

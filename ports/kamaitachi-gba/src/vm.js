@@ -40,17 +40,21 @@ export const HANDLERS = {
   0x34: "08004DD0",
   0x35: "08004E28",
   0x37: "08004EE0",
+  0x3c: "08005094",
+  0x3d: "080050F4",
   0x3e: "08005110",
   0x45: "08005214",
   0x4b: "080057C0",
   0x4c: "080057E8",
   0x4d: "080057EC",
+  0x4e: "08005828",
   0x53: "08005914",
   0x56: "08005B1C",
   0x57: "08005BA8",
   0x58: "08005C30",
   0x5e: "08005DE0",
   0x5f: "080059C0",
+  0x63: "08005F38",
 };
 
 // Native handlers which short-circuit while a 57 choice candidate is being
@@ -574,6 +578,15 @@ export class VM {
         this.suppressed(opcode);
         break;
       }
+      case 0x3c:
+        // 08005094: two u8 operands, followed by the 0800B79C menu-state
+        // query when its first operand is zero. The boot UI owns that state;
+        // retain bytecode alignment until the host implementation is attached.
+        args.push(this.byte(), this.byte());
+        break;
+      case 0x3d:
+        // 080050F4: clears two menu/input bytes after 0800AEA4.
+        break;
       case 0x3e:
         break;
       case 0x40: {
@@ -610,6 +623,9 @@ export class VM {
         this.suppressed(opcode);
         break;
       }
+      case 0x4e:
+        // 08005828: composite boot/menu teardown; no scenario operands.
+        break;
       case 0x53: {
         const effect = this.word();
         args.push(effect);
@@ -637,6 +653,9 @@ export class VM {
         this.suppressed(opcode);
         break;
       }
+      case 0x63:
+        // 08005F38: invokes 080135C0(0); no scenario operands.
+        break;
       case 0x58: {
         args.push(this.word());
         this.suppressed(opcode);

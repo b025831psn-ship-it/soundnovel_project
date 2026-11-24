@@ -35,8 +35,10 @@ const choiceView = {
   show: (choices, selected) => screen.showChoices(font, text.pageRaw, choices, selected),
   hide: () => screen.clearChoices(),
 };
+const entryRow = Number.parseInt(new URLSearchParams(location.search).get("entryRow") ?? "27000", 10);
 const vm = new VM({ banks, scene, text, musicMap: music.request_to_song, audio: sound,
-  audioTables, choiceView, transitionTimings });
+  audioTables, choiceView, transitionTimings,
+  entryRow: Number.isInteger(entryRow) ? entryRow : 27000 });
 window.kamaitachi = { vm, screen, assets, font, input, sound };
 
 let last = performance.now();
