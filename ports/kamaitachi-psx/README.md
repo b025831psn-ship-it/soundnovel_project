@@ -56,3 +56,7 @@ instructions are added only when a native trace reaches them.
 finds the first divergence between a native-emulator probe and the JavaScript
 runtime. Trace files may contain addresses and opcodes, but game data and
 extracted assets must remain outside this repository.
+
+`tools/mips_refs.py EXE 0xADDRESS` reports direct jumps/calls, address
+materializations, and pointer-table entries that refer to a virtual address in
+a PS-X EXE. It emits addresses only and never copies executable payloads.
