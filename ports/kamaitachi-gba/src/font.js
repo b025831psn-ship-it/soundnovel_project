@@ -63,9 +63,20 @@ export class TextWindow {
     this.wait = "none";
     this.suppressNextWait = false;
     this.afterWait = false;
+    this.pageRaw = [];
+    this.choiceRaw = [];
+  }
+
+  beginChoices(count) {
+    this.choiceRaw = Array.from({ length: count }, () => []);
+  }
+
+  collectChoice(index, raw) {
+    this.choiceRaw[index]?.push(raw);
   }
 
   feed(raw) {
+    this.pageRaw.push(raw);
     this.wait = "none";
     for (let pos = 0; pos < raw.length; pos++) {
       const byte = raw[pos];
@@ -88,6 +99,7 @@ export class TextWindow {
         this.afterWait = false;
       } else if (control === "g") {
         this.fragments = [];
+        this.pageRaw = [];
         this.wait = "none";
         this.afterWait = false;
       } else if (control === "o") {

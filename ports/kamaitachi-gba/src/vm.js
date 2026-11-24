@@ -13,9 +13,12 @@ export const HANDLERS = {
   0x0e: "08003DF0",
   0x0f: "08003E58",
   0x13: "080040A0",
+  0x14: "0800411C",
   0x15: "08004154",
+  0x16: "08004200",
   0x1a: "08003D30",
   0x1c: "08004574",
+  0x1e: "080045F4",
   0x21: "08003D70",
   0x22: "08003DB0",
   0x23: "080046D4",
@@ -35,6 +38,8 @@ export const HANDLERS = {
   0x37: "08004EE0",
   0x3e: "08005110",
   0x45: "08005214",
+  0x4b: "080057C0",
+  0x4c: "080057E8",
   0x4d: "080057EC",
   0x53: "08005914",
   0x56: "08005B1C",
@@ -52,6 +57,7 @@ export class VM {
     text = null,
     audio = null,
     musicMap = [],
+    choiceView = null,
     trace = null,
   } = {}) {
     this.banks = banks;
@@ -60,6 +66,7 @@ export class VM {
     this.text = text;
     this.audio = audio;
     this.musicMap = musicMap;
+    this.choiceView = choiceView;
     this.currentSong = null;
     this.currentRequest = null;
     this.trace = trace;
@@ -81,6 +88,8 @@ export class VM {
       overlayActive: 0,
       overlayMasks: new Uint16Array(4),
       audioRequest: 0xffff,
+      choiceActive: 0,
+      inputReady: 0,
     };
     this.gotoRow(entryRow);
   }
@@ -149,8 +158,13 @@ export class VM {
       const row = this.word();
       entries.push(opcode === 0x57 ? { row, key: this.word() } : { row });
     }
-    this.waiting = "choice";
     this.choiceState = { opcode, count, index, entries };
+    this.choiceSelection = 0;
+    if (opcode === 0x57) {
+      this.ram.choiceActive = 1;
+      this.ram.effectDisabled = 1;
+      this.text?.beginChoices?.(entries.length);
+    } else this.waiting = "choice";
     return [
       count,
       index,
@@ -171,7 +185,9 @@ export class VM {
       case 0x00: {
         const raw = this.textBytes();
         args.push(...raw);
-        this.waiting = this.text?.feed(raw) ?? "none";
+        if (this.ram.choiceActive && this.collectingChoice !== undefined)
+          this.text?.collectChoice?.(this.collectingChoice, raw);
+        else this.waiting = this.text?.feed(raw) ?? "none";
         break;
       }
       case 0x01: {
@@ -184,6 +200,10 @@ export class VM {
         const row = this.word();
         args.push(row);
         this.ram.stack.push({ bank: this.bank, offset: this.offset });
+        if (this.ram.choiceActive) {
+          const index = this.choiceState?.entries.findIndex((entry) => entry.row === row);
+          if (index >= 0) this.collectingChoice = index;
+        }
         this.branch(row);
         break;
       }
@@ -196,7 +216,7 @@ export class VM {
       case 0x04: {
         const request = this.word();
         args.push(request);
-        this.scene?.request(request, this.ram);
+        if (!this.ram.choiceActive) this.scene?.request(request, this.ram);
         break;
       }
       case 0x08:
@@ -207,8 +227,10 @@ export class VM {
       case 0x0a: {
         const slot = this.byte();
         args.push(slot);
-        this.ram.slot = 0xffff;
-        this.writes.push(`slot=${this.ram.slot}`);
+        if (!this.ram.choiceActive) {
+          this.ram.slot = 0xffff;
+          this.writes.push(`slot=${this.ram.slot}`);
+        }
         break;
       }
       case 0x0b: {
@@ -218,7 +240,8 @@ export class VM {
       case 0x0c: {
         this.waitFrames = this.word();
         args.push(this.waitFrames);
-        this.waiting = this.waitFrames ? "delay" : "none";
+        if (!this.ram.choiceActive)
+          this.waiting = this.waitFrames ? "delay" : "none";
         break;
       }
       case 0x0d:
@@ -241,7 +264,20 @@ export class VM {
       case 0x57:
         args.push(...this.choice(opcode));
         break;
-      case 0x15:
+      case 0x14:
+        args.push(this.byte());
+        break;
+      case 0x15: {
+        if (this.ram.choiceActive) {
+          const target = this.ram.stack.pop();
+          if (target) Object.assign(this, target);
+          this.collectingChoice = undefined;
+        }
+        break;
+      }
+      case 0x16:
+        this.waiting = "choice";
+        this.choiceView?.show?.(this.text?.choiceRaw ?? [], this.choiceSelection);
         break;
       case 0x21:
       case 0x22: {
@@ -252,6 +288,13 @@ export class VM {
       }
       case 0x1c: {
         args.push(this.byte());
+        break;
+      }
+      case 0x1e: {
+        const offset = this.word();
+        args.push(offset);
+        if (this.ram.inputReady) this.offset = offset;
+        this.ram.updatePending = 1;
         break;
       }
       case 0x23: {
@@ -397,6 +440,11 @@ export class VM {
           this.offset += 2;
         break;
       }
+      case 0x4b:
+        args.push(this.word());
+        break;
+      case 0x4c:
+        break;
       case 0x4d: {
         args.push(this.byte());
         break;
@@ -471,13 +519,24 @@ export class VM {
   }
 
   resume(rowIndex = null) {
-    if (this.waiting === "choice" && rowIndex !== null) {
+    if (this.waiting === "choice") {
+      if (rowIndex === null) rowIndex = this.choiceSelection;
       const row = this.choiceState.entries[rowIndex]?.row;
       this.waiting = "none";
+      this.ram.choiceActive = 0;
+      this.ram.effectDisabled = 0;
+      this.choiceView?.hide?.();
       if (row !== undefined) this.branch(row);
       return;
     }
     this.waiting = "none";
+  }
+
+  moveChoice(delta) {
+    if (this.waiting !== "choice" || !this.choiceState) return;
+    const length = this.choiceState.entries.length;
+    this.choiceSelection = (this.choiceSelection + delta + length) % length;
+    this.choiceView?.show?.(this.text?.choiceRaw ?? [], this.choiceSelection);
   }
 
   vblank(budget = 1024) {

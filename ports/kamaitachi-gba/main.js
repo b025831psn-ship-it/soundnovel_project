@@ -24,21 +24,28 @@ const screen = new Screen(document.querySelector("#screen"));
 const scene = new SceneLoader(assets, screen);
 const text = new TextWindow({ 1: "透", 2: "真理" });
 const input = new GBAInput();
-const vm = new VM({ banks, scene, text, musicMap: music.request_to_song });
+const choiceView = {
+  show: (choices, selected) => screen.showChoices(font, text.pageRaw, choices, selected),
+  hide: () => screen.clearChoices(),
+};
+const vm = new VM({ banks, scene, text, musicMap: music.request_to_song, choiceView });
 window.kamaitachi = { vm, screen, assets, font, input };
 
 let last = performance.now();
 let accumulated = 0;
+const previous = new Set();
 function loop(now) {
   accumulated += Math.min(100, now - last);
   last = now;
   while (accumulated >= 1000 / 60) {
-    if (
-      input.pressed("A") &&
-      (vm.waiting === "click" || vm.waiting === "choice")
-    )
-      vm.resume();
+    const pressed = (key) => input.pressed(key) && !previous.has(key);
+    if (pressed("UP")) vm.moveChoice(-1);
+    if (pressed("DOWN")) vm.moveChoice(1);
+    if (pressed("A") && (vm.waiting === "click" || vm.waiting === "choice")) vm.resume();
     vm.vblank();
+    for (const key of ["A", "UP", "DOWN"]) {
+      if (input.pressed(key)) previous.add(key); else previous.delete(key);
+    }
     accumulated -= 1000 / 60;
   }
   requestAnimationFrame(loop);
