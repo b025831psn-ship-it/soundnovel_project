@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "gameId": "test-media",
   "title": "미디어 테스트",
-  "assets": "tests/fixtures/media/",
+  "assets": "media/",
   "entry": "a",
   "nodes": {
     "a": { "bg": "red.png", "bgm": "none.ogg", "pages": [["빨간 배경."]], "to": "b" },

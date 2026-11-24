@@ -41,7 +41,8 @@ export function storageKey(story) {
 }
 
 // options.startMenu: show a title screen (새 게임 / 이어하기) inside the 4:3 screen before playing.
-export function createPlayer(root, story, { storage = safeStorage(), startMenu = false } = {}) {
+// options.base: URL of the story file; `assets` paths are resolved against it.
+export function createPlayer(root, story, { storage = safeStorage(), startMenu = false, base = document.baseURI } = {}) {
   const sceneIds = Object.keys(story.scenes);
   const key = storageKey(story);
   const globalKey = `${key}.global`;
@@ -108,7 +109,17 @@ export function createPlayer(root, story, { storage = safeStorage(), startMenu =
   }
 
   function initial() {
-    return settle({ node: story.entry, page: 0, line: 0, done: false, trail: [], flags: { ...story.nodes[story.entry].set, ...loadGlobal() } });
+    return settle({ node: story.entry, page: 0, line: 0, done: false, trail: [], flags: enter({ ...loadGlobal() }, story.entry, true) });
+  }
+
+  // Arriving at a node applies its `set`, then a `bg` that depends on a flag (`{ by, map }`):
+  // the flag's value picks the picture, and a value missing from `map` keeps the current one.
+  function enter(flags, id, globalsWin = false) {
+    const node = story.nodes[id];
+    const out = globalsWin ? { ...node.set, ...flags } : { ...flags, ...node.set };
+    const pick = node.bgBy;
+    if (pick && Object.hasOwn(pick.map, String(out[pick.by]))) out['media:bg'] = pick.map[String(out[pick.by])];
+    return out;
   }
 
   // Nodes without sentences only set flags and branch: pass through them right away.
@@ -118,7 +129,7 @@ export function createPlayer(root, story, { storage = safeStorage(), startMenu =
       if (node.kind !== 'text' || node.pages.length || st.done) return st;
       const to = resolve(node.next, st.flags);
       if (!to) return { ...st, done: true };
-      st = { ...st, node: to, trail: [...st.trail, { node: st.node }], flags: { ...st.flags, ...story.nodes[to].set } };
+      st = { ...st, node: to, trail: [...st.trail, { node: st.node }], flags: enter(st.flags, to) };
     }
     return { ...st, done: true };
   }
@@ -274,7 +285,7 @@ export function createPlayer(root, story, { storage = safeStorage(), startMenu =
   // `carry`: earlier nodes whose last page stays on screen (a node marked `keep` ends mid-page).
   function goTo(nodeId, step, flags = state.flags, carry = []) {
     setState(settle({
-      node: nodeId, page: 0, line: 0, done: false, trail: [...state.trail, step], flags: { ...flags, ...story.nodes[nodeId].set }, carry,
+      node: nodeId, page: 0, line: 0, done: false, trail: [...state.trail, step], flags: enter(flags, nodeId), carry,
     }));
   }
 
@@ -364,7 +375,7 @@ export function createPlayer(root, story, { storage = safeStorage(), startMenu =
 
   // Background and music follow the "media:*" flags; music only starts after a click (autoplay rules).
   function renderMedia() {
-    const url = (v) => (v ? new URL(story.assets + v, document.baseURI).href : '');
+    const url = (v) => (v ? new URL(story.assets + v, base).href : '');
     const bg = url(state.flags['media:bg']);
     if (bgImg.dataset.src !== bg) {
       bgImg.dataset.src = bg;

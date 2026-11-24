@@ -55,6 +55,7 @@ for (const n of Object.values(nodes)) {
   for (const k of Object.keys(n.set || {})) setFlags.add(k);
   if (n.kind === 'choice') for (const o of n.options) for (const k of Object.keys(o.set || {})) setFlags.add(k);
   for (const rules of ruleLists(n)) for (const r of rules) for (const k of Object.keys(r.if || {})) usedFlags.add(k);
+  if (n.bgBy) usedFlags.add(n.bgBy.by);
 }
 const neverSet = [...usedFlags].filter((k) => !setFlags.has(k));
 if (neverSet.length) report.warnings.push(`if에 쓰였지만 어디서도 set하지 않는 플래그: ${neverSet.join(', ')}`);

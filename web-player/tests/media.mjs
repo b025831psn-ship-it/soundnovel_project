@@ -1,5 +1,5 @@
 // Node media: `bg` / `bgm` stay until changed, "" or null clears, and saves restore them.
-// Usage: node tests/media.mjs   (uses tests/fixtures/media.json and two 4×4 PNGs made for the test)
+// Usage: node tests/media.mjs   (uses tests/fixtures/media.json, media-pick.json and two 4×4 PNGs made for the test)
 import http from 'node:http';
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
@@ -47,6 +47,23 @@ await next();
 check(await bg() === 'blue.png' && await bgm() === '', '바꾸기와 bgm "" 끄기');
 await next();
 check(await bg() === '', 'bg null이면 배경 없음');
+
+// `bg: { by, map }`: the flag picks the picture on entry; a value missing from map keeps the current one.
+await page.evaluate(() => localStorage.clear());
+await page.goto(url.replace('media.json', 'media-pick.json'));
+await page.waitForSelector('.wp-text p');
+check(await bg() === 'red.png', '묶음 0이면 map["0"]');
+await next();
+check(await bg() === 'red.png', '묶음 플래그만 바뀌면 그림은 그대로');
+await next();
+check(await bg() === 'blue.png', '같은 요청이 묶음 1에서는 다른 그림');
+await next();
+check(await bg() === 'blue.png', 'map에 없는 값이면 기존 배경 유지');
+await page.reload();
+await page.waitForSelector('.wp-text p');
+check(await bg() === 'blue.png', '새로고침 뒤에도 유지된 배경 복원');
+await next();
+check(await bg() === 'red.png', '다시 묶음 0');
 check(errors.length === 0, `페이지 오류 없음 ${errors.join(' | ')}`);
 
 await browser.close();

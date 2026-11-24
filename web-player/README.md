@@ -116,4 +116,4 @@ iframe 패널에 넣을 때는 `index.html?embed=1`(필요하면 `&data=<경로>
 - 노드 `"ending": N`: 끝 화면에 "엔딩 N"을 표시합니다.
 - `g:`로 시작하는 플래그는 새 게임을 해도 유지됩니다. 엔딩을 본 뒤 열리는 선택지 같은 해금 조건에 씁니다. 저장 키는 `soundnovel.webPlayer.<gameId>.global`입니다.
 - 이름 입력: 선택지 노드에 `input: { slot, maxLength, match: [{ aliases, option, as? }], fallback }`을 두면 선택지 대신 입력창이 나옵니다. 입력값(NFKC 정규화)이 별칭과 같으면 그 `option`으로, 아니면 `fallback`으로 갑니다. 화면에 쓸 이름은 `name:<slot>` 플래그에 따로 저장되며(`as`가 있으면 그 표기), 문장 안의 `{name:<slot>}`에 들어갑니다. 검사: `node tests/name-input.mjs`
-- 배경·음악: 노드의 `bg`(그림), `bgm`(반복 재생 소리)은 최상위 `assets` 경로 기준입니다. 다른 노드가 바꿀 때까지 유지되고, `""`나 `null`이면 끕니다. 내부적으로 `media:bg`, `media:bgm` 플래그로 저장되어 저장·불러오기에 함께 들어갑니다. 음악은 브라우저 정책상 첫 클릭 뒤에 재생됩니다. 검사: `node tests/media.mjs`
+- 배경·음악: 노드의 `bg`(그림), `bgm`(반복 재생 소리)은 최상위 `assets` 경로 기준이고, `assets`는 대본 JSON 파일 위치 기준입니다(파일 선택으로 연 경우는 플레이어 페이지 기준). 다른 노드가 바꿀 때까지 유지되고, `""`나 `null`이면 끕니다. 내부적으로 `media:bg`, `media:bgm` 플래그로 저장되어 저장·불러오기에 함께 들어갑니다. 음악은 브라우저 정책상 첫 클릭 뒤에 재생됩니다. `bg`를 `{ "by": "v:group", "map": { "0": "a.png", "1": "b.png" } }`로 쓰면 노드에 들어온 순간(그 노드의 `set` 적용 뒤) 해당 플래그 값으로 그림을 고르고, `map`에 없는 값이면 기존 배경을 유지합니다. 검사: `node tests/media.mjs`

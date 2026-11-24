@@ -109,9 +109,26 @@ function normalizeInput(raw, node, id) {
 function withMedia(set, n) {
   const out = { ...(set || {}) };
   for (const k of ['bg', 'bgm']) {
-    if (n[k] !== undefined) out[`media:${k}`] = typeof n[k] === 'string' ? n[k] : '';
+    if (n[k] !== undefined && !(k === 'bg' && isBgPick(n[k]))) out[`media:${k}`] = typeof n[k] === 'string' ? n[k] : '';
   }
   return Object.keys(out).length ? out : null;
+}
+
+// `bg: { by: "<flag>", map: { "<value>": "<path>" } }` picks the picture by a flag when the node is entered.
+function isBgPick(v) {
+  return !!v && typeof v === 'object' && !Array.isArray(v);
+}
+
+function bgPick(n, id) {
+  if (!isBgPick(n.bg)) return null;
+  const { by, map } = n.bg;
+  if (typeof by !== 'string' || !by || !map || typeof map !== 'object' || Array.isArray(map)) {
+    throw new StoryFormatError(`${id}.bg: { by, map } 형식이어야 합니다.`);
+  }
+  for (const [k, v] of Object.entries(map)) {
+    if (typeof v !== 'string' && v !== null) throw new StoryFormatError(`${id}.bg.map.${k}: 경로 문자열이나 null이어야 합니다.`);
+  }
+  return { by, map: Object.fromEntries(Object.entries(map).map(([k, v]) => [k, v ?? ''])) };
 }
 
 function sceneId(raw) {
@@ -183,6 +200,8 @@ export function normalizeStory(raw) {
         next: normalizeNext(n, id),
       };
       if (Number.isInteger(n.ending)) nodes[id].ending = n.ending;
+      const pick = bgPick(n, id);
+      if (pick) nodes[id].bgBy = pick;
       if (n.keep === true) nodes[id].keep = true; // ends mid-page: its last page stays on screen
     }
   }

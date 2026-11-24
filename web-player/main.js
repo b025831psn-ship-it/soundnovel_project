@@ -37,16 +37,16 @@ async function loadRaw() {
   const path = new URLSearchParams(location.search).get('data') || DEFAULT_DATA;
   const res = await fetch(path, { cache: 'no-store' });
   if (!res.ok) throw new Error(`${path}를 불러오지 못했습니다 (HTTP ${res.status}).`);
-  return { label: `데이터: ${path}`, raw: await res.json(), picked: false };
+  return { label: `데이터: ${path}`, raw: await res.json(), picked: false, base: new URL(path, location.href).href };
 }
 
 async function start() {
   try {
-    const { label, raw, picked } = await loadRaw();
+    const { label, raw, picked, base } = await loadRaw();
     status.textContent = label;
     useDefault.hidden = !picked;
     // ?start=1: open on the title screen (새 게임 / 이어하기), as the hub does.
-    createPlayer(root, normalizeStory(raw), { startMenu: new URLSearchParams(location.search).get('start') === '1' });
+    createPlayer(root, normalizeStory(raw), { startMenu: new URLSearchParams(location.search).get('start') === '1', base });
   } catch (err) {
     const prefix = err instanceof StoryFormatError ? 'JSON 형식 오류: ' : '';
     showError(prefix + err.message);
