@@ -1,0 +1,1 @@
+export const traceLine=e=>[e.frame,e.bank.toString(16).padStart(2,'0'),e.offset.toString(16).padStart(4,'0'),e.opcode.toString(16).padStart(2,'0'),Buffer.from(e.args).toString('hex'),e.group,e.slot,e.pending].join('\t');

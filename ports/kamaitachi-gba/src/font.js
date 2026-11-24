@@ -1,0 +1,6 @@
+export class NativeFont {
+  constructor(blob,lookup){this.blob=blob;this.view=new DataView(blob.buffer,blob.byteOffset,blob.byteLength);this.lookup=new DataView(lookup.buffer,lookup.byteOffset,lookup.byteLength);this.count=2*this.view.getUint16(0,false)}
+  glyph(index){const at=4*this.view.getUint16(index*2,false),next=index+1<this.count?4*this.view.getUint16(index*2+2,false):this.blob.length,w=this.blob[at]&63,h=this.blob[at+1]&63,p=[];for(let i=at+2;p.length<w*h&&i<next;i++){for(const n of[this.blob[i]>>4,this.blob[i]&15]){if(n===15){const value=(this.blob[++i]>>4),run=4+(this.blob[i]&15);for(let j=0;j<run;j++)p.push(value)}else p.push(n)}}return{width:w,height:h,pixels:Uint8Array.from(p.slice(0,w*h))}}
+  find(encoded){let slot=(5*(((encoded-0x8140>>>8)+16*((encoded-0x8140)&255))))&4095;for(let i=0;i<4096;i++,slot=(slot+45)&4095){const key=this.lookup.getUint16(slot*4,true);if(key===encoded)return this.lookup.getUint16(slot*4+2,true);if(key===0xffff)return-1}return-1}
+}
+export class TextWindow {constructor(){this.x=16;this.y=112;this.speed=2;this.wait=null}control(c){switch(c){case'r':this.x=16;this.y+=16;break;case'p':this.wait='page';break;case'P':this.wait='page-clear';break;case'g':this.wait='input';break;case'o':this.wait='choice';break;case'n':this.x=16;this.y=112;break}}}
