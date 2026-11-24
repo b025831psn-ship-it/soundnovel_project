@@ -42,7 +42,8 @@ export class Screen {
 
   background(key, snow, time) {
     this.c.drawImage(this.images[key], 0, 0, 640, 448);
-    this.rect(0, 0, 640, 448, 'rgba(0,0,0,.46)');
+    const shade = key === 'my0645' ? 'rgba(9,9,9,.72)' : 'rgba(0,0,0,.46)';
+    this.rect(0, 0, 640, 448, shade);
     if (!snow) return;
     // Snow continues behind both the printed text and the name editor.
     for (let i = 1; i <= 108; i++) {
