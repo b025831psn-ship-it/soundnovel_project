@@ -74,6 +74,15 @@ dispatch `$00:A0DD`, 이름 입력 `$04:8000/$04:893D`, SPC IPL uploader
 PPU DMA/decompressor, SPC700 driver CFG 순서로 분석을 계속한다. RGB565 캡처
 순차 재생은 실제 VM 구현으로 간주하지 않는다.
 
+## 동기종 분석 방법 공유
+
+`zakuro-sfc-kor` PR #1에서 사용한 M/X-aware 65C816 disassembly, ROM jump-table
+검증, lossless raw IR, DMA transaction grouping 방식을 참고했다. 게임별 주소와
+opcode 의미는 공유하지 않고 방법만 적용한다. 카마이타치의 첫 적용에서는
+`$01:A901` control metadata 99개를 `$00:958E` prepare table과 `$00:B496`
+print table에 전수 결합했다. 83개는 보수적인 역할군을 붙였고 16개는 원본
+handler의 의미를 더 확인할 때까지 `unresolved`로 유지한다.
+
 ## 기준 코어 probe 대조
 
 native Snes9x probe에서 CHUN SOFT logo, SFC title, 음향 설정, 기본 이름 확인
