@@ -317,8 +317,11 @@ try {
     assert.ok([...captainLines].some(line => line.includes('私設監獄を建てたんだ')));
     assert.ok([...captainLines].some(line => line.endsWith('ぼくは思わず聞き返した。')));
     assert.ok([...captainLines].some(line => line.includes('真理が唾を飲み込む音が聞こえた。')));
-    assert.match(await label(), /岸猿家は監獄を廃止した。/);
-    assert.match(await label(), /船長さんは追い打ちをかける。$/);
+    assert.ok([...captainLines].some(line => line.includes('岸猿家は監獄を廃止した。')));
+    assert.ok([...captainLines].some(line => line.endsWith('船長さんは追い打ちをかける。')));
+    assert.ok([...captainLines].some(line => line.includes('獄死した奉公人たちの祟り')));
+    assert.match(await label(), /岸猿伊右衛門/);
+    assert.match(await label(), /残った家族は行方知れずになったそうだ」$/);
     assert.ok([...requests].some(url => url.endsWith('/my0018.mp4')));
     assert.ok([...requests].some(url => url.endsWith('/my0012.mp4')));
     assert.ok([...requests].some(url => url.endsWith('/my0004.mp4')));

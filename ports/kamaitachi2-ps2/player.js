@@ -354,8 +354,8 @@ function makePages(s) {
       const history = narrationPages(s.my02_0400, false);
       for (const block of nickname) Object.assign(block, {rubies:s.myb02_0340.ruby, firstRuby:true});
       for (const block of history) Object.assign(block, {rubies:s.my02_0400.ruby, firstRuby:true});
-      const factory = [s.my02_0410, s.my02_0430, s.my02_0450, s.my02_0460].flatMap((scene, i) =>
-        narrationPages(scene, i === 3).map(block => ({
+      const factory = [s.my02_0410, s.my02_0430, s.my02_0450, s.my02_0460, s.my02_0463, s.my02_0465].flatMap((scene, i, scenes) =>
+        narrationPages(scene, i === scenes.length - 1).map(block => ({
           ...block, background:'my0016b', retainMovie:false, rubies:scene.ruby, firstRuby:true,
         })));
       return [...pages, ...narrationPages(s.myb02_0330, false), ...narrationPages(s.myb02_0335, false),
