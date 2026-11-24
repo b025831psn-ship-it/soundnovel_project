@@ -81,6 +81,26 @@ function toSentence(s, where) {
   throw new StoryFormatError(`${where}: 문장이 문자열이 아닙니다.`);
 }
 
+// Name entry on a choice node: the typed text picks an option by alias, and is kept in flag "name:<slot>".
+//   input: { slot, maxLength?, match: [{ aliases: [..], option, as? }], fallback }
+// `as` replaces what is shown for the name (the original rewrites some aliases to one spelling).
+function normalizeInput(raw, node, id) {
+  const keys = new Set(node.options.map((o) => o.key));
+  if (!raw || typeof raw !== 'object') throw new StoryFormatError(`${id}.input: 객체가 아닙니다.`);
+  const match = (raw.match || []).map((m, i) => {
+    if (!Array.isArray(m.aliases) || !m.aliases.every((a) => typeof a === 'string')) throw new StoryFormatError(`${id}.input.match[${i}].aliases: 문자열 목록이 아닙니다.`);
+    if (!keys.has(String(m.option))) throw new StoryFormatError(`${id}.input.match[${i}].option: 없는 선택지 "${m.option}"`);
+    return { aliases: m.aliases.map((a) => a.normalize('NFKC')), option: String(m.option), as: typeof m.as === 'string' ? m.as : null };
+  });
+  if (!keys.has(String(raw.fallback))) throw new StoryFormatError(`${id}.input.fallback: 없는 선택지 "${raw.fallback}"`);
+  return {
+    slot: String(raw.slot ?? ''),
+    maxLength: Number.isInteger(raw.maxLength) ? raw.maxLength : 8,
+    match,
+    fallback: String(raw.fallback),
+  };
+}
+
 function sceneId(raw) {
   if (raw === undefined || raw === null) return null;
   if (typeof raw === 'object') return String(firstDefined(raw, ['id', 'name']) ?? '');
@@ -134,6 +154,7 @@ export function normalizeStory(raw) {
           set: normalizeSet(o.set, `${id}.options[${i}]`),
         })),
       };
+      if (n.input) nodes[id].input = normalizeInput(n.input, nodes[id], id);
     } else {
       const pages = firstDefined(n, ['pages']);
       // An empty `pages` list is allowed: such a node only applies `set` and moves on (flag checks).

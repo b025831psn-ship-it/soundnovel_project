@@ -1,0 +1,28 @@
+{
+  "schemaVersion": 1,
+  "gameId": "test-name-input",
+  "title": "名前入力テスト",
+  "lang": "ja",
+  "entry": "ask",
+  "nodes": {
+    "ask": {
+      "kind": "choice", "text": "犯人の名前は？",
+      "input": {
+        "slot": "3", "maxLength": 6,
+        "match": [
+          { "aliases": ["あおき", "アオキ", "青木"], "option": "A", "as": "青木" },
+          { "aliases": ["くろだ", "黒田"], "option": "B" }
+        ],
+        "fallback": "C"
+      },
+      "options": [
+        { "key": "A", "label": "a", "to": "hitA" },
+        { "key": "B", "label": "b", "to": "hitB" },
+        { "key": "C", "label": "c", "to": "miss" }
+      ]
+    },
+    "hitA": { "pages": [["犯人は{name:3}だ。"]], "to": null },
+    "hitB": { "pages": [["犯人は{name:3}だ。"]], "to": null },
+    "miss": { "pages": [["{name:3}という人はいない。"]], "to": null }
+  }
+}

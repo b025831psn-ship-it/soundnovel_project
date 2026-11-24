@@ -157,3 +157,12 @@ html[data-embed] .wp-stage { border: 0; border-radius: 0; }
   .wp-menu-list { gap: 6px; }
   .wp-menu-item { min-height: 36px; font-size: 13px; }
 }
+
+/* Name entry (e.g. naming the culprit): same box as the choices. */
+.wp-name-form { display: flex; gap: 8px; }
+.wp-name-input {
+  flex: 1; min-width: 0; min-height: 44px; padding: 0 12px; font: inherit; color: var(--wp-text, #ece8e1);
+  background: rgba(0, 0, 0, 0.55); border: 1px solid var(--wp-line); border-radius: 6px;
+}
+.wp-name-input:focus { outline: 2px solid var(--wp-accent); outline-offset: 1px; }
+.wp-name-ok { flex: none; width: auto; padding: 0 18px; }

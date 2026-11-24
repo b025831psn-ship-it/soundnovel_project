@@ -115,3 +115,4 @@ iframe 패널에 넣을 때는 `index.html?embed=1`(필요하면 `&data=<경로>
 - 문장 `{ "text": "…", "join": true }`: 앞 문장과 같은 줄에 이어 씁니다. 원작에서 클릭 대기 뒤 줄을 바꾸지 않는 경우(`<r><P>`)에 씁니다.
 - 노드 `"ending": N`: 끝 화면에 "엔딩 N"을 표시합니다.
 - `g:`로 시작하는 플래그는 새 게임을 해도 유지됩니다. 엔딩을 본 뒤 열리는 선택지 같은 해금 조건에 씁니다. 저장 키는 `soundnovel.webPlayer.<gameId>.global`입니다.
+- 이름 입력: 선택지 노드에 `input: { slot, maxLength, match: [{ aliases, option, as? }], fallback }`을 두면 선택지 대신 입력창이 나옵니다. 입력값(NFKC 정규화)이 별칭과 같으면 그 `option`으로, 아니면 `fallback`으로 갑니다. 화면에 쓸 이름은 `name:<slot>` 플래그에 따로 저장되며(`as`가 있으면 그 표기), 문장 안의 `{name:<slot>}`에 들어갑니다. 검사: `node tests/name-input.mjs`

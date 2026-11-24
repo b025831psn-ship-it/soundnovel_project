@@ -278,9 +278,9 @@ export function createPlayer(root, story, { storage = safeStorage(), startMenu =
 
   // Picking applies the option's `set`, then its `next` rules decide where to go.
   // No destination means the data ends here: record the pick and show the end screen.
-  function choose(option) {
+  function choose(option, extra = {}) {
     const step = { node: state.node, pick: option.key };
-    const flags = { ...state.flags, ...option.set };
+    const flags = { ...state.flags, ...option.set, ...extra };
     const to = resolve(option.next, flags);
     if (to) goTo(to, step, flags);
     else setState({ ...state, done: true, trail: [...state.trail, step], flags });
@@ -314,12 +314,27 @@ export function createPlayer(root, story, { storage = safeStorage(), startMenu =
     if (!s.ja && story.lang !== 'ko') node.lang = story.lang;
     if (lang === 'ja' && s.ja) {
       node.lang = 'ja';
-      node.textContent = s.ja;
+      node.textContent = withSlots(s.ja);
     } else {
-      if (lang === 'both' && s.ja) node.append(el('span', { class: 'wp-sub', lang: 'ja', text: s.ja }));
-      node.append(s.ko);
+      if (lang === 'both' && s.ja) node.append(el('span', { class: 'wp-sub', lang: 'ja', text: withSlots(s.ja) }));
+      node.append(withSlots(s.ko));
     }
     return node;
+  }
+
+  // Names typed during play ("name:<slot>" flags) fill the {name:<slot>} tokens left in the text.
+  function withSlots(t) {
+    return t.includes('{name:') ? t.replace(/\{name:([^}]+)\}/g, (m, id) => state.flags[`name:${id}`] ?? '？？？') : t;
+  }
+
+  // Name entry: alias match picks the option; the typed (or rewritten) name is kept in its slot.
+  function submitName(node, value) {
+    const typed = value.normalize('NFKC').trim().slice(0, node.input.maxLength);
+    if (!typed) return;
+    const hit = node.input.match.find((m) => m.aliases.includes(typed));
+    const key = hit ? hit.option : node.input.fallback;
+    const option = node.options.find((o) => o.key === key);
+    choose(option, node.input.slot ? { [`name:${node.input.slot}`]: hit?.as ?? typed } : {});
   }
 
   function carried() {
@@ -408,6 +423,18 @@ export function createPlayer(root, story, { storage = safeStorage(), startMenu =
       else text.replaceChildren(...lines((node.pages[state.page] || []).slice(0, state.line + 1)));
       endMsg.textContent = node.ending !== undefined ? `엔딩 ${node.ending}` : '이 테스트 구간은 여기까지입니다.';
       if (focus) resetBtn.focus({ preventScroll: true });
+      return;
+    }
+
+    if (node.kind === 'choice' && node.input) {
+      text.replaceChildren();
+      question.replaceChildren(...sentence('span', node.question).childNodes);
+      const field = el('input', { type: 'text', class: 'wp-name-input', maxlength: String(node.input.maxLength), 'aria-labelledby': question.id, autocomplete: 'off' });
+      const ok = el('button', { type: 'submit', class: 'wp-option wp-name-ok', text: '확인' });
+      const form = el('form', { class: 'wp-name-form' }, [field, ok]);
+      form.addEventListener('submit', (e) => { e.preventDefault(); submitName(node, field.value); });
+      optionList.replaceChildren(form);
+      if (focus) field.focus();
       return;
     }
 
