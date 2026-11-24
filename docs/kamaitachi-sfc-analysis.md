@@ -93,6 +93,19 @@ sound command의 다음 계층도 `$00:B51E..$00:B733` execution handler와
 command 18개와 queue helper 15개의 edge를 비공개 `data/sound-cfg.json`에서
 원본 opcode signature로 검증한다.
 
+consumer 계층은 `$00:E180` walker가 `$1EA8`부터 `$1EA6`까지 순회하고,
+`$00:E1AF`에서 message 하위 6비트를 `$00:E8CF` word table로 dispatch한다.
+table은 ring 크기와 다른 29-entry(`$00..$1C`)이며 19개 고유 handler로 모인다.
+`$00:E8CA`는 consumer 본체가 아니라 BRK scheduler wrapper `$00:EAF9` 호출부다.
+`$00:EAF4/$00:EAF9`의 inline word `$1000/$0001`은 native BRK handler
+`$00:8185`와 service 0 `$00:81B4`가 해석한다. 웹 VM에서 이를 별개의 연속 BRK로
+취급하면 queue 진행과 대기가 깨진다. 전수 표와 opcode 검증기는 비공개
+`data/apu-consumer-map.json`, `tools/analyze-apu-consumer.mjs`에 있다.
+
+runtime streamer의 실제 store opcode 위치도 다시 고정했다. `$00:E746`,
+`$00:E755`, `$00:E764`가 APUIO1/2/3에 세 byte를 쓰고 `$00:E778`이 APUIO0에 commit/toggle을
+쓴다.
+
 ## 기준 코어 probe 대조
 
 native Snes9x probe에서 CHUN SOFT logo, SFC title, 음향 설정, 기본 이름 확인
