@@ -172,10 +172,8 @@ function makePages(s) {
     { append:true, book:true, text: () => north[0] + '\n' + north[1] + names[1] + north[2] + '\n' + north[3] + names[1] + north[4] },
     { text: correspondence },
     { append:true, book:true, text: () => correspondence() + '\n' + letter[3] },
-    ...s.my01_0078.map((_, i, parts) => ({
-      background:'my0000', append:i > 0, end:i === parts.length - 1, book:i === parts.length - 1,
-      text: () => parts.slice(0, i + 1).map((part, j) => j === 2 ? '\n' + part : part).join(''),
-    })),
+    { background:'my0000', text: () => s.my01_0078.slice(0, 2).join('\n') },
+    { background:'my0000', append:true, end:true, book:true, text: () => s.my01_0078.join('\n') },
   ];
 }
 
