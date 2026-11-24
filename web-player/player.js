@@ -230,9 +230,11 @@ export function createPlayer(root, story, { storage = safeStorage() } = {}) {
     setState({ node: nodeId, page: 0, line: 0, done: false, trail: [...state.trail, step] });
   }
 
+  // An option without `to` is where the data ends: record the pick and show the end screen.
   function choose(option) {
-    if (option.to) goTo(option.to, { node: state.node, pick: option.key });
-    else reset();
+    const step = { node: state.node, pick: option.key };
+    if (option.to) goTo(option.to, step);
+    else setState({ ...state, done: true, trail: [...state.trail, step] });
   }
 
   function advance() {
@@ -294,7 +296,14 @@ export function createPlayer(root, story, { storage = safeStorage() } = {}) {
     renderTools();
     const node = story.nodes[state.node];
     renderScene(node);
-    stage.dataset.mode = node.kind === 'choice' ? 'choice' : state.done ? 'end' : 'text';
+    stage.dataset.mode = state.done ? 'end' : node.kind === 'choice' ? 'choice' : 'text';
+
+    if (state.done) {
+      if (node.kind === 'choice') text.replaceChildren();
+      else text.replaceChildren(...node.pages[state.page].slice(0, state.line + 1).map((s) => sentence('p', s)));
+      if (focus) resetBtn.focus({ preventScroll: true });
+      return;
+    }
 
     if (node.kind === 'choice') {
       text.replaceChildren();
@@ -341,7 +350,7 @@ export function createPlayer(root, story, { storage = safeStorage() } = {}) {
       }
     }
     const cur = story.nodes[state.node];
-    if (cur.kind === 'choice') add(cur.question, 'wp-log-q');
+    if (cur.kind === 'choice') { if (!state.done) add(cur.question, 'wp-log-q'); }
     else addText(cur, state.page, state.done ? Infinity : state.line);
     logList.replaceChildren(...items);
   }

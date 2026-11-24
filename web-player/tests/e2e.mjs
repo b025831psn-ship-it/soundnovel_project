@@ -21,10 +21,10 @@ const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, 'http://x');
   const file = url.pathname === '/__story.json' ? storyPath : path.join(webRoot, decodeURIComponent(url.pathname === '/' ? '/index.html' : url.pathname));
   if (!file.startsWith(webRoot) && file !== storyPath) { res.writeHead(403).end(); return; }
-  try {
-    res.writeHead(200, { 'content-type': types[path.extname(file)] || 'application/octet-stream' });
-    res.end(await readFile(file));
-  } catch { res.writeHead(404).end(); }
+  let body;
+  try { body = await readFile(file); } catch { res.writeHead(404).end(); return; }
+  res.writeHead(200, { 'content-type': types[path.extname(file)] || 'application/octet-stream' });
+  res.end(body);
 });
 await new Promise((r) => server.listen(0, '127.0.0.1', r));
 const base = `http://127.0.0.1:${server.address().port}/index.html?data=/__story.json`;
@@ -86,9 +86,10 @@ for (const [i, how] of [[0, 'click'], [1, 'keys']]) {
   if (i === 1) {
     // Finish path A's passage. If the segment ends there, return from the end screen;
     // if it continues, check that it moves on to its `to` node, then start over.
-    for (let k = 0; k < steps(target).length; k++) await page.locator('.wp-advance').click();
-    if (target.to) {
-      const nx = nodes[target.to];
+    const aNode = nodes[opts[0].to];
+    for (let k = 0; k < steps(aNode).length; k++) await page.locator('.wp-advance').click();
+    if (aNode.to) {
+      const nx = nodes[aNode.to];
       const shown = nx.pages ? (await texts())[0] : await page.locator('.wp-question').textContent();
       const want = nx.pages ? steps(nx)[0] : ko(nx.question ?? nx.prompt ?? nx.text);
       check(shown === want, `A 구간 끝에서 다음 노드로 이어짐: "${want}"`);
@@ -158,10 +159,17 @@ for (const [i, how] of [[0, 'click'], [1, 'keys']]) {
     } else {
       check(await page.locator('.wp-reset').isVisible() || (await texts())[0] !== expected[1], '백로그를 닫은 뒤 Enter로 계속 진행 (구간 끝)');
     }
-    for (let k = 3; k < expected.length; k++) await page.locator('.wp-advance').click();
-    if (target.to === null || target.to === undefined) {
-      if (expected.length > 2) await page.keyboard.press('Enter'); // otherwise the Enter above already ended it
-      check(await page.locator('.wp-reset').isVisible(), 'to가 null이면 구간 종료와 "첫 선택지로 돌아가기" 표시');
+    // Play B to the end of the data: advance through passages, take the first option at later choices.
+    {
+      let guard = 0;
+      while (!(await page.locator('.wp-reset').isVisible()) && guard++ < 2000) {
+        const mode = await page.locator('.wp-stage').getAttribute('data-mode');
+        if (mode === 'choice') await page.locator('.wp-option').first().click();
+        else await page.locator('.wp-advance').click();
+      }
+      check(await page.locator('.wp-reset').isVisible(), `데이터 끝까지 진행하면 구간 종료와 "첫 선택지로 돌아가기" 표시 (입력 ${guard}회)`);
+    }
+    {
       await page.evaluate(() => localStorage.setItem('unrelated.key', 'keep'));
       await page.locator('.wp-reset').click();
       check(await page.locator('.wp-option').count() === opts.length, '첫 선택지로 돌아감');
