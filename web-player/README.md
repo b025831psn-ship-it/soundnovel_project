@@ -28,7 +28,19 @@ python -m http.server 8000
 node tests/e2e.mjs                                  # 예문
 node tests/e2e.mjs data/local/first-choice.ko.json  # 실제 데이터
 node tests/flags.mjs                                # 플래그 분기 (시험용 데이터)
+node tools/validate.mjs <json> [--strict] [--json]  # 데이터 검사
 ```
+
+## 데이터 검사
+
+`node tools/validate.mjs <json>`은 플레이어에 넣기 전에 데이터를 검사합니다. 형식 오류와 없는 노드로 가는 연결은 실패로 처리합니다. 다음 항목은 경고로 알립니다.
+
+- entry에서 도달할 수 없는 노드
+- 빠져나갈 수 없는 고리
+- `if`에 쓰였지만 어디서도 `set`하지 않는 플래그
+- 원문이 빠진 문장 수
+
+`--strict`는 경고도 실패로 처리합니다. `--json`은 결과를 JSON으로 출력합니다.
 
 ## 데이터 형식
 
