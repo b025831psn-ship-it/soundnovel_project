@@ -329,7 +329,7 @@ function frame(now) {
     if (now - entered >= 140 * 1000 / 59.94) opening();
   } else if (scene === 'title') {
     screen.title(index, Boolean(saved));
-    if (now - entered > 4801 * 1000 / 59.94) opening(true);
+    if (now - entered >= 4801 * 1000 / 59.94) opening(true);
   } else if (['autosave','slot','file-select','created','save-note'].includes(scene)) screen.autosave(scene, index, slot, names[0]);
   else if (scene === 'choice') {
     screen.background('my0645', true, time);

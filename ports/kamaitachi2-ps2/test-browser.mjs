@@ -166,6 +166,16 @@ try {
     await at('title');
     assert.ok(await page.locator('video').evaluate(v => v.src.endsWith('/title.mp4') && v.loop));
   }
+  await page.clock.install();
+  await page.keyboard.press('ArrowLeft');
+  await page.clock.fastForward(79000);
+  assert.equal(await canvas.getAttribute('data-scene'), 'title');
+  await page.keyboard.press('ArrowRight');
+  await page.clock.fastForward(79000);
+  assert.equal(await canvas.getAttribute('data-scene'), 'title');
+  await page.clock.fastForward(1200);
+  await at('attract');
+  assert.ok(await page.locator('video').evaluate(v => v.src.endsWith('/pre_dv.mp4')));
   assert.deepEqual(unexpected,[]);
   const isoRequests = [...requests].filter(url => /\.iso(?:$|[?#])/i.test(url));
   assert.equal(isoRequests.length,0);
