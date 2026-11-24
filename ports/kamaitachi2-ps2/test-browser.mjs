@@ -100,7 +100,7 @@ try {
   await key('ArrowDown'); await key('Enter'); await at('story');
   assert.equal(await label(), '行ってから……どうなったんだっけ。');
   await advanceTo('complete');
-  assert.match(await label(), /ぼくは、何をしたのか覚えていない。$/);
+  assert.equal(await label(), 'どうしたかも覚えていない。');
   assert.equal(await page.evaluate(()=>localStorage.getItem('soundnovel.slps25132.opening.v1')),null);
   await page.reload(); await page.getByRole('button',{name:'게임 시작'}).click();
   await key('Space'); await at('title'); await key('Enter'); await at('autosave');
