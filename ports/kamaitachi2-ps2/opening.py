@@ -219,13 +219,13 @@ def scenario_choice(data, source):
     label = rb"\x85[\x0b\x0c][\x0c\x0d](myb?0[12]_[0-9]{4})\x00\x22"
     labels = list(re.finditer(label, data))
     blocks = {a[1]: data[a.end():b.start()] for a, b in zip(labels, labels[1:])}
-    command = re.search(rb"\x6c[\x1b\x1c]\x01\x02\x00\x00\x0c(my0[12]_\d{4})\x00\x00"
+    command = re.search(rb"\x6c[\x1b-\x1d]\x01\x02\x00\x00[\x0c\x0d](myb?0[12]_\d{4})\x00\x00"
                         rb"[\x0c\x0d](myb?0[12]_\d{4})\x00", blocks[source])
     if command is None:
         raise ValueError(f"Missing two-destination CommandSelect in {source!r}")
     choices = []
     for target in command.groups():
-        line = re.match(rb"(?:\x7b\x0c\x13sh01_0010\x00\x06)?\x6a\x07[\x0c\x0d]_myb?\d+\x00"
+        line = re.match(rb"(?:\x7b\x0c\x13sh01_0010\x00\x06)?(?:\x73\x08myb0001\x00\x74\x0bmyb0001_10\x00)?\x6a\x07[\x0c\x0d]_myb?\d+\x00"
                         rb"\x02([^\x00-\x1f]+)\x03\x04", blocks[target])
         if line is None:
             raise ValueError(f"Missing destination text in {target!r}")
@@ -329,6 +329,7 @@ def opening_assets(disc, out, encode):
         "story": scenario_strings(scenario),
         "prologueChoice": scenario_choice(scenario, b"my01_0070"),
         "summerChoice": scenario_choice(scenario, b"my02_0100"),
+        "followupChoice": scenario_choice(scenario, b"myb02_0010"),
         "invitationOrigin": invitation_origin(scenario),
         "titleMusic": title_music,
     }

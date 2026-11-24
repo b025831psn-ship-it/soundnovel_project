@@ -285,9 +285,11 @@ function makePages(s) {
     ...data.summerChoice.flatMap(route => {
       const pages = narrationPages(s[route.target], true);
       pages[0].target = route.target;
-      pages.at(-1).end = true;
+      if (route.target === 'myb02_0010') pages.at(-1).choice = data.followupChoice;
+      else pages.at(-1).end = true;
       return pages;
     }),
+    ...data.followupChoice.map(route => ({target:route.target, retainMovie:true, end:true, text: () => route.text})),
   ];
 }
 

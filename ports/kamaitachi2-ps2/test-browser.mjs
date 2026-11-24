@@ -217,12 +217,22 @@ try {
   assert.match(reply, /なかなか面白かったよね」$/);
   await key('Enter'); await at('story');
   assert.equal(await label(), reply);
+  for (let i=0; i<30 && !(await label()).endsWith('どのへんが面白かった？」'); i++) {
+    await key('Enter');
+    await page.waitForTimeout(100);
+  }
+  assert.match(await label(), /どのへんが面白かった？」$/);
   for (let i=0; i<30 && await canvas.getAttribute('data-scene') === 'story'; i++) {
     await key('Enter');
     await page.waitForTimeout(100);
   }
-  await at('complete');
-  assert.match(await label(), /どのへんが面白かった？」$/);
+  await at('choice');
+  assert.match(await label(), /もちろん犯人当てだよ」$/);
+  await key('ArrowDown');
+  const bossReply = await label();
+  assert.match(bossReply, /最後のボスキャラを倒すのがたいへんだったけどね」$/);
+  await key('Enter'); await at('complete');
+  assert.equal(await label(), bossReply);
   assert.ok([...requests].some(url => url.endsWith('/k2h003.ogg')));
   const saved = await page.evaluate(()=>JSON.parse(localStorage.getItem('soundnovel.slps25132.opening.v1')));
   assert.deepEqual(saved,{names:['透ああああぁ','真理'],slot:1});
