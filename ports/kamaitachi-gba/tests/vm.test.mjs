@@ -19,14 +19,16 @@ function bank(rows) {
 
 test("required opcode table retains native handler evidence", () => {
   const required = [
-    0x00, 0x01, 0x02, 0x03, 0x04, 0x0d, 0x0e, 0x0f, 0x13, 0x1a, 0x21, 0x22,
-    0x14, 0x15, 0x16, 0x1e, 0x23, 0x25, 0x40, 0x41, 0x4b, 0x4c, 0x56, 0x57, 0x5e,
+    0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x0d, 0x0e, 0x0f, 0x12, 0x13, 0x19, 0x1a, 0x21, 0x22,
+    0x14, 0x15, 0x16, 0x18, 0x1e, 0x23, 0x25, 0x26, 0x27, 0x28,
+    0x40, 0x41, 0x43, 0x44, 0x46, 0x47, 0x48, 0x4b, 0x4c, 0x56, 0x57, 0x5e, 0x61, 0x62,
+    0x33, 0x36, 0x39, 0x3a, 0x3b, 0x3c, 0x3d, 0x4e, 0x4f, 0x51, 0x52, 0x59, 0x5b, 0x63,
   ];
   assert.ok(required.every((opcode) => HANDLERS[opcode]));
 });
 
-test("choice suppression table covers all 34 reviewed handlers and consumes arguments", () => {
-  assert.equal(Object.keys(SUPPRESSION).length, 34);
+test("choice suppression table covers all 42 reviewed handlers and consumes arguments", () => {
+  assert.equal(Object.keys(SUPPRESSION).length, 42);
   const calls = [];
   for (const [opcodeText, [gate, shape]] of Object.entries(SUPPRESSION)) {
     if (gate === "sets-77e" || gate === "78e-or-choice-return") continue;
@@ -37,7 +39,8 @@ test("choice suppression table covers all 34 reviewed handlers and consumes argu
       scene: { request: () => calls.push("scene"), overlay: () => calls.push("overlay") },
       audio: { startSong: () => calls.push("audio"), stopSong: () => calls.push("audio"), immInit() {}, volumeControl() {} },
     });
-    vm.ram.effectDisabled = 1;
+    if (gate === "78e") vm.ram.effectBypass = 1;
+    else vm.ram.effectDisabled = 1;
     vm.ram.flags.fill(7);
     vm.ram.bits.fill(7);
     const flags = [...vm.ram.flags], bits = [...vm.ram.bits];
@@ -158,6 +161,17 @@ test("04 uses a little-endian request", () => {
   });
   vm.step();
   assert.equal(request, 0x1234);
+});
+
+test("05 loads a little-endian scene in native mode 1", () => {
+  const calls = [];
+  const vm = new VM({
+    banks: { 27: bank([[0x05, 0x83, 0x00]]) },
+    scene: { request: (...args) => calls.push(args) },
+  });
+  vm.step();
+  assert.equal(calls[0][0], 0x83);
+  assert.equal(calls[0][2], 1);
 });
 
 function recorder() {
@@ -386,6 +400,61 @@ test("1D consumes its command and delegates the native system table", () => {
   assert.equal(vm.ram.vars[2], 7);
 });
 
+test("boot-path opcodes 3C, 3D, 4E and 63 preserve native alignment", () => {
+  const calls = [];
+  const vm = new VM({
+    banks: { 31: bank([[0x3c, 4, 9, 0x3d, 0x4e, 0x63, 0x41, 2, 7]]) },
+    entryRow: 31000,
+    trace: ({ opcode, args }) => calls.push([opcode, args]),
+  });
+  while (vm.step());
+  assert.deepEqual(calls.slice(0, 4), [
+    [0x3c, [4, 9]], [0x3d, []], [0x4e, []], [0x63, []],
+  ]);
+  assert.equal(vm.ram.vars[2], 7);
+});
+
+test("12 and 43 emit native system cues, then 44 enters flowchart row 39000", () => {
+  const calls = [];
+  const vm = new VM({
+    banks: {
+      27: bank([[0x12, 0x43, 0x34, 0x12, 0x44]]),
+      39: bank([[0x41, 3, 9]]),
+    },
+    system: { cue: (...args) => calls.push(args.slice(0, 2)) },
+  });
+  vm.step();
+  vm.step();
+  vm.step();
+  assert.deepEqual(calls, [[0x12, 0], [0x43, 0x1234], [0x44, 39000]]);
+  assert.equal(vm.bank, 39);
+  assert.equal(vm.offset, vm.rows[39][0]);
+  vm.step();
+  assert.equal(vm.ram.vars[3], 9);
+});
+
+test("19, 46, 47, 48, 61 and 62 preserve native operand widths and system state", () => {
+  const calls = [];
+  const vm = new VM({
+    banks: { 27: bank([[0x19, 0x34, 0x12, 0x46, 4, 0x47, 5, 0x48, 6,
+      0x61, 0x78, 0x56, 0x62, 0x7a, 0x56]]) },
+    system: { cue: (...args) => calls.push(args.slice(0, 2)) },
+  });
+  while (vm.step());
+  assert.deepEqual(calls, [[0x19, 0x1234]]);
+  assert.equal(vm.ram.system46, 4);
+  assert.equal(vm.ram.system47, 5);
+  assert.equal(vm.ram.system48, 6);
+  assert.equal(vm.ram.clockTarget, 0x5678);
+  assert.equal(vm.ram.updatePending, 1);
+  vm.step();
+  assert.equal(vm.waiting, "clock");
+  vm.vblank(0);
+  vm.vblank(0);
+  assert.equal(vm.ram.clockTarget, 0x567a);
+  assert.equal(vm.waiting, "none");
+});
+
 test("captured transition timing holds dispatch and carries audio gates", () => {
   const row = [0x04, 1, 0, 0x41, 2, 7];
   const vm = new VM({
@@ -403,6 +472,42 @@ test("captured transition timing holds dispatch and carries audio gates", () => 
   vm.vblank();
   assert.equal(vm.ram.vars[2], 7);
   assert.equal(vm.waiting, "none");
+});
+
+test("59 waits for the captured native presentation interval", () => {
+  const vm = new VM({
+    banks: { 27: bank([[0x59, 0x41, 1, 9]]) },
+    transitionTimings: { sites: { "1b:2": [
+      { opcode: 0x59, frames: 2, audioFrame: "11", audioIrq: "11" },
+    ] } },
+  });
+  vm.step();
+  assert.equal(vm.waiting, "transition");
+  vm.vblank();
+  assert.equal(vm.ram.vars[1], 0);
+  vm.vblank();
+  assert.equal(vm.ram.vars[1], 9);
+});
+
+test("5B consumes its operand and skips the native 33-byte inline block", () => {
+  const inline = Array(0x21).fill(0xaa);
+  const vm = new VM({
+    banks: { 27: bank([[0x5b, 2, ...inline, 0x41, 4, 8]]) },
+  });
+  vm.step();
+  assert.equal(vm.banks[vm.bank][vm.offset], 0x41);
+  vm.step();
+  assert.equal(vm.ram.vars[4], 8);
+});
+
+test("1C 14 consumes a following 1C 00 pair like 0800913E", () => {
+  const vm = new VM({
+    banks: { 27: bank([[0x1c, 0x14, 0x1c, 0x00, 0x41, 2, 6]]) },
+  });
+  vm.step();
+  assert.equal(vm.banks[vm.bank][vm.offset], 0x41);
+  vm.step();
+  assert.equal(vm.ram.vars[2], 6);
 });
 
 test("57 runs candidate bytecode in collection mode and 16 opens the choice", () => {
