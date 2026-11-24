@@ -80,7 +80,7 @@ def scenario_strings(data):
     story = {}
     for current, following in zip(labels, labels[1:]):
         name = (current[1] or current[2]).decode("ascii")
-        if name in {"my02_0015", "my02_0030", "my02_0035"}:
+        if name in {"my02_0015", "my02_0030", "my02_0035", "my02_0040", "my02_0075", "my02_0080", "my02_0083"}:
             block = data[current.end():following.start()]
             intro = re.match(rb"\x73\x07my0003\x00\x74\x0amy0003_00\x00\x1e\x50(.{4})"
                              rb"\x72\x07my0005\x00\x50(.{4})\x73\x07my0005\x00"
@@ -90,12 +90,12 @@ def scenario_strings(data):
                 intro = re.match(rb"\x7b\x0c\x13sh01_0010\x00\x06\x73\x07my0006\x00"
                                  rb"\x72\x08my0006b\x00\x74\x0amy0006_00\x00\x50(.{4})",
                                  block, re.DOTALL)
-            if name == "my02_0035":
+            if name in {"my02_0035", "my02_0075", "my02_0080", "my02_0083"}:
                 intro = re.match(rb"\x7b\x0c\x13sh01_0010\x00\x06", block)
-            if intro is None:
+            if name != "my02_0040" and intro is None:
                 raise ValueError("Unexpected summer scene introduction")
             events = []
-            pos = intro.end()
+            pos = intro.end() if intro else 0
             while pos < len(block):
                 opcode = block[pos]
                 pos += 1
@@ -103,19 +103,28 @@ def scenario_strings(data):
                     end = block.index(b"\x03", pos)
                     events.append({"text": block[pos:end].decode("cp932")})
                     pos = end + 1
-                elif opcode == 0x0e:
-                    events.append({"name": 1})
-                elif opcode in (0x40, 0x50):
-                    size = 1 if opcode == 0x40 else 4
+                elif opcode in (0x0d, 0x0e):
+                    events.append({"name": opcode - 0x0d})
+                elif opcode == 0x74:
+                    size = block[pos]
+                    field = block[pos + 1:pos + 1 + size]
+                    if len(field) != size or not field.endswith(b"\0"):
+                        raise ValueError("Invalid caption name")
+                    events.append({"caption": field[:-1].decode("ascii")})
+                    pos += size + 1
+                elif opcode in (0x40, 0x46, 0x4c, 0x50, 0x55, 0x65):
+                    key, size = {0x40: ("speed", 1), 0x46: ("spacing", 1), 0x4c: ("fontArgs", 2),
+                                 0x50: ("wait", 4), 0x55: ("lineSpacing", 4), 0x65: ("mojiXY", 4)}[opcode]
                     if pos + size > len(block):
                         raise ValueError("Truncated summer dialogue operand")
-                    events.append({"speed" if size == 1 else "wait": int.from_bytes(block[pos:pos+size], "big")})
+                    operand = block[pos:pos+size]
+                    events.append({key: list(operand) if opcode == 0x4c else int.from_bytes(operand, "big")})
                     pos += size
-                elif opcode in (0x04, 0x09, 0x0b):
+                elif opcode in (0x04, 0x09, 0x0b, 0x1e):
                     events.append({"command": opcode})
                 else:
                     raise ValueError(f"Unexpected summer dialogue opcode {opcode:#x}")
-            story[name] = {"introWaits": [int.from_bytes(v, "big") for v in intro.groups()], "events": events}
+            story[name] = {"introWaits": [int.from_bytes(v, "big") for v in intro.groups()] if intro else [], "events": events}
         if name == "my02_0010":
             block = data[current.end():following.start()]
             card = re.fullmatch(
@@ -168,7 +177,7 @@ def scenario_strings(data):
             expected = 0x12 if name.endswith("0047") else 0x13
             if data[following.start() - 1] != expected:
                 raise ValueError(f"Unexpected name command in {name}")
-    if len(story) != 24:
+    if len(story) != 28:
         raise ValueError("Opening labels could not be resolved")
     return story
 
