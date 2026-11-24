@@ -144,7 +144,10 @@ export class Screen {
   autosave(state, selection, slot, initialName) {
     this.rect(0, 0, 640, 448, 'black');
     const fileScreen = ['file-select','created','save-note'].includes(state);
-    if (state === 'created') this.background('my0007', false, 0);
+    if (state === 'created') {
+      this.c.drawImage(this.images.g_start, 0, 0);
+      this.rect(0, 0, 640, 448, 'rgba(75,75,75,.25)');
+    }
     this.rect(0, 28, 640, 37);
     if (fileScreen) {
       this.sprite('sys_jo03', 360, 368, 130, 29, 29, 31);

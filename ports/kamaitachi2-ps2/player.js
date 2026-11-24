@@ -693,7 +693,7 @@ try {
   const response = await fetch(asset('opening.json'));
   if (!response.ok) throw new Error('Missing opening data');
   data = await response.json();
-  await Promise.all(['font','copyrigh','title_00','my0000','my0002','my0007','my0011','my0016b','my0021','my0645','mo0000','name_e01','mark','sys_fc01','sys_cd01','sys_cd02','sys_jo01','sys_jo02','sys_jo03','sys_save','sys_wa01'].map(async name => {
+  await Promise.all(['font','copyrigh','g_start','title_00','my0000','my0002','my0007','my0011','my0016b','my0021','my0645','mo0000','name_e01','mark','sys_fc01','sys_cd01','sys_cd02','sys_jo01','sys_jo02','sys_jo03','sys_save','sys_wa01'].map(async name => {
     const image = new Image(); image.src = asset(name + '.png'); await image.decode(); images[name] = image;
   }));
   groups = keyboardGroups(data.rows); pages = makePages(data.story);
