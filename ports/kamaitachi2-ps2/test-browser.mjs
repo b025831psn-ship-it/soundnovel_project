@@ -231,8 +231,15 @@ try {
   await key('ArrowDown');
   const bossReply = await label();
   assert.match(bossReply, /最後のボスキャラを倒すのがたいへんだったけどね」$/);
-  await key('Enter'); await at('complete');
+  await key('Enter'); await at('story');
   assert.equal(await label(), bossReply);
+  for (let i=0; i<60 && await canvas.getAttribute('data-scene') === 'story'; i++) {
+    await key('Enter');
+    await page.waitForTimeout(100);
+  }
+  await at('complete');
+  assert.match(await label(), /真理はにっこり笑って、/);
+  assert.match(await label(), /ドラゴンを８８匹集めないと倒せないのよね」$/);
   assert.ok([...requests].some(url => url.endsWith('/k2h003.ogg')));
   const saved = await page.evaluate(()=>JSON.parse(localStorage.getItem('soundnovel.slps25132.opening.v1')));
   assert.deepEqual(saved,{names:['透ああああぁ','真理'],slot:1});

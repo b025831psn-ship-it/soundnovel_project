@@ -289,7 +289,11 @@ function makePages(s) {
       else pages.at(-1).end = true;
       return pages;
     }),
-    ...data.followupChoice.map(route => ({target:route.target, retainMovie:true, end:true, text: () => route.text})),
+    ...data.followupChoice.flatMap(route => {
+      const pages = narrationPages(s[route.target], true);
+      pages[0].target = route.target;
+      return pages;
+    }),
   ];
 }
 
