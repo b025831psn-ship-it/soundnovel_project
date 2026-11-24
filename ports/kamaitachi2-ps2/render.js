@@ -123,17 +123,17 @@ export class Screen {
 
   footer(editor, confirmOnly = false) {
     this.rect(0, 390, 640, 26);
-    this.sprite('name_e01', 0, 66, 54, 22, 39, 391);
-    this.sprite('name_e01', 0, 114, 22, 22, 112, 391);
+    this.sprite('name_e01', 0, 66, 54, 22, editor ? 40 : 39, editor ? 393 : 391);
+    this.sprite('name_e01', 0, 114, 22, 22, 112, editor ? 392 : 391);
     if (confirmOnly) {
       this.sprite('sys_fc01', 243, 0, 45, 24, 138, 390);
     } else if (editor) {
-      this.sprite('name_e01', 150, 66, 38, 21, 140, 392);
-      this.sprite('name_e01', 59, 66, 42, 21, 180, 392);
-      this.sprite('name_e01', 23, 114, 24, 22, 249, 391);
-      this.sprite('name_e01', 150, 66, 82, 21, 276, 392);
-      this.sprite('name_e01', 0, 139, 23, 22, 378, 391);
-      this.sprite('name_e01', 41, 90, 81, 22, 406, 391);
+      this.sprite('name_e01', 150, 66, 38, 21, 142, 393);
+      this.sprite('name_e01', 59, 66, 42, 21, 187, 393);
+      this.sprite('name_e01', 23, 114, 24, 22, 247, 392);
+      this.sprite('name_e01', 150, 66, 82, 21, 278, 393);
+      this.sprite('name_e01', 0, 139, 23, 22, 376, 393);
+      this.sprite('name_e01', 41, 90, 81, 22, 409, 393);
     } else {
       this.sprite('name_e01', 59, 66, 42, 21, 140, 392);
       this.sprite('name_e01', 23, 114, 24, 22, 198, 391);
