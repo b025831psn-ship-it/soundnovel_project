@@ -55,6 +55,7 @@ export class R3000A {
   constructor({ memory = new PsxMemory(), pc = 0, hooks = new Map(), syscall = null, trace = null } = {}) {
     this.memory = memory;
     this.regs = new Uint32Array(32);
+    this.cop0 = new Uint32Array(32);
     this.hi = 0;
     this.lo = 0;
     this.pc = u32(pc);
@@ -63,6 +64,24 @@ export class R3000A {
     this.syscall = syscall;
     this.trace = trace;
     this.instructions = 0;
+  }
+  exception(code, at = this.pc, { branchDelay = false } = {}) {
+    const status = this.cop0[12];
+    this.cop0[13] = u32((this.cop0[13] & ~0x8000007c) | ((code & 31) << 2) | (branchDelay ? 0x80000000 : 0));
+    this.cop0[14] = u32(branchDelay ? at - 4 : at);
+    this.cop0[12] = u32((status & ~0x3f) | ((status << 2) & 0x3f));
+    const vector = status & 0x00400000 ? 0xbfc00180 : 0x80000080;
+    this.pc = vector;
+    this.nextPc = u32(vector + 4);
+  }
+  interrupt(pending = 0x400) {
+    this.cop0[13] = u32(this.cop0[13] | pending);
+    const status = this.cop0[12];
+    if ((status & 1) && (status & this.cop0[13] & 0xff00)) {
+      this.exception(0, this.pc);
+      return true;
+    }
+    return false;
   }
   jump(target) { this.nextPc = u32(target); }
   step() {
@@ -165,6 +184,14 @@ export class R3000A {
       case 0x0d: this.regs[rt] = this.regs[rs] | imm; break;
       case 0x0e: this.regs[rt] = this.regs[rs] ^ imm; break;
       case 0x0f: this.regs[rt] = u32(imm << 16); break;
+      case 0x10: {
+        if (rs === 0x00) this.regs[rt] = this.cop0[rd];
+        else if (rs === 0x04) this.cop0[rd] = this.regs[rt];
+        else if (rs === 0x10 && (word & 0x3f) === 0x10)
+          this.cop0[12] = u32((this.cop0[12] & ~0x0f) | ((this.cop0[12] >>> 2) & 0x0f));
+        else throw new Error(`unimplemented R3000A COP0 instruction 0x${word.toString(16)} at 0x${at.toString(16)}`);
+        break;
+      }
       case 0x20: this.regs[rt] = u32(s8(this.memory.u8(this.regs[rs] + s16(imm)))); break;
       case 0x21: this.regs[rt] = u32(s16(this.memory.u16(this.regs[rs] + s16(imm)))); break;
       case 0x23: this.regs[rt] = this.memory.u32(this.regs[rs] + s16(imm)); break;

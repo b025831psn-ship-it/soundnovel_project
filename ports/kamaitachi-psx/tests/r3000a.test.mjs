@@ -120,3 +120,35 @@ test("syscall delegates to the configured exception hook", () => {
   cpu.step();
   assert.equal(code, 0x48c);
 });
+
+test("COP0 registers round-trip through mtc0 and mfc0", () => {
+  const memory = new PsxMemory();
+  memory.set32(0, 0x40826000); // mtc0 v0, Status
+  memory.set32(4, 0x40036000); // mfc0 v1, Status
+  const cpu = new R3000A({ memory });
+  cpu.regs[2] = 0x00400401;
+  cpu.step();
+  cpu.step();
+  assert.equal(cpu.cop0[12], 0x00400401);
+  assert.equal(cpu.regs[3], 0x00400401);
+});
+
+test("accepted interrupts enter the COP0 exception vector and preserve EPC", () => {
+  const cpu = new R3000A({ pc: 0x80012340 });
+  cpu.cop0[12] = 0x00000401; // hardware interrupt 0 mask + current IE
+  assert.equal(cpu.interrupt(0x400), true);
+  assert.equal(cpu.pc, 0x80000080);
+  assert.equal(cpu.nextPc, 0x80000084);
+  assert.equal(cpu.cop0[14], 0x80012340);
+  assert.equal((cpu.cop0[13] >>> 2) & 31, 0);
+  assert.equal(cpu.cop0[12] & 0x3f, 0x04);
+});
+
+test("RFE restores the previous interrupt mode", () => {
+  const memory = new PsxMemory();
+  memory.set32(0, 0x42000010); // rfe
+  const cpu = new R3000A({ memory });
+  cpu.cop0[12] = 0x00000404;
+  cpu.step();
+  assert.equal(cpu.cop0[12], 0x00000401);
+});
