@@ -153,7 +153,9 @@ function makePages(s) {
     { checkpoint:true, text: partnerLine },
     { append:true, text: classmates },
     { append:true, choice:true, text: () => classmates() + '\n' + last[4] + names[1] + last[5] + '\n' + last[6] },
-    { target:'my01_0073', end:true, text: () => outcome('my01_0073') },
+    { target:'my01_0073', book:true, text: () => outcome('my01_0073') },
+    { background:'mo0001a', text: () => s.mo01_0011[0] },
+    { background:'mo0001a', append:true, end:true, book:true, text: () => s.mo01_0011.join('\n') },
     { target:'my01_0075', book:true, text: () => outcome('my01_0075') },
     { text: () => north[0] },
     { append:true, book:true, text: () => north[0] + '\n' + north[1] + names[1] + north[2] + '\n' + north[3] + names[1] + north[4] },
@@ -252,7 +254,8 @@ function step(key) {
 
 function drawStory(time) {
   const block = pages[page], text = storyText().slice(0, Math.floor(revealed));
-  screen.background(block.center ? 'my0007' : 'my0645', !block.center, time);
+  const background = block.background ?? (block.center ? 'my0007' : 'my0645');
+  screen.background(background, background === 'my0645', time);
   const y = block.center ? 189 : 31;
   const x = block.center ? (640 - screen.width(storyText(), .91)) / 2 : 32;
   const end = screen.text(text, x, y, {scale:.91, max:580});
@@ -331,7 +334,7 @@ try {
   const response = await fetch(asset('opening.json'));
   if (!response.ok) throw new Error('Missing opening data');
   data = await response.json();
-  await Promise.all(['font','copyrigh','title_00','my0007','my0645','name_e01','mark','sys_fc01','sys_cd01','sys_cd02','sys_jo01','sys_jo02','sys_jo03','sys_save','sys_wa01'].map(async name => {
+  await Promise.all(['font','copyrigh','title_00','my0007','my0645','mo0001a','name_e01','mark','sys_fc01','sys_cd01','sys_cd02','sys_jo01','sys_jo02','sys_jo03','sys_save','sys_wa01'].map(async name => {
     const image = new Image(); image.src = asset(name + '.png'); await image.decode(); images[name] = image;
   }));
   groups = keyboardGroups(data.rows); pages = makePages(data.story);

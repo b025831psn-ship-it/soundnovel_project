@@ -76,18 +76,18 @@ def texture(data):
 
 
 def scenario_strings(data):
-    labels = list(re.finditer(rb"\x85\x0b\x0c(my01_[0-9]{4})\x00\x22", data))
+    labels = list(re.finditer(rb"\x85\x0b(?:\x0c(my01_[0-9]{4})|\x0a(mo01_[0-9]{4}))\x00\x22", data))
     story = {}
     for current, following in zip(labels, labels[1:]):
-        name = current[1].decode("ascii")
-        if name in {"my01_0010", "my01_0012", "my01_0022", "my01_0040", "my01_0055", "my01_0070", "my01_0076", "my01_0077"}:
+        name = (current[1] or current[2]).decode("ascii")
+        if name in {"my01_0010", "my01_0012", "my01_0022", "my01_0040", "my01_0055", "my01_0070", "my01_0076", "my01_0077", "mo01_0011"}:
             block = data[current.end():following.start()]
             story[name] = [s.decode("cp932") for s in re.findall(rb"\x02([^\x00-\x1f]+)\x03", block)]
         if name in {"my01_0047", "my01_0062"}:
             expected = 0x12 if name.endswith("0047") else 0x13
             if data[following.start() - 1] != expected:
                 raise ValueError(f"Unexpected name command in {name}")
-    if len(story) != 8:
+    if len(story) != 9:
         raise ValueError("Opening labels could not be resolved")
     return story
 
@@ -173,6 +173,7 @@ def opening_assets(disc, out, encode):
 
     for name in ("my0007", "my0645"):
         still_png(asset(f"GRA/MY/{name}.ipu"), out, out / f"{name}.png", encode)
+    still_png(asset("GRA/MO/mo0001a.ipu"), out, out / "mo0001a.png", encode)
     title_music = elf_string(disc.elf, 0x219c08)
     for name in (title_music, "k1a001.ogg"):
         (out / name).write_bytes(asset("SOUND/VORBIS/" + name))
