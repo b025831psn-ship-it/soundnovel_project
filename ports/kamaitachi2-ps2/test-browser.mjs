@@ -127,7 +127,18 @@ try {
   await key('Escape');
   await key('q'); await key('Escape'); await key('Enter');
   assert.equal(await label(),'주인공 透あ');
-  await key('s'); await at('confirm'); await key('ArrowUp'); await key('Enter');
+  await key('s'); await at('confirm');
+  // The original treats the vertical directions as one toggle when pressed together.
+  await page.evaluate(async () => {
+    for (const code of ['ArrowUp', 'ArrowDown']) {
+      document.dispatchEvent(new KeyboardEvent('keydown', {code, bubbles:true}));
+    }
+    await new Promise(requestAnimationFrame);
+    for (const code of ['ArrowUp', 'ArrowDown']) {
+      document.dispatchEvent(new KeyboardEvent('keyup', {code, bubbles:true}));
+    }
+  });
+  await key('Enter');
   await at('story'); assert.match(await label(),/透あ/);
   await advanceTo('name'); assert.equal(await label(),'여자친구 真理');
   await check('partner');
