@@ -121,13 +121,15 @@ export class Screen {
     this.pointer(x + 16, y + 7 + 27 * selection);
   }
 
-  footer(editor, confirmOnly = false) {
+  footer(state) {
+    const nameScreen = state === 'name' || state === 'confirm';
+    const lowRow = state === 'autosave' || state === 'save-note';
     this.rect(0, 390, 640, 26);
-    this.sprite('name_e01', 0, 66, 54, 22, editor ? 40 : 39, editor ? 393 : 391);
-    this.sprite('name_e01', 0, 114, 22, 22, 112, editor ? 392 : 391);
-    if (confirmOnly) {
+    this.sprite('name_e01', 0, 66, 54, 22, nameScreen ? 40 : 38, lowRow ? 391 : 393);
+    this.sprite('name_e01', 0, 114, 22, 22, 112, lowRow ? 391 : 392);
+    if (state === 'created' || state === 'save-note') {
       this.sprite('sys_fc01', 243, 0, 45, 24, 138, 390);
-    } else if (editor) {
+    } else if (state === 'name') {
       this.sprite('name_e01', 150, 66, 38, 21, 142, 393);
       this.sprite('name_e01', 59, 66, 42, 21, 187, 393);
       this.sprite('name_e01', 23, 114, 24, 22, 247, 392);
@@ -135,9 +137,9 @@ export class Screen {
       this.sprite('name_e01', 0, 139, 23, 22, 376, 393);
       this.sprite('name_e01', 41, 90, 81, 22, 409, 393);
     } else {
-      this.sprite('name_e01', 59, 66, 42, 21, 140, 392);
-      this.sprite('name_e01', 23, 114, 24, 22, 198, 391);
-      this.sprite('name_e01', 105, 66, 42, 21, 226, 392);
+      this.sprite('name_e01', 59, 66, 42, 21, nameScreen ? 139 : 138, lowRow ? 391 : 393);
+      this.sprite('name_e01', 23, 114, 24, 22, nameScreen ? 199 : (lowRow ? 197 : 198), 392);
+      this.sprite('name_e01', 105, 66, 42, 21, nameScreen ? 225 : 224, lowRow ? 391 : 392);
     }
   }
 
@@ -167,7 +169,7 @@ export class Screen {
         this.sprite('sys_wa01', 0, sy, 256, 24, rightX, rightY);
       });
       this.sprite('sys_save', 399, 129, 90, 23, 86, 289);
-      this.footer(false, true);
+      this.footer(state);
       return;
     }
     if (fileScreen) {
@@ -196,7 +198,7 @@ export class Screen {
         this.sprite('sys_cd02', 0, 288, 215, 24, 152, 223);
         this.sprite('sys_cd02', 374, 288, 134, 24, 363, 223);
       }
-      this.footer(false, state === 'created');
+      this.footer(state);
       return;
     }
     if (state === 'autosave') {
@@ -225,7 +227,7 @@ export class Screen {
       this.sprite('sys_save', 349, 74, 119, 24, x + 65, 309);
       this.c.restore();
     }
-    this.footer(false);
+    this.footer(state);
   }
 
   editor(editor, role) {
@@ -279,7 +281,7 @@ export class Screen {
       this.sprite('name_e01', 50, 136, 28, 15, 0, 0);
       this.c.restore();
     }
-    this.footer(true);
+    this.footer('name');
   }
 
   confirm(name, role, selection) {
@@ -301,6 +303,6 @@ export class Screen {
     this.c.globalAlpha = .73;
     this.sprite('sys_fc01', 0, 73, 15, 22, 248, 265 + 32 * selection, 15, 14);
     this.c.restore();
-    this.footer(false);
+    this.footer('confirm');
   }
 }
