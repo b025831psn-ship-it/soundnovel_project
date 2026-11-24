@@ -1,0 +1,79 @@
+<!doctype html><meta charset="utf-8"><title>display WebGL test</title>
+<script type="module">
+import { upscaleHandheld25x } from "./reference.js";
+import { Handheld25xRenderer } from "./webgl.js";
+import { DisplayAdapter } from "./adapter.js";
+
+const width = 240, height = 160;
+const source = new Uint8ClampedArray(width * height * 4);
+for (let y = 0; y < height; y++) for (let x = 0; x < width; x++) {
+  const at = (y * width + x) * 4;
+  source[at] = (x * 17 + y * 3) & 255;
+  source[at + 1] = (x * 5 + y * 19) & 255;
+  source[at + 2] = (x * 11 + y * 7) & 255;
+  source[at + 3] = (x + y) % 13 ? 255 : (x * 9 + y) & 255;
+}
+// Explicit values make ties, transparency, and the final 2x2 source block deterministic.
+source.set([9, 8, 7, 6, 9, 8, 7, 5], 0);
+const last = source.length - 16;
+source.set([250, 1, 1, 17, 2, 2, 2, 18, 3, 3, 3, 19, 4, 4, 4, 20], last);
+
+const canvas = document.createElement("canvas");
+const renderer = new Handheld25xRenderer(canvas);
+renderer.render(source);
+const gl = renderer.gl;
+const raw = new Uint8Array(600 * 400 * 4);
+gl.readPixels(0, 0, 600, 400, gl.RGBA, gl.UNSIGNED_BYTE, raw);
+const actual = new Uint8Array(raw.length);
+for (let y = 0; y < 400; y++) {
+  actual.set(raw.subarray(y * 600 * 4, (y + 1) * 600 * 4), (399 - y) * 600 * 4);
+}
+const expected = upscaleHandheld25x(source).data;
+let mismatch = -1;
+for (let index = 0; index < expected.length; index++) if (expected[index] !== actual[index]) { mismatch = index; break; }
+
+const samples = [];
+for (let run = 0; run < 3; run++) {
+  gl.finish();
+  const start = performance.now();
+  for (let frame = 0; frame < 10; frame++) renderer.render(source);
+  gl.finish();
+  samples.push((performance.now() - start) / 10);
+}
+samples.sort((a, b) => a - b);
+
+const nativeSource = document.createElement("canvas");
+nativeSource.width = width;
+nativeSource.height = height;
+nativeSource.getContext("2d").putImageData(new ImageData(source, width, height), 0, 0);
+const nativeInput = nativeSource.getContext("2d").getImageData(0, 0, width, height).data;
+const nativeMount = document.createElement("div");
+const nativeAdapter = new DisplayAdapter(nativeSource, nativeMount);
+nativeAdapter.render();
+const nativeOutput = nativeAdapter.output.getContext("2d").getImageData(0, 0, width, height).data;
+let nativeMismatch = -1;
+for (let index = 0; index < nativeInput.length; index++) if (nativeInput[index] !== nativeOutput[index]) { nativeMismatch = index; break; }
+
+const originalGetContext = HTMLCanvasElement.prototype.getContext;
+HTMLCanvasElement.prototype.getContext = function (type, options) {
+  return type === "webgl" ? null : originalGetContext.call(this, type, options);
+};
+const fallbackMount = document.createElement("div");
+const fallbackAdapter = new DisplayAdapter(nativeSource, fallbackMount, "handheld-2.5x");
+fallbackAdapter.render();
+HTMLCanvasElement.prototype.getContext = originalGetContext;
+
+document.body.textContent = JSON.stringify({
+  ok: mismatch < 0,
+  mismatch,
+  mismatchValues: mismatch < 0 ? null : [expected[mismatch], actual[mismatch]],
+  firstPixel: [...actual.slice(0, 4)],
+  size: [canvas.width, canvas.height],
+  alphaAtLastPixel: actual.at(-1),
+  medianMillisecondsPerFrame: samples[2],
+  renderer: gl.getParameter(gl.RENDERER),
+  nativeMismatch,
+  fallbackMode: fallbackAdapter.mode,
+  fallbackSize: [fallbackAdapter.output.width, fallbackAdapter.output.height],
+});
+</script>
