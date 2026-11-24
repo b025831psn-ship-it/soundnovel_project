@@ -122,7 +122,7 @@ def scenario_strings(data):
     story = {}
     for current, following in zip(labels, labels[1:]):
         name = (current[1] or current[2] or current[3]).decode("ascii")
-        if name in {"my02_0015", "my02_0160", "my02_0170", "my02_0180", "my02_0190", "my02_0210", "my02_0215", "my02_0217", "my02_0240", "my02_0250", "my02_0260", "my02_0270", "my02_0280", "my02_0300", "my02_0350", "myb02_0330", "myb02_0335", "myb02_0340", "my02_0400", "my02_0410", "my02_0430", "my02_0450", "my02_0460", "my02_0463", "my02_0465", "my02_0470", "my02_0480", "my03_0010", "my02_0340", "myb02_0320", "my02_0150", "my02_0120", "my02_0030", "my02_0035", "my02_0040", "my02_0075", "my02_0080", "my02_0083", "my02_0085", "my02_0090", "my02_0110", "myb02_0010", "myb02_0120", "myb02_0030", "myb02_0140", "myb02_0150"}:
+        if name in {"my02_0015", "my02_0160", "my02_0170", "my02_0180", "my02_0190", "my02_0210", "my02_0215", "my02_0217", "my02_0240", "my02_0250", "my02_0260", "my02_0270", "my02_0280", "my02_0300", "my02_0350", "myb02_0330", "myb02_0335", "myb02_0340", "my02_0400", "my02_0410", "my02_0430", "my02_0450", "my02_0460", "my02_0463", "my02_0465", "my02_0470", "my02_0480", "my03_0010", "my03_0127", "my02_0340", "myb02_0320", "my02_0150", "my02_0120", "my02_0030", "my02_0035", "my02_0040", "my02_0075", "my02_0080", "my02_0083", "my02_0085", "my02_0090", "my02_0110", "myb02_0010", "myb02_0120", "myb02_0030", "myb02_0140", "myb02_0150"}:
             block = data[current.end():following.start()]
             intro = re.match(rb"\x73\x07my0003\x00\x74\x0amy0003_00\x00\x1e\x50(.{4})"
                              rb"\x72\x07my0005\x00\x50(.{4})\x73\x07my0005\x00"
@@ -152,15 +152,26 @@ def scenario_strings(data):
                 if len(lines) != 2 or block[pos] != 0x16 or not block.endswith(suffix):
                     raise ValueError("Unexpected culprit reply layout")
                 block = block[pos+1:-len(suffix)]
-            if name not in {"my02_0180", "my02_0190", "my02_0210", "my02_0215", "my02_0217", "my02_0240", "my02_0250", "my02_0260", "my02_0270", "my02_0280", "my02_0300", "my02_0350", "myb02_0330", "myb02_0335", "myb02_0340", "my02_0400", "my02_0410", "my02_0430", "my02_0450", "my02_0460", "my02_0463", "my02_0465", "my02_0470", "my02_0480", "my03_0010", "my02_0340", "myb02_0320", "my02_0170", "my02_0040", "my02_0150", "myb02_0140", "myb02_0150"} and intro is None:
+            if name not in {"my02_0180", "my02_0190", "my02_0210", "my02_0215", "my02_0217", "my02_0240", "my02_0250", "my02_0260", "my02_0270", "my02_0280", "my02_0300", "my02_0350", "myb02_0330", "myb02_0335", "myb02_0340", "my02_0400", "my02_0410", "my02_0430", "my02_0450", "my02_0460", "my02_0463", "my02_0465", "my02_0470", "my02_0480", "my03_0010", "my03_0127", "my02_0340", "myb02_0320", "my02_0170", "my02_0040", "my02_0150", "myb02_0140", "myb02_0150"} and intro is None:
                 raise ValueError("Unexpected summer scene introduction")
             if name == "myb02_0340":
                 jump = b"\x6a\x0b\x0cmy02_0400\x00"
                 if not block.endswith(jump):
                     raise ValueError("Unexpected prison island history destination")
                 block = block[:-len(jump)]
+            if name == "my03_0127":
+                # The default route takes the != 1 arm of variable 0x011F.
+                _, pos = answer_header(block)
+                guard = b"\x16\x70\x0c\x01\x1f\x0c\x00\x01\x0c_my31\x00"
+                alternate = b"\x70\x0c\x01\x1f\x07\x00\x01\x0c_my32\x00"
+                if not block[pos:].startswith(guard) or not block.endswith(b"\x0b"):
+                    raise ValueError("Unexpected notebook route")
+                normal, other = block[pos+len(guard):].split(alternate)
+                block = normal + block[-1:]
+                if not normal.endswith(other[:-1]):
+                    raise ValueError("Notebook routes no longer share their closing dialogue")
             ruby = []
-            if name in {"my02_0150", "my02_0170", "my02_0215", "my02_0217", "my02_0280", "myb02_0340", "my02_0400", "my02_0410", "my02_0450", "my02_0463", "my02_0465"}:
+            if name in {"my02_0150", "my02_0170", "my02_0215", "my02_0217", "my02_0280", "myb02_0340", "my02_0400", "my02_0410", "my02_0450", "my02_0463", "my02_0465", "my03_0127"}:
                 def read_ruby(match):
                     readings = [text.decode("cp932") for text in re.findall(rb"\x02([^\x03]+)\x03", match[1])]
                     base = match[2].decode("cp932")
@@ -304,7 +315,7 @@ def scenario_strings(data):
             expected = 0x12 if name.endswith("0047") else 0x13
             if data[following.start() - 1] != expected:
                 raise ValueError(f"Unexpected name command in {name}")
-    if len(story) != 74:
+    if len(story) != 75:
         raise ValueError("Opening labels could not be resolved")
     return story
 

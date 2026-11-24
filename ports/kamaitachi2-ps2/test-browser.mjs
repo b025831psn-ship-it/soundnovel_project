@@ -329,6 +329,8 @@ try {
     assert.ok([...captainLines].some(line => line.endsWith('船長さんはうれしそうに歌いだした。')));
     const verses = [...captainLines, await label()].filter(line => line.includes('　') && line.length >= 130);
     assert.ok(verses.some(line => line.replaceAll('　','').startsWith('底蟲村のしん太郎どん')));
+    assert.match(await label(), /真理は率直に感想をもらした。/);
+    assert.match(await label(), /漢字などを\s*教えてくれた。$/);
     assert.deepEqual(verses.slice(-5).map(line => line.length), [131, 138, 133, 134, 142]);
     assert.ok([...requests].some(url => url.endsWith('/k2h002.ogg')));
     assert.ok([...requests].some(url => url.endsWith('/my0018.mp4')));
