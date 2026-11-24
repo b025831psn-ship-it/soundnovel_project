@@ -81,5 +81,11 @@ python3 ports/kamaitachi-psx/tools/psx_vram.py texture.bin texture.png \
   --width 320 --height 240 --bpp 8 --clut palette.bin
 ```
 
+`tools/gp0_vram.py` reconstructs the 1024x512 BGR555 VRAM state from JSONL GP0
+words. It frames drawing packets so coordinate or color payloads cannot be
+mistaken for transfer commands, and applies fill, CPU-to-VRAM upload, and
+overlap-safe VRAM copy packets. Its optional manifest lists upload rectangles
+without copying their pixels.
+
 Static control-flow findings and their current confidence boundary are tracked
 in `ANALYSIS.md`.
