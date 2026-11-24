@@ -97,11 +97,26 @@ def scenario_strings(data):
         if name in {"my01_0010", "my01_0012", "my01_0022", "my01_0040", "my01_0055", "my01_0070", "my01_0076", "my01_0077", "my01_0078", "my01_0079", "my01_0080", "my01_0081", "my01_0082", "my01_0085", "mo01_0011", "mo01_0012", "mo02_0010", "mo02_0015"}:
             block = data[current.end():following.start()]
             story[name] = [s.decode("cp932") for s in re.findall(rb"\x02([^\x00-\x1f]+)\x03", block)]
+        if name == "my01_0085":
+            greeting = re.search(
+                rb"my0002g_40\x00\x50(.{4})\x02([^\x00-\x1f]+)\x03"
+                rb"\x50(.{4})\x02([^\x00-\x1f]+)\x03\x50(.{4})\x0e"
+                rb"\x46\x03\x02([^\x00-\x1f]+)\x03\x46\x0a\x09"
+                rb"\x02([^\x00-\x1f]+)\x03\x0b\x73\x08my0002h\x00", block, re.DOTALL)
+            if greeting is None:
+                raise ValueError("Unexpected phone greeting commands in my01_0085")
+            story["phoneGreeting"] = [
+                {"wait": int.from_bytes(greeting[1], "big"), "text": greeting[2].decode("cp932")},
+                {"wait": int.from_bytes(greeting[3], "big"), "text": greeting[4].decode("cp932")},
+                {"wait": int.from_bytes(greeting[5], "big"), "name": 1},
+                {"text": greeting[6].decode("cp932"), "pause": True},
+                {"text": greeting[7].decode("cp932")},
+            ]
         if name in {"my01_0047", "my01_0062"}:
             expected = 0x12 if name.endswith("0047") else 0x13
             if data[following.start() - 1] != expected:
                 raise ValueError(f"Unexpected name command in {name}")
-    if len(story) != 19:
+    if len(story) != 20:
         raise ValueError("Opening labels could not be resolved")
     return story
 
