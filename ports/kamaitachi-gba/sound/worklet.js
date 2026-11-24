@@ -22,6 +22,10 @@ class M4APlayer extends AudioWorkletProcessor {
         else if (data.type === 'fade') this.engine.fadeOut(data.player, data.speed);
         else if (data.type === 'immInit') this.engine.immInit(data.player);
         else if (data.type === 'volume') this.engine.volumeControl(data.player, data.bits, data.volume);
+        else if (data.type === 'pan') this.engine.panControl(data.player, data.bits, data.pan);
+        else if (data.type === 'pitch') this.engine.pitchControl(data.player, data.bits, data.pitch);
+        else if (data.type === 'playerStart') { this.engine.playerStart(data.player, data.song); this.seq = data.seq; this.stopped = -1; }
+        else if (data.type === 'playerStop') { this.engine.playerStop(data.player); this.seq = data.seq; this.stopped = -1; }
       }
     };
   }
@@ -34,6 +38,10 @@ class M4APlayer extends AudioWorkletProcessor {
       if (!this.frame || this.pos >= this.frameLen) {
         if (this.frame) this.pos -= this.frameLen;
         this.frame = this.engine.vblank();
+        // Stopped bits of every player (MusicPlayerInfo.status bit 31) for the effect scripts.
+        let stopped = 0;
+        this.engine.players.forEach((p, i) => { if (p.status & 0x80000000) stopped |= 1 << i; });
+        if (stopped !== this.stopped) this.port.postMessage({ type: 'stopped', bits: (this.stopped = stopped), seq: this.seq ?? 0 });
       }
       const k = Math.floor(this.pos);
       L[i] = this.frame.l[k];

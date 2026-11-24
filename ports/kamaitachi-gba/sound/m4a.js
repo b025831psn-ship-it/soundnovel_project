@@ -136,6 +136,48 @@ export class M4A {
     });
   }
 
+  // m4aMPlayPanpotControl: panX = pan (s8), volume recomputed.
+  panControl(playerIndex, bits, pan) {
+    this.players[playerIndex]?.tracks.forEach((t, i) => {
+      if (!(bits & (1 << i)) || !(t.flags & FLG_EXIST)) return;
+      t.panX = (pan << 24) >> 24;
+      t.flags |= FLG_VOLSET;
+    });
+  }
+
+  // m4aMPlayPitchControl: keyShiftX = pitch >> 8, pitX = pitch & 0xff, pitch recomputed.
+  pitchControl(playerIndex, bits, pitch) {
+    this.players[playerIndex]?.tracks.forEach((t, i) => {
+      if (!(bits & (1 << i)) || !(t.flags & FLG_EXIST)) return;
+      t.keyShiftX = ((pitch << 16) >> 16) >> 8;
+      t.pitX = pitch & 0xff;
+      t.flags |= FLG_PITSET;
+    });
+  }
+
+  // MPlayStart on a player the caller names (the game's effect scripts use players 1-10 this way,
+  // 080023B0), with the song table's header for `song`. Same priority rule as startSong.
+  playerStart(playerIndex, song) {
+    const p = this.players[playerIndex];
+    if (!p || !this.mem.has(this.cfg.songTable + 8 * song)) return false;
+    const header = this.mem.u32(this.cfg.songTable + 8 * song);
+    if (p.active && p.song !== song && this.mem.u8(header + 2) < p.priority) return false;
+    this.mplayStart(p, header, song);
+    return true;
+  }
+
+  // m4aMPlayStop
+  playerStop(playerIndex) {
+    const p = this.players[playerIndex];
+    if (p) this.mplayStop(p);
+  }
+
+  // MusicPlayerInfo.status bit 31: set once the player is stopped or every track has ended.
+  playerStopped(playerIndex) {
+    const p = this.players[playerIndex];
+    return !p || (p.status & 0x80000000) !== 0;
+  }
+
   // The reset MPlayMain gives a track whose START flag is set: the first 0x40 bytes of
   // MusicPlayerTrack are cleared (cmdPtr and the pattern stack lie beyond them), then
   // flags = EXIST, bendRange 2, volX 64, lfoSpeed 22, tone.type 1.

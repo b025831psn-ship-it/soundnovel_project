@@ -1,4 +1,5 @@
 import { SceneAudio } from "../sound/scene-audio.js";
+import { Effects } from "../sound/effects.js";
 export const HANDLERS = {
   0x00: "08003708",
   0x01: "080036A8",
@@ -54,7 +55,10 @@ export const HANDLERS = {
 // collected. Arguments are consumed before this gate is evaluated.
 // Opcodes 31 and 32 (08004D20-08004D32): raw > 99 is divided by 16 first, then both take * 10.
 const audioSpeed = (raw) => (raw > 99 ? raw >> 4 : raw) * 10;
-const SILENT = { startSong() {}, stopSong() {}, immInit() {}, volumeControl() {} };
+const SILENT = {
+  startSong() {}, stopSong() {}, immInit() {}, volumeControl() {}, panControl() {}, pitchControl() {},
+  playerStart() {}, playerStop() {}, playerStopped: () => true,
+};
 
 export const SUPPRESSION = Object.freeze({
   0x04: ["77e-or-78e", "u16"], 0x08: ["77e-or-78e", "u16,u8"], 0x09: ["77e-or-78e", "u16,u8"],
@@ -90,7 +94,12 @@ export class VM {
     this.audio = audio;
     this.musicMap = musicMap;
     // The game's audio controller (0800A14C-0800A572) owns the request state and drives m4a.
-    this.sound = new SceneAudio(audio ?? SILENT, audioTables ?? { requestSong: musicMap });
+    const engine = audio ?? SILENT;
+    const tables = audioTables ?? { requestSong: musicMap };
+    const effects = tables.effects && tables.effectBytes
+      ? new Effects(engine, tables.effects, tables.effectBytes)
+      : null;
+    this.sound = new SceneAudio(engine, tables, effects);
     this.choiceView = choiceView;
     this.trace = trace;
     this.frame = 0;
@@ -469,8 +478,12 @@ export class VM {
         break;
       }
       case 0x35: {
-        args.push(this.byte(), this.word());
-        this.suppressed(opcode);
+        // 08004E28: sets the flag that effect script opcodes 0A/0B test (08002D50).
+        const value = this.byte();
+        const request = this.word();
+        args.push(value, request);
+        if (this.suppressed(opcode)) break;
+        if (request !== 0xffff) this.sound.effects?.setFlag(value, (request - 1000) << 16 >> 16);
         break;
       }
       case 0x37: {
@@ -613,6 +626,7 @@ export class VM {
     this.ram.updatePending = 0;
     this.sound.frame(); // 0800A414 in the frame wait
     this.sound.irq(); // 0800A3E0 in the VBlank interrupt
+    this.sound.effects?.vblank(); // 08002B00 in the VBlank interrupt (080005F0)
     this.syncAudio();
     if (this.waiting === "audio" && !this.audioWaitFrame()) this.waiting = "none";
     if (this.waiting === "delay" && --this.waitFrames <= 0)

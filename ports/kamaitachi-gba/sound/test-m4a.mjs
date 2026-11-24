@@ -2,6 +2,7 @@
 // Usage: node ports/kamaitachi-gba/sound/test-m4a.mjs
 import { M4A, Memory } from './m4a.js';
 import { SceneAudio } from './scene-audio.js';
+import { Effects } from './effects.js';
 
 const BASE = 0x08000000;
 const mem = new Uint8Array(0x2000);
@@ -142,6 +143,53 @@ for (const [speed, expected] of [
   audio.play(2);
   check(audio.waiting(1, 0) && !audio.waiting(1, 1), '34: 길이 -1인 요청은 첫 확인만 통과');
   check(audio.waiting(2, 1) && audio.waiting(2, 600) && !audio.waiting(2, 601), '34: 재생 중이면 최대 601프레임 대기');
+}
+
+// Effect scripts (08002B00): a hand-written script on player 1 with the native opcode bytes.
+{
+  // Song 1 = song 0's header on player 1 (the script names the player itself).
+  w32(songTable + 8, header); w16(songTable + 12, 1); w16(songTable + 14, 1);
+  w32(players + 12, 0x02000100); w32(players + 16, 0x03000100); w8(players + 20, 1);
+  const engine2 = new M4A(new Memory(mem, BASE), { ...cfg, playerCount: 2 });
+  const BASEFX = 0x100;
+  const script = [
+    0x04, 0x7f, 0x00, 0x00, // volume 0x7F00 now
+    0x05, 0x40, 0x00, 0x00, // pan centre now
+    0x07, 0x00, 0x30, 0x00, 0x00, // pitch 0x3000 now
+    0x03, 0x01, 0x00, 0x00, 0x30, // play song 1, pitch base 0x3000
+    0x01, 0x03, 0x00, // wait 3
+    0x0a, 0x09, 0x1b, 0x00, // flag == 9: jump to +0x1B
+    0x0f, // done (ends the frame)
+    0x13, // end
+    0x0e, // +0x1B: stop and done
+    0x13, // end
+  ];
+  const bytes = new Uint8Array(0x40);
+  bytes.set(script);
+  const fx = new Effects(engine2, { base: BASEFX, programs: [BASEFX] }, bytes);
+  fx.start(0, 0);
+  fx.vblank();
+  const t = engine2.players[1].tracks[0];
+  check(fx.busy[1] === 1 && fx.slots[0].players[1] === 1 && engine2.players[1].active, '효과 스크립트가 player 1에서 곡 시작');
+  // 0800235C: ((0x7F00 >> 8) * (0x10000 >> 8) >> 8) << 1 = 254, and volX = 254 >> 2.
+  check(t.volX === 63, `효과 음량 volX ${t.volX}`);
+  check(t.panX === 0 && t.keyShiftX === 0 && t.pitX === 0, '팬 0x40은 가운데(0), 기준 음높이는 변화 없음');
+  for (let f = 0; f < 3; f++) fx.vblank();
+  check(fx.slots[0].done === 1 && fx.slots[0].id === 0, '대기 뒤 done 표시, 슬롯 유지');
+  fx.slots[0].done = 0;
+  fx.setFlag(9, 0);
+  check(fx.waiting(0, 0), '34: done 전에는 효과를 기다림');
+  fx.vblank();
+  check(fx.slots[0].id === 0 && fx.busy[1] === 1, '종료 명령은 재생 중이면 10프레임 뒤 다시 확인');
+  fx.start(0, 0);
+  fx.slots[0].flag = 9;
+  for (let f = 0; f < 5; f++) fx.vblank();
+  check(!engine2.players[1].active && fx.busy[1] === 0 && !fx.waiting(0, 0), '플래그 분기 → 정지·done, 34 대기 해제');
+  fx.start(0, 20);
+  fx.vblank();
+  fx.fade(0, 10);
+  for (let f = 0; f < 10; f++) fx.vblank();
+  check(fx.slots[0].id === -1 && fx.busy[1] === 0, '마스터 감쇠가 0에 닿으면 슬롯 해제');
 }
 
 console.log(failures ? `${failures} failed` : 'all passed');

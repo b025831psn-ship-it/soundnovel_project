@@ -11,6 +11,9 @@ export async function createSound(dataDir) {
   const node = new AudioWorkletNode(ctx, 'm4a-player', { outputChannelCount: [2] });
   node.connect(ctx.destination);
   node.port.postMessage({ type: 'init', config, bytes }, [bytes]);
+  // Stopped bits reported by the worklet; a report older than the last start/stop sent is ignored.
+  let stopped = ~0, seq = 0;
+  node.port.onmessage = ({ data }) => { if (data.type === 'stopped' && data.seq >= seq) stopped = data.bits; };
   return {
     context: ctx,
     node,
@@ -23,5 +26,11 @@ export async function createSound(dataDir) {
     // m4a calls the game's audio controller (scene-audio.js) makes; messages keep their order.
     immInit: (player) => node.port.postMessage({ type: 'immInit', player }),
     volumeControl: (player, bits, volume) => node.port.postMessage({ type: 'volume', player, bits, volume }),
+    panControl: (player, bits, pan) => node.port.postMessage({ type: 'pan', player, bits, pan }),
+    pitchControl: (player, bits, pitch) => node.port.postMessage({ type: 'pitch', player, bits, pitch }),
+    // Effect scripts start and stop players 1-10 directly and read back whether each has stopped.
+    playerStart: (player, song) => { stopped &= ~(1 << player); node.port.postMessage({ type: 'playerStart', player, song, seq: ++seq }); },
+    playerStop: (player) => { stopped |= 1 << player; node.port.postMessage({ type: 'playerStop', player, seq: ++seq }); },
+    playerStopped: (player) => (stopped & (1 << player)) !== 0,
   };
 }

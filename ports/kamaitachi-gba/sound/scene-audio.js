@@ -25,7 +25,7 @@ export class SceneAudio {
   constructor(engine, tables, effects = null) {
     this.engine = engine;
     this.tables = tables;
-    this.effects = effects; // effect programs (requests >= 1000, 08002C00); not ported yet
+    this.effects = effects; // effects.js Effects: scripts for requests >= 1000 (08002C00)
     this.reset();
   }
 
@@ -152,7 +152,7 @@ export class SceneAudio {
   // that a request is playing, and from the second check on also that the length table entry
   // for `request` is not -1. `frames` is the number of loop frames already run (at most 601).
   waiting(request, frames) {
-    if (request > 99) return false; // 08002CFC waits on an effect program (not ported yet)
+    if (request > 99) return this.effects?.waiting(request - 1000, frames) ?? false; // 08002CFC
     if (this.request === -1 || frames > 600) return false;
     return frames === 0 || s16(this.tables.length?.[request]?.[0] ?? -1) !== -1;
   }
