@@ -37,6 +37,14 @@ The path requires base-integer `NOR` and COP2 `MTC2`/`CTC2` transfers in
 addition to the previously inventoried CPU and MMIO subset. GTE commands have
 not yet been demonstrated on this slice and remain unimplemented.
 
+The isolated editor calls the glyph primitive at `0x800380ec` 85 times for a
+mode-0 frame, with screen coordinates and Shift-JIS code units matching the
+character grid. Executing that primitive past its external boundary reaches
+its bitmap expansion loop, but the required font buffer is populated before
+the isolated routine begins. Correlating that buffer with its PAC record is
+therefore a prerequisite for recovering the real glyph primitives and VRAM
+uploads; an empty buffer must not be treated as rendered output.
+
 ## Open analysis items
 
 - Identify the exact nested SCE record and disc LBA that emits script opcode 3.

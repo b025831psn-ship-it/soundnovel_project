@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { DmaController, GpuPorts, InterruptController, RootCounter, installSystemDevices } from "../src/devices.js";
+import { DmaController, GpuPorts, InterruptController, RootCounter, gpuDmaWords, installSystemDevices } from "../src/devices.js";
 import { PsxMemory, R3000A } from "../src/r3000a.js";
 
 test("I_STAT and I_MASK drive and acknowledge the shared hardware IRQ line", () => {
@@ -99,4 +99,37 @@ test("system device installation maps DMA registers", () => {
   installSystemDevices(memory, cpu);
   memory.set32(0x1f8010f0, 0x07654321);
   assert.equal(memory.u32(0x1f8010f0), 0x07654321);
+});
+
+test("GPU DMA block mode reads RAM words in address order", () => {
+  const memory = new PsxMemory();
+  memory.set32(0x100, 0x11111111);
+  memory.set32(0x104, 0x22222222);
+  assert.deepEqual(gpuDmaWords(memory, { madr: 0x100, bcr: 2, chcr: 0x01000001 }), [
+    0x11111111, 0x22222222,
+  ]);
+});
+
+test("GPU DMA linked list follows packet pointers until the end marker", () => {
+  const memory = new PsxMemory();
+  memory.set32(0x100, (2 << 24) | 0x200);
+  memory.set32(0x104, 0xaaaa0001);
+  memory.set32(0x108, 0xbbbb0002);
+  memory.set32(0x200, (1 << 24) | 0x00800000);
+  memory.set32(0x204, 0xcccc0003);
+  assert.deepEqual(gpuDmaWords(memory, { madr: 0x100, bcr: 0, chcr: 0x01000401 }), [
+    0xaaaa0001, 0xbbbb0002, 0xcccc0003,
+  ]);
+});
+
+test("installed GPU DMA forwards linked-list words to GP0", () => {
+  const memory = new PsxMemory();
+  const cpu = new R3000A({ memory });
+  const events = [];
+  installSystemDevices(memory, cpu, { gpuCommand: (event) => events.push(event) });
+  memory.set32(0x100, (1 << 24) | 0x00800000);
+  memory.set32(0x104, 0xe1000200);
+  memory.set32(0x1f8010a0, 0x100);
+  memory.set32(0x1f8010a8, 0x01000401);
+  assert.deepEqual(events, [{ port: "gp0", value: 0xe1000200 }]);
 });

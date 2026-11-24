@@ -118,7 +118,39 @@ export class DmaController {
   }
 }
 
-export function installSystemDevices(memory, cpu) {
+export function gpuDmaWords(memory, { madr, bcr, chcr }, { maxPackets = 0x10000 } = {}) {
+  const words = [];
+  const directionFromRam = (chcr & 1) !== 0;
+  const step = (chcr & 2) ? -4 : 4;
+  const sync = (chcr >>> 9) & 3;
+  if (!directionFromRam) return words;
+  if (sync === 2) {
+    let address = madr & 0x1ffffc;
+    const visited = new Set();
+    for (let packet = 0; packet < maxPackets; packet++) {
+      if (visited.has(address)) throw new Error(`GPU DMA linked-list cycle at 0x${address.toString(16)}`);
+      visited.add(address);
+      const header = memory.u32(address);
+      const count = header >>> 24;
+      for (let index = 0; index < count; index++)
+        words.push(memory.u32((address + 4 + index * 4) & 0x1ffffc));
+      if (header & 0x00800000) return words;
+      address = header & 0x1ffffc;
+    }
+    throw new Error("GPU DMA linked-list packet limit exceeded");
+  }
+  const blocks = sync === 1 ? ((bcr >>> 16) || 0x10000) : 1;
+  const blockWords = (bcr & 0xffff) || 0x10000;
+  const count = blocks * blockWords;
+  let address = madr & 0x1ffffc;
+  for (let index = 0; index < count; index++) {
+    words.push(memory.u32(address));
+    address = (address + step) & 0x1ffffc;
+  }
+  return words;
+}
+
+export function installSystemDevices(memory, cpu, { gpuCommand = () => {} } = {}) {
   const interrupts = new InterruptController({
     line: (active) => cpu.setHardwareInterrupt(active),
   });
@@ -137,10 +169,16 @@ export function installSystemDevices(memory, cpu) {
     }
     return counter;
   });
-  const gpu = new GpuPorts();
-  memory.map32(0x1f801810, gpu.gp0Device());
+  const gpu = new GpuPorts({ command: gpuCommand });
+  const gp0 = gpu.gp0Device();
+  memory.map32(0x1f801810, gp0);
   memory.map32(0x1f801814, gpu.gp1Device());
-  const dma = new DmaController();
+  const dma = new DmaController({
+    transfer: (event) => {
+      if (event.channel === 2)
+        for (const word of gpuDmaWords(memory, event)) gp0.write(word);
+    },
+  });
   for (let address = 0x1f801080; address <= 0x1f8010f4; address += 4)
     memory.map32(address, dma.device(address));
   return { interrupts, counters, gpu, dma };

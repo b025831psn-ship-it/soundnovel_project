@@ -54,8 +54,14 @@ evidence of parity.
 `src/r3000a.js` loads a PS-X EXE directly into 2 MiB RAM and implements the
 integer, branch-delay, load/store, and BIOS-hook subset needed to begin tracing
 the original entry code. It intentionally has no guessed high-level game
-logic. GPU, CD, SPU, COP0, exceptions, and the remaining unaligned/multiply
-instructions are added only when a native trace reaches them.
+logic. Device and instruction coverage is added only when a native trace
+reaches it; CD, SPU, and GTE command execution are not implemented yet.
+
+`src/devices.js` supplies the interrupt controller, root counters, GPU command
+ports, and DMA registers reached by the current probes. GPU channel-2 block and
+linked-list transfers are expanded from emulated RAM into the same GP0 stream
+as direct MMIO writes.
+
 ## Trace comparison
 
 `src/trace.js` converts CPU instruction events to a stable JSON Lines format and
