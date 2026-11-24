@@ -227,8 +227,11 @@ export class Screen {
     this.text(this.data.prompts[role] + name + '。', left, 144, {scale:.96});
     this.text(this.data.prompts[2], 176, 199, {scale:.96});
     this.rect(235, 252, 138, 72);
+    this.c.save();
+    this.c.filter = 'brightness(86%)'; // Peak label intensity is 219/255 in the PS2 capture.
     this.text('はい', 272, 254, {spacing:0});
     this.text('いいえ', 272, 286, {spacing:0});
+    this.c.restore();
     this.sprite('sys_fc01', 0, 73, 15, 22, 248, 265 + 32 * selection, 15, 14);
     this.footer(false);
   }
