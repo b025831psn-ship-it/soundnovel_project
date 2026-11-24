@@ -90,9 +90,10 @@ try {
     await new Promise(requestAnimationFrame);
     pressed.clear();
     await new Promise(requestAnimationFrame);
-    // Right moves once immediately, again after 18 polls, then after six.
+    // Hold through the second repeat, between the 24th and 30th PS2 ticks.
     pressed.add(15);
-    for (let frame=0; frame<25; frame++) await new Promise(requestAnimationFrame);
+    const start = await new Promise(requestAnimationFrame);
+    while (await new Promise(requestAnimationFrame) - start < 415) {}
     pressed.add(1);
     await new Promise(requestAnimationFrame);
     pressed.clear();

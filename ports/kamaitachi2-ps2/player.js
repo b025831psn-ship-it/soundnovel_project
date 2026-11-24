@@ -1,4 +1,4 @@
-import { NameEditor, keyboardGroups } from './names.js';
+import { DirectionRepeat, NameEditor, keyboardGroups } from './names.js';
 import { Screen } from './render.js';
 
 const canvas = document.querySelector('canvas');
@@ -19,7 +19,7 @@ let idleMovie = 'pre_dv';
 let textWaits = [];
 let textSpeeds = [];
 const padDown = new Set();
-let previousPadDirection = '', padRepeatFrames = 0;
+const padRepeat = new DirectionRepeat();
 const images = {};
 
 function enter(next, selected = 0) {
@@ -489,15 +489,13 @@ function frame(now) {
     const horizontal = left ? 'left' : right ? 'right' : '';
     const direction = horizontal + vertical;
     if (group) step(group);
-    if (direction && (direction !== previousPadDirection || --padRepeatFrames <= 0)) {
-      padRepeatFrames = direction === previousPadDirection ? 6 : 18;
+    if (padRepeat.advance(direction, now)) {
       if (horizontal) step(horizontal);
       if (vertical) step(vertical);
     }
-    previousPadDirection = direction;
     if (edit) step(edit);
   } else {
-    previousPadDirection = '';
+    padRepeat.advance('', now);
     for (const action of actions) step(action);
   }
   requestAnimationFrame(frame);

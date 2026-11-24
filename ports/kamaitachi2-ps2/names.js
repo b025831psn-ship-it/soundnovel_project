@@ -66,3 +66,20 @@ export class NameEditor {
     return this.value;
   }
 }
+
+export class DirectionRepeat {
+  direction = '';
+  nextRepeat = 0;
+
+  advance(direction, now) {
+    if (direction !== this.direction) {
+      this.direction = direction;
+      this.nextRepeat = now + 18 * 1000 / 59.94;
+      return Boolean(direction);
+    }
+    if (!direction || now < this.nextRepeat) return false;
+    const interval = 6 * 1000 / 59.94;
+    this.nextRepeat += (1 + Math.floor((now - this.nextRepeat) / interval)) * interval;
+    return true;
+  }
+}
