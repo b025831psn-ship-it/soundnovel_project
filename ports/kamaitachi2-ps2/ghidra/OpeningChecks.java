@@ -75,6 +75,9 @@ public class OpeningChecks extends GhidraScript {
                 throw new Exception("Unexpected wait bypass predicate");
             directCall(0x12d258, 0x112de8);
             directCall(0x112740, 0x112e08);
+            directCall(0x1010bc, 0x10ba28);
+            directCall(0x10ba38, 0x1126a0);
+            directCall(0x112748, 0x112ec0);
             directCall(0x12ec04, 0x101348);
             directCall(0x10135c, 0x1013d8);
             directCall(0x12ec20, 0x10cec8);
