@@ -3,6 +3,10 @@
   "gameId": "sample-first-choice",
   "title": "예문 데모: 산장의 밤",
   "entry": "intro-choice",
+  "names": {
+    "hero": "민준",
+    "heroine": "서연"
+  },
   "scenes": {
     "living-room": {
       "name": "거실"
