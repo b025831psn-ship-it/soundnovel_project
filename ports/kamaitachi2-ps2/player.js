@@ -134,8 +134,8 @@ function printPage() {
     textSpeeds = block.resolveSpeeds?.() ?? block.speeds ?? [];
     if (block.movie) {
       playMovie(block.movie, block.loopMovie ? () => playMovie(block.loopMovie, null, true) : null);
-      if (block.music) playMusic(block.music);
     }
+    if (block.music) playMusic(block.music);
     enter(block.end ? 'complete' : 'story');
   }
 }
@@ -362,7 +362,11 @@ function makePages(s) {
         ...nickname, ...history, ...factory,
         ...narrationPages(s.my02_0470, false).map((block, i) => i === 0 ? {...block, movie:'my0008'} : block),
         ...narrationPages(s.my02_0480, false),
-        ...narrationPages(s.my03_0010, true).map((block, i) => i === 0 ? {...block, movie:'my0018'} : block)];
+        ...narrationPages(s.my03_0010, false).map((block, i) => i === 0 ? {...block, movie:'my0018'} : block),
+        {background:'my0000', music:'k2h002.ogg', end:true, positioned:s.my03_0040.placements,
+          text:() => s.my03_0040.placements.map(run => run.text).join(''),
+          speeds:[{offset:0, speed:0}],
+          waits:() => [{offset:0, remaining:s.my03_0040.introWait * 1000 / 59.94}]}];
     }),
   ];
 }
@@ -469,7 +473,8 @@ function drawStory(time) {
     let remaining = text.length;
     for (const run of block.positioned) {
       if (remaining <= 0) break;
-      screen.text(run.text.slice(0, remaining), run.x, run.y, {scale:.91});
+      if (run.reading) screen.centered(run.reading, run.x + screen.width(run.text, .91) / 2, run.y - 10, .38);
+      else screen.text(run.text.slice(0, remaining), run.x, run.y, {scale:.91});
       remaining -= run.text.length;
     }
     return;

@@ -325,8 +325,10 @@ try {
     assert.ok([...captainLines].some(line => line.endsWith('そう言おうと口を開きかけたら……。')));
     assert.ok([...captainLines].some(line => line.includes('監獄なんて、おもしろいじゃない')));
     assert.ok([...captainLines].some(line => line.endsWith('楽しみだなあ……」')));
-    assert.match(await label(), /妙な〈わらべ唄〉/);
-    assert.match(await label(), /船長さんはうれしそうに歌いだした。$/);
+    assert.ok([...captainLines].some(line => line.includes('妙な〈わらべ唄〉')));
+    assert.ok([...captainLines].some(line => line.endsWith('船長さんはうれしそうに歌いだした。')));
+    assert.ok((await label()).replaceAll('　','').startsWith('底蟲村のしん太郎どん'));
+    assert.ok([...requests].some(url => url.endsWith('/k2h002.ogg')));
     assert.ok([...requests].some(url => url.endsWith('/my0018.mp4')));
     assert.ok([...requests].some(url => url.endsWith('/my0012.mp4')));
     assert.ok([...requests].some(url => url.endsWith('/my0004.mp4')));
