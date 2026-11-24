@@ -45,13 +45,15 @@ async function waitForPrologueText() {
   });
 }
 async function advanceTo(target, interval = target === 'name' ? 80 : 0) {
-  for (let i = 0; i < 30; i++) {
+  // The opening narration contains timed pauses even while confirm is pressed.
+  const deadline = Date.now() + 15000;
+  while (Date.now() < deadline) {
     if ((await canvas.getAttribute('data-scene')) === target) return;
     assert.equal(await canvas.getAttribute('data-scene'), 'story');
     await key('Enter');
     if (interval) await page.waitForTimeout(interval);
   }
-  throw new Error('Did not reach ' + target);
+  throw new Error('Did not reach ' + target + ' from ' + await label());
 }
 try {
   await page.goto(base);
