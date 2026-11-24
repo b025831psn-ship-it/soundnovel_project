@@ -195,11 +195,11 @@ test("30/31/32 run the native audio controller (0800A510, 0800A4CC)", () => {
   assert.equal(vm.sound.fadeLeft, 100);
   vm.step(); // 32 20,2: one frame, then song 13 fading in over 200 frames
   assert.equal(vm.waiting, "audio-start");
-  vm.vblank(0); // that frame's 0800A414 still moves the fade-out of request 1 first
+  vm.vblank(0); // 0800A510 starts request 2, then the frame wait's 0800A414 takes its first fade-in step
   assert.deepEqual(audio.calls.splice(0), [
-    ["volume", 248], ["stop", 13], ["start", 13], ["init", 0], ["volume", 0x4000],
+    ["stop", 13], ["start", 13], ["init", 0], ["volume", 0x4000], ["volume", 64],
   ]);
-  assert.equal(vm.sound.fadeLeft, 200);
+  assert.equal(vm.sound.fadeLeft, 199);
   assert.equal(vm.ram.audioRequest, 2);
 });
 

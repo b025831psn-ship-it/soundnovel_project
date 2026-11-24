@@ -641,9 +641,13 @@ export class VM {
   vblank(budget = 1024) {
     this.frame++;
     this.ram.updatePending = 0;
-    this.sound.frame(); // 0800A414 in the frame wait
-    this.sound.irq(); // 0800A3E0 in the VBlank interrupt
-    this.sound.effects?.vblank(); // 08002B00 in the VBlank interrupt (080005F0)
+    // Frame order on the cartridge: the VBlank interrupt runs the effect scripts (08002B00 from
+    // 080005F0); the frame wait's tail 080062E0 -> 080003D8 -> 080066E8 then counts the play
+    // length (0800A3E0); the frame's dispatches follow; the next frame wait (08002FB8) runs
+    // 0800A414 before it waits for VBlank. Wait loops that bypass 08002FB8 or 080062E0 (the
+    // screen transitions of opcodes 02/04/05/09/29/2D, ...) set skipAudioFrame / skipAudioIrq.
+    this.sound.effects?.vblank();
+    if (!this.skipAudioIrq) this.sound.irq();
     this.syncAudio();
     if (this.waiting === "audio" && !this.audioWaitFrame()) this.waiting = "none";
     if (this.waiting === "delay" && --this.waitFrames <= 0)
@@ -665,5 +669,9 @@ export class VM {
       this.scene?.brightness?.(slot, effect.current, effect.maximum);
     }
     for (let count = 0; count < budget && this.step(); count++);
+    // 0800A414 runs in the frame wait (08002FB8) after the frame's dispatches and before the
+    // VBlank wait, so a fade started by this frame's opcode 31 takes its first step this frame.
+    if (!this.skipAudioFrame) this.sound.frame();
+    this.syncAudio();
   }
 }
