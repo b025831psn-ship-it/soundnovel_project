@@ -136,6 +136,20 @@ def scenario_strings(data):
                 else:
                     raise ValueError(f"Unexpected summer dialogue opcode {opcode:#x}")
             story[name] = {"introWaits": [int.from_bytes(v, "big") for v in intro.groups()] if intro else [], "events": events}
+        if name == "my02_0100":
+            block = data[current.end():following.start()]
+            reaction = re.fullmatch(
+                rb"\x40(.)\x02([^\x00-\x1f]+)\x03\x04\x09"
+                rb"\x40(.)\x02([^\x00-\x1f]+)\x03\x04\x09"
+                rb"\x6c\x1c\x01\x02\x00\x00\x0cmy02_0110\x00\x00\x0dmyb02_0010\x00",
+                block, re.DOTALL)
+            if reaction is None:
+                raise ValueError("Unexpected dialogue before the summer choice")
+            events = []
+            for speed, text in ((reaction[1], reaction[2]), (reaction[3], reaction[4])):
+                events.extend([{"speed": speed[0]}, {"text": text.decode("cp932")},
+                               {"command": 4}, {"command": 9}])
+            story[name] = {"events": events, "choice": "summerChoice"}
         if name == "my02_0010":
             block = data[current.end():following.start()]
             card = re.fullmatch(
@@ -188,7 +202,7 @@ def scenario_strings(data):
             expected = 0x12 if name.endswith("0047") else 0x13
             if data[following.start() - 1] != expected:
                 raise ValueError(f"Unexpected name command in {name}")
-    if len(story) != 30:
+    if len(story) != 31:
         raise ValueError("Opening labels could not be resolved")
     return story
 
