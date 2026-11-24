@@ -34,11 +34,12 @@ const label = () => canvas.getAttribute('aria-label');
 const check = async name => {
   if (captures) await canvas.screenshot({path:path.join(captures, name + '.png')});
 };
-async function advanceTo(target) {
+async function advanceTo(target, interval = 0) {
   for (let i = 0; i < 30; i++) {
     if ((await canvas.getAttribute('data-scene')) === target) return;
     assert.equal(await canvas.getAttribute('data-scene'), 'story');
     await key('Enter');
+    if (interval) await page.waitForTimeout(interval);
   }
   throw new Error('Did not reach ' + target);
 }
@@ -248,18 +249,27 @@ try {
   }
   await at('choice');
   assert.match(await label(), /もちろん犯人当てだよ」$/);
-  await key('ArrowDown');
-  const bossReply = await label();
-  assert.match(bossReply, /最後のボスキャラを倒すのがたいへんだったけどね」$/);
-  await key('Enter'); await at('story');
-  assert.equal(await label(), bossReply);
-  for (let i=0; i<60 && await canvas.getAttribute('data-scene') === 'story'; i++) {
-    await key('Enter');
-    await page.waitForTimeout(100);
+  if (process.env.K2_CULPRIT_ROUTE) {
+    await key('Enter'); await at('story'); await advanceTo('choice', 100);
+    assert.match(await label(), /当然だよ」/);
+    await key('ArrowDown');
+    assert.match(await label(), /チャレンジしてみるよ」/);
+    await key('Enter'); await at('story'); await advanceTo('complete', 100);
+    assert.match(await label(), /遠慮しとくよ」$/);
+  } else {
+    await key('ArrowDown');
+    const bossReply = await label();
+    assert.match(bossReply, /最後のボスキャラを倒すのがたいへんだったけどね」$/);
+    await key('Enter'); await at('story');
+    assert.equal(await label(), bossReply);
+    for (let i=0; i<60 && await canvas.getAttribute('data-scene') === 'story'; i++) {
+      await key('Enter');
+      await page.waitForTimeout(100);
+    }
+    await at('complete');
+    assert.match(await label(), /真理はにっこり笑って、/);
+    assert.match(await label(), /ドラゴンを８８匹集めないと倒せないのよね」$/);
   }
-  await at('complete');
-  assert.match(await label(), /真理はにっこり笑って、/);
-  assert.match(await label(), /ドラゴンを８８匹集めないと倒せないのよね」$/);
   assert.ok([...requests].some(url => url.endsWith('/k2h003.ogg')));
   const saved = await page.evaluate(()=>JSON.parse(localStorage.getItem('soundnovel.slps25132.opening.v1')));
   assert.deepEqual(saved,{names:['透ああああぁ','真理'],slot:1});

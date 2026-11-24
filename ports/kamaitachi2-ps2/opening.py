@@ -75,12 +75,30 @@ def texture(data):
     return image.convert("RGBA")
 
 
+def answer_header(block):
+    pos = 0
+    if block.startswith(b"\x7b\x0c\x13sh01_0010\x00\x06"):
+        pos = 14
+    while block[pos] in (0x72, 0x73, 0x74):
+        pos += 2 + block[pos + 1]
+    marker = re.match(rb"\x6a\x07[\x0c\x0d]_myb?\d+\x00", block[pos:])
+    if not marker:
+        raise ValueError("Missing answer marker")
+    pos += marker.end()
+    lines = []
+    while block[pos] == 2:
+        end = block.index(b"\x03\x04", pos)
+        lines.append(block[pos+1:end].decode("cp932"))
+        pos = end + 2
+    return lines, pos
+
+
 def scenario_strings(data):
     labels = list(re.finditer(rb"\x85(?:\x0b\x0c(my0[12]_[0-9]{4})|\x0b\x0a(mo0[12]_[0-9]{4})|\x0c\x0d(myb02_[0-9]{4}))\x00\x22", data))
     story = {}
     for current, following in zip(labels, labels[1:]):
         name = (current[1] or current[2] or current[3]).decode("ascii")
-        if name in {"my02_0015", "my02_0030", "my02_0035", "my02_0040", "my02_0075", "my02_0080", "my02_0083", "my02_0085", "my02_0090", "my02_0110", "myb02_0010", "myb02_0120", "myb02_0030"}:
+        if name in {"my02_0015", "my02_0030", "my02_0035", "my02_0040", "my02_0075", "my02_0080", "my02_0083", "my02_0085", "my02_0090", "my02_0110", "myb02_0010", "myb02_0120", "myb02_0030", "myb02_0140", "myb02_0150"}:
             block = data[current.end():following.start()]
             intro = re.match(rb"\x73\x07my0003\x00\x74\x0amy0003_00\x00\x1e\x50(.{4})"
                              rb"\x72\x07my0005\x00\x50(.{4})\x73\x07my0005\x00"
@@ -104,7 +122,13 @@ def scenario_strings(data):
                     if not block.endswith(choice):
                         raise ValueError("Unexpected follow-up choice destinations")
                     block = block[:-len(choice)]
-            if name != "my02_0040" and intro is None:
+            if name in {"myb02_0140", "myb02_0150"}:
+                lines, pos = answer_header(block)
+                suffix = b"\x6a\x0b\x0cmy02_0120\x00" if name == "myb02_0140" else b"\x5c\x00\x00\x00\x3c\x15"
+                if len(lines) != 2 or block[pos] != 0x16 or not block.endswith(suffix):
+                    raise ValueError("Unexpected culprit reply layout")
+                block = block[pos+1:-len(suffix)]
+            if name not in {"my02_0040", "myb02_0140", "myb02_0150"} and intro is None:
                 raise ValueError("Unexpected summer scene introduction")
             events = []
             pos = intro.end() if intro else 0
@@ -214,7 +238,7 @@ def scenario_strings(data):
             expected = 0x12 if name.endswith("0047") else 0x13
             if data[following.start() - 1] != expected:
                 raise ValueError(f"Unexpected name command in {name}")
-    if len(story) != 35:
+    if len(story) != 37:
         raise ValueError("Opening labels could not be resolved")
     return story
 
@@ -230,11 +254,8 @@ def scenario_choice(data, source):
         raise ValueError(f"Missing two-destination CommandSelect in {source!r}")
     choices = []
     for target in command.groups():
-        line = re.match(rb"(?:\x7b\x0c\x13sh01_0010\x00\x06)?(?:\x73\x08myb0001\x00\x74\x0bmyb0001_10\x00)?\x6a\x07[\x0c\x0d]_myb?\d+\x00"
-                        rb"\x02([^\x00-\x1f]+)\x03\x04", blocks[target])
-        if line is None:
-            raise ValueError(f"Missing destination text in {target!r}")
-        choices.append({"target": target.decode("ascii"), "text": line[1].decode("cp932")})
+        lines, _ = answer_header(blocks[target])
+        choices.append({"target": target.decode("ascii"), "text": "\n".join(lines)})
     return choices
 
 
@@ -335,6 +356,7 @@ def opening_assets(disc, out, encode):
         "prologueChoice": scenario_choice(scenario, b"my01_0070"),
         "summerChoice": scenario_choice(scenario, b"my02_0100"),
         "followupChoice": scenario_choice(scenario, b"myb02_0010"),
+        "culpritChoice": scenario_choice(scenario, b"myb02_0126"),
         "invitationOrigin": invitation_origin(scenario),
         "titleMusic": title_music,
     }

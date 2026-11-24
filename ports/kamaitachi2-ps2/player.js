@@ -293,6 +293,12 @@ function makePages(s) {
     ...data.followupChoice.flatMap(route => {
       const pages = narrationPages(s[route.target], true);
       pages[0].target = route.target;
+      if (route.target === 'myb02_0120') Object.assign(pages.at(-1), {end:false, choice:data.culpritChoice});
+      return pages;
+    }),
+    ...data.culpritChoice.flatMap(route => {
+      const pages = narrationPages(s[route.target], true);
+      pages[0].target = route.target;
       return pages;
     }),
   ];
