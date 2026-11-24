@@ -203,8 +203,14 @@ export class Screen {
         this.text(ch, x + 1, y + 1);
       });
     }
-    if (editor.scroll > 0) this.text('▲', 306, 100, {scale:.76});
-    if (editor.scroll + 8 < editor.rows.length) this.text('▼', 306, 366, {scale:.76});
+    if (editor.scroll > 0) this.sprite('name_e01', 50, 136, 28, 15, 306, 106);
+    if (editor.scroll + 8 < editor.rows.length) {
+      this.c.save();
+      this.c.translate(306, 386);
+      this.c.scale(1, -1);
+      this.sprite('name_e01', 50, 136, 28, 15, 0, 0);
+      this.c.restore();
+    }
     this.footer(true);
   }
 
