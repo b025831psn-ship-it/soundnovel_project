@@ -274,7 +274,8 @@ function makePages(s) {
   reaction.at(-1).choice = data[s.my02_0100.choice];
   const outcome = target => data.prologueChoice.find(route => route.target === target).text;
   return [
-    { center:true, book:true, text: () => start.join('') },
+    { center:true, book:true, text: () => start.join(''),
+      waits:() => [{offset:0, remaining:120 * 1000 / 59.94}], speeds:[{offset:0, speed:0}] },
     { text: () => first[0] },
     { append:true, book:true, nextLine:true, text: () => first[0] + '\n' + first[1] + s.my01_0022[0] },
     { text: () => hero[1] },

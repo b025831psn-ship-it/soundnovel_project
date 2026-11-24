@@ -34,6 +34,16 @@ const label = () => canvas.getAttribute('aria-label');
 const check = async name => {
   if (captures) await canvas.screenshot({path:path.join(captures, name + '.png')});
 };
+async function waitForPrologueText() {
+  await page.waitForFunction(() => {
+    const pixels = document.querySelector('canvas').getContext('2d').getImageData(80,190,470,40).data;
+    let ink = 0;
+    for (let i = 0; i < pixels.length; i += 4) {
+      if (Math.min(pixels[i], pixels[i+1], pixels[i+2]) > 180) ink++;
+    }
+    return ink > 800;
+  });
+}
 async function advanceTo(target, interval = 0) {
   for (let i = 0; i < 30; i++) {
     if ((await canvas.getAttribute('data-scene')) === target) return;
@@ -80,7 +90,7 @@ try {
   await key('ArrowLeft'); await key('2'); await at('autosave'); await check('autosave');
   await key('Enter'); await at('slot'); await key('Escape'); await at('autosave');
   await key('ArrowDown'); await key('Enter'); await at('story');
-  await key('Enter'); await check('prologue');
+  await waitForPrologueText(); await check('prologue');
   await advanceTo('name');
   assert.equal(await label(),'주인공 透');
   await check('hero');
@@ -197,6 +207,7 @@ try {
   await key('Enter'); await at('slot'); await key('ArrowRight'); await key('Enter'); await at('file-select');
   await key('Escape'); await at('slot'); await key('Enter'); await at('file-select');
   await key('Enter'); await at('created'); await key('Enter'); await at('save-note'); await key('Enter'); await at('story');
+  await waitForPrologueText();
   await advanceTo('name');
   for (let i=0; i<8; i++) await key('Enter');
   await key('ArrowRight'); await key('Enter');
