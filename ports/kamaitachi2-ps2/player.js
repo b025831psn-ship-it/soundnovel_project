@@ -472,10 +472,20 @@ function frame(now) {
   }
   const pad = Array.from(navigator.getGamepads?.() ?? []).find(p => p?.mapping === 'standard');
   const buttons = {0:'cross',1:'circle',3:'triangle',4:'l1',5:'r1',6:'l2',9:'start',12:'up',13:'down',14:'left',15:'right'};
+  const actions = [];
   for (const [i, action] of Object.entries(buttons)) {
     const pressed = Boolean(pad?.buttons[i]?.pressed);
-    if (pressed && !padDown.has(i)) { padDown.add(i); step(action); }
+    if (pressed && !padDown.has(i)) { padDown.add(i); actions.push(action); }
     if (!pressed) padDown.delete(i);
+  }
+  if (scene === 'name' && actions.length > 1) {
+    const group = ['r1', 'l1'].find(action => actions.includes(action));
+    const edit = ['circle', 'cross', 'triangle'].find(action => actions.includes(action));
+    if (group) step(group);
+    for (const direction of actions.filter(action => ['up', 'down', 'left', 'right'].includes(action))) step(direction);
+    if (edit) step(edit);
+  } else {
+    for (const action of actions) step(action);
   }
   requestAnimationFrame(frame);
 }

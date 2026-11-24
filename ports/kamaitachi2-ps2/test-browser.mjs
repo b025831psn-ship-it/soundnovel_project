@@ -81,7 +81,18 @@ try {
   await key('Escape'); await at('name'); await key('s'); await at('confirm');
   assert.equal(await label(),'주인공 透');
   await key('Enter'); await at('name'); // The original confirmation starts on No.
-  await key('w'); await key('Enter'); assert.equal(await label(),'주인공 透か');
+  // Present the same pressed snapshot to the game's polling loop for one frame.
+  await page.evaluate(async () => {
+    const pressed = new Set([0, 1, 3, 4, 5]);
+    Object.defineProperty(navigator, 'getGamepads', {configurable:true, value:() => [{
+      mapping:'standard', buttons:Array.from({length:16}, (_, i) => ({pressed:pressed.has(i)})),
+    }]});
+    await new Promise(requestAnimationFrame);
+    pressed.clear();
+    await new Promise(requestAnimationFrame);
+    delete navigator.getGamepads;
+  });
+  await at('name'); assert.equal(await label(),'주인공 透か');
   await key('q'); await key('Escape'); await key('Enter');
   assert.equal(await label(),'주인공 透あ');
   await key('s'); await at('confirm'); await key('ArrowUp'); await key('Enter');
