@@ -4,6 +4,7 @@ import { NativeFont, TextWindow } from "./src/font.js";
 import { GBAInput } from "./src/input.js";
 import { VM } from "./src/vm.js";
 import { createSound } from "./sound/output.js";
+import { DisplayAdapter } from "./display/adapter.js";
 
 const base = "../../kamaitachi-gba-kor/port-data";
 const assets = new Assets(base);
@@ -26,7 +27,19 @@ audioTables.effectBytes = await assets.bin("sound/effects.bin");
 // Browsers start audio only after a user gesture; until then m4a runs silently in the worklet.
 const sound = await createSound(new URL(`${base}/sound/`, location.href));
 for (const type of ["keydown", "pointerdown"]) addEventListener(type, () => sound.resume(), { once: true });
-const screen = new Screen(document.querySelector("#screen"));
+const sourceCanvas = document.querySelector("#screen");
+const screen = new Screen(sourceCanvas);
+const modeSelect = document.querySelector("#display-mode");
+const displayKey = "soundnovel.kamaitachiGba.displayMode";
+let savedDisplayMode = "native";
+try { savedDisplayMode = localStorage.getItem(displayKey) || savedDisplayMode; } catch { /* blocked storage */ }
+const display = new DisplayAdapter(sourceCanvas, document.querySelector("#display"), savedDisplayMode);
+modeSelect.value = display.mode;
+modeSelect.addEventListener("change", () => {
+  modeSelect.value = display.setMode(modeSelect.value);
+  try { localStorage.setItem(displayKey, display.mode); } catch { /* blocked storage */ }
+  display.render();
+});
 const scene = new SceneLoader(assets, screen);
 const text = new TextWindow({ 1: "透", 2: "真理" });
 const input = new GBAInput();
@@ -35,7 +48,7 @@ const choiceView = {
   hide: () => screen.clearChoices(),
 };
 const vm = new VM({ banks, scene, text, musicMap: music.request_to_song, audio: sound, audioTables, choiceView });
-window.kamaitachi = { vm, screen, assets, font, input, sound };
+window.kamaitachi = { vm, screen, display, assets, font, input, sound };
 
 let last = performance.now();
 let accumulated = 0;
@@ -54,6 +67,7 @@ function loop(now) {
     }
     accumulated -= 1000 / 60;
   }
+  display.render();
   requestAnimationFrame(loop);
 }
 requestAnimationFrame(loop);

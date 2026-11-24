@@ -46,13 +46,10 @@ const nativeSource = document.createElement("canvas");
 nativeSource.width = width;
 nativeSource.height = height;
 nativeSource.getContext("2d").putImageData(new ImageData(source, width, height), 0, 0);
-const nativeInput = nativeSource.getContext("2d").getImageData(0, 0, width, height).data;
 const nativeMount = document.createElement("div");
 const nativeAdapter = new DisplayAdapter(nativeSource, nativeMount);
 nativeAdapter.render();
-const nativeOutput = nativeAdapter.output.getContext("2d").getImageData(0, 0, width, height).data;
-let nativeMismatch = -1;
-for (let index = 0; index < nativeInput.length; index++) if (nativeInput[index] !== nativeOutput[index]) { nativeMismatch = index; break; }
+const nativeUsesSource = nativeAdapter.output === nativeSource;
 
 const originalGetContext = HTMLCanvasElement.prototype.getContext;
 HTMLCanvasElement.prototype.getContext = function (type, options) {
@@ -72,7 +69,7 @@ document.body.textContent = JSON.stringify({
   alphaAtLastPixel: actual.at(-1),
   medianMillisecondsPerFrame: samples[2],
   renderer: gl.getParameter(gl.RENDERER),
-  nativeMismatch,
+  nativeUsesSource,
   fallbackMode: fallbackAdapter.mode,
   fallbackSize: [fallbackAdapter.output.width, fallbackAdapter.output.height],
 });

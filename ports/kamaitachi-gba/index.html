@@ -1,1 +1,24 @@
-<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>AKZJ JS port</title><style>html,body{height:100%;margin:0;background:#111;display:grid;place-items:center}canvas{width:min(100vw,720px);height:auto;image-rendering:pixelated;touch-action:none}</style><canvas id="screen" aria-label="240 by 160 game screen"></canvas><script type="module" src="main.js"></script>
+<!doctype html>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width">
+<title>AKZJ JS port</title>
+<style>
+  html, body { height: 100%; margin: 0; background: #111; color: #eee; font: 13px system-ui, sans-serif; }
+  body { display: grid; place-items: center; }
+  main { width: min(100vw, 720px); display: grid; gap: 8px; }
+  #display { display: grid; place-items: center; }
+  canvas { width: 100%; height: auto; image-rendering: pixelated; touch-action: none; }
+  canvas[data-display-mode="handheld-2.5x"] { width: min(100%, 600px); }
+  label { justify-self: end; display: flex; align-items: center; gap: 8px; }
+  select { min-height: 30px; padding: 0 8px; border: 1px solid #555; border-radius: 6px; background: #1b1b1b; color: inherit; }
+</style>
+<main>
+  <div id="display"><canvas id="screen" aria-label="240×160 GBA 게임 화면"></canvas></div>
+  <label>화면 표시
+    <select id="display-mode">
+      <option value="native">원본 (정수 배율)</option>
+      <option value="handheld-2.5x">휴대기기 2.5배</option>
+    </select>
+  </label>
+</main>
+<script type="module" src="main.js"></script>
