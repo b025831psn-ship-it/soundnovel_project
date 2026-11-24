@@ -305,7 +305,7 @@ try {
     assert.match(await label(), /何で三日月島って言うんですか/);
     await key('Enter'); await at('story');
     const captainLines = new Set();
-    for (let i=0; i<220 && await canvas.getAttribute('data-scene') === 'story'; i++) {
+    for (let i=0; i<450 && await canvas.getAttribute('data-scene') === 'story'; i++) {
       captainLines.add(await label());
       await key('Enter'); await page.waitForTimeout(100);
     }
@@ -327,7 +327,9 @@ try {
     assert.ok([...captainLines].some(line => line.endsWith('楽しみだなあ……」')));
     assert.ok([...captainLines].some(line => line.includes('妙な〈わらべ唄〉')));
     assert.ok([...captainLines].some(line => line.endsWith('船長さんはうれしそうに歌いだした。')));
-    assert.ok((await label()).replaceAll('　','').startsWith('底蟲村のしん太郎どん'));
+    const verses = [...captainLines, await label()].filter(line => line.includes('　') && line.length >= 130);
+    assert.ok(verses.some(line => line.replaceAll('　','').startsWith('底蟲村のしん太郎どん')));
+    assert.deepEqual(verses.slice(-5).map(line => line.length), [131, 138, 133, 134, 142]);
     assert.ok([...requests].some(url => url.endsWith('/k2h002.ogg')));
     assert.ok([...requests].some(url => url.endsWith('/my0018.mp4')));
     assert.ok([...requests].some(url => url.endsWith('/my0012.mp4')));

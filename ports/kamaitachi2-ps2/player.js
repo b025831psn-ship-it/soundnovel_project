@@ -363,10 +363,15 @@ function makePages(s) {
         ...narrationPages(s.my02_0470, false).map((block, i) => i === 0 ? {...block, movie:'my0008'} : block),
         ...narrationPages(s.my02_0480, false),
         ...narrationPages(s.my03_0010, false).map((block, i) => i === 0 ? {...block, movie:'my0018'} : block),
-        {background:'my0000', music:'k2h002.ogg', end:true, positioned:s.my03_0040.placements,
-          text:() => s.my03_0040.placements.map(run => run.text).join(''),
-          speeds:[{offset:0, speed:0}],
-          waits:() => [{offset:0, remaining:s.my03_0040.introWait * 1000 / 59.94}]}];
+        ...[s.my03_0040, s.my03_0050, s.my03_0060, s.my03_0070, s.my03_0080].map((song, i, verses) => {
+          const text = song.placements.map(run => run.text).join('');
+          return {background:'my0000', music:i === 0 ? 'k2h002.ogg' : undefined,
+            end:i === verses.length - 1, positioned:song.placements, text:() => text,
+            speeds:[{offset:0, speed:0}], waits:() => [
+              {offset:0, remaining:song.introWait * 1000 / 59.94},
+              {offset:text.length, remaining:song.hold * 1000 / 59.94},
+            ]};
+        })];
     }),
   ];
 }
