@@ -17,6 +17,7 @@ let scene = 'loading', index = 0, role = 0, page = 0, revealed = 0;
 let names = [], autosave = false, slot = 0, entered = 0, lastFrame, userNotice = '';
 let idleMovie = 'pre_dv';
 let textWaits = [];
+let textSpeeds = [];
 const padDown = new Set();
 const images = {};
 
@@ -126,6 +127,7 @@ function printPage() {
   } else {
     revealed = block.append ? pages[page - 1].text().length : 0;
     textWaits = block.waits?.() ?? [];
+    textSpeeds = block.resolveSpeeds?.() ?? block.speeds ?? [];
     if (block.movie) {
       playMovie(block.movie, block.loopMovie ? () => playMovie(block.loopMovie, null, true) : null);
       if (block.music) playMusic(block.music);
@@ -160,17 +162,21 @@ function summerDialogue(sceneData) {
 function narrationPages(reunion, final) {
   const reunionPages = [];
   const reunionParts = [];
+  const speedChanges = [];
   let waits = [];
   for (const event of reunion.events) {
     if (event.text || event.name !== undefined) reunionParts.push(event);
     else if (event.wait) waits.push({parts:reunionParts.slice(), ticks:event.wait});
+    else if (event.speed !== undefined) speedChanges.push({parts:reunionParts.slice(), speed:event.speed});
     else if (event.command === 4) reunionParts.push({text:'\n'});
     else if (event.command === 9 || event.command === 11) {
       const parts = reunionParts.slice();
       const pauses = waits;
+      const changes = speedChanges.slice();
       const resolve = fragments => fragments.map(part => part.text ?? names[part.name]).join('');
       reunionPages.push({retainMovie:true, append:reunionPages.length > 0, end:final && event.command === 11,
         waits: () => pauses.map(pause => ({offset:resolve(pause.parts).length, remaining:pause.ticks * 1000 / 59.94})),
+        resolveSpeeds: () => changes.map(change => ({offset:resolve(change.parts).length, speed:change.speed})),
         text: () => resolve(parts).trimEnd()});
       waits = [];
     }
@@ -430,7 +436,7 @@ function frame(now) {
       wait.remaining -= dt;
       if (wait.remaining <= 0) textWaits.shift();
     } else {
-      const speed = pages[page].speeds?.findLast(change => change.offset <= revealed)?.speed ?? 1;
+      const speed = textSpeeds.findLast(change => change.offset <= revealed)?.speed ?? 1;
       revealed = Math.min(wait?.offset ?? storyText().length, revealed + dt / (35 * speed));
     }
     drawStory(time);
