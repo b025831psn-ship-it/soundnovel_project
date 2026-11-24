@@ -45,7 +45,7 @@ async function start() {
     const { label, raw, picked } = await loadRaw();
     status.textContent = label;
     useDefault.hidden = !picked;
-    createPlayer(root, normalizeStory(raw), { startMenu: new URLSearchParams(location.search).get('start') === '1' });
+    createPlayer(root, normalizeStory(raw));
   } catch (err) {
     const prefix = err instanceof StoryFormatError ? 'JSON 형식 오류: ' : '';
     showError(prefix + err.message);

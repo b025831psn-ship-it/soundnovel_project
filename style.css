@@ -37,7 +37,9 @@ p { color:#c7c3d2 }
 .game-pane h1 { font-size:18px }
 .game-pane p { font-size:14px; margin:6px 0 }
 @media (max-width:650px) {
-  .workspace { grid-template-columns:minmax(96px,28%) minmax(0,1fr); gap:8px }
+  .workspace { grid-template-columns:minmax(0,1fr); gap:8px }
+  .hub { width:100% }
+  .hub > header, .workspace nav { margin-inline:8px }
   .workspace nav article { padding:8px 5px }
   .workspace .logo img { height:52px }
   .workspace h2 { font-size:15px }

@@ -40,7 +40,7 @@ export function storageKey(story) {
   return `soundnovel.webPlayer.${story.gameId}`;
 }
 
-export function createPlayer(root, story, { storage = safeStorage(), startMenu = false } = {}) {
+export function createPlayer(root, story, { storage = safeStorage() } = {}) {
   const sceneIds = Object.keys(story.scenes);
   const key = storageKey(story);
   const uid = Math.random().toString(36).slice(2, 8);
@@ -88,8 +88,7 @@ export function createPlayer(root, story, { storage = safeStorage(), startMenu =
   root.replaceChildren(titleBar, stage, logDialog, savesDialog);
 
   let settings = loadSettings();
-  const saved = load();
-  let state = saved || initial();
+  let state = load() || initial();
   let lastScene = null;
 
   function initial() {
@@ -402,7 +401,6 @@ export function createPlayer(root, story, { storage = safeStorage(), startMenu =
   }
 
   root.addEventListener('keydown', (e) => {
-    if (!stage.isConnected) return;
     if (e.altKey || e.ctrlKey || e.metaKey) return;
     if (logDialog.open || savesDialog.open) return; // dialogs handle their own keys (Esc closes them)
     if (e.target instanceof HTMLButtonElement && tools.contains(e.target)) return;
@@ -425,36 +423,7 @@ export function createPlayer(root, story, { storage = safeStorage(), startMenu =
     }
   });
 
-  function enterGame() {
-    root.replaceChildren(titleBar, stage, logDialog, savesDialog);
-    render(true);
-  }
-
-  if (startMenu) {
-    const newGame = el('button', { type: 'button', text: '새 게임' });
-    const resume = el('button', { type: 'button', text: '이어하기' });
-    resume.disabled = !saved;
-    resume.addEventListener('click', enterGame);
-    newGame.addEventListener('click', () => {
-      const begin = el('button', { type: 'button', text: '기본 이름으로 시작' });
-      const back = el('button', { type: 'button', text: '뒤로' });
-      begin.addEventListener('click', () => {
-        state = initial();
-        save();
-        enterGame();
-      });
-      back.addEventListener('click', showMenu);
-      root.replaceChildren(el('p', { text: '토오루 · 마리' }), begin, back);
-      begin.focus();
-    });
-    function showMenu() {
-      root.replaceChildren(el('h1', { text: story.title }), newGame, resume);
-      (saved ? resume : newGame).focus();
-    }
-    showMenu();
-  } else {
-    enterGame();
-  }
+  render(true);
 
   return {
     get state() { return { ...state, trail: [...state.trail] }; },
