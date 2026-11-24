@@ -286,9 +286,10 @@ function drawStory(time) {
     return;
   }
   if (!block.movie && !block.retainMovie) screen.background(background, background === 'my0645', time);
-  const y = block.center ? 189 : 31;
-  const x = block.center ? (640 - screen.width(storyText(), .91)) / 2 : 32;
-  const end = screen.text(text, x, y, {scale:.91, max:580});
+  const origin = block.background === 'my0000' ? data.invitationOrigin : {x:32, y:31};
+  const y = block.center ? 189 : origin.y;
+  const x = block.center ? (640 - screen.width(storyText(), .91)) / 2 : origin.x;
+  const end = screen.text(text, x, y, {scale:.91, max:Math.min(580, 640 - x)});
   if (block.ruby) {
     const start = storyText().indexOf(block.ruby.word);
     const lineStart = storyText().lastIndexOf('\n', start) + 1;

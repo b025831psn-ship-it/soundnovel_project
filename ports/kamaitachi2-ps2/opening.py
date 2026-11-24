@@ -124,6 +124,21 @@ def prologue_choice(data):
     return choices
 
 
+def invitation_origin(data):
+    origins = set()
+    for label in (b"my01_0078", b"my01_0079", b"my01_0080"):
+        marker = b"\x85\x0b\x0c" + label + b"\0\x22"
+        offset = data.index(marker) + len(marker)
+        top_cmd, top, left_cmd, left = struct.unpack_from(">BIBI", data, offset)
+        if (top_cmd, left_cmd) != (0x61, 0x5D):
+            raise ValueError("Unexpected invitation margin commands")
+        origins.add((left, top))
+    if len(origins) != 1:
+        raise ValueError("Invitation pages use different margins")
+    left, top = origins.pop()
+    return {"x": left, "y": top}
+
+
 def still_png(data, work, destination, encode):
     if data[:4] != b"ipum" or struct.unpack_from("<I", data, 12)[0] != 1:
         raise ValueError("Expected a single-frame IPU image")
@@ -204,6 +219,7 @@ def opening_assets(disc, out, encode):
         "prompts": [elf_string(disc.elf, va) for va in (0x1ff090, 0x1ff0a0, 0x1ff0d8)],
         "story": scenario_strings(scenario),
         "prologueChoice": prologue_choice(scenario),
+        "invitationOrigin": invitation_origin(scenario),
         "titleMusic": title_music,
     }
     (out / "opening.json").write_text(json.dumps(config, ensure_ascii=False), encoding="utf-8")
