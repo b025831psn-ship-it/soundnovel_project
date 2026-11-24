@@ -25,12 +25,14 @@ const routes = new Map([
 http.createServer((request, response) => {
   const pathname = request.url.split('?')[0];
   let route = routes.get(pathname);
-  if (!route && pathname.startsWith('/vendor/snes9x/')) {
-    const relative = pathname.slice('/vendor/snes9x/'.length);
-    const root = path.join(__dirname, 'node_modules', '@wasm-gaming', 'snes9x-wasm', 'dist', 'snes9x');
+  if (!route && pathname.startsWith('/kamaitachi-sfc-kor/port-data/')) {
+    const relative = pathname.slice('/kamaitachi-sfc-kor/port-data/'.length);
+    const checkedOut = path.join(__dirname, 'kamaitachi-sfc-kor', 'port-data');
+    const sibling = path.join(__dirname, '..', 'web_player_kamai_sfc_private', 'port-data');
+    const root = fs.existsSync(checkedOut) ? checkedOut : sibling;
     const file = path.resolve(root, relative);
     if (file.startsWith(root + path.sep)) {
-      const types = { '.js': 'text/javascript', '.wasm': 'application/wasm', '.css': 'text/css', '.png': 'image/png' };
+      const types = { '.json': 'application/json; charset=utf-8', '.bin': 'application/octet-stream' };
       route = [file, types[path.extname(file)] || 'application/octet-stream'];
     }
   }

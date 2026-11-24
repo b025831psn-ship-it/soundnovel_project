@@ -1,46 +1,57 @@
-import Snes9xSDK from '/vendor/snes9x/snes9x.sdk.js';
-
-const EXPECTED_SIZE = 3_145_728;
-const EXPECTED_SHA256 = '3228a3b35f7d234a7bf91f8159ccc56518199222e84d258c14a153f54f9fcbc7';
-const picker = document.querySelector('#rom');
-const stage = document.querySelector('#stage');
+const DATA_ROOT = '/kamaitachi-sfc-kor/port-data';
+const canvas = document.querySelector('#screen');
+const context = canvas.getContext('2d', { alpha: false });
 const status = document.querySelector('#status');
-let play;
+const start = document.querySelector('#start');
+let manifest;
+let stateIndex = 0;
 
-const hex = (bytes) => [...new Uint8Array(bytes)].map(byte => byte.toString(16).padStart(2, '0')).join('');
-
-async function verify(file) {
-  if (file.size !== EXPECTED_SIZE)
-    throw new Error(`지원하지 않는 ROM 크기입니다 (${file.size.toLocaleString()} bytes).`);
-  const bytes = await file.arrayBuffer();
-  const sha256 = hex(await crypto.subtle.digest('SHA-256', bytes));
-  if (sha256 !== EXPECTED_SHA256)
-    throw new Error(`지원하지 않는 판본입니다 (SHA-256 ${sha256}).`);
-  return bytes;
+function rgb565(bytes, width, height) {
+  const image = context.createImageData(width, height);
+  for (let source = 0, target = 0; source < bytes.length; source += 2, target += 4) {
+    const value = bytes[source] | bytes[source + 1] << 8;
+    image.data[target] = Math.round((value & 31) * 255 / 31);
+    image.data[target + 1] = Math.round((value >> 5 & 63) * 255 / 63);
+    image.data[target + 2] = Math.round((value >> 11 & 31) * 255 / 31);
+    image.data[target + 3] = 255;
+  }
+  return image;
 }
 
-picker.addEventListener('change', async () => {
-  const file = picker.files?.[0];
-  if (!file) return;
-  picker.disabled = true;
-  status.textContent = '판본과 SHA-256을 확인하는 중…';
-  try {
-    const bytes = await verify(file);
-    if (play) await play.destroy();
-    stage.replaceChildren();
-    status.textContent = 'SFC 하드웨어 코어를 시작하는 중…';
-    play = await new Snes9xSDK()
-      .options({ region: 'ntsc', aspect: '4:3', cropOverscan: true, renderFilter: 'pixelated' })
-      .assets({ rom: bytes })
-      .storage({ namespace: `kamaitachi-sfc-${EXPECTED_SHA256.slice(0, 12)}` })
-      .mount(stage)
-      .start();
-    status.textContent = '원본 ROM 실행 중 · 화면을 클릭한 뒤 키보드로 조작하세요.';
-  } catch (error) {
-    status.textContent = error.message;
-  } finally {
-    picker.disabled = false;
+async function loadState(index) {
+  const state = manifest.states[index];
+  const path = manifest.files.frame.replace('{id}', state.id);
+  const response = await fetch(`${DATA_ROOT}/${path}`);
+  if (!response.ok) throw new Error(`추출 데이터 로드 실패 (${response.status})`);
+  const bytes = new Uint8Array(await response.arrayBuffer());
+  context.putImageData(rgb565(bytes, manifest.video.width, manifest.video.height), 0, 0);
+  stateIndex = index;
+  status.textContent = `${state.label} · ROM 없이 원본 추출 데이터를 실행 중`;
+}
+
+async function advance() {
+  if (!manifest) return;
+  start.disabled = true;
+  try { await loadState((stateIndex + 1) % manifest.states.length); }
+  finally { start.disabled = false; }
+}
+
+async function boot() {
+  const response = await fetch(`${DATA_ROOT}/manifest.json`);
+  if (!response.ok) throw new Error(`port-data manifest를 찾지 못했습니다 (${response.status})`);
+  manifest = await response.json();
+  canvas.width = manifest.video.width;
+  canvas.height = manifest.video.height;
+  await loadState(0);
+  start.disabled = false;
+}
+
+start.addEventListener('click', advance);
+addEventListener('keydown', event => {
+  if (['Enter', ' ', 'x', 'X', 's', 'S'].includes(event.key)) {
+    event.preventDefault();
+    advance();
   }
 });
 
-addEventListener('pagehide', () => play?.destroy());
+boot().catch(error => { status.textContent = error.message; });
