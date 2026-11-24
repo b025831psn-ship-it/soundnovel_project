@@ -112,6 +112,18 @@ try {
   await at('story');
   assert.equal(await label(), '彼女の名前は、真理。');
   await advanceTo('choice');
+  for (const [phase, skip] of [['copyright','2'], ['opening','Enter']]) {
+    await page.reload();
+    await page.getByRole('button',{name:'게임 시작'}).click();
+    await at('logo');
+    await page.locator('video').evaluate(v => { v.playbackRate = 8; });
+    await at(phase);
+    await key('Escape');
+    assert.equal(await canvas.getAttribute('data-scene'), phase);
+    await key(skip);
+    await at('title');
+    assert.ok(await page.locator('video').evaluate(v => v.src.endsWith('/title.mp4') && v.loop));
+  }
   assert.deepEqual(unexpected,[]);
   const isoRequests = [...requests].filter(url => /\.iso(?:$|[?#])/i.test(url));
   assert.equal(isoRequests.length,0);
