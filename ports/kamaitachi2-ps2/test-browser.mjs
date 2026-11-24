@@ -67,6 +67,14 @@ try {
   await advanceTo('name');
   assert.equal(await label(),'주인공 透');
   await check('hero');
+  await key('ArrowRight');
+  for (let i=0; i<9; i++) await key('ArrowDown');
+  await page.getByRole('button',{name:'L1',exact:true}).click();
+  await key('Enter'); assert.equal(await label(),'주인공 透Ａ');
+  await key('Escape');
+  await page.getByRole('button',{name:'R1',exact:true}).click();
+  await key('Enter'); assert.equal(await label(),'주인공 透あ');
+  await key('Escape');
   await key('ArrowDown'); await key('Enter'); assert.equal(await label(),'주인공 透い');
   await key('Escape'); await key('ArrowUp');
   await key('Escape'); await key('s'); await at('confirm');
