@@ -111,6 +111,18 @@ try {
   await check('partner');
   await key('Escape'); await key('Enter'); await key('s'); await at('confirm');
   assert.equal(await label(),'여자친구 真あ'); await check('confirm');
+  await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+  const cursorBounds = await canvas.evaluate(element => {
+    const {data} = element.getContext('2d').getImageData(238, 285, 30, 37);
+    const xs = [], ys = [];
+    for (let i=0; i<data.length; i+=4) {
+      if (Math.min(data[i], data[i+1], data[i+2]) <= 120) continue;
+      xs.push(238 + (i / 4) % 30);
+      ys.push(285 + Math.floor(i / 120));
+    }
+    return [Math.min(...xs), Math.min(...ys), Math.max(...xs), Math.max(...ys)];
+  });
+  assert.deepEqual(cursorBounds, [249, 297, 260, 310]);
   await key('ArrowUp'); await key('Enter'); await at('story');
   for (let i=0; i<8 && !(await label()).includes('真あの叔父さん'); i++) await key('Enter');
   assert.match(await label(), /ぼくと真あは以前/);
