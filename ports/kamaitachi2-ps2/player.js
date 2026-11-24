@@ -275,7 +275,7 @@ function makePages(s) {
   return [
     { center:true, book:true, text: () => start.join(''),
       waits:() => [{offset:0, remaining:120 * 1000 / 59.94}], speeds:[{offset:0, speed:0}] },
-    { music:'k1a001.ogg', text: () => first[0],
+    { music:'k1a001.ogg', text: () => first[0], advanceMark:{x:33, y:133},
       waits:() => [{offset:0, remaining:60 * 1000 / 59.94}] },
     { append:true, book:true, nextLine:true, text: () => first[0] + '\n' + first[1] + s.my01_0022[0] },
     { text: () => hero[1] },
@@ -553,7 +553,8 @@ function drawStory(time) {
       screen.sprite('mark', (frame % 5) * 24, 48 + Math.floor(frame / 5) * 24, 24, 24,
                     nextLine ? 36 : end.x + 7, end.y + (nextLine ? 46 : 5));
     } else {
-      screen.sprite('mark', tick % 8 * 16, 0, 16, 24, 34, end.y + 44);
+      const mark = block.advanceMark ?? {x:34, y:end.y + 44};
+      screen.sprite('mark', tick % 8 * 16, 0, 16, 24, mark.x, mark.y);
     }
   }
 }
