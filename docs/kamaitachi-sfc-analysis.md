@@ -80,8 +80,10 @@ PPU DMA/decompressor, SPC700 driver CFG 순서로 분석을 계속한다. RGB565
 검증, lossless raw IR, DMA transaction grouping 방식을 참고했다. 게임별 주소와
 opcode 의미는 공유하지 않고 방법만 적용한다. 카마이타치의 첫 적용에서는
 `$01:A901` control metadata 99개를 `$00:958E` prepare table과 `$00:B496`
-print table에 전수 결합했다. 83개는 보수적인 역할군을 붙였고 16개는 원본
-handler의 의미를 더 확인할 때까지 `unresolved`로 유지한다.
+print table에 전수 결합했다. BRK/COP 뒤의 game-specific inline byte까지 반영한
+handler 재분석으로 92개는 역할군을 확인했고 7개는 native trace 전까지
+`unresolved`로 유지한다. control 실행은 read-ahead/prepare와 on-screen print의
+두 단계이므로 포트에서도 두 phase를 분리해야 한다.
 
 ## 기준 코어 probe 대조
 
