@@ -172,10 +172,10 @@ export class Screen {
     if (fileScreen) {
       this.rect(103, 102, 500, 89);
       if (state === 'file-select') {
-        this.sprite('sys_save', 81, 130, 211, 23, 102, 68);
-        this.sprite('sys_save', 180, 177, 296, 24, 298, 68, 236, 24);
-        this.sprite('sys_cd01', 0, 0, 54, 66, 79, 110);
-        this.sprite('sys_save', 388, 103, 104, 25, 183, 132);
+        this.sprite('sys_save', 81, 130, 211, 23, 103, 73);
+        this.sprite('sys_save', 258, 177, 217, 24, 313, 71);
+        this.sprite('sys_cd01', 0, 0, 54, 66, 79, 111);
+        this.sprite('sys_save', 388, 103, 104, 25, 187, 133);
       } else {
         this.sprite('sys_cd01', 0, 64, 95, 63, 79, 112);
         this.sprite('sys_fc01', 398, 417, 110, 23, 201, 121);
