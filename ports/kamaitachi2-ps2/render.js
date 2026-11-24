@@ -115,10 +115,10 @@ export class Screen {
   }
 
   yesNo(x, y, selection, width = 128) {
-    this.rect(x, y, width, 68);
-    this.sprite('sys_fc01', 134, 72, 48, 24, x + 36, y + 4);
-    this.sprite('sys_fc01', 191, 72, 60, 24, x + 36, y + 35);
-    this.pointer(x + 10, y + 5 + 32 * selection);
+    this.rect(x, y, width, 64);
+    this.sprite('sys_fc01', 134, 72, 48, 24, x + 46, y + 6);
+    this.sprite('sys_fc01', 191, 72, 60, 24, x + 46, y + 33);
+    this.pointer(x + 16, y + 7 + 27 * selection);
   }
 
   footer(editor) {
