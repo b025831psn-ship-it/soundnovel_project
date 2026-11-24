@@ -60,3 +60,6 @@ extracted assets must remain outside this repository.
 `tools/mips_refs.py EXE 0xADDRESS` reports direct jumps/calls, address
 materializations, and pointer-table entries that refer to a virtual address in
 a PS-X EXE. It emits addresses only and never copies executable payloads.
+
+`tools/pac_index.py FILE.PAC --records ID` additionally inventories a member's
+nested little-endian `u16` record table. Output contains offsets and sizes only.

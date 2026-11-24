@@ -50,6 +50,32 @@ def parse_index(data: bytes, file_size: int) -> dict:
     }
 
 
+def parse_record_table(data: bytes) -> dict:
+    """Parse a member-local u16 offset table without returning payload bytes."""
+    if len(data) < 2:
+        raise ValueError("PAC member is too short for a record table")
+    table_bytes = struct.unpack_from("<H", data)[0]
+    if table_bytes < 2 or table_bytes % 2 or table_bytes > len(data):
+        raise ValueError("invalid PAC record table size")
+    offsets = list(struct.unpack_from(f"<{table_bytes // 2}H", data))
+    if offsets[0] != table_bytes:
+        raise ValueError("first PAC record must follow its offset table")
+    if any(left > right for left, right in zip(offsets, offsets[1:])):
+        raise ValueError("PAC record offsets must not decrease")
+    if offsets[-1] > len(data):
+        raise ValueError("PAC record offset exceeds member size")
+    records = []
+    for index, offset in enumerate(offsets):
+        end = offsets[index + 1] if index + 1 < len(offsets) else len(data)
+        records.append({"id": index, "byte_offset": offset, "byte_size": end - offset})
+    return {
+        "schema": "soundnovel.psx-pac-record-table.v1",
+        "table_bytes": table_bytes,
+        "record_count": len(records),
+        "records": records,
+    }
+
+
 def inspect(path: Path) -> dict:
     size = path.stat().st_size
     with path.open("rb") as stream:
@@ -63,8 +89,18 @@ def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("pac", type=Path)
     parser.add_argument("--output", type=Path)
+    parser.add_argument("--records", type=int, metavar="RESOURCE_ID")
     args = parser.parse_args()
-    rendered = json.dumps(inspect(args.pac), ensure_ascii=False, indent=2) + "\n"
+    result = inspect(args.pac)
+    if args.records is not None:
+        entry = next((row for row in result["entries"] if row["id"] == args.records), None)
+        if entry is None:
+            parser.error(f"resource id {args.records} is not present")
+        with args.pac.open("rb") as stream:
+            stream.seek(entry["byte_offset"])
+            member = stream.read(entry["byte_size"])
+        result["record_table"] = {"resource_id": args.records, **parse_record_table(member)}
+    rendered = json.dumps(result, ensure_ascii=False, indent=2) + "\n"
     if args.output:
         args.output.write_text(rendered, encoding="utf-8")
     else:

@@ -37,3 +37,19 @@ class PacIndexTests(unittest.TestCase):
         prefix = struct.pack("<HHHHHH", 1, 2, 2, 2, 0xFFFF, 4)
         with self.assertRaisesRegex(ValueError, "offset"):
             pac_index.parse_index(prefix, 4 * 2048)
+
+    def test_member_record_table(self):
+        member = bytearray(32)
+        struct.pack_into("<HHHH", member, 0, 8, 12, 12, 20)
+
+        result = pac_index.parse_record_table(member)
+
+        self.assertEqual(result["record_count"], 4)
+        self.assertEqual(result["records"][0]["byte_size"], 4)
+        self.assertEqual(result["records"][1]["byte_size"], 0)
+        self.assertEqual(result["records"][3]["byte_size"], 12)
+
+    def test_member_record_table_requires_monotonic_offsets(self):
+        member = struct.pack("<HHHH", 8, 12, 10, 16) + bytes(8)
+        with self.assertRaisesRegex(ValueError, "must not decrease"):
+            pac_index.parse_record_table(member)
