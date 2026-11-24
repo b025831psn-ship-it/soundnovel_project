@@ -263,6 +263,7 @@ function makePages(s) {
     { background:'my0002', append:true, text:greeting, waits:greetingWaits },
     { background:'my0002', append:true, autoAdvance:true, text: () => greeting() + s.phoneGreeting.at(-1).text },
     { background:'my0000', positioned:s.my02_0010.lines, autoAdvance:true,
+      speeds:[{offset:0, speed:s.my02_0010.speed}],
       waits: () => [{offset:0, remaining:s.my02_0010.waitBefore * 1000 / 59.94},
         {offset:s.my02_0010.lines.reduce((size,line) => size + line.text.length, 0), remaining:s.my02_0010.waitAfter * 1000 / 59.94}],
       text: () => s.my02_0010.lines.map(run => run.text).join('') },
@@ -437,7 +438,9 @@ function frame(now) {
       if (wait.remaining <= 0) textWaits.shift();
     } else {
       const speed = textSpeeds.findLast(change => change.offset <= revealed)?.speed ?? 1;
-      revealed = Math.min(wait?.offset ?? storyText().length, revealed + dt / (35 * speed));
+      const nextChange = textSpeeds.find(change => change.offset > revealed);
+      const limit = Math.min(wait?.offset ?? Infinity, nextChange?.offset ?? Infinity, storyText().length);
+      revealed = speed === 0 ? limit : Math.min(limit, revealed + dt / (35 * speed));
     }
     drawStory(time);
     if (pages[page].autoAdvance && !textWaits.length && revealed >= storyText().length) { page++; printPage(); }
