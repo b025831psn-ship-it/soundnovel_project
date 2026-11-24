@@ -128,9 +128,12 @@ try {
   for (let i=0; i<8 && !(await label()).includes('北海道に転勤'); i++) await key('Enter');
   assert.match(await label(), /真理のお父さんが北海道に転勤/);
   assert.match(await label(), /真理は大学をやめ、北海道に引っ越してしまった。$/);
-  await advanceTo('complete');
+  for (let i=0; i<8 && !(await label()).includes('一通の招待状'); i++) await key('Enter');
   assert.match(await label(), /^その後も、真理とは、手紙や電話/);
   assert.match(await label(), /一通の招待状が届いた。$/);
+  await advanceTo('complete');
+  assert.match(await label(), /^ゲームソフト『かまいたちの夜』/);
+  assert.match(await label(), /三日月館.*することができました。$/);
   const saved = await page.evaluate(()=>JSON.parse(localStorage.getItem('soundnovel.slps25132.opening.v1')));
   assert.deepEqual(saved,{names:['透ああああぁ','真理'],slot:1});
   await page.reload(); await page.getByRole('button',{name:'게임 시작'}).click();

@@ -171,7 +171,11 @@ function makePages(s) {
     { text: () => north[0] },
     { append:true, book:true, text: () => north[0] + '\n' + north[1] + names[1] + north[2] + '\n' + north[3] + names[1] + north[4] },
     { text: correspondence },
-    { append:true, end:true, book:true, text: () => correspondence() + '\n' + letter[3] },
+    { append:true, book:true, text: () => correspondence() + '\n' + letter[3] },
+    ...s.my01_0078.map((_, i, parts) => ({
+      background:'my0000', append:i > 0, end:i === parts.length - 1, book:i === parts.length - 1,
+      text: () => parts.slice(0, i + 1).map((part, j) => j === 2 ? '\n' + part : part).join(''),
+    })),
   ];
 }
 
@@ -354,7 +358,7 @@ try {
   const response = await fetch(asset('opening.json'));
   if (!response.ok) throw new Error('Missing opening data');
   data = await response.json();
-  await Promise.all(['font','copyrigh','title_00','my0007','my0645','mo0000','name_e01','mark','sys_fc01','sys_cd01','sys_cd02','sys_jo01','sys_jo02','sys_jo03','sys_save','sys_wa01'].map(async name => {
+  await Promise.all(['font','copyrigh','title_00','my0000','my0007','my0645','mo0000','name_e01','mark','sys_fc01','sys_cd01','sys_cd02','sys_jo01','sys_jo02','sys_jo03','sys_save','sys_wa01'].map(async name => {
     const image = new Image(); image.src = asset(name + '.png'); await image.decode(); images[name] = image;
   }));
   groups = keyboardGroups(data.rows); pages = makePages(data.story);
