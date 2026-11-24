@@ -76,11 +76,11 @@ def texture(data):
 
 
 def scenario_strings(data):
-    labels = list(re.finditer(rb"\x85\x0b(?:\x0c(my0[12]_[0-9]{4})|\x0a(mo0[12]_[0-9]{4}))\x00\x22", data))
+    labels = list(re.finditer(rb"\x85(?:\x0b\x0c(my0[12]_[0-9]{4})|\x0b\x0a(mo0[12]_[0-9]{4})|\x0c\x0d(myb02_[0-9]{4}))\x00\x22", data))
     story = {}
     for current, following in zip(labels, labels[1:]):
-        name = (current[1] or current[2]).decode("ascii")
-        if name in {"my02_0015", "my02_0030", "my02_0035", "my02_0040", "my02_0075", "my02_0080", "my02_0083", "my02_0085", "my02_0090"}:
+        name = (current[1] or current[2] or current[3]).decode("ascii")
+        if name in {"my02_0015", "my02_0030", "my02_0035", "my02_0040", "my02_0075", "my02_0080", "my02_0083", "my02_0085", "my02_0090", "my02_0110", "myb02_0010"}:
             block = data[current.end():following.start()]
             intro = re.match(rb"\x73\x07my0003\x00\x74\x0amy0003_00\x00\x1e\x50(.{4})"
                              rb"\x72\x07my0005\x00\x50(.{4})\x73\x07my0005\x00"
@@ -92,6 +92,13 @@ def scenario_strings(data):
                                  block, re.DOTALL)
             if name in {"my02_0035", "my02_0075", "my02_0080", "my02_0083", "my02_0085", "my02_0090"}:
                 intro = re.match(rb"\x7b\x0c\x13sh01_0010\x00\x06", block)
+            if name in {"my02_0110", "myb02_0010"}:
+                intro = re.match(rb"(?:\x7b\x0c\x13sh01_0010\x00\x06)?\x6a\x07(?:\x0c_my18|\x0d_myb0)\x00\x02[^\x03]+\x03\x04\x16", block)
+                if name == "myb02_0010":
+                    choice = b"\x6c\x1d\x01\x02\x00\x00\x0dmyb02_0120\x00\x00\x0dmyb02_0030\x00"
+                    if not block.endswith(choice):
+                        raise ValueError("Unexpected follow-up choice destinations")
+                    block = block[:-len(choice)]
             if name != "my02_0040" and intro is None:
                 raise ValueError("Unexpected summer scene introduction")
             events = []
@@ -202,7 +209,7 @@ def scenario_strings(data):
             expected = 0x12 if name.endswith("0047") else 0x13
             if data[following.start() - 1] != expected:
                 raise ValueError(f"Unexpected name command in {name}")
-    if len(story) != 31:
+    if len(story) != 33:
         raise ValueError("Opening labels could not be resolved")
     return story
 

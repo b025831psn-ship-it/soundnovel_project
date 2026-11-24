@@ -282,7 +282,12 @@ function makePages(s) {
     ...narrationPages(s.my02_0085, false),
     ...narrationPages(s.my02_0090, false),
     ...reaction,
-    ...data.summerChoice.map(route => ({target:route.target, retainMovie:true, end:true, text: () => route.text})),
+    ...data.summerChoice.flatMap(route => {
+      const pages = narrationPages(s[route.target], true);
+      pages[0].target = route.target;
+      pages.at(-1).end = true;
+      return pages;
+    }),
   ];
 }
 
