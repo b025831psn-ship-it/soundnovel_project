@@ -16,8 +16,8 @@ python3 ports/kamaitachi-psx/tools/psx_disc.py inventory /private/path/game.cue 
 The JSON records every referenced file's size and SHA-256, track mode, sector
 size, index position, file-relative LBA, disc LBA, and byte offset. For a data
 track it also reports the raw-sector layout, ISO9660 volume metadata, root file
-records, and the `SYSTEM.CNF` boot target when those structures are present.
-If the boot target is a PS-X EXE, only its header fields are recorded.
+records. `SYSTEM.CNF` boot-target and PS-X EXE header parsing are the next
+public-tooling step; payload extraction remains private.
 
 Keep the output private until it has been reviewed for original filenames and
 other extracted metadata. The public test suite uses generated sectors only:
