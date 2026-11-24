@@ -60,7 +60,6 @@ class Player {
     this.priority = 0;
     this.tempoD = 150; this.tempoU = 0x100; this.tempoI = 150; this.tempoC = 0;
     this.fadeOI = 0; this.fadeOC = 0; this.fadeOV = 0;
-    this.fadeIn = null;
     this.voicegroup = 0;
     this.clock = 0;
   }
@@ -104,6 +103,7 @@ export class M4A {
 
   // m4aSongNumStop: stops the player only if it is playing that song.
   stopSong(n) {
+    if (!this.mem.has(this.cfg.songTable + 8 * n + 6)) return; // the game may name an unused number
     const player = this.players[this.mem.u16(this.cfg.songTable + 8 * n + 4)];
     if (player && player.song === n) this.mplayStop(player);
   }
@@ -117,16 +117,31 @@ export class M4A {
     p.fadeOI = speed; p.fadeOC = speed; p.fadeOV = 64 << 2;
   }
 
-  fadeInSong(song, speed) {
-    const player = this.players[this.mem.u16(this.cfg.songTable + 8 * song + 4)];
-    if (!player || !speed) return;
-    // Native volume starts at one quarter of the fixed-point scale.
-    player.fadeIn = { remaining: speed, value: 0x4000, delta: Math.floor(0x10000 / speed) };
-    for (const t of player.tracks) {
-      if (!(t.flags & FLG_EXIST)) continue;
-      t.volX = 16;
+  // m4aMPlayImmInit: applies the track start reset now instead of on the next MPlayMain, so a
+  // volume set right after a song start is kept (the game calls it from 0800A1E8).
+  immInit(playerIndex) {
+    const p = this.players[playerIndex];
+    if (!p) return;
+    for (const t of p.tracks) if ((t.flags & FLG_EXIST) && (t.flags & FLG_START)) this.trackStartReset(t);
+  }
+
+  // m4aMPlayVolumeControl: tracks named in `bits` take volume >> 2 as volX (a u8).
+  volumeControl(playerIndex, bits, volume) {
+    const p = this.players[playerIndex];
+    if (!p) return;
+    p.tracks.forEach((t, i) => {
+      if (!(bits & (1 << i)) || !(t.flags & FLG_EXIST)) return;
+      t.volX = (volume >> 2) & 0xff;
       t.flags |= FLG_VOLSET;
-    }
+    });
+  }
+
+  // The reset MPlayMain gives a track whose START flag is set: the first 0x40 bytes of
+  // MusicPlayerTrack are cleared (cmdPtr and the pattern stack lie beyond them), then
+  // flags = EXIST, bendRange 2, volX 64, lfoSpeed 22, tone.type 1.
+  trackStartReset(t) {
+    const keep = { cmdPtr: t.cmdPtr, patternStack: t.patternStack };
+    Object.assign(t, newTrack(), keep, { flags: FLG_EXIST, velocity: 0 });
   }
 
   mplayStart(p, header, n) {
@@ -139,7 +154,6 @@ export class M4A {
     p.voicegroup = mem.u32(header + 4);
     p.tempoD = 150; p.tempoU = 0x100; p.tempoI = 150; p.tempoC = 0;
     p.fadeOI = 0;
-    p.fadeIn = null;
     p.clock = 0;
     for (let i = 0; i < p.maxTracks; i++) {
       const t = newTrack();
@@ -172,18 +186,6 @@ export class M4A {
 
   mplayMain(p) {
     if (p.status & 0x80000000) return;
-    if (p.fadeIn) {
-      const fade = p.fadeIn;
-      // The native routine decrements the timer before applying the increment.
-      if (--fade.remaining > 0) fade.value = Math.min(0x10000, fade.value + fade.delta);
-      const volume = (fade.value >> 11) * 2;
-      for (const t of p.tracks) {
-        if (!(t.flags & FLG_EXIST)) continue;
-        t.volX = volume;
-        t.flags |= FLG_VOLSET;
-      }
-      if (!fade.remaining) p.fadeIn = null;
-    }
     if (p.fadeOI) this.fadeOutBody(p);
     p.tempoC += p.tempoI;
     while (p.tempoC >= 150) {
@@ -195,7 +197,7 @@ export class M4A {
           if (!(c.status & SF_ON)) { this.clearChain(c); continue; }
           if (c.gateTime && --c.gateTime === 0) c.status |= SF_STOP;
         }
-        if (t.flags & FLG_START) { t.flags &= ~FLG_START; t.wait = 0; }
+        if (t.flags & FLG_START) this.trackStartReset(t);
         while (t.wait === 0 && (t.flags & FLG_EXIST)) this.trackCommand(p, t);
         if (!(t.flags & FLG_EXIST)) continue;
         t.wait--;
