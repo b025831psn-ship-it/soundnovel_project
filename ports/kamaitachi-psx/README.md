@@ -93,5 +93,12 @@ mistaken for transfer commands, and applies fill, CPU-to-VRAM upload, and
 overlap-safe VRAM copy packets. Its optional manifest lists upload rectangles
 without copying their pixels.
 
+`tools/gpu_trace_proxy.c` is a PSEmu-compatible GPU proxy for private native
+probes. Build it with `gcc -shared -fPIC gpu_trace_proxy.c -ldl -o proxy.so`,
+then set `PSX_GPU_REAL` to the original GPU plugin and `PSX_GPU_TRACE` to a
+private output path. It records direct GP0/GP1 writes, linked-list payloads,
+and frame boundaries while forwarding the original calls unchanged. Never
+commit its trace output.
+
 Static control-flow findings and their current confidence boundary are tracked
 in `ANALYSIS.md`.
