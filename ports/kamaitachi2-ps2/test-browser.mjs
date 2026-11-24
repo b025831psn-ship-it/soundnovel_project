@@ -79,7 +79,10 @@ try {
   await check('partner');
   await key('Escape'); await key('Enter'); await key('s'); await at('confirm');
   assert.equal(await label(),'여자친구 真あ'); await check('confirm');
-  await key('ArrowUp'); await key('Enter'); await at('complete'); await key('Enter');
+  await key('ArrowUp'); await key('Enter'); await at('story');
+  await advanceTo('complete'); await key('Enter');
+  assert.match(await label(), /ぼくと真あは以前/);
+  assert.match(await label(), /真あの叔父さん/);
   assert.match(await label(),/真あ/); await check('completed');
   assert.equal(await page.evaluate(()=>localStorage.getItem('soundnovel.slps25132.opening.v1')),null);
   await page.reload(); await page.getByRole('button',{name:'게임 시작'}).click();
@@ -95,7 +98,7 @@ try {
     await key('s'); await at('confirm'); await key('ArrowUp'); await key('Enter');
     if (!i) await advanceTo('name');
   }
-  await at('complete');
+  await advanceTo('complete');
   const saved = await page.evaluate(()=>JSON.parse(localStorage.getItem('soundnovel.slps25132.opening.v1')));
   assert.deepEqual(saved,{names:['透ああああぁ','真理'],slot:1});
   assert.deepEqual(unexpected,[]);

@@ -133,6 +133,8 @@ function makePages(s) {
   const second = s.my01_0055, last = s.my01_0070;
   const heroLine = () => second[0] + names[0] + second[1];
   const partnerLead = () => second.slice(2, 5).join('');
+  const partnerLine = () => last[0] + names[1] + last[1];
+  const classmates = () => partnerLine() + '\n' + last[2] + names[1] + last[3];
   return [
     { center:true, book:true, text: () => start.join('') },
     { text: () => first[0] },
@@ -144,7 +146,9 @@ function makePages(s) {
     { append:true, text: () => heroLine() + '\n' + partnerLead() },
     { append:true, book:true, text: () => heroLine() + '\n' + partnerLead() + '\n' + second[5] },
     { name:1 },
-    { end:true, text: () => last[0] + names[1] + last[1] },
+    { text: partnerLine },
+    { append:true, text: classmates },
+    { append:true, end:true, text: () => classmates() + '\n' + last[4] + names[1] + last[5] + '\n' + last[6] },
   ];
 }
 
