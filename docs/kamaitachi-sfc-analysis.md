@@ -127,6 +127,12 @@ bytes를 `$5000`으로, `$04:879F`는 `$7F0000`에서 `$1E00` bytes를 `$4000`�
 보낸다. COP `$09` OAM 전송 둘과 COP `$0A` VRAM 전송 셋의 descriptor는 비공개
 `data/name-dma-map.json`에서 검증하며, 입력 후 redraw는 DP `$0B` bit 7이 묶는다.
 
+이름 글꼴은 `$7F20D0`의 glyph code를 `$04:948B`가 순회하고 공용 decompressor
+`$02:9F66`을 호출한다. 결과는 `$7F0000` scratch에서 `$7F2D00` cache와
+`$7F0220` 화면 buffer로 변환된 뒤 `$04:833F`에서 VRAM word `$6000`으로 전송된다.
+entered-name strip의 `$7F0E20` → VRAM `$6C00` 전송도 별도 descriptor로 보존한다.
+호출 edge와 buffer 계약은 비공개 `data/name-font-map.json`에서 검증한다.
+
 ## 기준 코어 probe 대조
 
 native Snes9x probe에서 CHUN SOFT logo, SFC title, 음향 설정, 기본 이름 확인
