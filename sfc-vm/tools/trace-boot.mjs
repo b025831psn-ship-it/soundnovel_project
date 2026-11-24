@@ -26,6 +26,7 @@ let peakVramFrame = 0;
 const digest = (bytes) => crypto.createHash('sha256').update(bytes).digest('hex');
 const summary = (status, extra = {}) => ({
   status, executed: cpu.executed, frames, address: cpu.address(),
+  apuPorts: [...bus.apuPorts],
   ppu: {
     inidisp: bus.io[0x2100 - 0x2000],
     vramSha256: digest(bus.vram), cgramSha256: digest(bus.cgram), oamSha256: digest(bus.oam),
