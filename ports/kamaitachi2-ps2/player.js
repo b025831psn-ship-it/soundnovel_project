@@ -243,7 +243,7 @@ function makePages(s) {
   const start = s.my01_0010, first = s.my01_0012, hero = s.my01_0040;
   const second = s.my01_0055, last = s.my01_0070;
   const heroLine = () => second[0] + names[0] + second[1];
-  const partnerLead = () => second.slice(2, 5).join('');
+  const partnerLead = () => second[2] + second[3] + '\n' + second[4];
   const partnerLine = () => last[0] + names[1] + last[1];
   const classmates = () => partnerLine() + '\n' + last[2] + names[1] + last[3];
   const north = s.my01_0076;
@@ -282,7 +282,8 @@ function makePages(s) {
     { append:true, book:true, text: () => hero[1] + '\n' + hero[2] },
     { name:0 },
     { text: heroLine },
-    { append:true, text: () => heroLine() + '\n' + partnerLead() },
+    { append:true, text: () => heroLine() + '\n' + partnerLead(),
+      waits:() => [{offset:heroLine().length + 1 + second[2].length, remaining:20 * 1000 / 59.94}] },
     { append:true, book:true, text: () => heroLine() + '\n' + partnerLead() + '\n' + second[5] },
     { name:1 },
     { checkpoint:true, text: partnerLine },
