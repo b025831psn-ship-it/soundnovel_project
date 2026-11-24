@@ -60,7 +60,7 @@ try {
   await at('title');
   await page.waitForFunction(() => document.querySelector('video').currentTime > .3);
   await check('title');
-  await key('Enter'); await at('autosave'); await check('autosave');
+  await key('ArrowLeft'); await key('2'); await at('autosave'); await check('autosave');
   await key('Enter'); await at('slot'); await key('Escape'); await at('autosave');
   await key('ArrowDown'); await key('Enter'); await at('story');
   await key('Enter'); await check('prologue');

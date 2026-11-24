@@ -161,14 +161,14 @@ function step(key) {
     return;
   }
   if (scene === 'title') {
+    entered = performance.now();
     if (key === 'left' || key === 'right') {
       const delta = key === 'left' ? -1 : 1;
       const next = Math.max(0, Math.min(2, index + delta));
       if (index !== next) cue('move');
       index = next;
       userNotice = '';
-      entered = performance.now();
-    } else if (key === 'circle' || key === 'start') {
+    } else if (['circle','start','l2'].includes(key)) {
       cue('confirm');
       if (!index) newGame();
       else if (index === 1 && saved) {
