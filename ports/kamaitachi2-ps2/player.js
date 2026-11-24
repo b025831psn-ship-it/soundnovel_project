@@ -141,6 +141,9 @@ function makePages(s) {
   const classmates = () => partnerLine() + '\n' + last[2] + names[1] + last[3];
   const north = s.my01_0076;
   const middle = s.my01_0079, closing = s.my01_0080;
+  const phone = s.my01_0085;
+  const invitationQuestion = () => phone[2] + names[1] + phone[3];
+  const phoneCall = () => invitationQuestion() + '\n' + phone[4] + names[1] + phone[5];
   const author = s.my01_0081;
   const introduction = () => author.slice(0, 9).join('');
   const sceneryRuby = {word:middle[4].slice(0, 4), readings:middle.slice(0, 4)};
@@ -186,7 +189,9 @@ function makePages(s) {
       text: () => [...closing.slice(0, 6), closing[11]].join('\n') },
     { background:'my0002', text:introduction },
     { background:'my0002', append:true, book:true, text: () => introduction() + '\n' + author.slice(9).join('') },
-    { background:'my0002', end:true, text: () => s.my01_0082[0] + names[1] + s.my01_0082[1] },
+    { background:'my0002', text:invitationQuestion },
+    { background:'my0002', append:true, text:phoneCall },
+    { background:'my0002', append:true, end:true, text: () => phoneCall() + '\n' + phone[6] + names[1] + phone[7] },
   ];
 }
 
