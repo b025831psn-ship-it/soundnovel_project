@@ -10,6 +10,9 @@
 //   page: array of sentences, a single sentence, or an object with `lines` / `sentences`.
 //   sentence: a string, or { ko | text | target, ja? } when the original Japanese is included.
 //   Sentences are normalized to { ko, ja } (ja is null when there is no original).
+//   `join: true` on a sentence object continues the previous sentence's line instead of starting a new one.
+//   `{name:<id>}` inside any text is replaced with names[id] (default names, e.g. the hero's).
+//   Top-level `lang` is the language of the main text (default "ko"); a node's `ending` marks an ending number.
 
 export class StoryFormatError extends Error {}
 
@@ -61,12 +64,19 @@ function normalizePage(page, where) {
   throw new StoryFormatError(`${where}: 문장 목록을 읽을 수 없습니다.`);
 }
 
+let nameMap = {};
+const withNames = (t) => t.replace(/\{name:([^}]+)\}/g, (m, id) => nameMap[id] ?? m);
+
 function toSentence(s, where) {
-  if (typeof s === 'string') return { ko: s, ja: null };
+  if (typeof s === 'string') return { ko: withNames(s), ja: null };
   if (s && typeof s === 'object') {
     const ko = firstDefined(s, ['ko', 'text', 'target']);
     const ja = firstDefined(s, ['ja', 'source', 'original']);
-    if (typeof ko === 'string') return { ko, ja: typeof ja === 'string' && ja ? ja : null };
+    if (typeof ko === 'string') {
+      const out = { ko: withNames(ko), ja: typeof ja === 'string' && ja ? withNames(ja) : null };
+      if (s.join === true) out.join = true;
+      return out;
+    }
   }
   throw new StoryFormatError(`${where}: 문장이 문자열이 아닙니다.`);
 }
@@ -83,6 +93,10 @@ export function normalizeStory(raw) {
   if (schemaVersion === undefined) throw new StoryFormatError('schemaVersion이 없습니다.');
   if (!gameId) throw new StoryFormatError('gameId가 없습니다.');
   if (!entry) throw new StoryFormatError('entry가 없습니다.');
+
+  nameMap = raw.names && typeof raw.names === 'object' && !Array.isArray(raw.names)
+    ? Object.fromEntries(Object.entries(raw.names).filter(([, v]) => typeof v === 'string'))
+    : {};
 
   const nodeList = Array.isArray(raw.nodes)
     ? raw.nodes.map((n) => [n.id, n])
@@ -133,6 +147,7 @@ export function normalizeStory(raw) {
         pages: pages.map((p, i) => normalizePage(p, `${id}.pages[${i}]`)),
         next: normalizeNext(n, id),
       };
+      if (Number.isInteger(n.ending)) nodes[id].ending = n.ending;
     }
   }
 
@@ -155,6 +170,7 @@ export function normalizeStory(raw) {
 
   return {
     schemaVersion,
+    lang: typeof raw.lang === 'string' && raw.lang ? raw.lang : 'ko',
     hasOriginal,
     names,
     gameId: String(gameId),

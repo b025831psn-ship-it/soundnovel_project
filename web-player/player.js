@@ -44,6 +44,7 @@ export function storageKey(story) {
 export function createPlayer(root, story, { storage = safeStorage(), startMenu = false } = {}) {
   const sceneIds = Object.keys(story.scenes);
   const key = storageKey(story);
+  const globalKey = `${key}.global`;
   const uid = Math.random().toString(36).slice(2, 8);
 
   const sceneLabel = el('p', { class: 'wp-scene', 'aria-live': 'polite' });
@@ -94,8 +95,18 @@ export function createPlayer(root, story, { storage = safeStorage(), startMenu =
   let state = saved || initial();
   let lastScene = null;
 
+  // Flags named "g:..." survive new games (e.g. endings seen, which unlock choices on later plays).
+  function loadGlobal() {
+    try { return validFlags(JSON.parse(storage?.getItem(globalKey) || 'null')); } catch { return {}; }
+  }
+  function saveGlobal(flags) {
+    const g = Object.fromEntries(Object.entries(flags).filter(([k]) => k.startsWith('g:')));
+    if (!Object.keys(g).length) return;
+    try { storage?.setItem(globalKey, JSON.stringify({ ...loadGlobal(), ...g })); } catch { /* ignore */ }
+  }
+
   function initial() {
-    return { node: story.entry, page: 0, line: 0, done: false, trail: [], flags: { ...story.nodes[story.entry].set } };
+    return { node: story.entry, page: 0, line: 0, done: false, trail: [], flags: { ...story.nodes[story.entry].set, ...loadGlobal() } };
   }
 
   // First rule whose `if` matches every listed flag; its `to` (null means the data ends here).
@@ -150,7 +161,7 @@ export function createPlayer(root, story, { storage = safeStorage(), startMenu =
     }
     return {
       node: saved.node, page: saved.page | 0, line: saved.line | 0, done: !!saved.done, trail: validTrail(saved.trail),
-      flags: validFlags(saved.flags),
+      flags: { ...validFlags(saved.flags), ...loadGlobal() },
     };
   }
 
@@ -238,6 +249,7 @@ export function createPlayer(root, story, { storage = safeStorage(), startMenu =
 
   function setState(next, { focus = true } = {}) {
     state = next;
+    saveGlobal(state.flags);
     save();
     render(focus);
   }
@@ -283,6 +295,7 @@ export function createPlayer(root, story, { storage = safeStorage(), startMenu =
   function sentence(tag, s, cls) {
     const node = el(tag, cls ? { class: cls } : {});
     const lang = settings.lang;
+    if (!s.ja && story.lang !== 'ko') node.lang = story.lang;
     if (lang === 'ja' && s.ja) {
       node.lang = 'ja';
       node.textContent = s.ja;
@@ -291,6 +304,16 @@ export function createPlayer(root, story, { storage = safeStorage(), startMenu =
       node.append(s.ko);
     }
     return node;
+  }
+
+  // Sentences shown on screen: a `join` sentence continues the previous one's line.
+  function lines(list) {
+    const out = [];
+    for (const s of list) {
+      if (s.join && out.length) out[out.length - 1].append(...sentence('span', s).childNodes);
+      else out.push(sentence('p', s));
+    }
+    return out;
   }
 
   function renderScene(node) {
@@ -361,7 +384,8 @@ export function createPlayer(root, story, { storage = safeStorage(), startMenu =
 
     if (state.done) {
       if (node.kind === 'choice') text.replaceChildren();
-      else text.replaceChildren(...node.pages[state.page].slice(0, state.line + 1).map((s) => sentence('p', s)));
+      else text.replaceChildren(...lines(node.pages[state.page].slice(0, state.line + 1)));
+      endMsg.textContent = node.ending !== undefined ? `엔딩 ${node.ending}` : '이 테스트 구간은 여기까지입니다.';
       if (focus) resetBtn.focus({ preventScroll: true });
       return;
     }
@@ -385,8 +409,7 @@ export function createPlayer(root, story, { storage = safeStorage(), startMenu =
       return;
     }
 
-    const page = node.pages[state.page];
-    text.replaceChildren(...page.slice(0, state.line + 1).map((s) => sentence('p', s)));
+    text.replaceChildren(...lines(node.pages[state.page].slice(0, state.line + 1)));
     if (focus) (state.done ? resetBtn : advanceBtn).focus({ preventScroll: true });
   }
 

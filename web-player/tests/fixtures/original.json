@@ -1,0 +1,23 @@
+{
+  "schemaVersion": 1,
+  "gameId": "test-original",
+  "title": "原文テスト",
+  "lang": "ja",
+  "names": { "31": "ゆう", "32": "はる" },
+  "entry": "start",
+  "nodes": {
+    "start": {
+      "pages": [["{name:32}が窓の外を見た。", "「雨かな？", { "text": "」", "join": true }, { "text": "{name:31}はうなずいた。", "join": true }]],
+      "next": [{ "if": { "g:end1": 1 }, "to": "pick2" }, { "to": "pick1" }]
+    },
+    "pick1": {
+      "kind": "choice", "text": "どうする？",
+      "options": [{ "key": "A", "label": "外に出る。", "to": "out" }]
+    },
+    "pick2": {
+      "kind": "choice", "text": "どうする？",
+      "options": [{ "key": "A", "label": "外に出る。", "to": "out" }, { "key": "B", "label": "傘を探す。", "to": "out" }]
+    },
+    "out": { "set": { "g:end1": 1 }, "ending": 1, "pages": [["雨の中を歩いた。"]], "to": null }
+  }
+}
