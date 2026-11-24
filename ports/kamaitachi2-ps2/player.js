@@ -104,7 +104,7 @@ function title(animate) {
     enter('title-entry');
     playMovie('title-1', () => title(false));
   } else {
-    enter('title');
+    enter('title', saved ? 1 : 0);
     playMovie('title', null, true);
   }
 }
