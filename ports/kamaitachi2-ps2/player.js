@@ -86,6 +86,11 @@ function playMusic(file) {
   music.play().catch(() => { status.textContent = '오디오를 재생하려면 화면을 눌러 주세요.'; });
 }
 
+function stopMusic() {
+  music.onended = null;
+  music.pause();
+}
+
 function cue(name) {
   const sound = cues[name];
   sound.currentTime = 0;
@@ -118,7 +123,7 @@ function intro() {
 }
 
 function opening(attract = false) {
-  music.pause();
+  stopMusic();
   enter(attract ? 'attract' : 'opening');
   const file = attract ? idleMovie : 'opening';
   playMovie(file, () => title(true));
@@ -145,7 +150,7 @@ function readSave() {
 }
 
 function newGame() {
-  stopMovie(); music.pause();
+  stopMovie(); stopMusic();
   names = [...data.defaults];
   editor = null;
   enter('autosave');
@@ -656,7 +661,7 @@ function frame(now) {
 }
 
 function fail(message) {
-  stopMovie(); music.pause(); enter('error'); cover.hidden = false;
+  stopMovie(); stopMusic(); enter('error'); cover.hidden = false;
   start.textContent = message + ' 다시 시도';
   start.disabled = false;
 }
