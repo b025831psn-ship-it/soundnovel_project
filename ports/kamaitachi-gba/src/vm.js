@@ -6,6 +6,7 @@ export const HANDLERS = {
   0x02: "08003724",
   0x03: "080037BC",
   0x04: "08003930",
+  0x05: "080039D0",
   0x08: "08003AE0",
   0x09: "08003B64",
   0x0a: "08003C3C",
@@ -37,9 +38,12 @@ export const HANDLERS = {
   0x30: "08004C8C",
   0x31: "08004CDC",
   0x32: "08004D4C",
+  0x33: "08004DC4",
   0x34: "08004DD0",
   0x35: "08004E28",
   0x37: "08004EE0",
+  0x39: "08004F8C",
+  0x3b: "08004F54",
   0x3c: "08005094",
   0x3d: "080050F4",
   0x3e: "08005110",
@@ -48,10 +52,13 @@ export const HANDLERS = {
   0x4c: "080057E8",
   0x4d: "080057EC",
   0x4e: "08005828",
+  0x4f: "08005848",
   0x53: "08005914",
   0x56: "08005B1C",
   0x57: "08005BA8",
   0x58: "08005C30",
+  0x59: "08005C7C",
+  0x5b: "08005CD4",
   0x5e: "08005DE0",
   0x5f: "080059C0",
   0x63: "08005F38",
@@ -329,6 +336,20 @@ export class VM {
         if (!this.suppressed(opcode)) this.scene?.request(request, this.ram);
         break;
       }
+      case 0x05: {
+        const request = this.word();
+        args.push(request);
+        if (this.ram.effectDisabled === 1 || this.ram.effectBypass === 1) {
+          this.ram.updatePending = 1;
+          this.writes.push("updatePending=1");
+          break;
+        }
+        // 080039D0 calls the shared scene loader in mode 1. Request 0x83
+        // additionally wraps it in slot 1/5 transitions; those pixels remain
+        // a renderer hook, while nativeWait preserves its cartridge timing.
+        this.scene?.request(request, this.ram, 1);
+        break;
+      }
       case 0x08:
       case 0x09: {
         const raw = this.word();
@@ -555,6 +576,11 @@ export class VM {
         this.waiting = "audio-start";
         break;
       }
+      case 0x33:
+        // 08004DC4: set the dispatch-continue flag (02000781).
+        this.ram.updatePending = 1;
+        this.writes.push("updatePending=1");
+        break;
       case 0x34: {
         const request = this.word();
         args.push(request);
@@ -578,6 +604,15 @@ export class VM {
         this.suppressed(opcode);
         break;
       }
+      case 0x39:
+        // 08004F8C -> 080086F8: u8 plus three little-endian words.
+        // The first word is a bank-buffer-relative data address.
+        args.push(this.byte(), this.word(), this.word(), this.word());
+        break;
+      case 0x3b:
+        // 08004F54 -> 08008684: one u8 presentation command.
+        args.push(this.byte());
+        break;
       case 0x3c:
         // 08005094: two u8 operands, followed by the 0800B79C menu-state
         // query when its first operand is zero. The boot UI owns that state;
@@ -626,6 +661,10 @@ export class VM {
       case 0x4e:
         // 08005828: composite boot/menu teardown; no scenario operands.
         break;
+      case 0x4f:
+        // 08005848 -> 08008940: one u8 presentation command.
+        args.push(this.byte());
+        break;
       case 0x53: {
         const effect = this.word();
         args.push(effect);
@@ -659,6 +698,23 @@ export class VM {
       case 0x58: {
         args.push(this.word());
         this.suppressed(opcode);
+        break;
+      }
+      case 0x59:
+        // 08005C7C -> 0800FF24: wait until the shared presentation flag
+        // clears. The cartridge-frame duration is supplied by nativeWait.
+        break;
+      case 0x5b: {
+        const command = this.byte();
+        args.push(command);
+        if (this.ram.choiceActive || this.ram.effectBypass === 1) {
+          this.ram.updatePending = 1;
+          this.writes.push("updatePending=1");
+          break;
+        }
+        // 08005CFC: after consuming its u8 operand, skip a fixed 0x21-byte
+        // inline block and continue at the following scenario command.
+        this.offset += 0x21;
         break;
       }
       default:

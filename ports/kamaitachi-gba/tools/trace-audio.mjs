@@ -88,6 +88,7 @@ const vm = new VM({ banks, audio, audioTables: tables, transitionTimings,
 const step = vm.step.bind(vm);
 vm.step = () => {
   if (vm.halted || vm.waiting !== "none") return step();
+  if (index >= gate.length) return false;
   if (gate[index] > frame) return false;
   if (gate[index] < frame) lags.push(`${index}:+${frame - gate[index]}`);
   index++;

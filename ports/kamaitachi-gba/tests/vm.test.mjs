@@ -19,9 +19,9 @@ function bank(rows) {
 
 test("required opcode table retains native handler evidence", () => {
   const required = [
-    0x00, 0x01, 0x02, 0x03, 0x04, 0x0d, 0x0e, 0x0f, 0x13, 0x1a, 0x21, 0x22,
+    0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x0d, 0x0e, 0x0f, 0x13, 0x1a, 0x21, 0x22,
     0x14, 0x15, 0x16, 0x1e, 0x23, 0x25, 0x40, 0x41, 0x4b, 0x4c, 0x56, 0x57, 0x5e,
-    0x3c, 0x3d, 0x4e, 0x63,
+    0x33, 0x39, 0x3b, 0x3c, 0x3d, 0x4e, 0x4f, 0x59, 0x5b, 0x63,
   ];
   assert.ok(required.every((opcode) => HANDLERS[opcode]));
 });
@@ -159,6 +159,17 @@ test("04 uses a little-endian request", () => {
   });
   vm.step();
   assert.equal(request, 0x1234);
+});
+
+test("05 loads a little-endian scene in native mode 1", () => {
+  const calls = [];
+  const vm = new VM({
+    banks: { 27: bank([[0x05, 0x83, 0x00]]) },
+    scene: { request: (...args) => calls.push(args) },
+  });
+  vm.step();
+  assert.equal(calls[0][0], 0x83);
+  assert.equal(calls[0][2], 1);
 });
 
 function recorder() {
@@ -418,6 +429,32 @@ test("captured transition timing holds dispatch and carries audio gates", () => 
   vm.vblank();
   assert.equal(vm.ram.vars[2], 7);
   assert.equal(vm.waiting, "none");
+});
+
+test("59 waits for the captured native presentation interval", () => {
+  const vm = new VM({
+    banks: { 27: bank([[0x59, 0x41, 1, 9]]) },
+    transitionTimings: { sites: { "1b:2": [
+      { opcode: 0x59, frames: 2, audioFrame: "11", audioIrq: "11" },
+    ] } },
+  });
+  vm.step();
+  assert.equal(vm.waiting, "transition");
+  vm.vblank();
+  assert.equal(vm.ram.vars[1], 0);
+  vm.vblank();
+  assert.equal(vm.ram.vars[1], 9);
+});
+
+test("5B consumes its operand and skips the native 33-byte inline block", () => {
+  const inline = Array(0x21).fill(0xaa);
+  const vm = new VM({
+    banks: { 27: bank([[0x5b, 2, ...inline, 0x41, 4, 8]]) },
+  });
+  vm.step();
+  assert.equal(vm.banks[vm.bank][vm.offset], 0x41);
+  vm.step();
+  assert.equal(vm.ram.vars[4], 8);
 });
 
 test("57 runs candidate bytecode in collection mode and 16 opens the choice", () => {
