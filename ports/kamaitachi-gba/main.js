@@ -3,6 +3,7 @@ import { Assets, SceneLoader } from "./src/scene.js";
 import { NativeFont, TextWindow } from "./src/font.js";
 import { GBAInput } from "./src/input.js";
 import { VM } from "./src/vm.js";
+import { createSound } from "./sound/output.js";
 
 const base = "../../kamaitachi-gba-kor/port-data";
 const assets = new Assets(base);
@@ -20,6 +21,10 @@ const font = new NativeFont(
   await assets.bin("font/lookup.bin"),
 );
 const music = await assets.json("sound/scenario-map.json");
+const audioTables = await assets.json("sound/scene-audio.json");
+// Browsers start audio only after a user gesture; until then m4a runs silently in the worklet.
+const sound = await createSound(new URL(`${base}/sound/`, location.href));
+for (const type of ["keydown", "pointerdown"]) addEventListener(type, () => sound.resume(), { once: true });
 const screen = new Screen(document.querySelector("#screen"));
 const scene = new SceneLoader(assets, screen);
 const text = new TextWindow({ 1: "透", 2: "真理" });
@@ -28,8 +33,8 @@ const choiceView = {
   show: (choices, selected) => screen.showChoices(font, text.pageRaw, choices, selected),
   hide: () => screen.clearChoices(),
 };
-const vm = new VM({ banks, scene, text, musicMap: music.request_to_song, choiceView });
-window.kamaitachi = { vm, screen, assets, font, input };
+const vm = new VM({ banks, scene, text, musicMap: music.request_to_song, audio: sound, audioTables, choiceView });
+window.kamaitachi = { vm, screen, assets, font, input, sound };
 
 let last = performance.now();
 let accumulated = 0;

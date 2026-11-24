@@ -20,5 +20,8 @@ export async function createSound(dataDir) {
     stopSong: (song) => node.port.postMessage({ type: 'stop', song }),
     stopAll: () => node.port.postMessage({ type: 'stopAll' }),
     fadeOut: (player, speed) => node.port.postMessage({ type: 'fade', player, speed }),
+    // m4a calls the game's audio controller (scene-audio.js) makes; messages keep their order.
+    immInit: (player) => node.port.postMessage({ type: 'immInit', player }),
+    volumeControl: (player, bits, volume) => node.port.postMessage({ type: 'volume', player, bits, volume }),
   };
 }

@@ -1,3 +1,4 @@
+import { SceneAudio } from "../sound/scene-audio.js";
 export const HANDLERS = {
   0x00: "08003708",
   0x01: "080036A8",
@@ -51,6 +52,10 @@ export const HANDLERS = {
 
 // Native handlers which short-circuit while a 57 choice candidate is being
 // collected. Arguments are consumed before this gate is evaluated.
+// Opcodes 31 and 32 (08004D20-08004D32): raw > 99 is divided by 16 first, then both take * 10.
+const audioSpeed = (raw) => (raw > 99 ? raw >> 4 : raw) * 10;
+const SILENT = { startSong() {}, stopSong() {}, immInit() {}, volumeControl() {} };
+
 export const SUPPRESSION = Object.freeze({
   0x04: ["77e-or-78e", "u16"], 0x08: ["77e-or-78e", "u16,u8"], 0x09: ["77e-or-78e", "u16,u8"],
   0x0a: ["77e-or-78e", "u8"], 0x0b: ["77e-or-78e", "u8"], 0x0c: ["77e-or-78e", "u16"],
@@ -74,6 +79,7 @@ export class VM {
     text = null,
     audio = null,
     musicMap = [],
+    audioTables = null,
     choiceView = null,
     trace = null,
   } = {}) {
@@ -83,9 +89,9 @@ export class VM {
     this.text = text;
     this.audio = audio;
     this.musicMap = musicMap;
+    // The game's audio controller (0800A14C-0800A572) owns the request state and drives m4a.
+    this.sound = new SceneAudio(audio ?? SILENT, audioTables ?? { requestSong: musicMap });
     this.choiceView = choiceView;
-    this.currentSong = null;
-    this.currentRequest = null;
     this.trace = trace;
     this.frame = 0;
     this.halted = false;
@@ -390,18 +396,12 @@ export class VM {
         break;
       }
       case 0x2f: {
-        const raw = this.word();
-        const request = ((raw & 0xff) << 8) | (raw >> 8);
-        args.push(raw, request);
+        // 08004C34: the native reader (080033D0 + 08009B34) yields the little-endian word.
+        const request = this.word();
+        args.push(request);
         if (this.suppressed(opcode)) break;
-        if (request <= 999) {
-          if (this.currentSong !== null) this.audio?.stopSong(this.currentSong);
-          this.currentSong = null;
-          this.currentRequest = null;
-          this.ram.audioRequest = 0xffff;
-        } else if (request !== 0xffff) {
-          this.audio?.stopEffect?.(request - 1000);
-        }
+        this.sound.fade(request, 0);
+        this.syncAudio();
         this.ram.updatePending = 1;
         this.writes.push("updatePending=1");
         break;
@@ -412,8 +412,9 @@ export class VM {
       case 0x2d: {
         const high = this.byte();
         const lowPair = this.word();
-        const request =
-          ((high << 8) + ((lowPair & 0xff) << 8) + (lowPair >> 8)) & 0xffff;
+        // 08004B10: 080033D0 reads the word big-endian and 08009B34 swaps it back, so the
+        // value is the little-endian word.
+        const request = ((high << 8) + lowPair) & 0xffff;
         args.push(high, lowPair, request);
         if (this.suppressed(opcode)) break;
         this.scene?.overlay?.(request, this.ram);
@@ -434,7 +435,8 @@ export class VM {
         const request = this.word();
         args.push(request);
         if (this.suppressed(opcode)) break;
-        this.startAudio(request);
+        this.sound.play(request, 0); // 08004C8C -> 0800A510
+        this.syncAudio();
         break;
       }
       case 0x31: {
@@ -442,14 +444,8 @@ export class VM {
         const request = this.word();
         args.push(rawSpeed, request);
         if (this.suppressed(opcode)) break;
-        const speed =
-          (rawSpeed > 99 ? Math.floor(rawSpeed / 16) : rawSpeed) * 10;
-        if (request !== 0xffff && request <= 999) {
-          this.audio?.fadeOut(0, speed);
-          this.currentRequest = null;
-        } else if (request >= 1000 && request !== 0xffff) {
-          this.audio?.fadeOutEffect?.(request - 1000, speed);
-        }
+        this.sound.fade(request, audioSpeed(rawSpeed)); // 08004CDC -> 0800A4CC
+        this.syncAudio();
         break;
       }
       case 0x32: {
@@ -457,9 +453,8 @@ export class VM {
         const request = this.word();
         args.push(rawSpeed, request);
         if (this.suppressed(opcode)) break;
-        const speed =
-          (rawSpeed > 99 ? Math.floor(rawSpeed / 16) : rawSpeed) * 10;
-        this.pendingAudio = { request, speed };
+        // 08004D4C: one frame (08003044(1)), then 0800A510 with the converted speed.
+        this.pendingAudio = { request, speed: audioSpeed(rawSpeed) };
         this.waitFrames = 1;
         this.waiting = "audio-start";
         break;
@@ -468,8 +463,9 @@ export class VM {
         const request = this.word();
         args.push(request);
         if (this.suppressed(opcode)) break;
-        if (this.audio && !this.audio.isComplete?.(request))
-          this.waiting = "audio";
+        // 08004DD0: one frame, the 0800A2C4 loop while the request plays, then two frames.
+        this.audioWait = { request, phase: "pre", loop: 0, post: 2 };
+        this.waiting = "audio";
         break;
       }
       case 0x35: {
@@ -570,25 +566,25 @@ export class VM {
     return !this.halted;
   }
 
-  startAudio(request, speed = 0) {
-    if (request >= 1000) {
-      this.audio?.startEffect?.(request - 1000, speed);
-      return;
+  syncAudio() {
+    this.ram.audioRequest = this.sound.request & 0xffff; // 02028ACE
+    this.ram.audioScene = this.sound.scene & 0xffff; // 02000738
+  }
+
+  // One frame of an opcode 34 wait; the condition is read after the frame's audio update, as in
+  // 0800A2C4. Returns true while the wait still holds the scenario.
+  audioWaitFrame() {
+    const w = this.audioWait;
+    if (w.phase === "pre") {
+      w.phase = this.sound.waiting(w.request, 0) ? "loop" : "post";
+    } else if (w.phase === "loop") {
+      w.loop++;
+      if (!this.sound.waiting(w.request, w.loop)) w.phase = "post";
+    } else if (--w.post === 0) {
+      this.audioWait = null;
+      return false;
     }
-    if (request === this.currentRequest) return;
-    this.ram.audioRequest = request;
-    const song = this.musicMap[request] ?? -1;
-    if (song < 0) {
-      if (this.currentSong !== null) this.audio?.stopSong(this.currentSong);
-      this.currentSong = null;
-      this.currentRequest = request;
-      return;
-    }
-    if (this.currentSong !== null) this.audio?.stopSong(this.currentSong);
-    this.audio?.startSong(song);
-    if (speed) this.audio?.fadeInSong?.(song, speed);
-    this.currentSong = song;
-    this.currentRequest = request;
+    return true;
   }
 
   resume(rowIndex = null) {
@@ -615,11 +611,16 @@ export class VM {
   vblank(budget = 1024) {
     this.frame++;
     this.ram.updatePending = 0;
+    this.sound.frame(); // 0800A414 in the frame wait
+    this.sound.irq(); // 0800A3E0 in the VBlank interrupt
+    this.syncAudio();
+    if (this.waiting === "audio" && !this.audioWaitFrame()) this.waiting = "none";
     if (this.waiting === "delay" && --this.waitFrames <= 0)
       this.waiting = "none";
     if (this.waiting === "audio-start" && --this.waitFrames <= 0) {
       const { request, speed } = this.pendingAudio;
-      this.startAudio(request, speed);
+      this.sound.play(request, speed);
+      this.syncAudio();
       this.pendingAudio = null;
       this.waiting = "none";
     }

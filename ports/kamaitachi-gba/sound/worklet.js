@@ -20,6 +20,8 @@ class M4APlayer extends AudioWorkletProcessor {
         else if (data.type === 'stop') this.engine.stopSong(data.song);
         else if (data.type === 'stopAll') this.engine.stopAll();
         else if (data.type === 'fade') this.engine.fadeOut(data.player, data.speed);
+        else if (data.type === 'immInit') this.engine.immInit(data.player);
+        else if (data.type === 'volume') this.engine.volumeControl(data.player, data.bits, data.volume);
       }
     };
   }

@@ -1,6 +1,7 @@
 // Sequencer and mixer checks for m4a.js with a song written by hand (no cartridge data).
 // Usage: node ports/kamaitachi-gba/sound/test-m4a.mjs
 import { M4A, Memory } from './m4a.js';
+import { SceneAudio } from './scene-audio.js';
 
 const BASE = 0x08000000;
 const mem = new Uint8Array(0x2000);
@@ -83,20 +84,13 @@ check(!(ch.status & 0xc7) || (ch.status & 0x40), 'EOT 62로 TIE 음 해제');
 for (let f = 0; f < 3; f++) e.vblank();
 check(!e.players[0].active, 'FINE 뒤 플레이어 정지');
 
-// Track volume measured in mGBA, starting at the first fade update.
-for (const [speed, expected] of [
-  [10, [22, 28, 34, 40, 46, 54, 60, 64, 64, 64]],
-  [17, [18, 22, 26, 30, 34, 38, 42, 46, 48, 52, 56, 60, 64, 64, 64, 64, 64]],
-]) {
-  e.startSong(0);
-  e.fadeInSong(0, speed);
-  const track = e.players[0].tracks[0];
-  const actual = expected.map(() => {
-    e.vblank();
-    return track.volX;
-  });
-  check(actual.every((value, frame) => value === expected[frame]), `페이드인 속도 ${speed} 프레임별 volX`);
-}
+// m4aMPlayVolumeControl: volume >> 2 lands in volX as a byte (0x4000 wraps to 0).
+e.startSong(0);
+e.immInit(0);
+e.volumeControl(0, 0xffff, 0x100);
+check(e.players[0].tracks[0].volX === 64, '음량 0x100은 volX 64');
+e.volumeControl(0, 0xffff, 0x4000);
+check(e.players[0].tracks[0].volX === 0, '음량 0x4000은 u8로 잘려 volX 0');
 
 // Fade-out: four steps of 16/256 every frame at speed 1 stop the player after 16 frames.
 e.startSong(0);
@@ -111,6 +105,44 @@ e.startSong(0);
 w8(header + 2, 5);
 check(e.startSong(0), '같은 곡은 다시 시작');
 w8(header + 2, 10);
+
+// The game's controller above m4a (0800A1E8/0800A414). Track volume measured in mGBA,
+// starting at the first frame update after a fade-in start (opcode 32 path).
+const engine = new M4A(new Memory(mem, BASE), cfg);
+const tables = { requestSong: [0, -1], volume: [0x100, 0x100, 0x100], length: [[-1, 0], [-1, 0], [3, 1]] };
+for (const [speed, expected] of [
+  [10, [22, 28, 34, 40, 46, 54, 60, 64, 64, 64]],
+  [17, [18, 22, 26, 30, 34, 38, 42, 46, 48, 52, 56, 60, 64, 64, 64, 64, 64]],
+]) {
+  const audio = new SceneAudio(engine, tables);
+  audio.play(0, speed);
+  const track = engine.players[0].tracks[0];
+  const actual = expected.map(() => { audio.frame(); engine.vblank(); return track.volX; });
+  check(actual.every((v, f) => v === expected[f]), `페이드인 속도 ${speed} 프레임별 volX (${actual.join(',')})`);
+}
+{
+  const audio = new SceneAudio(engine, tables);
+  audio.play(0);
+  check(engine.players[0].tracks[0].volX === 64 && audio.request === 0 && audio.scene === 0, '속도 0 요청은 목표 음량으로 바로 시작');
+  audio.play(0);
+  check(audio.active === 1, '같은 요청은 무시');
+  audio.fade(0, 4);
+  for (let f = 0; f < 3; f++) audio.frame();
+  check(audio.request === 0 && audio.fadeLeft === 1, '감쇠 중에는 요청 유지');
+  audio.frame();
+  check(audio.request === -1 && !engine.players[0].active, '감쇠가 끝나면 곡 정지');
+  audio.play(1);
+  check(audio.request === -1 && audio.scene === -1, '곡 번호가 -1인 요청은 정지로 처리');
+  tables.requestSong[2] = 0;
+  audio.play(2);
+  check(audio.playLeft === 3, '길이 표의 프레임 수로 재생 카운트 시작');
+  for (let f = 0; f < 3; f++) { audio.irq(); audio.frame(); }
+  check(audio.request === -1, '재생 카운트가 0이 되면 정지');
+  check(!audio.waiting(2, 0), '34: 재생 중인 요청이 없으면 대기 없음');
+  audio.play(2);
+  check(audio.waiting(1, 0) && !audio.waiting(1, 1), '34: 길이 -1인 요청은 첫 확인만 통과');
+  check(audio.waiting(2, 1) && audio.waiting(2, 600) && !audio.waiting(2, 601), '34: 재생 중이면 최대 601프레임 대기');
+}
 
 console.log(failures ? `${failures} failed` : 'all passed');
 process.exit(failures ? 1 : 0);

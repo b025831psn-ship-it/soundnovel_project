@@ -35,7 +35,7 @@ test("choice suppression table covers all 34 reviewed handlers and consumes argu
     const vm = new VM({
       banks: { 27: bank([[opcode, ...args, 0x03]]) },
       scene: { request: () => calls.push("scene"), overlay: () => calls.push("overlay") },
-      audio: { startSong: () => calls.push("audio"), stopEffect: () => calls.push("audio") },
+      audio: { startSong: () => calls.push("audio"), stopSong: () => calls.push("audio"), immInit() {}, volumeControl() {} },
     });
     vm.ram.effectDisabled = 1;
     vm.ram.flags.fill(7);
@@ -160,37 +160,65 @@ test("04 uses a little-endian request", () => {
   assert.equal(request, 0x1234);
 });
 
-test("30/31/32 map scenario requests to the MP2K API", () => {
+function recorder() {
   const calls = [];
-  const audio = {
+  return {
+    calls,
     startSong: (song) => calls.push(["start", song]),
     stopSong: (song) => calls.push(["stop", song]),
-    fadeOut: (player, speed) => calls.push(["fade", player, speed]),
-    fadeInSong: (song, speed) => calls.push(["fade-in", song, speed]),
+    immInit: (player) => calls.push(["init", player]),
+    volumeControl: (player, bits, volume) => calls.push(["volume", volume]),
   };
+}
+const audioTables = {
+  requestSong: [5, 8, 13, -1],
+  volume: [0x100, 0x100, 0x100, 0x100],
+  length: [[-1, 0], [-1, 0], [3, 1], [-1, 0]],
+};
+
+test("30/31/32 run the native audio controller (0800A510, 0800A4CC)", () => {
+  const audio = recorder();
   const vm = new VM({
     banks: {
       27: bank([
         [0x30, 1, 0, 0x31, 10, 0, 1, 0, 0x32, 20, 0, 2, 0, 0x30, 3, 0, 0x03],
       ]),
     },
-    musicMap: [5, 8, 13, -1],
     audio,
+    audioTables,
+  });
+  vm.step(); // 30 1: start song 8 at full volume
+  assert.deepEqual(audio.calls.splice(0), [["stop", 8], ["start", 8], ["init", 0], ["volume", 0x100]]);
+  assert.equal(vm.ram.audioRequest, 1);
+  vm.step(); // 31 10,1: fade out over 100 frames, request kept until it ends
+  assert.deepEqual(audio.calls.splice(0), []);
+  assert.equal(vm.sound.fadeLeft, 100);
+  vm.step(); // 32 20,2: one frame, then song 13 fading in over 200 frames
+  assert.equal(vm.waiting, "audio-start");
+  vm.vblank(0); // that frame's 0800A414 still moves the fade-out of request 1 first
+  assert.deepEqual(audio.calls.splice(0), [
+    ["volume", 248], ["stop", 13], ["start", 13], ["init", 0], ["volume", 0x4000],
+  ]);
+  assert.equal(vm.sound.fadeLeft, 200);
+  assert.equal(vm.ram.audioRequest, 2);
+});
+
+test("34 waits while a request with a play length is playing", () => {
+  const audio = recorder();
+  const vm = new VM({
+    banks: { 27: bank([[0x30, 2, 0, 0x34, 2, 0, 0x03]]) },
+    audio,
+    audioTables,
   });
   vm.step();
   vm.step();
-  vm.step();
-  assert.equal(vm.waiting, "audio-start");
-  vm.vblank();
-  while (vm.step());
-  assert.deepEqual(calls, [
-    ["start", 8],
-    ["fade", 0, 100],
-    ["stop", 8],
-    ["start", 13],
-    ["fade-in", 13, 200],
-    ["stop", 13],
-  ]);
+  assert.equal(vm.waiting, "audio");
+  let frames = 0;
+  while (vm.waiting === "audio") { vm.vblank(0); frames++; }
+  // One frame before the loop; the interrupt counts the 3-frame length down and the next
+  // 0800A414 stops the request (frame 4); then the two closing frames.
+  assert.equal(vm.sound.request, -1);
+  assert.equal(frames, 6);
 });
 
 test("45 skips the following 0A only outside effect-bypass state", () => {
@@ -207,7 +235,7 @@ test("45 skips the following 0A only outside effect-bypass state", () => {
 test("2D loads its native effect id without introducing a wait", () => {
   const calls = [];
   const vm = new VM({
-    banks: { 27: bank([[0x2d, 0x00, 0x20, 0x00, 0x3e]]) },
+    banks: { 27: bank([[0x2d, 0x00, 0x00, 0x20, 0x3e]]) },
     scene: { overlay: (request) => calls.push(request) },
   });
   vm.ram.overlayMasks.set([0x2000, 13, 7, 0]);
@@ -239,52 +267,47 @@ test("2D bypass conditions set only the shared update flag", () => {
 
 test("2D compares the native mask entries as signed halfwords", () => {
   const vm = new VM({
-    banks: { 27: bank([[0x2d, 0, 0x80, 0]]) },
+    banks: { 27: bank([[0x2d, 0, 0, 0x80]]) },
   });
   vm.ram.overlayMasks[0] = 0x8000;
   vm.step();
   assert.equal(vm.ram.overlayMasks[0], 0x8000);
 });
 
-test("2F swaps its request bytes and stops the matching audio class", () => {
-  const calls = [];
+test("2F reads a little-endian request and stops the current one (0800A4CC with speed 0)", () => {
+  const audio = recorder();
   const vm = new VM({
-    banks: { 27: bank([[0x2f, 0x00, 0x57, 0x2f, 0x04, 0x4c]]) },
-    audio: {
-      stopSong: (song) => calls.push(["song", song]),
-      stopEffect: (effect) => calls.push(["effect", effect]),
-    },
+    banks: { 27: bank([[0x30, 1, 0, 0x2f, 1, 0, 0x2f, 0x4c, 0x04]]) },
+    audio,
+    audioTables,
   });
-  vm.currentSong = 3;
-  vm.currentRequest = 9;
   vm.step();
+  audio.calls.length = 0;
   vm.step();
-  assert.deepEqual(calls, [
-    ["song", 3],
-    ["effect", 100],
-  ]);
-  assert.equal(vm.waiting, "none");
-  assert.equal(vm.ram.updatePending, 1);
-  assert.equal(vm.currentRequest, null);
+  assert.deepEqual(audio.calls, [["stop", 8]]);
   assert.equal(vm.ram.audioRequest, 0xffff);
+  assert.equal(vm.ram.audioScene, 0xffff);
+  assert.equal(vm.ram.updatePending, 1);
+  vm.step(); // 1100 is an effect stop; effect programs are not ported yet
+  assert.equal(vm.waiting, "none");
   vm.vblank(0);
   assert.equal(vm.ram.updatePending, 0);
 });
 
 test("2F bypass conditions preserve audio state and set update pending", () => {
   for (const field of ["effectDisabled", "effectBypass"]) {
-    const calls = [];
+    const audio = recorder();
     const vm = new VM({
-      banks: { 27: bank([[0x2f, 0, 1]]) },
-      audio: { stopSong: (song) => calls.push(song) },
+      banks: { 27: bank([[0x30, 1, 0, 0x2f, 1, 0]]) },
+      audio,
+      audioTables,
     });
-    vm.currentSong = 3;
-    vm.currentRequest = 1;
+    vm.step();
+    audio.calls.length = 0;
     vm.ram[field] = 1;
     vm.step();
-    assert.deepEqual(calls, []);
-    assert.equal(vm.currentSong, 3);
-    assert.equal(vm.currentRequest, 1);
+    assert.deepEqual(audio.calls, []);
+    assert.equal(vm.sound.request, 1);
     assert.equal(vm.ram.updatePending, 1);
   }
 });
