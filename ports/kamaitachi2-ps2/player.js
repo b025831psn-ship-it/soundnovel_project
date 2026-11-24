@@ -27,10 +27,16 @@ const keyboardEdits = new Set();
 const editPriority = ['circle', 'cross', 'triangle'];
 const confirmPriority = ['circle', 'cross', 'square', 'up', 'down'];
 
+function titleAction(actions) {
+  const confirm = actions.find(key => ['circle', 'start', 'l2'].includes(key));
+  const direction = index > 0 && actions.includes('left') ? 'left' : 'right';
+  return confirm ?? (actions.includes(direction) ? direction : actions[0]);
+}
+
 function flushKeyboardEdit() {
   if (!keyboardEdits.size) return;
   const priority = scene === 'confirm' ? confirmPriority : editPriority;
-  const action = priority.find(key => keyboardEdits.has(key));
+  const action = scene === 'title' ? titleAction([...keyboardEdits]) : priority.find(key => keyboardEdits.has(key));
   keyboardEdits.clear();
   if (action) step(action);
 }
@@ -617,9 +623,7 @@ function frame(now) {
     const action = confirmPriority.find(key => actions.includes(key));
     if (action) step(action);
   } else if (scene === 'title' && actions.length) {
-    const confirm = actions.find(key => ['circle', 'start', 'l2'].includes(key));
-    const direction = index > 0 && actions.includes('left') ? 'left' : 'right';
-    step(confirm ?? (actions.includes(direction) ? direction : actions[0]));
+    step(titleAction(actions));
   } else {
     padRepeat.advance('', now);
     const initialScene = scene;
@@ -643,8 +647,7 @@ document.addEventListener('keydown', e => {
   const action = keys[e.code];
   if (!action || e.altKey || e.ctrlKey || e.metaKey || scene === 'loading') return;
   e.preventDefault();
-  if (scene === 'title' && e.repeat) return;
-  if ((scene === 'name' && editPriority.includes(action)) ||
+  if (scene === 'title' || (scene === 'name' && editPriority.includes(action)) ||
       (scene === 'confirm' && confirmPriority.includes(action))) {
     if (!e.repeat) keyboardEdits.add(action);
     return;
