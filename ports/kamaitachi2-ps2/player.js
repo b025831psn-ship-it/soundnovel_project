@@ -656,7 +656,7 @@ const keys = {ArrowLeft:'left',ArrowRight:'right',ArrowUp:'up',ArrowDown:'down',
   Space:'start',KeyX:'circle',KeyZ:'cross',Escape:'cross',KeyA:'square',KeyS:'triangle',KeyQ:'l1',KeyW:'r1',Digit2:'l2'};
 document.addEventListener('keydown', e => {
   const action = keys[e.code];
-  if (!action || e.altKey || e.ctrlKey || e.metaKey || scene === 'loading') return;
+  if (!action || e.altKey || e.ctrlKey || e.metaKey || scene === 'loading' || scene === 'error') return;
   e.preventDefault();
   if (scene === 'title' || (scene === 'name' && editPriority.includes(action)) ||
       (scene === 'confirm' && confirmPriority.includes(action))) {
