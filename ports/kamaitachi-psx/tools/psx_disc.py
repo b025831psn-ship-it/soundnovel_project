@@ -133,6 +133,50 @@ def parse_dir_record(data: bytes, offset: int = 0) -> dict | None:
     }
 
 
+def read_iso_file(stream, track: Track, entry: dict, limit: int | None = None) -> bytes:
+    size = entry["size"] if limit is None else min(entry["size"], limit)
+    result = bytearray()
+    for sector_index in range((size + 2047) // 2048):
+        result.extend(read_user_sector(stream, track, entry["extent_lba"] + sector_index))
+    return bytes(result[:size])
+
+
+def parse_system_cnf(data: bytes) -> dict:
+    text = data.rstrip(b"\x00\x1a").decode("ascii", "replace")
+    values = {}
+    for line in text.splitlines():
+        if "=" not in line:
+            continue
+        key, value = line.split("=", 1)
+        values[key.strip().upper()] = value.strip()
+    boot = values.get("BOOT") or values.get("BOOT2")
+    if boot:
+        boot = re.sub(r"^cdrom[0-9]*:\\", "", boot, flags=re.I).lstrip("\\/")
+    return {"boot_target": boot, "values": values}
+
+
+def parse_psx_exe_header(data: bytes) -> dict | None:
+    if len(data) < 0x800 or data[:8] != b"PS-X EXE":
+        return None
+    names = (
+        "initial_pc",
+        "initial_gp",
+        "text_address",
+        "text_size",
+        "data_address",
+        "data_size",
+        "bss_address",
+        "bss_size",
+        "stack_address",
+        "stack_size",
+    )
+    values = struct.unpack_from("<10I", data, 0x10)
+    return {
+        **dict(zip(names, values)),
+        "region_text": data[0x4C:0x800].split(b"\x00", 1)[0].decode("ascii", "replace"),
+    }
+
+
 def iso9660_summary(track: Track) -> dict | None:
     try:
         with track.file.open("rb") as stream:
@@ -156,12 +200,25 @@ def iso9660_summary(track: Track) -> dict | None:
                     cursor += record["length"]
                 lba += 1
                 remaining -= 2048
-            return {
+            summary = {
                 "system_id": pvd[8:40].decode("ascii", "replace").rstrip(),
                 "volume_id": pvd[40:72].decode("ascii", "replace").rstrip(),
                 "volume_space_sectors": struct.unpack_from("<I", pvd, 80)[0],
                 "root_entries": entries,
             }
+            system_cnf = next((entry for entry in entries if entry["name"].upper() == "SYSTEM.CNF;1"), None)
+            if system_cnf:
+                boot = parse_system_cnf(read_iso_file(stream, track, system_cnf))
+                target = (boot["boot_target"] or "").upper()
+                executable = next((entry for entry in entries if entry["name"].upper() == target), None)
+                if executable:
+                    boot["executable_lba"] = executable["extent_lba"]
+                    boot["executable_size"] = executable["size"]
+                    header = parse_psx_exe_header(read_iso_file(stream, track, executable, 0x800))
+                    if header:
+                        boot["psx_exe"] = header
+                summary["boot"] = boot
+            return summary
     except (OSError, ValueError):
         return None
 

@@ -65,6 +65,28 @@ class DiscInventoryTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "INDEX 01"):
                 psx_disc.parse_cue(cue)
 
+    def test_system_cnf_boot_target(self):
+        parsed = psx_disc.parse_system_cnf(
+            b"BOOT=cdrom:\\SLPS_000.00;1\r\nTCB=4\r\nSTACK=801fff00\r\n\x1a"
+        )
+        self.assertEqual(parsed["boot_target"], "SLPS_000.00;1")
+        self.assertEqual(parsed["values"]["STACK"], "801fff00")
+
+    def test_psx_exe_header(self):
+        data = bytearray(0x800)
+        data[:8] = b"PS-X EXE"
+        fields = (0x80012340, 0, 0x80010000, 0x2000, 0, 0, 0, 0, 0x801FFFF0, 0)
+        struct.pack_into("<10I", data, 0x10, *fields)
+        data[0x4C:0x51] = b"Japan"
+
+        parsed = psx_disc.parse_psx_exe_header(data)
+
+        self.assertEqual(parsed["initial_pc"], 0x80012340)
+        self.assertEqual(parsed["text_address"], 0x80010000)
+        self.assertEqual(parsed["text_size"], 0x2000)
+        self.assertEqual(parsed["stack_address"], 0x801FFFF0)
+        self.assertEqual(parsed["region_text"], "Japan")
+
 
 if __name__ == "__main__":
     unittest.main()

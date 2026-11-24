@@ -16,14 +16,22 @@ python3 ports/kamaitachi-psx/tools/psx_disc.py inventory /private/path/game.cue 
 The JSON records every referenced file's size and SHA-256, track mode, sector
 size, index position, file-relative LBA, disc LBA, and byte offset. For a data
 track it also reports the raw-sector layout, ISO9660 volume metadata, root file
-records. `SYSTEM.CNF` boot-target and PS-X EXE header parsing are the next
-public-tooling step; payload extraction remains private.
+records, `SYSTEM.CNF` boot target, and PS-X EXE load/entry header. Payload
+extraction remains private.
 
 Keep the output private until it has been reviewed for original filenames and
 other extracted metadata. The public test suite uses generated sectors only:
 
 ```sh
 python3 -m unittest discover -s ports/kamaitachi-psx/tests -v
+```
+
+PAC archives use little-endian `<resource-id, sector-offset>` pairs and an
+`<0xffff, total-sectors>` terminator. Inspect an already private/local PAC
+without writing member payloads:
+
+```sh
+python3 ports/kamaitachi-psx/tools/pac_index.py /private/path/SAMPLE.PAC
 ```
 
 ## Trace boundary
