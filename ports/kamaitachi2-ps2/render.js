@@ -121,11 +121,13 @@ export class Screen {
     this.pointer(x + 16, y + 7 + 27 * selection);
   }
 
-  footer(editor) {
+  footer(editor, confirmOnly = false) {
     this.rect(0, 390, 640, 26);
     this.sprite('name_e01', 0, 66, 54, 22, 39, 391);
     this.sprite('name_e01', 0, 114, 22, 22, 112, 391);
-    if (editor) {
+    if (confirmOnly) {
+      this.sprite('sys_fc01', 243, 0, 45, 24, 138, 390);
+    } else if (editor) {
       this.sprite('name_e01', 150, 66, 38, 21, 140, 392);
       this.sprite('name_e01', 59, 66, 42, 21, 180, 392);
       this.sprite('name_e01', 23, 114, 24, 22, 249, 391);
@@ -163,10 +165,7 @@ export class Screen {
       this.sprite('sys_save', 399, 129, 90, 23, 86, 289);
       this.sprite('sys_jo02', 95, 155, 154, 25, 176, 289);
       this.sprite('sys_wa01', 0, 156, 104, 24, 329, 290);
-      this.rect(0,390,640,26);
-      this.sprite('name_e01',0,66,54,22,39,391);
-      this.sprite('name_e01',0,114,22,22,112,391);
-      this.sprite('sys_fc01',243,0,45,24,138,390);
+      this.footer(false, true);
       return;
     }
     if (fileScreen) {
@@ -177,9 +176,10 @@ export class Screen {
         this.sprite('sys_cd01', 0, 0, 54, 66, 79, 111);
         this.sprite('sys_save', 388, 103, 104, 25, 187, 133);
       } else {
+        this.sprite('sys_save', 0, 82, 23, 20, 49, 137);
         this.sprite('sys_cd01', 0, 64, 95, 63, 79, 112);
-        this.sprite('sys_fc01', 398, 417, 110, 23, 201, 121);
-        this.text('１', 326, 120, {scale:.85});
+        this.text('わらべ唄篇', 200, 119, {scale:.76});
+        this.text('１章', 326, 119, {scale:.8});
         this.rect(376, 111, 215, 39, 'rgba(17,26,40,.46)');
         this.text(initialName, 394, 114);
         this.sprite('sys_save', 399, 130, 91, 22, 159, 159);
@@ -191,7 +191,7 @@ export class Screen {
         this.sprite('sys_cd02', 0, 288, 215, 24, 152, 223);
         this.sprite('sys_cd02', 374, 288, 134, 24, 363, 223);
       }
-      this.footer(false);
+      this.footer(false, state === 'created');
       return;
     }
     if (state === 'autosave') {
