@@ -56,6 +56,8 @@ export class R3000A {
     this.memory = memory;
     this.regs = new Uint32Array(32);
     this.cop0 = new Uint32Array(32);
+    this.gteData = new Uint32Array(32);
+    this.gteControl = new Uint32Array(32);
     this.hi = 0;
     this.lo = 0;
     this.pc = u32(pc);
@@ -164,6 +166,7 @@ export class R3000A {
         case 0x24: this.regs[rd] = this.regs[rs] & this.regs[rt]; return;
         case 0x25: this.regs[rd] = this.regs[rs] | this.regs[rt]; return;
         case 0x26: this.regs[rd] = this.regs[rs] ^ this.regs[rt]; return;
+        case 0x27: this.regs[rd] = u32(~(this.regs[rs] | this.regs[rt])); return;
         case 0x2a: this.regs[rd] = (this.regs[rs] | 0) < (this.regs[rt] | 0) ? 1 : 0; return;
         case 0x2b: this.regs[rd] = this.regs[rs] < this.regs[rt] ? 1 : 0; return;
         default: throw new Error(`unimplemented R3000A SPECIAL 0x${(word & 63).toString(16)} at 0x${at.toString(16)}`);
@@ -200,6 +203,14 @@ export class R3000A {
         else if (rs === 0x10 && (word & 0x3f) === 0x10)
           this.cop0[12] = u32((this.cop0[12] & ~0x0f) | ((this.cop0[12] >>> 2) & 0x0f));
         else throw new Error(`unimplemented R3000A COP0 instruction 0x${word.toString(16)} at 0x${at.toString(16)}`);
+        break;
+      }
+      case 0x12: {
+        if (rs === 0x00) this.regs[rt] = this.gteData[rd];
+        else if (rs === 0x02) this.regs[rt] = this.gteControl[rd];
+        else if (rs === 0x04) this.gteData[rd] = this.regs[rt];
+        else if (rs === 0x06) this.gteControl[rd] = this.regs[rt];
+        else throw new Error(`unimplemented GTE command 0x${(word & 0x1ffffff).toString(16)} at 0x${at.toString(16)}`);
         break;
       }
       case 0x20: this.regs[rt] = u32(s8(this.memory.u8(this.regs[rs] + s16(imm)))); break;

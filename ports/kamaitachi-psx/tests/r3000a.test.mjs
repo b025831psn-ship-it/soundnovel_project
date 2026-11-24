@@ -131,6 +131,16 @@ test("variable shifts and multiply/divide use R3000A HI/LO", () => {
   assert.equal(cpu.hi, 3);
 });
 
+test("NOR inverts the union of both source registers", () => {
+  const memory = new PsxMemory();
+  memory.set32(0, (1 << 21) | (2 << 16) | (3 << 11) | 0x27);
+  const cpu = new R3000A({ memory });
+  cpu.regs[1] = 0x00ff00ff;
+  cpu.regs[2] = 0x0f0f0f0f;
+  cpu.step();
+  assert.equal(cpu.regs[3], 0xf000f000);
+});
+
 test("syscall delegates to the configured exception hook", () => {
   let code = null;
   const cpu = cpuWith([0x0001230c], 0x80010000, { syscall: (_cpu, value) => { code = value; } });
@@ -168,6 +178,18 @@ test("COP0 registers round-trip through mtc0 and mfc0", () => {
   cpu.step();
   assert.equal(cpu.cop0[12], 0x00400401);
   assert.equal(cpu.regs[3], 0x00400401);
+});
+
+test("COP2 register transfers preserve GTE data and control values", () => {
+  const cpu = new R3000A();
+  cpu.regs[4] = 0x12345678;
+  cpu.regs[5] = 0x89abcdef;
+  cpu.execute(0x4884c000, 0); // mtc2 r4, data[24]
+  cpu.execute(0x48c5c800, 4); // ctc2 r5, control[25]
+  cpu.execute(0x4806c000, 8); // mfc2 r6, data[24]
+  cpu.execute(0x4847c800, 12); // cfc2 r7, control[25]
+  assert.equal(cpu.regs[6], 0x12345678);
+  assert.equal(cpu.regs[7], 0x89abcdef);
 });
 
 test("accepted interrupts enter the COP0 exception vector and preserve EPC", () => {
