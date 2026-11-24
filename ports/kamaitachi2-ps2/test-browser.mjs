@@ -294,7 +294,11 @@ try {
     assert.ok([...discussion].some(line => line.includes('小林夫妻には招待状は来ていなかった。')));
     assert.ok([...discussion].some(line => line.endsWith('真理が、小林さんに今回の話をしたら……。')));
     assert.ok([...discussion].some(line => line.endsWith('と、突然、参加を決めたらしい。')));
-    assert.match(await label(), /今は、まったく元気がない。$/);
+    assert.ok([...discussion].some(line => line.endsWith('今は、まったく元気がない。')));
+    assert.ok([...discussion].some(line => line.endsWith('真理が叫んだ。')));
+    assert.match(await label(), /三日月島」らしい。/);
+    assert.match(await label(), /あまりリゾート地らしく思えない。$/);
+    assert.ok([...requests].some(url => url.endsWith('/my0012.mp4')));
     assert.ok([...requests].some(url => url.endsWith('/my0004.mp4')));
     assert.ok([...requests].some(url => url.endsWith('/k1a004.ogg')));
     assert.ok([...requests].some(url => url.endsWith('/my0010.mp4')));
