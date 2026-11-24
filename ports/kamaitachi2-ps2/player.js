@@ -635,6 +635,7 @@ document.addEventListener('keydown', e => {
   const action = keys[e.code];
   if (!action || e.altKey || e.ctrlKey || e.metaKey || scene === 'loading') return;
   e.preventDefault();
+  if (scene === 'title' && e.repeat) return;
   if ((scene === 'name' && editPriority.includes(action)) ||
       (scene === 'confirm' && confirmPriority.includes(action))) {
     if (!e.repeat) keyboardEdits.add(action);
