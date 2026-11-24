@@ -1,3 +1,5 @@
+import { ObjTextSurface } from "./obj-text.js";
+
 export class Screen {
   constructor(canvas) {
     this.canvas = canvas;
@@ -108,20 +110,16 @@ export class Screen {
   showChoices(font, story, choices, selected = 0) {
     this.choiceOverlay = { font, story, choices, selected };
     if (this.base) this.image.data.set(this.base);
-    this.text(font, story, 8, 8, [255, 255, 255]);
-    let y = 24;
-    for (let index = 0; index < choices.length; index++) {
-      if (index === selected) {
-        const points = [[1, 2], [1, 10], [7, 6]];
-        for (let py = 2; py <= 10; py++)
-          for (let px = 1; px <= 7 - Math.abs(6 - py); px++) {
-            const at = 4 * ((y + py) * 240 + px);
-            this.image.data.set([255, 255, 255, 255], at);
-          }
-      }
-      this.glyph(font, 0x8260 + index, 8, y, [255, 255, 255]);
-      const color = index === selected ? [255, 128, 224] : [255, 255, 255];
-      y = this.text(font, choices[index] ?? [], 24, y, color);
+    const surface = new ObjTextSurface().choices(font, story, choices, selected);
+    const colors = { 1: [0, 0, 0], 2: [255, 255, 255], 8: [255, 123, 222], 9: [255, 255, 255] };
+    for (let pixel = 0; pixel < surface.pixels.length; pixel++) {
+      const color = colors[surface.pixels[pixel]];
+      if (!color) continue;
+      const at = pixel * 4;
+      this.image.data[at] = color[0];
+      this.image.data[at + 1] = color[1];
+      this.image.data[at + 2] = color[2];
+      this.image.data[at + 3] = 255;
     }
     this.ctx.putImageData(this.image, 0, 0);
   }
