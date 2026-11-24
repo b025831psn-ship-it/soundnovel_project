@@ -13,11 +13,6 @@ const routes = new Map([
     return ['/web-player/' + file, [path.join(__dirname, 'web-player', file), types[path.extname(file)] + '; charset=utf-8']];
   }),
   ['/kamaitachi-gba-kor/data/kamaitachi.ja.json', [path.join(__dirname, 'kamaitachi-gba-kor/data/kamaitachi.ja.json'), 'application/json; charset=utf-8']],
-  // scene images exported by kamaitachi-gba-kor/tools/export_images.py (000.png-297.png)
-  ...Array.from({ length: 298 }, (_, i) => {
-    const file = 'assets/bg/' + String(i).padStart(3, '0') + '.png';
-    return ['/kamaitachi-gba-kor/' + file, [path.join(__dirname, 'kamaitachi-gba-kor', file), 'image/png']];
-  }),
   ['/style.css', [path.join(__dirname, 'style.css'), 'text/css; charset=utf-8']],
   ['/games.js', [path.join(__dirname, 'games.js'), 'text/javascript; charset=utf-8']],
   ['/AGB-AHZJ.gba', [path.join(__dirname, '..', 'AGB-AHZJ.gba'), 'application/octet-stream']],
@@ -25,7 +20,10 @@ const routes = new Map([
 ]);
 
 http.createServer((request, response) => {
-  const route = routes.get(request.url.split('?')[0]);
+  const url = request.url.split('?')[0];
+  // scene images from kamaitachi-gba-kor/tools/export_images.py: NNN.png and palette variants NNN-v.png
+  const bg = /^\/kamaitachi-gba-kor\/assets\/bg\/(\d{3}(?:-[1-3])?\.png)$/.exec(url);
+  const route = bg ? [path.join(__dirname, 'kamaitachi-gba-kor', 'assets', 'bg', bg[1]), 'image/png'] : routes.get(url);
   if (!route || !['HEAD', 'GET'].includes(request.method)) {
     response.writeHead(404).end();
     return;

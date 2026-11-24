@@ -1,5 +1,5 @@
 // Node media: `bg` / `bgm` stay until changed, "" or null clears, and saves restore them.
-// Usage: node tests/media.mjs   (uses tests/fixtures/media.json, media-pick.json and two 4×4 PNGs made for the test)
+// Usage: node tests/media.mjs   (uses tests/fixtures/media.json, media-pick.json, media-pending.json and two 4×4 PNGs made for the test)
 import http from 'node:http';
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
@@ -64,6 +64,25 @@ await page.waitForSelector('.wp-text p');
 check(await bg() === 'blue.png', '새로고침 뒤에도 유지된 배경 복원');
 await next();
 check(await bg() === 'red.png', '다시 묶음 0');
+
+// A deferred scene request (kgk scene-delay-sites.tsv): stored when the group is 0, loaded later by
+// the node that picks by the pending value; an empty or out-of-range pending value keeps the picture.
+await page.evaluate(() => localStorage.clear());
+await page.goto(url.replace('media.json', 'media-pending.json'));
+await page.waitForSelector('.wp-text p');
+check(await bg() === 'red.png', '지연: 시작 빨강');
+await next();
+check(await bg() === 'red.png', '묶음 0이면 요청만 보류하고 배경 유지');
+await next();
+check(await bg() === 'blue.png', '보류 요청을 읽는 자리에서 적용');
+await next();
+check(await bg() === 'blue.png', '보류값을 비운 뒤에는 다시 적용하지 않음');
+await next();
+check(await bg() === 'blue.png', '범위 밖 보류값이면 기존 배경 유지');
+await next();
+check(await bg() === 'red.png', '묶음 1 장면 시작');
+await next();
+check(await bg() === 'blue.png', '묶음 1이면 보류 없이 바로 적용');
 check(errors.length === 0, `페이지 오류 없음 ${errors.join(' | ')}`);
 
 await browser.close();
