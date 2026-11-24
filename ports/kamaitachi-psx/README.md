@@ -50,3 +50,9 @@ integer, branch-delay, load/store, and BIOS-hook subset needed to begin tracing
 the original entry code. It intentionally has no guessed high-level game
 logic. GPU, CD, SPU, COP0, exceptions, and the remaining unaligned/multiply
 instructions are added only when a native trace reaches them.
+## Trace comparison
+
+`src/trace.js` converts CPU instruction events to a stable JSON Lines format and
+finds the first divergence between a native-emulator probe and the JavaScript
+runtime. Trace files may contain addresses and opcodes, but game data and
+extracted assets must remain outside this repository.
