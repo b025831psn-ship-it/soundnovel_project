@@ -20,6 +20,7 @@ export const HANDLERS = {
   0x15: "08004154",
   0x16: "08004200",
   0x17: "08004478",
+  0x18: "080044D0",
   0x1a: "08003D30",
   0x1c: "08004574",
   0x1d: "080045B4",
@@ -28,6 +29,9 @@ export const HANDLERS = {
   0x22: "08003DB0",
   0x23: "080046D4",
   0x25: "08003F30",
+  0x26: "08004724",
+  0x27: "0800475C",
+  0x28: "08004794",
   0x29: "080048C0",
   0x2c: "080049FC",
   0x2d: "08004B10",
@@ -41,8 +45,10 @@ export const HANDLERS = {
   0x33: "08004DC4",
   0x34: "08004DD0",
   0x35: "08004E28",
+  0x36: "08004E84",
   0x37: "08004EE0",
   0x39: "08004F8C",
+  0x3a: "08005000",
   0x3b: "08004F54",
   0x3c: "08005094",
   0x3d: "080050F4",
@@ -449,6 +455,16 @@ export class VM {
           this.offset++;
         }
         break;
+      case 0x18: {
+        const command = this.word();
+        args.push(command);
+        if (!this.ram.choiceActive) {
+          this.system?.cue?.(0x18, command, this.ram);
+          this.ram.updatePending = 1;
+          this.writes.push("updatePending=1");
+        }
+        break;
+      }
       case 0x21:
       case 0x22: {
         const index = this.byte();
@@ -458,8 +474,16 @@ export class VM {
         break;
       }
       case 0x1c: {
-        args.push(this.byte());
-        this.suppressed(opcode);
+        const command = this.byte();
+        args.push(command);
+        const blocked = this.suppressed(opcode);
+        // Subcommand 14 (0800913E) performs one frame of presentation work,
+        // then consumes an immediately following `1C 00` pair itself.
+        if (
+          !blocked && command === 0x14 &&
+          this.banks[this.bank][this.offset] === 0x1c &&
+          this.banks[this.bank][this.offset + 1] === 0x00
+        ) this.offset += 2;
         break;
       }
       case 0x1d: {
@@ -497,6 +521,20 @@ export class VM {
         args.push(index, row);
         if (this.suppressed(opcode)) break;
         if (this.ram.bits[index]) this.branch(row);
+        break;
+      }
+      case 0x26:
+      case 0x27:
+      case 0x28: {
+        const value = this.byte();
+        args.push(value);
+        if (this.ram.effectBypass !== 1) {
+          const field = opcode === 0x26 ? "presentationC6" :
+            opcode === 0x27 ? "presentationC5" : "presentationC7";
+          this.ram[field] = value;
+          this.ram.updatePending = 1;
+          this.writes.push(`${field}=${value}`, "updatePending=1");
+        }
         break;
       }
       case 0x29: {
@@ -599,6 +637,23 @@ export class VM {
         if (request !== 0xffff) this.sound.effects?.setFlag(value, (request - 1000) << 16 >> 16);
         break;
       }
+      case 0x36: {
+        const value = this.byte();
+        const request = this.word();
+        args.push(value, request);
+        if (this.ram.effectDisabled === 1 || this.ram.effectBypass === 1) {
+          this.ram.updatePending = 1;
+          this.writes.push("updatePending=1");
+          break;
+        }
+        if (request === 0xffff) break;
+        // 08004E84: start the request through 08004C80, then apply the same
+        // effect-program flag operation used by opcode 35.
+        this.sound.play(request, 0);
+        this.syncAudio();
+        this.sound.effects?.setFlag(value, (request - 1000) << 16 >> 16);
+        break;
+      }
       case 0x37: {
         args.push(this.word());
         this.suppressed(opcode);
@@ -609,6 +664,16 @@ export class VM {
         // The first word is a bank-buffer-relative data address.
         args.push(this.byte(), this.word(), this.word(), this.word());
         break;
+      case 0x3a: {
+        const command = this.byte();
+        args.push(command);
+        if (!this.ram.choiceActive && this.ram.effectBypass !== 1) {
+          this.system?.cue?.(0x3a, command, this.ram);
+          this.ram.updatePending = 1;
+          this.writes.push("updatePending=1");
+        }
+        break;
+      }
       case 0x3b:
         // 08004F54 -> 08008684: one u8 presentation command.
         args.push(this.byte());
