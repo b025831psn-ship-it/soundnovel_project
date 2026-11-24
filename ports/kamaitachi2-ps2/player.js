@@ -439,19 +439,13 @@ function drawStory(time) {
   const origin = block.background === 'my0000' ? data.invitationOrigin : {x:32, y:31};
   const y = block.center ? 189 : origin.y;
   const x = block.center ? (640 - screen.width(storyText(), .91)) / 2 : origin.x;
-  const end = screen.text(text, x, y, {scale:.91, max:Math.min(580, 640 - x)});
-  for (const ruby of block.rubies ?? (block.ruby ? [block.ruby] : [])) {
+  const rubies = block.rubies ?? (block.ruby ? [block.ruby] : []);
+  const readings = rubies.length ? new Map() : undefined;
+  for (const ruby of rubies) {
     const start = storyText().lastIndexOf(ruby.word);
-    if (start < 0 || start >= text.length) continue;
-    const lineStart = storyText().lastIndexOf('\n', start) + 1;
-    const rubyY = (lineStart === 0 ? y : end.y) - 10;
-    let left = x + screen.width(storyText().slice(lineStart, start), .91);
-    ruby.readings.forEach((reading, i) => {
-      const width = screen.width(ruby.word[i], .91);
-      if (start + i < text.length) screen.centered(reading, left + width / 2, rubyY, .38);
-      left += width;
-    });
+    if (start >= 0) ruby.readings.forEach((reading, i) => readings.set(start + i, reading));
   }
+  const end = screen.text(text, x, y, {scale:.91, max:Math.min(580, 640 - x), readings});
   if (revealed >= storyText().length) {
     const tick = Math.floor(time * 6);
     if (block.book) {

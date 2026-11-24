@@ -20,13 +20,16 @@ export class Screen {
     return Array.from(str).reduce((w, ch) => w + ((this.data.font[ch]?.[2] ?? 16) + 1) * scale, 0);
   }
 
-  text(str, x, y, { scale = 1, max = Infinity, leading = 40 } = {}) {
-    let px = x, py = y;
+  text(str, x, y, { scale = 1, max = Infinity, leading = 40, readings } = {}) {
+    let px = x, py = y, offset = 0;
     for (const ch of str) {
       const glyph = this.data.font[ch];
       const advance = ((glyph?.[2] ?? 16) + 1) * scale;
       if (ch === '\n' || px + advance > x + max) { px = x; py += leading; }
+      const reading = readings?.get(offset);
+      offset += ch.length;
       if (ch === '\n') continue;
+      if (reading) this.centered(reading, px + advance / 2, py - 10, .38);
       if (glyph) {
         const [gx, gy, w, h, top] = glyph;
         this.sprite('font', gx, gy, w, h, Math.round(px), Math.round(py + top * scale), w * scale, h * scale);
