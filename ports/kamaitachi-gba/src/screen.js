@@ -6,19 +6,39 @@ export class Screen {
     this.ctx = canvas.getContext("2d");
     this.image = this.ctx.createImageData(240, 160);
     this.base = null;
+    this.brightness = new Int32Array(11);
   }
 
   setBackground(tiles, palette, variant = 0) {
+    this.background = { tiles, palette, variant };
+    this.renderBackground();
+  }
+
+  setBrightness(slot, current) {
+    this.brightness[slot] = current;
+    if (slot === 1 || slot === 5) this.renderBackground();
+  }
+
+  renderBackground() {
+    if (!this.background) return;
+    const { tiles, palette, variant } = this.background;
     const factor = [15, 13, 11, 6][variant] ?? 15;
+    // 08000AC0 turns slot 1 into the coefficient passed to 08001D6C.
+    // The opening uses scale 16 and saturation 5 (03001EE4), so 0x8000
+    // becomes coefficient 15. Color zero is deliberately left untouched.
+    const coefficient = Math.max(0, (this.brightness[1] >> 11) - 1);
+    const adjustment = coefficient ? Math.max(-31, 5 + (coefficient - 15) * 3) : -31;
     const colors = [];
     for (let index = 0; index < 256; index++) {
       let color = palette[2 * index] | (palette[2 * index + 1] << 8);
       if (index < 236 && color & 0x7fff) {
         const scale = (channel) => Math.floor((channel * factor) / 15);
-        color =
-          scale(color & 31) |
-          (scale((color >> 5) & 31) << 5) |
-          (scale((color >> 10) & 31) << 10);
+        const channels = [scale(color & 31), scale((color >> 5) & 31), scale((color >> 10) & 31)];
+        const maximum = Math.max(...channels);
+        color = channels.map((channel) => {
+          const distance = Math.floor(((maximum - channel) * 21 + 8) / 16);
+          return Math.max(0, Math.min(31, maximum - distance + adjustment));
+        }).reduce((packed, channel, shift) => packed | (channel << (5 * shift)), 0);
       }
       colors.push([color & 31, (color >> 5) & 31, (color >> 10) & 31]);
     }
@@ -28,9 +48,10 @@ export class Screen {
         const pixel = tile + (y & 7) * 8 + (x & 7);
         const color = colors[tiles[pixel]];
         const output = 4 * (y * 240 + x);
-        this.image.data[output] = (color[0] * 255) / 31;
-        this.image.data[output + 1] = (color[1] * 255) / 31;
-        this.image.data[output + 2] = (color[2] * 255) / 31;
+        const rgb8 = (channel) => (channel << 3) | (channel >> 2);
+        this.image.data[output] = rgb8(color[0]);
+        this.image.data[output + 1] = rgb8(color[1]);
+        this.image.data[output + 2] = rgb8(color[2]);
         this.image.data[output + 3] = 255;
       }
     }

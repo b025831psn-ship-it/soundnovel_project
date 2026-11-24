@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { VM, HANDLERS } from "../src/vm.js";
+import { VM, HANDLERS, SUPPRESSION } from "../src/vm.js";
 import { TextWindow } from "../src/font.js";
 
 function bank(rows) {
@@ -23,6 +23,47 @@ test("required opcode table retains native handler evidence", () => {
     0x14, 0x15, 0x16, 0x1e, 0x23, 0x25, 0x40, 0x41, 0x4b, 0x4c, 0x56, 0x57, 0x5e,
   ];
   assert.ok(required.every((opcode) => HANDLERS[opcode]));
+});
+
+test("choice suppression table covers all 34 reviewed handlers and consumes arguments", () => {
+  assert.equal(Object.keys(SUPPRESSION).length, 34);
+  const calls = [];
+  for (const [opcodeText, [gate, shape]] of Object.entries(SUPPRESSION)) {
+    if (gate === "sets-77e" || gate === "78e-or-choice-return") continue;
+    const opcode = Number(opcodeText);
+    const args = shape ? shape.split(",").flatMap((type) => type === "u8" ? [1] : [1, 0]) : [];
+    const vm = new VM({
+      banks: { 27: bank([[opcode, ...args, 0x03]]) },
+      scene: { request: () => calls.push("scene"), overlay: () => calls.push("overlay") },
+      audio: { startSong: () => calls.push("audio"), stopEffect: () => calls.push("audio") },
+    });
+    vm.ram.effectDisabled = 1;
+    vm.ram.flags.fill(7);
+    vm.ram.bits.fill(7);
+    const flags = [...vm.ram.flags], bits = [...vm.ram.bits];
+    vm.step();
+    assert.equal(vm.offset, vm.rows[27][0] + 1 + args.length, `opcode ${opcodeText}`);
+    assert.equal(vm.ram.updatePending, 1, `opcode ${opcodeText}`);
+    assert.deepEqual([...vm.ram.flags], flags, `opcode ${opcodeText}`);
+    assert.deepEqual([...vm.ram.bits], bits, `opcode ${opcodeText}`);
+    assert.equal(vm.waiting, "none", `opcode ${opcodeText}`);
+  }
+  assert.deepEqual(calls, []);
+});
+
+test("08 and 09 install native-duration brightness transitions", () => {
+  const vm = new VM({ banks: { 27: bank([[0x09, 0x28, 0, 1, 0x08, 0x28, 0, 1]]) } });
+  vm.step();
+  assert.deepEqual(vm.ram.brightness[1], {
+    current: 0, target: 0x8000, delta: Math.trunc(0x8000 / 30),
+    duration: 30, maximum: 0x10000,
+  });
+  assert.equal(vm.ram.brightness[5].target, 0x8000);
+  for (let frame = 0; frame < 30; frame++) vm.vblank(0);
+  assert.equal(vm.ram.brightness[1].current, 0x8000);
+  vm.step();
+  assert.equal(vm.ram.brightness[1].target, 0);
+  assert.equal(vm.ram.brightness[1].duration, 30);
 });
 
 test("LE row IDs, jump, call and return use row tables", () => {

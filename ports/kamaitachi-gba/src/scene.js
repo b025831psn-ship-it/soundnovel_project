@@ -2,6 +2,7 @@ export class SceneLoader {
   constructor(assets, screen) {
     this.assets = assets;
     this.screen = screen;
+    this.generation = 0;
   }
   resolve(request) {
     let variant = Math.floor(request / 1000),
@@ -21,17 +22,21 @@ export class SceneLoader {
       ram.pending = request;
       return;
     }
-    await this.load(request);
+    await this.load(request, ++this.generation);
   }
   async overlay(request) {
     this.screen.setEffect?.(request);
   }
-  async load(request) {
+  brightness(slot, current) {
+    this.screen.setBrightness?.(slot, current);
+  }
+  async load(request, generation = ++this.generation) {
     const { image, variant } = this.resolve(request),
       [tiles, palette] = await Promise.all([
         this.assets.bin(`bg/${String(image).padStart(3, "0")}.bin`),
         this.assets.bin(`palette/${String(image).padStart(3, "0")}.bin`),
       ]);
+    if (generation !== this.generation) return;
     this.screen.setBackground(tiles, palette, variant);
   }
 }
