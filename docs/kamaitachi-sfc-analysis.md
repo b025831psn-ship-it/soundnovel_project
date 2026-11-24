@@ -55,14 +55,29 @@ auto-joypad `$4218/$4219`는 하드웨어 순서인
 `$1000`, A는 `$0080`이다. runner는 frame별 controller mask를 공급해 첫 입력
 소비 위치를 찾을 수 있다.
 
-## 기준 코어 웹 관통
+## 어셈블리 분석 완료 범위
 
-분석 VM의 cycle 정확도가 완성되기 전에도 원본 UI를 검증할 수 있도록 Snes9x
-WASM 기준 코어를 `/sfc-player/`에 연결했다. 브라우저에서 위 기준 SHA-256을
-확인한 ROM만 받아 원본 65c816/PPU/SPC700을 실행하며, ROM이나 추출 이미지를
-배포하지 않는다. 실제 브라우저 검증에서 CHUN SOFT logo, SFC title, 음향 설정,
-기본 이름 확인 메뉴를 지나 주인공 이름 문자판에 진입하고, 주인공 기본 이름을
-확정한 뒤 여자친구 이름 문자판으로 전환되는 것까지 확인했다.
+첫 웹 포트 관통에 필요한 reset→파일 선택→새 게임→1장 bytecode와 이름 입력,
+SPC 초기 적재 및 runtime streaming 루틴의 경계와 호출 관계를 확정했다. 비공개
+저장소의 `data/assembly-map.json`은 CPU/file 주소, 역할, 호출 edge를 기계 판독
+형식으로 보존하고 `tools/verify-assembly-map.mjs`가 대상 ROM의 SHA-256, 핵심
+opcode prefix 10개, reset vector와 SPC descriptor chain을 검증한다.
+
+주요 경계는 reset `$00:8000`, 시나리오 reader `$00:9C60/$00:9C99`, text/control
+dispatch `$00:A0DD`, 이름 입력 `$04:8000/$04:893D`, SPC IPL uploader
+`$00:B9C8`, runtime streamer `$00:E72F`다. script PC는 byte 주소가 아니라
+`bank:address.bit`이고 새 게임 흐름은 `$05:FD01.5` → `$05:FE31.1` →
+`$05:FE62.4` → `$05:FE6B.2`로 이어진다.
+
+이 완료 범위는 ROM 전체의 모든 서브루틴을 의미하지 않는다. 첫 관통 구현에
+필요한 어셈블리와 데이터 계약이 확정됐다는 뜻이며, RGB565 캡처 순차 재생은
+실제 VM 구현으로 간주하지 않는다.
+
+## 기준 코어 probe 대조
+
+native Snes9x probe에서 CHUN SOFT logo, SFC title, 음향 설정, 기본 이름 확인
+메뉴를 지나 주인공 이름 문자판에 진입하고, 주인공 기본 이름을 확정한 뒤
+여자친구 이름 문자판으로 전환되는 것까지 확인했다.
 
 기준 코어 WRAM과 VM snapshot을 비교하면 `$0408`의 SPC stream callback 설치는
 양쪽 모두 같은 초기 frame에 관측된다. 최초 차이는 CPU→APU와 APU→CPU port
