@@ -68,6 +68,7 @@ try {
   assert.equal(await label(),'주인공 透');
   await check('hero');
   await key('Escape'); await key('s'); await at('confirm');
+  await key('Escape'); await at('name'); await key('s'); await at('confirm');
   assert.equal(await label(),'주인공 透');
   await key('Enter'); await at('name'); // The original confirmation starts on No.
   await key('w'); await key('Enter'); assert.equal(await label(),'주인공 透か');
@@ -114,7 +115,7 @@ try {
   assert.deepEqual(unexpected,[]);
   const isoRequests = [...requests].filter(url => /\.iso(?:$|[?#])/i.test(url));
   assert.equal(isoRequests.length,0);
-  for (const asset of ['chunlogo.mp4','opening.mp4','title-1.mp4','title.mp4','opening.json','font.png','k2t002.ogg','k1a001.ogg']) {
+  for (const asset of ['chunlogo.mp4','opening.mp4','title-1.mp4','title.mp4','opening.json','font.png','k2t002.ogg','k1a001.ogg','cancel.wav']) {
     assert.ok([...requests].some(url => new URL(url).pathname.endsWith('/' + asset)), asset);
   }
   console.log('PASS standalone HTTP site: ' + requests.size + ' distinct URLs, ' + isoRequests.length + ' ISO requests, ' + unexpected.length + ' requests outside the prepared site, no file picker');

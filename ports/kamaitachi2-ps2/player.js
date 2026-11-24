@@ -9,7 +9,7 @@ const status = document.querySelector('#status');
 const asset = name => new URL('assets/' + name, import.meta.url).href;
 const music = new Audio();
 music.loop = true;
-const cues = Object.fromEntries(['confirm','move'].map(name => [name, new Audio(asset(name + '.wav'))]));
+const cues = Object.fromEntries(['confirm','cancel','move'].map(name => [name, new Audio(asset(name + '.wav'))]));
 const saveKey = 'soundnovel.slps25132.opening.v1';
 let saved = readSave();
 let data, screen, groups, editor, pages;
@@ -230,6 +230,7 @@ function step(key) {
   } else if (scene === 'confirm') {
     if (key === 'up' || key === 'down') { index = 1 - index; cue('move'); }
     if (key === 'circle') cue('confirm');
+    if (key === 'cross') cue('cancel');
     if (key === 'cross' || (key === 'circle' && index === 1)) enter('name');
     else if (key === 'circle') {
       names[role] = editor.value;

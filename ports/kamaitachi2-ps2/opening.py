@@ -134,12 +134,15 @@ def button_sounds(disc, out, encode):
     table = struct.unpack_from(f"<{samples}I", bank, 32)
     data_start = table[0] + regions * 32
     sound_table = 16 + 4 * struct.unpack_from("<H", sequence, 10)[0]
-    for effect, name in ((2, "confirm"), (4, "move")):
+    for effect, name in ((2, "confirm"), (3, "cancel"), (4, "move")):
         offset = sound_table + struct.unpack_from("<I", sequence, 16 + 4 * effect)[0]
-        if (sequence[offset] != 1 or struct.unpack_from("<I", sequence, offset + 1)[0] != 1000
-                or sequence[offset + 7:offset + 9] != b"\0\x22" or sequence[offset + 10:offset + 12] != b"\0\x20"):
+        voices = sequence[offset]
+        if voices != (2 if effect == 3 else 1) or struct.unpack_from("<I", sequence, offset + 1)[0] != 1000:
             raise ValueError("Unexpected system sound sequence")
-        instrument = struct.unpack_from("<H", sequence, offset + 12)[0]
+        track = offset + 5 + 2 * voices
+        if sequence[track:track + 2] != b"\0\x22" or sequence[track + 3:track + 5] != b"\0\x20":
+            raise ValueError("Unexpected system sound instrument command")
+        instrument = struct.unpack_from("<H", sequence, track + 5)[0]
         start = struct.unpack_from("<I", bank, table[instrument] + 4)[0]
         end = struct.unpack_from("<I", bank, table[instrument + 1] + 4)[0]
         raw = bank[data_start + start:data_start + end]
@@ -149,7 +152,19 @@ def button_sounds(disc, out, encode):
         header = struct.pack(">4sIIII", b"VAGp", 0x20, 0, len(raw), 48000).ljust(48, b"\0")
         source = out / "effect.vag"
         source.write_bytes(header + raw)
-        encode(["-i", str(source), "-c:a", "pcm_s16le"], out / f"{name}.wav")
+        args = ["-i", str(source)]
+        if voices == 2:
+            second = track + struct.unpack_from("<H", sequence, offset + 5)[0]
+            if (sequence[second:second + 2] != b"\0\x18" or sequence[second + 3] != 0x22
+                    or sequence[second + 6] != 0x20 or sequence[second + 7:second + 9] != sequence[track + 5:track + 7]
+                    or sequence[second + 9] != 0x12 or sequence[track + 7] != 0x12):
+                raise ValueError("Unexpected second cancel voice")
+            pitch = sequence[second + 10] - sequence[track + 8]
+            rate = round(48000 * 2 ** (pitch / 12))
+            gain = sequence[second + 4] / sequence[track + 2]
+            args += ["-filter_complex", f"asplit[a][b];[b]asetrate={rate},aresample=48000[b2];"
+                     f"[a][b2]amix=weights='1 {gain}'"]
+        encode([*args, "-c:a", "pcm_s16le"], out / f"{name}.wav")
 
 
 def opening_assets(disc, out, encode):
