@@ -67,6 +67,8 @@ try {
   await advanceTo('name');
   assert.equal(await label(),'주인공 透');
   await check('hero');
+  await key('ArrowDown'); await key('Enter'); assert.equal(await label(),'주인공 透い');
+  await key('Escape'); await key('ArrowUp');
   await key('Escape'); await key('s'); await at('confirm');
   await key('Escape'); await at('name'); await key('s'); await at('confirm');
   assert.equal(await label(),'주인공 透');

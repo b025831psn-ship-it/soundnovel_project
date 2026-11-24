@@ -18,23 +18,30 @@ export class NameEditor {
     this.groups = groups;
     this.initial = initial;
     this.value = initial;
-    this.group = this.row = this.column = this.scroll = 0;
+    this.group = this.row = this.column = this.preferredColumn = this.scroll = 0;
   }
 
   get rows() { return this.groups[this.group]; }
 
   groupBy(delta) {
     this.group = (this.group + delta + this.groups.length) % this.groups.length;
-    this.column = this.row = this.scroll = 0;
+    this.preferredColumn = this.column = this.row = this.scroll = 0;
   }
 
   move(dx, dy) {
-    if (dy) this.row = (this.row + dy + this.rows.length) % this.rows.length;
+    if (dy) {
+      const onHeading = this.column === 0;
+      do {
+        this.row = (this.row + dy + this.rows.length) % this.rows.length;
+      } while (onHeading && this.rows[this.row][0] === null);
+    }
     const line = this.rows[this.row];
     const first = line[0] === null ? 1 : 0;
     const length = line.length - first;
-    if (dx) this.column = first + (this.column - first + dx + length) % length;
-    else this.column = Math.min(line.length - 1, Math.max(first, this.column));
+    if (dx) {
+      this.column = first + (this.column - first + dx + length) % length;
+      this.preferredColumn = this.column;
+    } else this.column = Math.min(line.length - 1, Math.max(first, this.preferredColumn));
     this.scroll = Math.min(this.row, Math.max(this.scroll, this.row - 7));
   }
 
