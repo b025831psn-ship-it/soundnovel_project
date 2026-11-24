@@ -324,9 +324,10 @@ function makePages(s) {
     ...kobayashiReply,
     ...narrationPages(s.my02_0190, false),
     ...innHistory,
-    ...narrationPages(s.my02_0217, true).map((block, i) => ({
+    ...narrationPages(s.my02_0217, false).map((block, i) => ({
       ...block, rubies:s.my02_0217.ruby, ...(i === 0 ? {movie:'my0010', music:'k1a004.ogg'} : {}),
     })),
+    ...narrationPages(s.my02_0240, true).map((block, i) => i === 0 ? {...block, movie:'my0004'} : block),
   ];
 }
 

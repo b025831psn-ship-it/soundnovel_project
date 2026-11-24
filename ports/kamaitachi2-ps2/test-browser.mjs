@@ -290,8 +290,10 @@ try {
     assert.ok([...discussion].some(line => line.endsWith('小林さんは、ニヤニヤ笑って返事をしない。')));
     assert.ok([...discussion].some(line => line.includes('ペンション「シュプール」のオーナー')));
     assert.ok([...discussion].some(line => line.endsWith('今日子さんは、料理はからきしダメなのだ。')));
-    assert.match(await label(), /真理がたずねた。/);
-    assert.match(await label(), /いいのか、そんなことで。$/);
+    assert.ok([...discussion].some(line => line.includes('真理がたずねた。') && line.endsWith('いいのか、そんなことで。')));
+    assert.match(await label(), /小林夫妻には招待状は来ていなかった。/);
+    assert.match(await label(), /真理が、小林さんに今回の話をしたら……。$/);
+    assert.ok([...requests].some(url => url.endsWith('/my0004.mp4')));
     assert.ok([...requests].some(url => url.endsWith('/k1a004.ogg')));
     assert.ok([...requests].some(url => url.endsWith('/my0010.mp4')));
     assert.ok([...requests].some(url => url.endsWith('/my0008.mp4')));
