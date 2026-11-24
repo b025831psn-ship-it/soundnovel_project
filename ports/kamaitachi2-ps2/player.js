@@ -481,7 +481,7 @@ function step(key) {
     else if (key === 'triangle') { editor.finish(); enter('confirm', 1); }
     announce();
   } else if (scene === 'confirm') {
-    if (key === 'up' || key === 'down') { index = 1 - index; cue('move'); }
+    if (['up', 'down', 'square'].includes(key)) { index = 1 - index; cue('move'); }
     if (key === 'circle') cue('confirm');
     if (key === 'cross') cue('cancel');
     if (key === 'cross' || (key === 'circle' && index === 1)) enter('name');
@@ -588,7 +588,7 @@ function frame(now) {
     screen.c.fillStyle = 'white'; screen.c.font = '14px sans-serif'; screen.c.fillText(userNotice, 14, 440);
   }
   const pad = Array.from(navigator.getGamepads?.() ?? []).find(p => p?.mapping === 'standard');
-  const buttons = {0:'cross',1:'circle',3:'triangle',4:'l1',5:'r1',6:'l2',9:'start',12:'up',13:'down',14:'left',15:'right'};
+  const buttons = {0:'cross',1:'circle',2:'square',3:'triangle',4:'l1',5:'r1',6:'l2',9:'start',12:'up',13:'down',14:'left',15:'right'};
   const actions = [];
   for (const [i, action] of Object.entries(buttons)) {
     const pressed = Boolean(pad?.buttons[i]?.pressed);
@@ -610,6 +610,9 @@ function frame(now) {
       if (vertical) step(vertical);
     }
     if (edit) step(edit);
+  } else if (scene === 'confirm') {
+    const action = ['circle', 'cross', 'square', 'up', 'down'].find(key => actions.includes(key));
+    if (action) step(action);
   } else {
     padRepeat.advance('', now);
     for (const action of actions) step(action);
@@ -624,7 +627,7 @@ function fail(message) {
 }
 
 const keys = {ArrowLeft:'left',ArrowRight:'right',ArrowUp:'up',ArrowDown:'down',Enter:'circle',
-  Space:'start',KeyX:'circle',KeyZ:'cross',Escape:'cross',KeyS:'triangle',KeyQ:'l1',KeyW:'r1',Digit2:'l2'};
+  Space:'start',KeyX:'circle',KeyZ:'cross',Escape:'cross',KeyA:'square',KeyS:'triangle',KeyQ:'l1',KeyW:'r1',Digit2:'l2'};
 document.addEventListener('keydown', e => {
   const action = keys[e.code];
   if (!action || e.altKey || e.ctrlKey || e.metaKey || scene === 'loading') return;
