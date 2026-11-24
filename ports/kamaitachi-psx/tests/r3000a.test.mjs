@@ -98,6 +98,23 @@ test("PS-X EXE loader copies payload and exposes entry registers", () => {
   assert.deepEqual([...loaded.memory.bytes.subarray(0x10000, 0x10008)], [1, 2, 3, 4, 5, 6, 7, 8]);
 });
 
+test("PS-X EXE loader derives GP and SP startup values", () => {
+  const exe = new Uint8Array(0x804);
+  exe.set(new TextEncoder().encode("PS-X EXE"));
+  const header = new DataView(exe.buffer);
+  header.setUint32(0x10, 0x80010000, true);
+  header.setUint32(0x14, 0x80070000, true);
+  header.setUint32(0x18, 0x80010000, true);
+  header.setUint32(0x1c, 4, true);
+  header.setUint32(0x30, 0x801ffff0, true);
+  header.setUint32(0x34, 0x10, true);
+  const loaded = loadPsxExe(exe);
+  assert.equal(loaded.globalPointer, 0x80070000);
+  assert.equal(loaded.stackAddress, 0x801ffff0);
+  assert.equal(loaded.stackOffset, 0x10);
+  assert.equal(loaded.stackPointer, 0x80200000);
+});
+
 test("variable shifts and multiply/divide use R3000A HI/LO", () => {
   const cpu = cpuWith([]);
   cpu.regs[1] = 4;

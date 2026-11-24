@@ -214,9 +214,11 @@ export function loadPsxExe(bytes, memory = new PsxMemory()) {
   if (bytes.length < 0x800 || new TextDecoder("ascii").decode(bytes.subarray(0, 8)) !== "PS-X EXE")
     throw new Error("not a PS-X EXE");
   const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
-  const pc = view.getUint32(0x10, true), textAddress = view.getUint32(0x18, true);
+  const pc = view.getUint32(0x10, true), globalPointer = view.getUint32(0x14, true);
+  const textAddress = view.getUint32(0x18, true);
   const textSize = view.getUint32(0x1c, true), stackAddress = view.getUint32(0x30, true);
+  const stackOffset = view.getUint32(0x34, true), stackPointer = u32(stackAddress + stackOffset);
   if (0x800 + textSize > bytes.length) throw new Error("truncated PS-X EXE payload");
   memory.bytes.set(bytes.subarray(0x800, 0x800 + textSize), memory.offset(textAddress, textSize));
-  return { memory, pc, textAddress, textSize, stackAddress };
+  return { memory, pc, globalPointer, textAddress, textSize, stackAddress, stackOffset, stackPointer };
 }
