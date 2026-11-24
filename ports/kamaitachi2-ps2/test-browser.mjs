@@ -80,10 +80,14 @@ try {
   await key('Escape'); await key('Enter'); await key('s'); await at('confirm');
   assert.equal(await label(),'여자친구 真あ'); await check('confirm');
   await key('ArrowUp'); await key('Enter'); await at('story');
-  await advanceTo('complete'); await key('Enter');
+  for (let i=0; i<8 && !(await label()).includes('真あの叔父さん'); i++) await key('Enter');
   assert.match(await label(), /ぼくと真あは以前/);
   assert.match(await label(), /真あの叔父さん/);
   assert.match(await label(),/真あ/); await check('completed');
+  await advanceTo('choice');
+  assert.equal(await label(), '急速に親しくなった。');
+  await key('ArrowDown'); await key('Enter'); await at('complete');
+  assert.equal(await label(), '行ってから……どうなったんだっけ。');
   assert.equal(await page.evaluate(()=>localStorage.getItem('soundnovel.slps25132.opening.v1')),null);
   await page.reload(); await page.getByRole('button',{name:'게임 시작'}).click();
   await key('Space'); await at('title'); await key('Enter'); await at('autosave');
@@ -98,7 +102,8 @@ try {
     await key('s'); await at('confirm'); await key('ArrowUp'); await key('Enter');
     if (!i) await advanceTo('name');
   }
-  await advanceTo('complete');
+  await advanceTo('choice'); await key('Enter'); await at('complete');
+  assert.equal(await label(), '急速に親しくなった。');
   const saved = await page.evaluate(()=>JSON.parse(localStorage.getItem('soundnovel.slps25132.opening.v1')));
   assert.deepEqual(saved,{names:['透ああああぁ','真理'],slot:1});
   assert.deepEqual(unexpected,[]);

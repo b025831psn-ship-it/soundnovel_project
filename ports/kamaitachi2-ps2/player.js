@@ -16,6 +16,7 @@ let data, screen, groups, editor, pages;
 let scene = 'loading', index = 0, role = 0, page = 0, revealed = 0;
 let names = [], autosave = false, slot = 0, entered = 0, lastFrame, userNotice = '';
 let idleMovie = 'pre_dv';
+let selectedRoute;
 const padDown = new Set();
 const images = {};
 
@@ -30,7 +31,7 @@ function enter(next, selected = 0) {
 
 function announce() {
   const story = scene === 'story' || scene === 'complete';
-  const label = story ? storyText() : editor && ['name','confirm'].includes(scene)
+  const label = scene === 'choice' ? data.prologueChoice[index].text : story ? storyText() : editor && ['name','confirm'].includes(scene)
     ? (role === 0 ? '주인공 ' : '여자친구 ') + editor.value : scene;
   canvas.setAttribute('aria-label', label);
   status.textContent = userNotice || label;
@@ -113,6 +114,7 @@ function beginStory() {
 }
 
 function storyText() {
+  if (scene === 'complete' && selectedRoute) return selectedRoute.text;
   return pages?.[page]?.text?.() ?? '';
 }
 
@@ -124,7 +126,7 @@ function printPage() {
     enter('name');
   } else {
     revealed = block.append ? pages[page - 1].text().length : 0;
-    enter(block.end ? 'complete' : 'story');
+    enter('story');
   }
 }
 
@@ -148,7 +150,7 @@ function makePages(s) {
     { name:1 },
     { text: partnerLine },
     { append:true, text: classmates },
-    { append:true, end:true, text: () => classmates() + '\n' + last[4] + names[1] + last[5] + '\n' + last[6] },
+    { append:true, choice:true, text: () => classmates() + '\n' + last[4] + names[1] + last[5] + '\n' + last[6] },
   ];
 }
 
@@ -195,9 +197,21 @@ function step(key) {
   }
   if (scene === 'created') { if (key === 'circle') enter('save-note'); return; }
   if (scene === 'save-note') { if (key === 'circle') beginStory(); return; }
+  if (scene === 'choice') {
+    if (key === 'up' || key === 'down') {
+      index = (index + (key === 'up' ? -1 : 1) + data.prologueChoice.length) % data.prologueChoice.length;
+      cue('move'); announce();
+    } else if (key === 'circle') {
+      selectedRoute = data.prologueChoice[index];
+      revealed = 0;
+      cue('confirm'); enter('complete');
+    }
+    return;
+  }
   if (scene === 'story' || scene === 'complete') {
     if (key === 'circle' || key === 'start') {
       if (revealed < storyText().length) revealed = storyText().length;
+      else if (scene === 'story' && pages[page].choice) enter('choice');
       else if (scene === 'story') { page++; printPage(); }
     }
     return;
@@ -256,7 +270,14 @@ function frame(now) {
     screen.title(index, Boolean(saved));
     if (now - entered > 4801 * 1000 / 59.94) opening(true);
   } else if (['autosave','slot','file-select','created','save-note'].includes(scene)) screen.autosave(scene, index, slot, names[0]);
-  else if (scene === 'story' || scene === 'complete') {
+  else if (scene === 'choice') {
+    screen.background('my0645', true, time);
+    data.prologueChoice.forEach((route, i) => {
+      const y = 60 + 64 * i;
+      if (i === index) screen.rect(24, y - 4, 592, 49);
+      screen.text(route.text, 32, y, {scale:.91, max:580});
+    });
+  } else if (scene === 'story' || scene === 'complete') {
     revealed = Math.min(storyText().length, revealed + dt / 35);
     drawStory(time);
   } else if (scene === 'name' || scene === 'confirm') {
