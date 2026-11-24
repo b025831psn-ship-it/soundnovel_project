@@ -5,6 +5,7 @@ export class Screen {
     this.c = canvas.getContext('2d');
     this.images = images;
     this.data = data;
+    this.tintedGlyphs = new Map();
   }
 
   rect(x, y, w, h, color = blue) {
@@ -20,9 +21,29 @@ export class Screen {
     return Array.from(str).reduce((w, ch) => w + ((this.data.font[ch]?.[2] ?? 16) + 1) * scale, 0);
   }
 
-  text(str, x, y, { scale = 1, max = Infinity, leading = 40, spacing = 1, readings } = {}) {
+  tintedGlyph(ch, rgb, gx, gy, w, h) {
+    const key = ch + rgb.join(',');
+    if (this.tintedGlyphs.has(key)) return this.tintedGlyphs.get(key);
+    const tile = document.createElement('canvas');
+    tile.width = w;
+    tile.height = h;
+    const ctx = tile.getContext('2d');
+    ctx.drawImage(this.images.font, gx, gy, w, h, 0, 0, w, h);
+    const pixels = ctx.getImageData(0, 0, w, h);
+    for (let i = 0; i < pixels.data.length; i += 4) {
+      for (let channel = 0; channel < 3; channel++) pixels.data[i + channel] *= rgb[channel] / 128;
+    }
+    ctx.putImageData(pixels, 0, 0);
+    this.tintedGlyphs.set(key, tile);
+    return tile;
+  }
+
+  text(str, x, y, { scale = 1, max = Infinity, leading = 40, spacing = 1, readings, colors } = {}) {
     let px = x, py = y, offset = 0;
+    let tint;
     for (const ch of str) {
+      const rgb = colors?.get(offset);
+      if (rgb) tint = rgb.every(channel => channel === 128) ? undefined : rgb;
       const glyph = this.data.font[ch];
       const advance = ((glyph?.[2] ?? 16) + spacing) * scale;
       if (ch === '\n' || px + advance > x + max) { px = x; py += leading; }
@@ -32,7 +53,9 @@ export class Screen {
       if (reading) this.centered(reading, px + advance / 2, py - 10, .38);
       if (glyph) {
         const [gx, gy, w, h, top] = glyph;
-        this.sprite('font', gx, gy, w, h, Math.round(px), Math.round(py + top * scale), w * scale, h * scale);
+        const x = Math.round(px), y = Math.round(py + top * scale);
+        if (tint && w && h) this.c.drawImage(this.tintedGlyph(ch, tint, gx, gy, w, h), x, y, w * scale, h * scale);
+        else this.sprite('font', gx, gy, w, h, x, y, w * scale, h * scale);
       }
       px += advance;
     }

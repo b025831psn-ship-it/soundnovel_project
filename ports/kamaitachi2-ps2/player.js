@@ -18,6 +18,7 @@ let names = [], autosave = false, slot = 0, entered = 0, lastFrame, userNotice =
 let idleMovie = 'pre_dv';
 let textWaits = [];
 let textSpeeds = [];
+let textColors;
 const padDown = new Set();
 const padRepeat = new DirectionRepeat();
 const images = {};
@@ -129,6 +130,7 @@ function printPage() {
   } else {
     revealed = block.append ? pages[page - 1].text().length : 0;
     textWaits = block.waits?.() ?? [];
+    textColors = block.resolveColors?.();
     textSpeeds = block.resolveSpeeds?.() ?? block.speeds ?? [];
     if (block.movie) {
       playMovie(block.movie, block.loopMovie ? () => playMovie(block.loopMovie, null, true) : null);
@@ -165,19 +167,23 @@ function narrationPages(reunion, final) {
   const reunionPages = [];
   const reunionParts = [];
   const speedChanges = [];
+  const colorChanges = [];
   let waits = [];
   for (const event of reunion.events) {
     if (event.text || event.name !== undefined) reunionParts.push(event);
     else if (event.wait) waits.push({parts:reunionParts.slice(), ticks:event.wait});
+    else if (event.rgb) colorChanges.push({parts:reunionParts.slice(), rgb:event.rgb});
     else if (event.speed !== undefined) speedChanges.push({parts:reunionParts.slice(), speed:event.speed});
     else if (event.command === 4) reunionParts.push({text:'\n'});
     else if (event.command === 9 || event.command === 11) {
       const parts = reunionParts.slice();
       const pauses = waits;
       const changes = speedChanges.slice();
+      const colors = colorChanges.slice();
       const resolve = fragments => fragments.map(part => part.text ?? names[part.name]).join('');
       reunionPages.push({retainMovie:true, append:reunionPages.length > 0, end:final && event.command === 11,
         waits: () => pauses.map(pause => ({offset:resolve(pause.parts).length, remaining:pause.ticks * 1000 / 59.94})),
+        resolveColors: colors.length ? () => new Map(colors.map(change => [resolve(change.parts).length, change.rgb])) : undefined,
         resolveSpeeds: () => changes.map(change => ({offset:resolve(change.parts).length, speed:change.speed})),
         text: () => resolve(parts).trimEnd()});
       waits = [];
@@ -451,7 +457,7 @@ function drawStory(time) {
     const start = storyText().lastIndexOf(ruby.word);
     if (start >= 0) ruby.readings.forEach((reading, i) => readings.set(start + i, reading));
   }
-  const end = screen.text(text, x, y, {scale:.91, max:Math.min(580, 640 - x), readings});
+  const end = screen.text(text, x, y, {scale:.91, max:Math.min(580, 640 - x), readings, colors:textColors});
   if (revealed >= storyText().length) {
     const tick = Math.floor(time * 6);
     if (block.book) {
