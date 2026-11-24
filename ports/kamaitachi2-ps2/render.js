@@ -54,13 +54,13 @@ export class Screen {
     return tile;
   }
 
-  text(str, x, y, { scale = 1, max = Infinity, leading = 40, spacing = 1, advanceScale = scale, readings, colors, tint } = {}) {
+  text(str, x, y, { scale = 1, max = Infinity, leading = 40, spacing = 1, widthScale = scale, readings, colors, tint } = {}) {
     let px = x, py = y, offset = 0;
     for (const ch of str) {
       const rgb = colors?.get(offset);
       if (rgb) tint = rgb.every(channel => channel === 128) ? undefined : rgb;
       const glyph = this.data.font[ch];
-      const advance = ((glyph?.[2] ?? 16) + spacing) * advanceScale;
+      const advance = ((glyph?.[2] ?? 16) + spacing) * widthScale;
       if (ch === '\n' || px + advance > x + max) { px = x; py += leading; }
       const reading = readings?.get(offset);
       offset += ch.length;
@@ -69,8 +69,8 @@ export class Screen {
       if (glyph) {
         const [gx, gy, w, h, top] = glyph;
         const x = Math.round(px), y = Math.round(py + top * scale);
-        if (tint && w && h) this.c.drawImage(this.tintedGlyph(ch, tint, gx, gy, w, h), x, y, w * scale, h * scale);
-        else this.sprite('font', gx, gy, w, h, x, y, w * scale, h * scale);
+        if (tint && w && h) this.c.drawImage(this.tintedGlyph(ch, tint, gx, gy, w, h), x, y, w * widthScale, h * scale);
+        else this.sprite('font', gx, gy, w, h, x, y, w * widthScale, h * scale);
       }
       px += advance;
     }

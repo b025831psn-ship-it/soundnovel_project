@@ -543,7 +543,7 @@ function drawStory(time) {
   if (!block.movie && !block.retainMovie && ['my0007', 'my0645'].includes(background)) {
     screen.c.filter = 'brightness(86%)';
   }
-  const metrics = block.nativeGlyphWidth ? {spacing:0, advanceScale:1} : {};
+  const metrics = block.nativeGlyphWidth ? {spacing:0, widthScale:1} : {};
   const end = screen.text(text, x, y, {...metrics, scale, max:Math.min(580, 640 - x), readings, colors:textColors});
   screen.c.restore();
   if (revealed >= storyText().length) {
