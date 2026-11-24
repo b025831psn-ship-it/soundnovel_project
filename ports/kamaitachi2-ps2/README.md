@@ -1,0 +1,67 @@
+# 카마이타치의 밤 2 · PS2 웹 포트
+
+일본 한정판 게임 디스크의 새 게임 경로를 브라우저에서 재생한다. 현재 범위는 로고, 저작권 표시, 오프닝 영상, 타이틀, 자동 저장 선택, 도입부와 두 사람의 이름 확정까지다. 마지막 화면은 여자친구의 이름이 대사에 반영되는 지점이다. HTML 비디오가 영상을 재생하고 Canvas와 JavaScript가 입력·분기·텍스트를 처리한다.
+
+## 실행
+
+Python 3.11 이상과 Pillow, IPU 디코더 및 libx264 인코더가 있는 FFmpeg와 ffprobe가 필요하다. 저장소 루트에서 실행한다. 준비기는 디스크를 읽어서 미디어와 문자표를 로컬 웹 폴더에 생성한다. 브라우저에서는 준비된 폴더만 서비스하면 된다.
+
+```powershell
+$iso = (Resolve-Path -LiteralPath 'roms/Kamaitachi no Yoru 2 - Kangoku-jima no Warabe-uta (Japan) (Special Box).iso').Path
+python -B ports/kamaitachi2-ps2/prepare.py "$iso" --output outputs/kamaitachi2-ps2-kor/web
+python -m http.server 8772 --bind 127.0.0.1 --directory outputs/kamaitachi2-ps2-kor/web
+```
+
+[로컬 플레이 화면](http://127.0.0.1:8772/)에서 **게임 시작**을 누른다. 일본어 원판의 글꼴과 이름 문자표를 사용한다. 방향키로 이동하고 Enter 또는 X로 ○, Esc 또는 Z로 ×, S로 △를 누른다. Q와 W가 L1과 R1, Space가 START다. 화면 아래의 버튼과 표준 매핑 게임패드도 같은 입력 처리기를 사용한다.
+
+## 판본과 디스크
+
+| 항목 | 검증값 |
+| --- | --- |
+| ISO | 2,989,293,568바이트 · 2,048바이트/섹터 · 볼륨 `KAMAITACHINOYORU2` |
+| ISO SHA-256 | `76758d1b96ef67888f80c7fb21f85565672e1aed936f93f3c988ef54601e431e` |
+| 부팅 | `SLPS_251.32` · NTSC · SYSTEM.CNF 1.10 · EE 진입점 `0x00100008` |
+| ELF SHA-256 | `591622064f7ae4dab96c87a9e0a01491a8086c6726ebd7860505dfe1b5f38dee` |
+| FAD 인덱스 | `DISC.FAD`와 `DISCE.FAD`의 196,608바이트가 일치 · 디렉터리 44개와 파일 4,132개 |
+| 시나리오 | `SCENARIO/scenario.sn4` · ISO LBA 1,143,506 · 2,015,056바이트 · SCR 블록 24개 |
+
+FAD 레코드의 상대 섹터는 `DISC.FAD`의 시작 LBA 1,173을 기준으로 한다. 준비기는 ISO 9660 루트에서 실행 파일과 인덱스를 찾고 인덱스의 경로와 범위를 사용한다. 입력 판본은 전체 ISO, EE 실행 파일, 인덱스의 해시로 확인한다.
+
+## EE 어셈블리에서 확인한 동작
+
+주소는 실행 파일이 매핑된 EE 가상 주소다. `jal` 직후의 명령도 호출 인자를 설정할 수 있으므로 지연 슬롯을 포함해 확인했다.
+
+| 위치 | 확인한 동작 |
+| --- | --- |
+| `0x00100018`, `0x001000A4` | 시작 루프가 R5900의 128비트 `sq`로 메모리를 초기화한다. 초기화 뒤 `0x001532D0`을 호출한다. |
+| `0x001648CC` | `0x00168D50`을 호출한다. 지연 슬롯이 `a0`를 디스크 FAD 경로 문자열의 주소로 완성한다. |
+| `0x0010016C`, `0x00100188`, `0x00100204` | 로고 PSS, 저작권 IPU, 오프닝 PSS를 같은 미디어 루틴 `0x00107C68`에 전달한다. 저작권 화면의 네 번째 인자는 140이다. `0x00107D50`에서 입력 마스크 `0x2108`을 검사한다. |
+| `0x00108470`, `0x00108484`, `0x00108498` | 타이틀 음악의 파일명은 `0x00219C08`에 있다. 타이틀 진입 상태에 따라 MMV 또는 M2V를 연다. MMV의 두 번째 영상은 별도 타이틀 M2V와 바이트 단위로 같다. |
+| `0x00131A78`, `0x00131AE4`, `0x00131AEC` | 이름 명령 핸들러가 `0x12`와 `0x13`을 구분한다. SN4 라벨 `my01_0047`, `my01_0062`가 각각 해당 명령으로 끝난다. 입력 상태 진입 호출은 `0x00131B70 → 0x0011B4D0`이다. |
+| `0x0011C490` | `NameInputNormal` 버튼 루틴. L1/R1 마스크 `0x0400/0x0800`, ○/×/△ 마스크 `0x2000/0x4000/0x1000`을 검사한다. |
+| `0x0011C588 → 0x0011BEA0` | 선택한 2바이트 문자를 추가한다. 이름이 이미 12바이트면 마지막 2바이트 위치에 쓴다. 웹에서 일곱 번째 입력은 여섯 번째 글자를 교체한다. |
+| `0x0011C5A4 → 0x0011BF58`, `0x0011C5D8 → 0x0011C190` | ×로 글자를 지운다. △에서 빈 이름은 개체에 보관한 초기 이름으로 복원하고 확인창으로 간다. 기본 이름은 EE `0x00224628`, `0x00224630`에서 읽는다. |
+
+도입부의 콘솔과 눈 내리는 펜션 배경은 각각 `GRA/MY/my0007.ipu`와 `my0645.ipu`다. SN4의 라벨·문자열과 ScenePack의 리소스 목록을 원본 실행 화면과 대조했다. `SCENARIO/sn4.fnt`의 2,874개 글리프는 CP932 문자 코드와 폭·높이·상단 여백을 갖는다. 각 런의 상위 4비트는 픽셀 수, 하위 4비트는 색 인덱스다. 모든 글리프의 픽셀 수와 다음 인덱스 경계를 검증했다. 이름 키보드는 `namkan.txt`의 빈 줄을 경계로 11개 그룹을 구성한다.
+
+오프닝 PSS의 MPEG-2 영상과 private stream 1의 `SShd/SSbd` 스테레오 PCM을 함께 변환한다. 음원은 48kHz, 16비트 리틀 엔디언이고 채널별로 512바이트씩 번갈아 저장된다. 첫 오디오 PTS와 첫 비디오 PTS의 차이를 유지한다.
+
+## 재현과 검증 범위
+
+Ghidra 12.2와 Emotion Engine 확장의 `r5900:LE:32:default` 언어로 함수 10개를 디컴파일하고 직접 호출 10곳을 확인했다. 아래에서 `$headless`는 설치된 Ghidra의 `support/analyzeHeadless.bat` 경로다. 실행 파일과 Ghidra 데이터베이스는 로컬 출력 경로에 보관한다.
+
+```powershell
+python -B ports/kamaitachi2-ps2/disc.py "$iso" --elf outputs/kamaitachi2-ps2-kor/ghidra/SLPS_251.32
+& $headless outputs/kamaitachi2-ps2-kor/ghidra Kamaitachi2-Opening -import outputs/kamaitachi2-ps2-kor/ghidra/SLPS_251.32 -processor r5900:LE:32:default -scriptPath ports/kamaitachi2-ps2/ghidra -postScript OpeningChecks.java
+```
+
+원본 ISO를 로컬 Play! 브라우저 런타임에서 별도로 실행해 새 게임, 자동 저장을 쓰거나 건너뛰는 경로, 두 입력창의 기본 이름, 취소와 확정, 변경된 이름이 다음 문장에 들어가는 지점을 대조했다. PCSX2에서는 메모리 카드 미삽입 시의 안내도 관찰했다. 이 웹 빌드는 사용 가능한 가상 카드로 시작한다. [Play! 공식 브라우저 런타임](https://playjs.purei.org/)
+
+웹 회귀 검사는 준비한 빌드와 Playwright의 Chromium을 사용한다. 공통 테스트 환경과 같은 위치인 `web-player/node_modules`나 그 상위에 Playwright를 설치한다. 두 번째 인자로 디렉터리를 넘기면 검사 화면을 로컬에 기록한다.
+
+```powershell
+$env:PLAYWRIGHT_BROWSERS_PATH = '0'
+node ports/kamaitachi2-ps2/test-browser.mjs http://127.0.0.1:8772/ outputs/kamaitachi2-ps2-kor/browser-check
+```
+
+두 이름의 입력 순서, 한 글자 추가·삭제, 초기 이름 복원, 여섯 번째 자리 교체, 확인창의 기본 선택과 되돌아가기, 다음 대사에 반영되는 값까지 검사한다. 웹 자동 저장은 해당 브라우저의 로컬 체크포인트를 사용한다. 타이틀 환경설정과 기존 PS2 메모리 카드 가져오기는 현재 범위 밖이다. 강설, 화면 전환, 글자 출력 속도, 버튼 효과음의 프레임·샘플 단위 일치는 검증이 남아 있다.

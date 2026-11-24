@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="ko">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>카마이타치의 밤 2 · PS2</title>
+<link rel="stylesheet" href="player.css">
+<main>
+  <section id="screen" aria-label="카마이타치의 밤 2">
+    <video playsinline preload="auto" id="movie"></video>
+    <canvas width="640" height="448" tabindex="0" aria-label="게임 화면"></canvas>
+    <div id="cover"><button id="start" disabled>불러오는 중…</button></div>
+  </section>
+  <nav aria-label="게임 조작">
+    <button data-key="left" aria-label="왼쪽">◀</button><button data-key="up" aria-label="위">▲</button><button data-key="down" aria-label="아래">▼</button><button data-key="right" aria-label="오른쪽">▶</button>
+    <button data-key="l1">L1</button><button data-key="r1">R1</button>
+    <button data-key="circle" title="Enter 또는 X">○ 확인</button><button data-key="cross" title="Esc 또는 Z">× 취소</button><button data-key="triangle" title="S">△ 입력 종료</button>
+  </nav>
+  <small>방향키로 이동 · Enter 확인 · Esc 취소 · S 이름 입력 종료 · Q / W 문자 그룹</small>
+  <p class="sr" id="status" aria-live="polite"></p>
+</main>
+<script type="module" src="player.js"></script>
+</html>
