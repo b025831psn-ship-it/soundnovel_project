@@ -64,6 +64,12 @@ public class OpeningChecks extends GhidraScript {
                 getInt(va(0x213578 + 12)) != 0x127858)
                 throw new Exception("Unexpected CommandSelect dispatch");
             directCall(0x10f6cc, 0x127618);
+            directCall(0x12ec04, 0x101348);
+            directCall(0x10135c, 0x1013d8);
+            directCall(0x12ec20, 0x10cec8);
+            if (getInt(va(0x2196b0 + 4 * 7)) != 0x101528 ||
+                getInt(va(0x2196b0 + 4 * 12)) != 0x101538)
+                throw new Exception("Unexpected equality or inequality dispatch");
         } finally {
             decompiler.dispose();
         }
