@@ -84,6 +84,8 @@ function toSentence(s, where) {
 // Name entry on a choice node: the typed text picks an option by alias, and is kept in flag "name:<slot>".
 //   input: { slot, maxLength?, match: [{ aliases: [..], option, as? }], fallback }
 // `as` replaces what is shown for the name (the original rewrites some aliases to one spelling).
+// sequential: true runs every rule in order like the original: a hit rewrites the name to `as`,
+// later rules compare against the rewritten name, and the last hit decides the option.
 function normalizeInput(raw, node, id) {
   const keys = new Set(node.options.map((o) => o.key));
   if (!raw || typeof raw !== 'object') throw new StoryFormatError(`${id}.input: 객체가 아닙니다.`);
@@ -97,6 +99,7 @@ function normalizeInput(raw, node, id) {
     slot: String(raw.slot ?? ''),
     maxLength: Number.isInteger(raw.maxLength) ? raw.maxLength : 8,
     match,
+    sequential: raw.sequential === true,
     fallback: String(raw.fallback),
   };
 }

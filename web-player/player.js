@@ -331,10 +331,18 @@ export function createPlayer(root, story, { storage = safeStorage(), startMenu =
   function submitName(node, value) {
     const typed = value.normalize('NFKC').trim().slice(0, node.input.maxLength);
     if (!typed) return;
-    const hit = node.input.match.find((m) => m.aliases.includes(typed));
-    const key = hit ? hit.option : node.input.fallback;
+    let name = typed;
+    let key = node.input.fallback;
+    if (node.input.sequential) {
+      for (const m of node.input.match) {
+        if (m.aliases.includes(name)) { name = m.as ?? name; key = m.option; }
+      }
+    } else {
+      const hit = node.input.match.find((m) => m.aliases.includes(typed));
+      if (hit) { name = hit.as ?? typed; key = hit.option; }
+    }
     const option = node.options.find((o) => o.key === key);
-    choose(option, node.input.slot ? { [`name:${node.input.slot}`]: hit?.as ?? typed } : {});
+    choose(option, node.input.slot ? { [`name:${node.input.slot}`]: name } : {});
   }
 
   function carried() {
@@ -429,7 +437,7 @@ export function createPlayer(root, story, { storage = safeStorage(), startMenu =
     if (node.kind === 'choice' && node.input) {
       text.replaceChildren();
       question.replaceChildren(...sentence('span', node.question).childNodes);
-      const field = el('input', { type: 'text', class: 'wp-name-input', maxlength: String(node.input.maxLength), 'aria-labelledby': question.id, autocomplete: 'off' });
+      const field = el('input', { type: 'text', class: 'wp-name-input', maxlength: String(node.input.maxLength), placeholder: `이름 입력 (${node.input.maxLength}글자까지)`, 'aria-label': node.question.ko || '이름 입력', autocomplete: 'off', lang: story.lang });
       const ok = el('button', { type: 'submit', class: 'wp-option wp-name-ok', text: '확인' });
       const form = el('form', { class: 'wp-name-form' }, [field, ok]);
       form.addEventListener('submit', (e) => { e.preventDefault(); submitName(node, field.value); });

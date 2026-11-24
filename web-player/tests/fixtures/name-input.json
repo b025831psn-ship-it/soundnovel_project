@@ -6,23 +6,138 @@
   "entry": "ask",
   "nodes": {
     "ask": {
-      "kind": "choice", "text": "犯人の名前は？",
+      "kind": "choice",
+      "text": "犯人の名前は？",
       "input": {
-        "slot": "3", "maxLength": 6,
+        "slot": "3",
+        "maxLength": 6,
         "match": [
-          { "aliases": ["あおき", "アオキ", "青木"], "option": "A", "as": "青木" },
-          { "aliases": ["くろだ", "黒田"], "option": "B" }
+          {
+            "aliases": [
+              "あおき",
+              "アオキ",
+              "青木"
+            ],
+            "option": "A",
+            "as": "青木"
+          },
+          {
+            "aliases": [
+              "くろだ",
+              "黒田"
+            ],
+            "option": "B"
+          }
         ],
         "fallback": "C"
       },
       "options": [
-        { "key": "A", "label": "a", "to": "hitA" },
-        { "key": "B", "label": "b", "to": "hitB" },
-        { "key": "C", "label": "c", "to": "miss" }
+        {
+          "key": "A",
+          "label": "a",
+          "to": "hitA"
+        },
+        {
+          "key": "B",
+          "label": "b",
+          "to": "hitB"
+        },
+        {
+          "key": "C",
+          "label": "c",
+          "to": "miss"
+        }
       ]
     },
-    "hitA": { "pages": [["犯人は{name:3}だ。"]], "to": null },
-    "hitB": { "pages": [["犯人は{name:3}だ。"]], "to": null },
-    "miss": { "pages": [["{name:3}という人はいない。"]], "to": null }
+    "hitA": {
+      "pages": [
+        [
+          "犯人は{name:3}だ。"
+        ]
+      ],
+      "to": "seq"
+    },
+    "hitB": {
+      "pages": [
+        [
+          "犯人は{name:3}だ。"
+        ]
+      ],
+      "to": null
+    },
+    "miss": {
+      "pages": [
+        [
+          "{name:3}という人はいない。"
+        ]
+      ],
+      "to": "seq"
+    },
+    "seq": {
+      "kind": "choice",
+      "text": "もう一度。",
+      "input": {
+        "slot": "4",
+        "sequential": true,
+        "match": [
+          {
+            "aliases": [
+              "あお"
+            ],
+            "option": "A",
+            "as": "あおき"
+          },
+          {
+            "aliases": [
+              "あおき"
+            ],
+            "option": "B",
+            "as": "青木"
+          }
+        ],
+        "fallback": "C"
+      },
+      "options": [
+        {
+          "key": "A",
+          "label": "a",
+          "to": "s1"
+        },
+        {
+          "key": "B",
+          "label": "b",
+          "to": "s2"
+        },
+        {
+          "key": "C",
+          "label": "c",
+          "to": "s3"
+        }
+      ]
+    },
+    "s1": {
+      "pages": [
+        [
+          "s1:{name:4}"
+        ]
+      ],
+      "to": null
+    },
+    "s2": {
+      "pages": [
+        [
+          "s2:{name:4}"
+        ]
+      ],
+      "to": null
+    },
+    "s3": {
+      "pages": [
+        [
+          "s3:{name:4}"
+        ]
+      ],
+      "to": null
+    }
   }
 }

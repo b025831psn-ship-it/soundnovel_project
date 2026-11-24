@@ -56,6 +56,26 @@ check(r.node === 'miss' && r.slot === 'あおきあおき', 'maxLength로 자른
 await page.reload();
 await page.waitForSelector('.wp-text p');
 check((await page.locator('.wp-text p').last().textContent()) === 'あおきあおきという人はいない。', '새로고침 뒤에도 슬롯 유지');
+// sequential: the first rule's rewrite matches the second rule's alias, so both apply in order.
+async function second(name) {
+  await page.locator('.wp-advance').click();
+  await page.waitForSelector('.wp-name-input');
+  await page.fill('.wp-name-input', name);
+  await page.keyboard.press('Enter');
+  await page.waitForSelector('.wp-text p');
+  const s = await saved();
+  return { node: s.node, slot4: s.flags['name:4'], slot3: s.flags['name:3'] };
+}
+r = await enter('アオキ');
+let q = await second('あお');
+check(q.node === 's2' && q.slot4 === '青木', `순차 치환: あお→あおき→青木, 결과는 마지막 일치(B) ${JSON.stringify(q)}`);
+check(q.slot3 === '青木', '다른 슬롯(name:3)은 그대로');
+r = await enter('アオキ');
+q = await second('あおき');
+check(q.node === 's2' && q.slot4 === '青木', '두 번째 규칙만 일치');
+r = await enter('アオキ');
+q = await second('みどり');
+check(q.node === 's3' && q.slot4 === 'みどり', '순차 모드 미일치 → fallback, 입력값 유지');
 check(errors.length === 0, `페이지 오류 없음 ${errors.join(' | ')}`);
 
 await browser.close();
