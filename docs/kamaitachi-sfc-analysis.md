@@ -42,6 +42,19 @@ VRAM, `$2122` CGRAM, `$2104` OAM, `$2180` WRAM port의 결과를 별도 메모�
 변경을 확인했으며, 장시간 runner는 각 destination별 transfer/byte 수와 세 PPU
 메모리 SHA-256을 출력한다.
 
+frame snapshot 계측으로 logo 표시 중 mode 3, BG1 tilemap base `$0000`, BG1 8bpp
+tile base `$2000`(VRAM byte address), main-screen BG1/OBJ enable을 확인했다. VM이
+원본 DMA로 채운 VRAM/CGRAM만 mode-3 BG1 decoder에 넣어 CHUN SOFT logo를
+복원했으며, 별도 이미지나 추정 UI는 사용하지 않았다. logo 구간의 VRAM은
+5,308 nonzero bytes까지 증가한 뒤 다음 장면 초기화의 64 KiB VRAM clear DMA로
+0이 된다. 따라서 관통 검증은 실행 종료 상태뿐 아니라 frame별 peak/snapshot도
+함께 비교한다.
+
+auto-joypad `$4218/$4219`는 하드웨어 순서인
+`B/Y/Select/Start/Up/Down/Left/Right/A/X/L/R`로 기록한다. 예를 들어 Start는
+`$1000`, A는 `$0080`이다. runner는 frame별 controller mask를 공급해 첫 입력
+소비 위치를 찾을 수 있다.
+
 ## 관통 조건
 
 - reference emulator와 JS VM의 instruction trace(PC/opcode/P/E/M/X/A/X/Y/S/D/DBR)

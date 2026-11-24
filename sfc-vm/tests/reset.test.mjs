@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { SfcBus } from '../bus.js';
 import { Cpu65816 } from '../cpu.js';
+import { decodeTilePixel, renderMode3Bg1 } from '../ppu.js';
 
 // Real reset sequence bytes from the verified ROM. Keeping only this short
 // sequence makes the test redistributable without embedding game assets.
@@ -115,7 +116,14 @@ test('DMA mode 1 writes source bytes through the VRAM data ports', () => {
   bus.write16(0x4305, 4);
   bus.write8(0x420b, 1);
   assert.deepEqual([...bus.vram.slice(0, 4)], [0x11, 0x22, 0x33, 0x44]);
-  assert.deepEqual(bus.events.at(-1), { kind: 'dma', channel: 0, bytes: 4, destination: 0x2118 });
+  assert.deepEqual(bus.events.at(-1), {
+    kind: 'dma', channel: 0, dmap: 1, source: 0x7e0100, bytes: 4,
+    nonzeroBytes: 4, destination: 0x2118,
+  });
+  assert.deepEqual(bus.dmaStats['0x2118'], {
+    transfers: 1, bytes: 4, nonzeroBytes: 4,
+    last: { channel: 0, dmap: 1, source: 0x7e0100, bytes: 4 },
+  });
 });
 
 test('NMI latches the standard auto-joypad result', () => {
@@ -126,7 +134,19 @@ test('NMI latches the standard auto-joypad result', () => {
   const cpu = new Cpu65816(bus);
   cpu.e = false;
   bus.write8(0x4200, 1);
-  bus.setController1(0x8010); // A + Start
+  bus.setController1(0x1080); // Hardware JOY1 bits: Start + A
   cpu.nmi();
-  assert.equal(bus.read16(0x4218), 0x8010);
+  assert.equal(bus.read16(0x4218), 0x1080);
+});
+
+test('decodes and composites mode 3 BG1 from PPU memory', () => {
+  const bus = new SfcBus(fixture());
+  bus.io[0x2105 - 0x2000] = 3;
+  bus.io[0x210b - 0x2000] = 1;
+  bus.vram[0] = 1;
+  bus.vram[0x2000 + 64 + 7 * 2] = 0x80;
+  bus.cgram[2] = 0x1f;
+  assert.equal(decodeTilePixel(bus.vram, 0x2040, 0, 7, 8), 1);
+  const frame = renderMode3Bg1(bus, 8, 8);
+  assert.deepEqual([...frame.slice((7 * 8) * 4, (7 * 8) * 4 + 4)], [255, 0, 0, 255]);
 });

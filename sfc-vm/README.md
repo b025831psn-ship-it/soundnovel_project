@@ -11,6 +11,8 @@
 ```sh
 node --test sfc-vm/tests
 node sfc-vm/tools/trace-boot.mjs path/to/original.sfc 2000000
+node sfc-vm/tools/trace-boot.mjs path/to/original.sfc 2000000 1,60,120 /tmp/kamai/frame
+node sfc-vm/tools/render-snapshot.mjs /tmp/kamai/frame.60 /tmp/kamai/frame.60.ppm
 ```
 
 초기 구현은 reset 직후의 CPU 모드 전환, WRAM 상태 비교, PPU/DMA 레지스터 설정과
@@ -20,4 +22,7 @@ LoROM SRAM checksum 진입까지 실제 opcode로 실행합니다. 미구현 opc
 `$00:825D` VBlank 대기 루프에서 native NMI vector를 호출합니다.
 DMA mode 0–7의 B-bus 패턴과 VRAM/CGRAM/OAM/WRAM data port를 모델링해 원본이
 생성한 PPU 메모리와 전송 통계를 보존합니다. auto-joypad 결과는 controller 1의
-16-bit SNES 버튼 mask로 공급합니다.
+하드웨어 JOY1 비트 순서(`B/Y/Select/Start/Up/Down/Left/Right/A/X/L/R`)로 공급합니다.
+trace runner의 네 번째 인수는 쉼표로 구분한 snapshot frame, 다섯 번째 인수는
+출력 prefix이며, 여섯 번째 인수에는 `frame:mask` 입력 일정을 쉼표로 지정할 수
+있습니다. snapshot은 ROM 데이터가 포함될 수 있으므로 로컬 분석물로만 둡니다.

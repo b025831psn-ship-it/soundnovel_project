@@ -126,22 +126,33 @@ export class SfcBus {
       const setReg = (at, value) => { this.io[base + at - 0x2000] = value & 0xff; };
       const dmap = reg(0), bbad = reg(1);
       let source = reg(2) | (reg(3) << 8) | (reg(4) << 16);
+      const sourceStart = source;
       let size = reg(5) | (reg(6) << 8);
       if (size === 0) size = 0x10000;
       const pattern = patterns[dmap & 7];
+      let nonzeroBytes = 0;
       for (let index = 0; index < size; index++) {
         const bAddress = 0x2100 + ((bbad + pattern[index % pattern.length]) & 0xff);
         if (dmap & 0x80) this.write8(source, this.read8(bAddress));
-        else this.write8(bAddress, this.read8(source));
+        else {
+          const byte = this.read8(source);
+          nonzeroBytes += byte !== 0;
+          this.write8(bAddress, byte);
+        }
         if (!(dmap & 0x08)) source = (source + (dmap & 0x10 ? -1 : 1)) & 0xffffff;
       }
       setReg(2, source); setReg(3, source >>> 8); setReg(4, source >>> 16);
       setReg(5, 0); setReg(6, 0);
       const key = `0x${(0x2100 + bbad).toString(16)}`;
-      const stat = this.dmaStats[key] ??= { transfers: 0, bytes: 0 };
+      const stat = this.dmaStats[key] ??= { transfers: 0, bytes: 0, nonzeroBytes: 0 };
       stat.transfers++;
       stat.bytes += size;
-      this.recordEvent({ kind: 'dma', channel, bytes: size, destination: 0x2100 + bbad });
+      stat.nonzeroBytes += nonzeroBytes;
+      stat.last = { channel, dmap, source: sourceStart, bytes: size };
+      this.recordEvent({
+        kind: 'dma', channel, dmap, source: sourceStart, bytes: size,
+        nonzeroBytes, destination: 0x2100 + bbad,
+      });
     }
   }
 
