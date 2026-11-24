@@ -22,6 +22,7 @@ export const HANDLERS = {
   0x16: "08004200",
   0x17: "08004478",
   0x18: "080044D0",
+  0x19: "0800450C",
   0x1a: "08003D30",
   0x1c: "08004574",
   0x1d: "080045B4",
@@ -57,11 +58,16 @@ export const HANDLERS = {
   0x3d: "080050F4",
   0x3e: "08005110",
   0x45: "08005214",
+  0x46: "080047CC",
+  0x47: "08004804",
+  0x48: "0800483C",
   0x4b: "080057C0",
   0x4c: "080057E8",
   0x4d: "080057EC",
   0x4e: "08005828",
   0x4f: "08005848",
+  0x51: "080058B4",
+  0x52: "080058EC",
   0x53: "08005914",
   0x56: "08005B1C",
   0x57: "08005BA8",
@@ -70,6 +76,8 @@ export const HANDLERS = {
   0x5b: "08005CD4",
   0x5e: "08005DE0",
   0x5f: "080059C0",
+  0x61: "08005EA4",
+  0x62: "08005EE4",
   0x63: "08005F38",
 };
 
@@ -85,16 +93,21 @@ const SILENT = {
 export const SUPPRESSION = Object.freeze({
   0x04: ["77e-or-78e", "u16"], 0x08: ["77e-or-78e", "u16,u8"], 0x09: ["77e-or-78e", "u16,u8"],
   0x0a: ["77e-or-78e", "u8"], 0x0b: ["77e-or-78e", "u8"], 0x0c: ["77e-or-78e", "u16"],
-  0x0d: ["77e", "u8"], 0x0e: ["77e", "u8,u16"], 0x0f: ["77e", "u8,u16"], 0x1a: ["77e", "u8"],
+  0x0d: ["77e", "u8"], 0x0e: ["77e", "u8,u16"], 0x0f: ["77e", "u8,u16"],
+  0x19: ["77e", "u16"], 0x1a: ["77e", "u8"],
   0x13: ["sets-77e", "choice[]"], 0x15: ["78e-or-choice-return", ""],
   0x1c: ["77e-or-78e", "u8"], 0x21: ["77e", "u8"], 0x22: ["77e", "u8"],
   0x23: ["77e-or-78e", "u8,u8"], 0x25: ["77e", "u8,u16"], 0x29: ["77e-or-78e", "u8,u16"],
   0x2c: ["77e-or-78e", ""], 0x2d: ["77e-or-78e", "u8,u16"], 0x2e: ["77e-or-78e", "u8,u8"],
   0x2f: ["77e-or-78e", "u16"], 0x30: ["77e-or-78e", "u16"], 0x31: ["77e-or-78e", "u16,u16"],
   0x32: ["77e-or-78e", "u16,u16"], 0x34: ["77e-or-78e", "u16"], 0x35: ["77e-or-78e", "u8,u16"],
-  0x37: ["77e-or-78e", "u16"], 0x4d: ["77e-or-78e", "u8"], 0x53: ["77e-or-78e", "u16"],
+  0x37: ["77e-or-78e", "u16"], 0x46: ["78e", "u8"], 0x47: ["78e", "u8"], 0x48: ["78e", "u8"],
+  0x4d: ["77e-or-78e", "u8"], 0x51: ["77e-or-78e", "u8,u16"],
+  0x52: ["77e-or-78e", ""], 0x53: ["77e-or-78e", "u16"],
   0x57: ["sets-77e", "choice-key[]"], 0x58: ["77e-or-78e", "u16"],
   0x5e: ["77e", "u8,u16,u16"], 0x5f: ["77e-or-78e", "u16"],
+  0x61: ["77e-or-78e", "u16"],
+  0x62: ["77e-or-78e", "u16"],
 });
 
 export class VM {
@@ -151,6 +164,9 @@ export class VM {
       audioRequest: 0xffff,
       choiceActive: 0,
       inputReady: 0,
+      system47: 0,
+      system48: 0,
+      clockTarget: 0,
       brightness: Array.from({ length: 11 }, (_, slot) => ({
         current: slot === 9 ? 0x8000 : 0,
         target: slot === 9 ? 0x8000 : 0,
@@ -234,8 +250,8 @@ export class VM {
 
   suppressed(opcode) {
     const gate = SUPPRESSION[opcode]?.[0];
-    const blocked = this.ram.effectDisabled === 1 ||
-      (gate === "77e-or-78e" && this.ram.effectBypass === 1);
+    const blocked = (gate !== "78e" && this.ram.effectDisabled === 1) ||
+      (gate !== "77e" && this.ram.effectBypass === 1);
     if (blocked) {
       this.ram.updatePending = 1;
       this.writes.push("updatePending=1");
@@ -471,6 +487,14 @@ export class VM {
           this.ram.updatePending = 1;
           this.writes.push("updatePending=1");
         }
+        break;
+      }
+      case 0x19: {
+        const command = this.word();
+        args.push(command);
+        if (!this.suppressed(opcode)) this.system?.cue?.(0x19, command, this.ram);
+        this.ram.updatePending = 1; // 02000781, both the call and suppressed paths
+        if (!this.writes.includes("updatePending=1")) this.writes.push("updatePending=1");
         break;
       }
       case 0x21:
@@ -732,6 +756,19 @@ export class VM {
           this.offset += 2;
         break;
       }
+      case 0x46:
+      case 0x47:
+      case 0x48: {
+        const value = this.byte();
+        args.push(value);
+        if (!this.suppressed(opcode)) {
+          this.ram[`system${opcode.toString(16)}`] = value;
+          this.writes.push(`system${opcode.toString(16)}=${value}`);
+        }
+        this.ram.updatePending = 1; // 02000781, both the store and suppressed paths
+        if (!this.writes.includes("updatePending=1")) this.writes.push("updatePending=1");
+        break;
+      }
       case 0x4b:
         args.push(this.word());
         break;
@@ -748,6 +785,15 @@ export class VM {
       case 0x4f:
         // 08005848 -> 08008940: one u8 presentation command.
         args.push(this.byte());
+        break;
+      case 0x51:
+        // 080058B4 consumes a u8/u16 pair; the native handler has no normal-path side effect.
+        args.push(this.byte(), this.word());
+        this.suppressed(opcode);
+        break;
+      case 0x52:
+        // 080058EC has no operands or normal-path side effect.
+        this.suppressed(opcode);
         break;
       case 0x53: {
         const effect = this.word();
@@ -774,6 +820,24 @@ export class VM {
       case 0x5f: {
         args.push(this.word());
         this.suppressed(opcode);
+        break;
+      }
+      case 0x61: {
+        const value = this.word();
+        args.push(value);
+        if (!this.suppressed(opcode)) {
+          this.ram.clockTarget = value;
+          this.writes.push(`clockTarget=${value}`);
+        }
+        break;
+      }
+      case 0x62: {
+        const value = this.word();
+        args.push(value);
+        if (!this.suppressed(opcode) && this.ram.clockTarget < value) {
+          this.clockWaitTarget = value;
+          this.waiting = "clock";
+        }
         break;
       }
       case 0x63:
@@ -878,6 +942,8 @@ export class VM {
     this.syncAudio();
     if (this.waiting === "audio" && !this.audioWaitFrame()) this.waiting = "none";
     if (this.waiting === "delay" && --this.waitFrames <= 0)
+      this.waiting = "none";
+    if (this.waiting === "clock" && ++this.ram.clockTarget >= this.clockWaitTarget)
       this.waiting = "none";
     if (this.waiting === "audio-start" && --this.waitFrames <= 0) {
       const { request, speed, afterText } = this.pendingAudio;
