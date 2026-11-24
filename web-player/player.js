@@ -40,7 +40,8 @@ export function storageKey(story) {
   return `soundnovel.webPlayer.${story.gameId}`;
 }
 
-export function createPlayer(root, story, { storage = safeStorage() } = {}) {
+// options.startMenu: show a title screen (새 게임 / 이어하기) inside the 4:3 screen before playing.
+export function createPlayer(root, story, { storage = safeStorage(), startMenu = false } = {}) {
   const sceneIds = Object.keys(story.scenes);
   const key = storageKey(story);
   const uid = Math.random().toString(36).slice(2, 8);
@@ -55,8 +56,9 @@ export function createPlayer(root, story, { storage = safeStorage() } = {}) {
   const resetBtn = el('button', { type: 'button', class: 'wp-reset', text: '첫 선택지로 돌아가기' });
   const endMsg = el('p', { class: 'wp-end-msg', text: '이 테스트 구간은 여기까지입니다.' });
   const end = el('div', { class: 'wp-end' }, [endMsg, resetBtn]);
+  const menu = el('div', { class: 'wp-menu' });
   const stage = el('section', { class: 'wp-stage', 'aria-label': story.title }, [
-    sceneLabel, advanceBtn, text, nextHint, choices, end,
+    sceneLabel, advanceBtn, text, nextHint, choices, end, menu,
   ]);
 
   const langBtn = el('button', { type: 'button', class: 'wp-tool wp-lang' });
@@ -88,7 +90,8 @@ export function createPlayer(root, story, { storage = safeStorage() } = {}) {
   root.replaceChildren(titleBar, stage, logDialog, savesDialog);
 
   let settings = loadSettings();
-  let state = load() || initial();
+  const saved = load();
+  let state = saved || initial();
   let lastScene = null;
 
   function initial() {
@@ -230,9 +233,11 @@ export function createPlayer(root, story, { storage = safeStorage() } = {}) {
     setState({ node: nodeId, page: 0, line: 0, done: false, trail: [...state.trail, step] });
   }
 
+  // An option without `to` is where the data ends: record the pick and show the end screen.
   function choose(option) {
-    if (option.to) goTo(option.to, { node: state.node, pick: option.key });
-    else reset();
+    const step = { node: state.node, pick: option.key };
+    if (option.to) goTo(option.to, step);
+    else setState({ ...state, done: true, trail: [...state.trail, step] });
   }
 
   function advance() {
@@ -290,11 +295,56 @@ export function createPlayer(root, story, { storage = safeStorage() } = {}) {
     langBtn.setAttribute('aria-label', `표시 언어: ${LANGS[i].aria}. 누르면 ${next.label}(으)로 바뀝니다`);
   }
 
+  // Title screen: drawn in place of the original's own title, so it stays inside the 4:3 screen.
+  function showMenu(step = 'top') {
+    stage.dataset.mode = 'menu';
+    tools.style.visibility = 'hidden'; // keep the bar's height so the screen does not jump
+    sceneLabel.textContent = '';
+    const btn = (label, onClick, disabled = false) => {
+      const b = el('button', { type: 'button', class: 'wp-menu-item', text: label });
+      b.disabled = disabled;
+      b.addEventListener('click', onClick);
+      return b;
+    };
+    if (step === 'top') {
+      const resume = btn('이어하기', enterGame, !saved);
+      const fresh = btn('새 게임', () => (story.names.length ? showMenu('names') : startNew()));
+      menu.replaceChildren(el('h2', { class: 'wp-menu-title', text: story.title }), el('div', { class: 'wp-menu-list' }, [fresh, resume]));
+      (saved ? resume : fresh).focus();
+    } else {
+      const begin = btn('기본 이름으로 시작', startNew);
+      menu.replaceChildren(
+        el('p', { class: 'wp-menu-names', text: story.names.join(' · ') }),
+        el('div', { class: 'wp-menu-list' }, [begin, btn('뒤로', () => showMenu('top'))]),
+      );
+      begin.focus();
+    }
+  }
+
+  function startNew() {
+    state = initial();
+    save();
+    enterGame();
+  }
+
+  function enterGame() {
+    tools.style.visibility = '';
+    menu.replaceChildren();
+    render(true);
+  }
+
   function render(focus) {
     renderTools();
     const node = story.nodes[state.node];
     renderScene(node);
-    stage.dataset.mode = node.kind === 'choice' ? 'choice' : state.done ? 'end' : 'text';
+    stage.dataset.mode = state.done ? 'end' : node.kind === 'choice' ? 'choice' : 'text';
+
+    if (state.done) {
+      if (node.kind === 'choice') text.replaceChildren();
+      else text.replaceChildren(...node.pages[state.page].slice(0, state.line + 1).map((s) => sentence('p', s)));
+      if (focus) resetBtn.focus({ preventScroll: true });
+      return;
+    }
 
     if (node.kind === 'choice') {
       text.replaceChildren();
@@ -341,7 +391,7 @@ export function createPlayer(root, story, { storage = safeStorage() } = {}) {
       }
     }
     const cur = story.nodes[state.node];
-    if (cur.kind === 'choice') add(cur.question, 'wp-log-q');
+    if (cur.kind === 'choice') { if (!state.done) add(cur.question, 'wp-log-q'); }
     else addText(cur, state.page, state.done ? Infinity : state.line);
     logList.replaceChildren(...items);
   }
@@ -405,6 +455,15 @@ export function createPlayer(root, story, { storage = safeStorage() } = {}) {
     if (logDialog.open || savesDialog.open) return; // dialogs handle their own keys (Esc closes them)
     if (e.target instanceof HTMLButtonElement && tools.contains(e.target)) return;
     const mode = stage.dataset.mode;
+    if (mode === 'menu') {
+      const items = [...menu.querySelectorAll('button:not(:disabled)')];
+      const i = items.indexOf(document.activeElement);
+      if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+        e.preventDefault();
+        items[(i + (e.key === 'ArrowDown' ? 1 : -1) + items.length) % items.length]?.focus();
+      }
+      return;
+    }
     if (mode === 'choice') {
       if (e.key === 'ArrowDown' || e.key === 'ArrowRight') { e.preventDefault(); moveFocus(1); }
       else if (e.key === 'ArrowUp' || e.key === 'ArrowLeft') { e.preventDefault(); moveFocus(-1); }
@@ -423,7 +482,8 @@ export function createPlayer(root, story, { storage = safeStorage() } = {}) {
     }
   });
 
-  render(true);
+  if (startMenu) showMenu();
+  else render(true);
 
   return {
     get state() { return { ...state, trail: [...state.trail] }; },
