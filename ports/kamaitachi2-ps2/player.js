@@ -551,7 +551,7 @@ function drawStory(time) {
       const nextLine = block.nextLine || end.x + 25 > 610;
       const frame = tick % 7;
       screen.sprite('mark', (frame % 5) * 24, 48 + Math.floor(frame / 5) * 24, 24, 24,
-                    nextLine ? 32 : end.x + 7, end.y + (nextLine ? 43 : 5));
+                    nextLine ? 36 : end.x + 7, end.y + (nextLine ? 43 : 5));
     } else {
       screen.sprite('mark', tick % 8 * 16, 0, 16, 24, 34, end.y + 44);
     }
