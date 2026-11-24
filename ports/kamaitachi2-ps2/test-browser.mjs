@@ -323,8 +323,10 @@ try {
     assert.ok([...captainLines].some(line => line.includes('岸猿伊右衛門')));
     assert.ok([...captainLines].some(line => line.endsWith('残った家族は行方知れずになったそうだ」')));
     assert.ok([...captainLines].some(line => line.endsWith('そう言おうと口を開きかけたら……。')));
-    assert.match(await label(), /監獄なんて、おもしろいじゃない/);
-    assert.match(await label(), /楽しみだなあ……」$/);
+    assert.ok([...captainLines].some(line => line.includes('監獄なんて、おもしろいじゃない')));
+    assert.ok([...captainLines].some(line => line.endsWith('楽しみだなあ……」')));
+    assert.match(await label(), /妙な〈わらべ唄〉/);
+    assert.match(await label(), /船長さんはうれしそうに歌いだした。$/);
     assert.ok([...requests].some(url => url.endsWith('/my0018.mp4')));
     assert.ok([...requests].some(url => url.endsWith('/my0012.mp4')));
     assert.ok([...requests].some(url => url.endsWith('/my0004.mp4')));

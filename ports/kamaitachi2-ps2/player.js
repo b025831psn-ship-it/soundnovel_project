@@ -361,7 +361,8 @@ function makePages(s) {
       return [...pages, ...narrationPages(s.myb02_0330, false), ...narrationPages(s.myb02_0335, false),
         ...nickname, ...history, ...factory,
         ...narrationPages(s.my02_0470, false).map((block, i) => i === 0 ? {...block, movie:'my0008'} : block),
-        ...narrationPages(s.my02_0480, true)];
+        ...narrationPages(s.my02_0480, false),
+        ...narrationPages(s.my03_0010, true).map((block, i) => i === 0 ? {...block, movie:'my0018'} : block)];
     }),
   ];
 }
