@@ -43,6 +43,8 @@ await next();
 check(await page.locator('.wp-option').count() === 1, '첫 회차: 선택지 1개');
 await page.locator('.wp-option').first().click();
 await next();
+check(JSON.stringify(await paras()) === JSON.stringify(['雨の中を歩いた。傘はない。']), `keep: 다음 노드가 같은 화면에 이어짐 ${JSON.stringify(await paras())}`);
+await next();
 check((await page.locator('.wp-end-msg').textContent()) === '엔딩 1', '엔딩 번호 표시');
 
 await page.locator('.wp-reset').click();

@@ -149,6 +149,7 @@ export function normalizeStory(raw) {
         next: normalizeNext(n, id),
       };
       if (Number.isInteger(n.ending)) nodes[id].ending = n.ending;
+      if (n.keep === true) nodes[id].keep = true; // ends mid-page: its last page stays on screen
     }
   }
 

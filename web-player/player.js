@@ -174,6 +174,7 @@ export function createPlayer(root, story, { storage = safeStorage(), startMenu =
     return {
       node: saved.node, page: saved.page | 0, line: saved.line | 0, done: !!saved.done, trail: validTrail(saved.trail),
       flags: { ...validFlags(saved.flags), ...loadGlobal() },
+      carry: Array.isArray(saved.carry) ? saved.carry.filter((id) => story.nodes[id]?.kind === 'text') : [],
     };
   }
 
@@ -188,6 +189,7 @@ export function createPlayer(root, story, { storage = safeStorage(), startMenu =
       done: state.done,
       trail: state.trail,
       flags: state.flags,
+      carry: state.carry || [],
     };
   }
 
@@ -267,9 +269,10 @@ export function createPlayer(root, story, { storage = safeStorage(), startMenu =
   }
 
   // Arriving at a node applies its `set`.
-  function goTo(nodeId, step, flags = state.flags) {
+  // `carry`: earlier nodes whose last page stays on screen (a node marked `keep` ends mid-page).
+  function goTo(nodeId, step, flags = state.flags, carry = []) {
     setState(settle({
-      node: nodeId, page: 0, line: 0, done: false, trail: [...state.trail, step], flags: { ...flags, ...story.nodes[nodeId].set },
+      node: nodeId, page: 0, line: 0, done: false, trail: [...state.trail, step], flags: { ...flags, ...story.nodes[nodeId].set }, carry,
     }));
   }
 
@@ -288,9 +291,10 @@ export function createPlayer(root, story, { storage = safeStorage(), startMenu =
     if (node.kind !== 'text' || state.done) return;
     const page = node.pages[state.page];
     if (state.line < page.length - 1) return setState({ ...state, line: state.line + 1 });
-    if (state.page < node.pages.length - 1) return setState({ ...state, page: state.page + 1, line: 0 });
+    if (state.page < node.pages.length - 1) return setState({ ...state, page: state.page + 1, line: 0, carry: [] });
     const to = resolve(node.next, state.flags);
-    if (to) return goTo(to, { node: state.node });
+    const carry = node.keep ? [...(state.page === 0 ? state.carry || [] : []), state.node] : [];
+    if (to) return goTo(to, { node: state.node }, state.flags, carry);
     setState({ ...state, done: true });
   }
 
@@ -316,6 +320,11 @@ export function createPlayer(root, story, { storage = safeStorage(), startMenu =
       node.append(s.ko);
     }
     return node;
+  }
+
+  function carried() {
+    if (state.page !== 0) return [];
+    return (state.carry || []).flatMap((id) => story.nodes[id]?.pages.at(-1) || []);
   }
 
   // Sentences shown on screen: a `join` sentence continues the previous one's line.
@@ -421,7 +430,7 @@ export function createPlayer(root, story, { storage = safeStorage(), startMenu =
       return;
     }
 
-    text.replaceChildren(...lines(node.pages[state.page].slice(0, state.line + 1)));
+    text.replaceChildren(...lines([...carried(), ...node.pages[state.page].slice(0, state.line + 1)]));
     if (focus) (state.done ? resetBtn : advanceBtn).focus({ preventScroll: true });
   }
 
