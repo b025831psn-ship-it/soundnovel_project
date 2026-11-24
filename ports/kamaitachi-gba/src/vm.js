@@ -18,8 +18,10 @@ export const HANDLERS = {
   0x14: "0800411C",
   0x15: "08004154",
   0x16: "08004200",
+  0x17: "08004478",
   0x1a: "08003D30",
   0x1c: "08004574",
+  0x1d: "080045B4",
   0x1e: "080045F4",
   0x21: "08003D70",
   0x22: "08003DB0",
@@ -85,6 +87,8 @@ export class VM {
     musicMap = [],
     audioTables = null,
     choiceView = null,
+    system = null,
+    transitionTimings = null,
     trace = null,
   } = {}) {
     this.banks = banks;
@@ -101,8 +105,13 @@ export class VM {
       : null;
     this.sound = new SceneAudio(engine, tables, effects);
     this.choiceView = choiceView;
+    this.system = system;
+    this.transitionTimings = transitionTimings?.sites ?? transitionTimings ?? {};
+    this.transitionVisits = new Map();
     this.trace = trace;
     this.frame = 0;
+    this.skipAudioFrame = false;
+    this.skipAudioIrq = false;
     this.halted = false;
     this.waiting = "none";
     this.unimplemented = new Set();
@@ -238,6 +247,39 @@ export class VM {
     ];
   }
 
+  // Native transition handlers can cross several VBlanks before returning to
+  // the scenario dispatcher. The timing table is captured from the original
+  // cartridge and keyed by bank and cursor, because decompression/copy cost is
+  // site-specific and can differ for the same opcode and arguments.
+  nativeWait(bank, offset) {
+    const key = `${bank.toString(16)}:${offset.toString(16)}`;
+    const entries = this.transitionTimings[key];
+    if (!entries?.length) return;
+    const visit = this.transitionVisits.get(key) ?? 0;
+    const timing = entries[Math.min(visit, entries.length - 1)];
+    this.transitionVisits.set(key, visit + 1);
+    if (!timing.frames) return;
+    this.skipAudioFrame = timing.audioFrame?.[0] === "0";
+    // IRQ/play-length runs before dispatch, so frame zero cannot be changed by
+    // the opcode. Captures normally have it set; retain the observed value for
+    // documentation and apply the remaining frames from the next VBlank.
+    this.transitionWait = { ...timing, index: 1 };
+    this.waiting = "transition";
+  }
+
+  prepareNativeWaitFrame() {
+    const timing = this.transitionWait;
+    if (!timing) return;
+    if (timing.index >= timing.frames) {
+      this.transitionWait = null;
+      this.waiting = "none";
+      return;
+    }
+    this.skipAudioFrame = timing.audioFrame?.[timing.index] === "0";
+    this.skipAudioIrq = timing.audioIrq?.[timing.index] === "0";
+    timing.index++;
+  }
+
   step() {
     if (this.halted || this.waiting !== "none") return false;
     const startBank = this.bank;
@@ -371,6 +413,17 @@ export class VM {
         this.waiting = "choice";
         this.choiceView?.show?.(this.text?.choiceRaw ?? [], this.choiceSelection);
         break;
+      case 0x17:
+        // 08004478: outside choice collection, advance over the already-shown
+        // label until (and including) opcode 15. Text bytes > 80 consume their
+        // following byte as well, exactly as the native cursor loop does.
+        if (!this.ram.choiceActive) {
+          while (this.banks[this.bank][this.offset] !== 0x15) {
+            if (this.byte() > 0x80) this.offset++;
+          }
+          this.offset++;
+        }
+        break;
       case 0x21:
       case 0x22: {
         const index = this.byte();
@@ -382,6 +435,19 @@ export class VM {
       case 0x1c: {
         args.push(this.byte());
         this.suppressed(opcode);
+        break;
+      }
+      case 0x1d: {
+        const command = this.byte();
+        args.push(command);
+        if (this.ram.choiceActive || this.ram.effectBypass === 1) break;
+        // 08009478's 00-6F system-command table. UI-specific commands are
+        // supplied by the host; a missing host is a deliberate no-op so the
+        // bytecode remains aligned while the corresponding UI is being ported.
+        const result = this.system?.command?.(command, this.ram);
+        if (result?.inputReady !== undefined)
+          this.ram.inputReady = result.inputReady ? 1 : 0;
+        if (result?.waiting) this.waiting = result.waiting;
         break;
       }
       case 0x1e: {
@@ -593,6 +659,7 @@ export class VM {
       writes: [...this.writes],
       wait: this.waiting,
     });
+    if (this.waiting === "none") this.nativeWait(startBank, startOffset);
     return !this.halted;
   }
 
@@ -641,6 +708,7 @@ export class VM {
   vblank(budget = 1024) {
     this.frame++;
     this.ram.updatePending = 0;
+    this.prepareNativeWaitFrame();
     // Frame order on the cartridge: the VBlank interrupt runs the effect scripts (08002B00 from
     // 080005F0); the frame wait's tail 080062E0 -> 080003D8 -> 080066E8 then counts the play
     // length (0800A3E0); the frame's dispatches follow; the next frame wait (08002FB8) runs
@@ -673,5 +741,7 @@ export class VM {
     // VBlank wait, so a fade started by this frame's opcode 31 takes its first step this frame.
     if (!this.skipAudioFrame) this.sound.frame();
     this.syncAudio();
+    this.skipAudioFrame = false;
+    this.skipAudioIrq = false;
   }
 }

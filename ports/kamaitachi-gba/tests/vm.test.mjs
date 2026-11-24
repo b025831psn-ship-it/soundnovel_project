@@ -363,6 +363,48 @@ test("opening effect opcodes preserve alignment through the first choice", () =>
   ]);
 });
 
+test("17 skips an already-rendered label through its 15 terminator", () => {
+  const vm = new VM({
+    banks: { 27: bank([[0x17, 0x00, 0x82, 0x60, 0x00, 0x15, 0x41, 3, 9]]) },
+  });
+  vm.step();
+  assert.equal(vm.banks[vm.bank][vm.offset], 0x41);
+  vm.step();
+  assert.equal(vm.ram.vars[3], 9);
+});
+
+test("1D consumes its command and delegates the native system table", () => {
+  const calls = [];
+  const vm = new VM({
+    banks: { 27: bank([[0x1d, 4, 0x41, 2, 7]]) },
+    system: { command: (command) => { calls.push(command); return { inputReady: true }; } },
+  });
+  vm.step();
+  assert.deepEqual(calls, [4]);
+  assert.equal(vm.ram.inputReady, 1);
+  vm.step();
+  assert.equal(vm.ram.vars[2], 7);
+});
+
+test("captured transition timing holds dispatch and carries audio gates", () => {
+  const row = [0x04, 1, 0, 0x41, 2, 7];
+  const vm = new VM({
+    banks: { 27: bank([row]) },
+    transitionTimings: { sites: { "1b:2": [
+      { opcode: 4, frames: 3, audioFrame: "000", audioIrq: "100" },
+    ] } },
+  });
+  vm.step();
+  assert.equal(vm.waiting, "transition");
+  assert.equal(vm.skipAudioFrame, true);
+  vm.vblank();
+  vm.vblank();
+  assert.equal(vm.ram.vars[2], 0);
+  vm.vblank();
+  assert.equal(vm.ram.vars[2], 7);
+  assert.equal(vm.waiting, "none");
+});
+
 test("57 runs candidate bytecode in collection mode and 16 opens the choice", () => {
   const rows = [
     [0x57, 1, 11, 0x79, 0x69, 5, 0, 0x7a, 0x69, 7, 0,

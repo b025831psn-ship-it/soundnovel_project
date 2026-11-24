@@ -25,6 +25,8 @@ const memory = new Memory(new Uint8Array(read("sound/m4a.bin")), config.base);
 const engine = new M4A(memory, config);
 const tables = JSON.parse(read("sound/scene-audio.json"));
 tables.effectBytes = new Uint8Array(read("sound/effects.bin"));
+const transitionTimings = fs.existsSync(path.join(data, "scenario-timing.json"))
+  ? JSON.parse(read("scenario-timing.json")) : null;
 
 const BUFFER = 0x020067f4; // RAM copy of the current bank; 020006F4 points into it
 const hex = (v) => (v >>> 0).toString(16);
@@ -81,7 +83,8 @@ const audio = new Proxy(engine, {
     };
   },
 });
-const vm = new VM({ banks, audio, audioTables: tables, text: { feed: () => "none" } });
+const vm = new VM({ banks, audio, audioTables: tables, transitionTimings,
+  text: { feed: () => "none" } });
 const step = vm.step.bind(vm);
 vm.step = () => {
   if (vm.halted || vm.waiting !== "none") return step();
