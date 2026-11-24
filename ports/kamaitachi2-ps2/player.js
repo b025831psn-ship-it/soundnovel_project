@@ -8,7 +8,11 @@ const start = document.querySelector('#start');
 const status = document.querySelector('#status');
 const asset = name => new URL('assets/' + name, import.meta.url).href;
 const music = new Audio();
-music.loop = true;
+// L= comments in the Special Box Vorbis tracks, in 48 kHz PCM frames.
+const loopFrames = {
+  'k1a001.ogg': 1017889, 'k1a004.ogg': 36359, 'k2h002.ogg': 461348,
+  'k2h003.ogg': 863143, 'k2h017.ogg': 863622, 'k2t002.ogg': 475399,
+};
 const cues = Object.fromEntries(['confirm','cancel','move'].map(name => [name, new Audio(asset(name + '.wav'))]));
 const saveKey = 'soundnovel.slps25132.opening.v1';
 let saved = readSave();
@@ -74,6 +78,11 @@ function announce() {
 function playMusic(file) {
   if (music.src === asset(file) && !music.paused) return;
   music.src = asset(file);
+  music.onended = () => {
+    if (!music.ended) return;
+    music.currentTime = (loopFrames[file] ?? 0) / 48000;
+    music.play().catch(() => { status.textContent = '오디오를 재생하려면 화면을 눌러 주세요.'; });
+  };
   music.play().catch(() => { status.textContent = '오디오를 재생하려면 화면을 눌러 주세요.'; });
 }
 
