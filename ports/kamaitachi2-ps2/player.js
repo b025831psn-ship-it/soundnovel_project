@@ -530,7 +530,7 @@ function drawStory(time) {
   if (block.movie && !text) return;
   if (!block.movie && !block.retainMovie) screen.background(background, background === 'my0645', time);
   const origin = block.background === 'my0000' ? data.invitationOrigin : {x:32, y:31};
-  const scale = block.center ? .96 : .91;
+  const scale = block.center || (background === 'my0645' && !block.movie && !block.retainMovie) ? .96 : .91;
   const y = block.center ? 192 : origin.y;
   const x = block.center ? (640 - screen.width(storyText(), scale)) / 2 : origin.x;
   const rubies = block.rubies ?? (block.ruby ? [block.ruby] : []);
