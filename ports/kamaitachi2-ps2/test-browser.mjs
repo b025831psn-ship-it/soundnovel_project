@@ -383,6 +383,7 @@ try {
   await at('story');
   assert.equal(await label(), '彼女の名前は、真理。');
   await advanceTo('choice');
+  await page.clock.install();
   for (const [phase, skip] of [['copyright','2'], ['opening','Enter']]) {
     await page.reload();
     await page.getByRole('button',{name:'게임 시작'}).click();
@@ -394,8 +395,12 @@ try {
     await key(skip);
     await at('title');
     assert.ok(await page.locator('video').evaluate(v => v.src.endsWith('/title.mp4') && v.loop));
+    if (phase === 'copyright') {
+      await page.clock.fastForward(80200);
+      await at('attract');
+      assert.ok(await page.locator('video').evaluate(v => v.src.endsWith('/opening.mp4')));
+    }
   }
-  await page.clock.install();
   await page.keyboard.press('ArrowLeft');
   await page.clock.fastForward(79000);
   assert.equal(await canvas.getAttribute('data-scene'), 'title');
