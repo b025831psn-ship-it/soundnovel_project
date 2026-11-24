@@ -106,6 +106,11 @@ try {
   assert.equal(await label(), '急速に親しくなった。');
   const saved = await page.evaluate(()=>JSON.parse(localStorage.getItem('soundnovel.slps25132.opening.v1')));
   assert.deepEqual(saved,{names:['透ああああぁ','真理'],slot:1});
+  await page.reload(); await page.getByRole('button',{name:'게임 시작'}).click();
+  await key('Space'); await at('title'); await key('ArrowRight'); await key('Enter');
+  await at('story');
+  assert.equal(await label(), '彼女の名前は、真理。');
+  await advanceTo('choice');
   assert.deepEqual(unexpected,[]);
   const isoRequests = [...requests].filter(url => /\.iso(?:$|[?#])/i.test(url));
   assert.equal(isoRequests.length,0);

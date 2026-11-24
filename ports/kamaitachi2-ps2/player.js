@@ -148,7 +148,7 @@ function makePages(s) {
     { append:true, text: () => heroLine() + '\n' + partnerLead() },
     { append:true, book:true, text: () => heroLine() + '\n' + partnerLead() + '\n' + second[5] },
     { name:1 },
-    { text: partnerLine },
+    { checkpoint:true, text: partnerLine },
     { append:true, text: classmates },
     { append:true, choice:true, text: () => classmates() + '\n' + last[4] + names[1] + last[5] + '\n' + last[6] },
   ];
@@ -173,9 +173,12 @@ function step(key) {
       if (!index) newGame();
       else if (index === 1 && saved) {
         names = [...saved.names]; stopMovie(); playMusic('k1a001.ogg');
-        page = pages.length - 1; printPage();
+        slot = saved.slot;
+        autosave = true;
+        page = pages.findIndex(block => block.checkpoint);
+        printPage();
       } else {
-        userNotice = index === 1 ? '이 브라우저에 이어할 기록이 없습니다.' : '이 빌드의 플레이 범위는 처음부터 두 이름 확정까지입니다.';
+        userNotice = index === 1 ? '이 브라우저에 이어할 기록이 없습니다.' : '이 빌드는 스키 여행 회상의 첫 분기까지 플레이할 수 있습니다.';
         status.textContent = userNotice;
       }
     }
