@@ -45,7 +45,8 @@ async function start() {
     const { label, raw, picked } = await loadRaw();
     status.textContent = label;
     useDefault.hidden = !picked;
-    createPlayer(root, normalizeStory(raw));
+    // ?start=1: open on the title screen (새 게임 / 이어하기), as the hub does.
+    createPlayer(root, normalizeStory(raw), { startMenu: new URLSearchParams(location.search).get('start') === '1' });
   } catch (err) {
     const prefix = err instanceof StoryFormatError ? 'JSON 형식 오류: ' : '';
     showError(prefix + err.message);

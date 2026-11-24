@@ -182,6 +182,27 @@ for (const [i, how] of [[0, 'click'], [1, 'keys']]) {
   }
 }
 
+// Title screen (?start=1, as the hub opens it): 이어하기 returns to the auto-save, 새 게임 starts over.
+{
+  const aTarget = nodes[opts[0].to];
+  await page.goto(`${base}&start=1`);
+  await page.waitForSelector('.wp-menu-item');
+  const items = await page.locator('.wp-menu-item').allTextContents();
+  const focused = await page.evaluate(() => document.activeElement?.textContent);
+  check(JSON.stringify(items) === JSON.stringify(['새 게임', '이어하기']) && focused === '이어하기', `시작 화면: ${items.join(' / ')}, 저장이 있으면 이어하기에 포커스`);
+  await page.keyboard.press('Enter');
+  check((await texts())[0] === firstPage(aTarget)[0], '이어하기로 저장 위치에서 재개');
+  await page.goto(`${base}&start=1`);
+  await page.waitForSelector('.wp-menu-item');
+  await page.locator('.wp-menu-item', { hasText: '새 게임' }).click();
+  const names = Object.values(story.names || {}).filter((v) => typeof v === 'string' && v);
+  if (names.length) {
+    check((await page.locator('.wp-menu-names').textContent()) === names.join(' · '), `새 게임: 기본 이름 표시 (${names.join(' · ')})`);
+    await page.locator('.wp-menu-item', { hasText: '기본 이름으로 시작' }).click();
+  }
+  check((await page.locator('.wp-question').textContent()) === question && await page.evaluate(() => document.activeElement?.classList.contains('wp-option')), '새 게임은 첫 선택지부터, 첫 선택지에 포커스');
+}
+
 await browser.close();
 server.close();
 console.log(failures ? `\n${failures}개 실패` : '\n모두 통과');

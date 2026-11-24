@@ -120,9 +120,15 @@ export function normalizeStory(raw) {
     ? [n.question, ...n.options.map((o) => o.label)]
     : n.pages.flat()).some((t) => t.ja));
 
+  // Optional default names shown on the new-game screen, e.g. { "hero": "토오루", "heroine": "마리" }.
+  const names = raw.names && typeof raw.names === 'object'
+    ? Object.values(raw.names).filter((v) => typeof v === 'string' && v)
+    : [];
+
   return {
     schemaVersion,
     hasOriginal,
+    names,
     gameId: String(gameId),
     title: String(raw.title || gameId),
     entry,
