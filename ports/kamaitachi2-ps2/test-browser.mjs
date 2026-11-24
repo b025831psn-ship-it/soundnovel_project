@@ -99,12 +99,14 @@ try {
   assert.equal(await label(), '急速に親しくなった。');
   await key('ArrowDown'); await key('Enter'); await at('story');
   assert.equal(await label(), '行ってから……どうなったんだっけ。');
-  await advanceTo('complete');
+  for (let i=0; i<10 && !(await label()).includes('気がつけば'); i++) await key('Enter');
   assert.equal(await label(), '気がつけば音が聞こえていた。');
   await page.waitForFunction(() => {
     const clip = document.querySelector('video');
     return clip.src.endsWith('/mo0001.mp4') && clip.ended && clip.videoWidth === 640;
   });
+  await advanceTo('complete'); await key('Enter');
+  assert.equal(await label(), 'ぴしゃ'.repeat(63));
   assert.equal(await page.evaluate(()=>localStorage.getItem('soundnovel.slps25132.opening.v1')),null);
   await page.reload(); await page.getByRole('button',{name:'게임 시작'}).click();
   await key('Space'); await at('title'); await key('Enter'); await at('autosave');

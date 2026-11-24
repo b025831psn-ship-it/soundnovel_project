@@ -161,7 +161,8 @@ function makePages(s) {
     { text: () => s.mo01_0011[0] },
     { append:true, book:true, text: () => s.mo01_0011.join('\n') },
     { background:'mo0000', book:true, text: () => s.mo01_0012[0] },
-    { movie:'mo0001', music:'k2h017.ogg', end:true, book:true, text: () => s.mo02_0010[0] },
+    { movie:'mo0001', music:'k2h017.ogg', book:true, text: () => s.mo02_0010[0] },
+    { positioned:s.mo02_0012, end:true, text: () => s.mo02_0012.map(run => run.text).join('') },
     { target:'my01_0075', book:true, text: () => outcome('my01_0075') },
     { text: () => north[0] },
     { append:true, book:true, text: () => north[0] + '\n' + north[1] + names[1] + north[2] + '\n' + north[3] + names[1] + north[4] },
@@ -261,6 +262,15 @@ function step(key) {
 function drawStory(time) {
   const block = pages[page], text = storyText().slice(0, Math.floor(revealed));
   const background = block.background ?? (block.center ? 'my0007' : 'my0645');
+  if (block.positioned) {
+    let remaining = text.length;
+    for (const run of block.positioned) {
+      if (remaining <= 0) break;
+      screen.text(run.text.slice(0, remaining), run.x, run.y, {scale:.91});
+      remaining -= run.text.length;
+    }
+    return;
+  }
   if (!block.movie) screen.background(background, background === 'my0645', time);
   const y = block.center ? 189 : 31;
   const x = block.center ? (640 - screen.width(storyText(), .91)) / 2 : 32;

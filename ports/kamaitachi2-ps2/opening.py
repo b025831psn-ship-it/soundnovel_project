@@ -80,6 +80,20 @@ def scenario_strings(data):
     story = {}
     for current, following in zip(labels, labels[1:]):
         name = (current[1] or current[2]).decode("ascii")
+        if name == "mo02_0012":
+            block = data[current.end():following.start()]
+            runs = []
+            pos = 0
+            while block[pos:pos + 1] == b"\x66":
+                run = re.match(rb"\x66(.{4})\x02([^\x00-\x1f]+)\x03", block[pos:], re.DOTALL)
+                if run is None:
+                    raise ValueError("Invalid positioned text in mo02_0012")
+                x, y = struct.unpack(">HH", run[1])
+                runs.append({"x": x, "y": y, "text": run[2].decode("cp932")})
+                pos += run.end()
+            if not runs or block[pos:] != bytes.fromhex("5c0000003c150c"):
+                raise ValueError("Unexpected positioned text sequence")
+            story[name] = runs
         if name in {"my01_0010", "my01_0012", "my01_0022", "my01_0040", "my01_0055", "my01_0070", "my01_0076", "my01_0077", "mo01_0011", "mo01_0012", "mo02_0010"}:
             block = data[current.end():following.start()]
             story[name] = [s.decode("cp932") for s in re.findall(rb"\x02([^\x00-\x1f]+)\x03", block)]
@@ -87,7 +101,7 @@ def scenario_strings(data):
             expected = 0x12 if name.endswith("0047") else 0x13
             if data[following.start() - 1] != expected:
                 raise ValueError(f"Unexpected name command in {name}")
-    if len(story) != 11:
+    if len(story) != 12:
         raise ValueError("Opening labels could not be resolved")
     return story
 
