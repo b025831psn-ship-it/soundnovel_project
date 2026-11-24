@@ -337,9 +337,10 @@ function makePages(s) {
     ...narrationPages(s.my02_0250, false),
     ...narrationPages(s.my02_0260, false),
     ...narrationPages(s.my02_0270, false),
-    ...narrationPages(s.my02_0280, true).map((block, i) => ({
+    ...narrationPages(s.my02_0280, false).map((block, i) => ({
       ...block, rubies:s.my02_0280.ruby, ...(i === 0 ? {movie:'my0012'} : {}),
     })),
+    ...narrationPages(s.my02_0300, true).map((block, i) => i === 0 ? {...block, movie:'my0018'} : block),
   ];
 }
 

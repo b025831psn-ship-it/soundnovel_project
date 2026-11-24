@@ -296,8 +296,11 @@ try {
     assert.ok([...discussion].some(line => line.endsWith('と、突然、参加を決めたらしい。')));
     assert.ok([...discussion].some(line => line.endsWith('今は、まったく元気がない。')));
     assert.ok([...discussion].some(line => line.endsWith('真理が叫んだ。')));
-    assert.match(await label(), /三日月島」らしい。/);
-    assert.match(await label(), /あまりリゾート地らしく思えない。$/);
+    assert.ok([...discussion].some(line => line.includes('三日月島」らしい。')));
+    assert.ok([...discussion].some(line => line.endsWith('あまりリゾート地らしく思えない。')));
+    assert.match(await label(), /これで三往復目じゃ」/);
+    assert.match(await label(), /船長さんが、急に口を開いた。$/);
+    assert.ok([...requests].some(url => url.endsWith('/my0018.mp4')));
     assert.ok([...requests].some(url => url.endsWith('/my0012.mp4')));
     assert.ok([...requests].some(url => url.endsWith('/my0004.mp4')));
     assert.ok([...requests].some(url => url.endsWith('/k1a004.ogg')));
