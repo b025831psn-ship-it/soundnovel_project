@@ -199,9 +199,9 @@ export class Screen {
       this.sprite('sys_cd02', 0, 168, 282, 24, 168, 112);
       this.yesNo(255, 150, selection);
     } else {
-      this.sprite('sys_cd02', 298, 95, 210, 25, 136, 93);
-      this.sprite('sys_cd02', 0, 70, 365, 26, 135, 121);
-      this.sprite('sys_cd02', 296, 119, 177, 24, 136, 149);
+      this.sprite('sys_cd02', 298, 95, 210, 25, 137, 93);
+      this.sprite('sys_cd02', 0, 70, 365, 26, 135, 120);
+      this.sprite('sys_cd02', 296, 119, 177, 24, 134, 149);
     }
     this.rect(63, 221, 512, 28);
     this.sprite('sys_cd02', 0, 70, 365, 26, 97, 222);
