@@ -2,6 +2,7 @@
 
 import argparse
 from array import array
+import json
 import os
 from pathlib import Path
 import shutil
@@ -72,7 +73,7 @@ def video(source, output, audio=None, offset=0):
     args = ["-i", str(source)]
     if audio:
         args.extend(["-itsoffset", f"{offset:.6f}", "-i", str(audio), "-map", "0:v:0", "-map", "1:a:0",
-                     "-c:a", "aac", "-b:a", "192k"])
+                     "-vf", "setpts=PTS-STARTPTS", "-c:a", "aac", "-b:a", "192k"])
     else:
         args.extend(["-map", "0:v:0", "-an"])
     encode([*args, "-c:v", "libx264", "-preset", "veryfast", "-crf", "17", "-pix_fmt", "yuv420p",
@@ -87,8 +88,9 @@ def movie(data, work, out):
         w.setparams((2, 2, rate, 0, "NONE", "not compressed"))
         w.writeframes(pcm)
     start = subprocess.check_output(["ffprobe", "-v", "error", "-select_streams", "v:0",
-                                     "-show_entries", "stream=start_time", "-of", "csv=p=0", str(src)],
-                                    text=True).strip().strip(",")
+                                     "-read_intervals", "%+#12", "-show_frames", "-show_entries",
+                                     "frame=best_effort_timestamp_time", "-of", "json", str(src)], text=True)
+    start = json.loads(start)["frames"][0]["best_effort_timestamp_time"]
     video(src, out, wav, pts - float(start))
 
 
