@@ -76,10 +76,25 @@ def texture(data):
 
 
 def scenario_strings(data):
-    labels = list(re.finditer(rb"\x85\x0b(?:\x0c(my01_[0-9]{4})|\x0a(mo0[12]_[0-9]{4}))\x00\x22", data))
+    labels = list(re.finditer(rb"\x85\x0b(?:\x0c(my0[12]_[0-9]{4})|\x0a(mo0[12]_[0-9]{4}))\x00\x22", data))
     story = {}
     for current, following in zip(labels, labels[1:]):
         name = (current[1] or current[2]).decode("ascii")
+        if name == "my02_0010":
+            block = data[current.end():following.start()]
+            card = re.fullmatch(
+                rb"\x73\x08my0002i\x00\x74\x0bmy0002i_00\x00\x50(.{4})"
+                rb"\x4c(.{4})\x5a(.{4})\x66(.{4})\x02([^\x00-\x1f]+)\x03\x04"
+                rb"\x66(.{4})\x02([^\x00-\x1f]+)\x03\x32\x74\x0bmy0002i_10\x00"
+                rb"\x15\x50(.{4})\x5c(.{4})\x15\x0c", block, re.DOTALL)
+            if card is None:
+                raise ValueError("Unexpected date card in my02_0010")
+            lines = []
+            for position, text in ((card[4], card[5]), (card[6], card[7])):
+                x, y = struct.unpack(">hh", position)
+                lines.append({"x": x, "y": y, "text": text.decode("cp932")})
+            story[name] = {"lines": lines, "waitBefore": int.from_bytes(card[1], "big"),
+                           "waitAfter": int.from_bytes(card[8], "big")}
         if name == "mo02_0012":
             block = data[current.end():following.start()]
             runs = []
@@ -116,7 +131,7 @@ def scenario_strings(data):
             expected = 0x12 if name.endswith("0047") else 0x13
             if data[following.start() - 1] != expected:
                 raise ValueError(f"Unexpected name command in {name}")
-    if len(story) != 20:
+    if len(story) != 21:
         raise ValueError("Opening labels could not be resolved")
     return story
 
