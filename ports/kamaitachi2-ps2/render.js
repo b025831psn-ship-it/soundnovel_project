@@ -219,7 +219,7 @@ export class Screen {
   }
 
   confirm(name, role, selection) {
-    this.rect(0, 28, 640, 37);
+    this.rect(0, 28, 640, 36);
     this.sprite('name_e01', 192, 0, 61, 32, 239, 29);
     this.sprite('name_e01', 160, 0, 32, 32, 302, 29);
     this.sprite('name_e01', 185, 32, 67, 32, 335, 29);
@@ -229,7 +229,7 @@ export class Screen {
     this.rect(235, 252, 138, 72);
     this.sprite('sys_fc01', 134, 72, 48, 24, 271, 258, 60, 28);
     this.sprite('sys_fc01', 191, 72, 60, 24, 271, 290, 78, 28);
-    this.sprite('sys_fc01', 0, 73, 15, 22, 248, 264 + 32 * selection, 15, 17);
+    this.sprite('sys_fc01', 0, 73, 15, 22, 248, 265 + 32 * selection, 15, 14);
     this.footer(false);
   }
 }
