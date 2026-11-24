@@ -184,7 +184,18 @@ try {
     }
     assert.equal(await label(), previous + '\n' + line);
   }
+  for (let i=0; i<40 && await canvas.getAttribute('data-scene') !== 'complete'; i++) {
+    await key('Enter');
+    await page.waitForTimeout(100);
+  }
   await at('complete');
+  assert.deepEqual((await label()).split('\n'), [
+    '真理らしい受け答えだ。',
+    'ぼくは、あらためて、本物の真理が目の前にいることを実感した。',
+    '１年半ぶりに会う真理。',
+    '彼女は、またきれいになっていた。',
+  ]);
+  assert.ok(await page.locator('video').evaluate(v => v.src.endsWith('/my0006.mp4') && v.videoWidth === 640));
   assert.ok([...requests].some(url => url.endsWith('/k2h003.ogg')));
   const saved = await page.evaluate(()=>JSON.parse(localStorage.getItem('soundnovel.slps25132.opening.v1')));
   assert.deepEqual(saved,{names:['透ああああぁ','真理'],slot:1});

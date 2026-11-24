@@ -147,7 +147,7 @@ function summerDialogue(sceneData) {
     else if (event.command === 9 || event.command === 11) {
       const visible = text.trimEnd();
       const pauses = waits;
-      blocks.push({retainMovie:true, append:blocks.length > 0, end:event.command === 11,
+      blocks.push({retainMovie:true, append:blocks.length > 0,
         text: () => visible, speeds, waits: () => pauses.map(pause => ({...pause}))});
       waits = [];
       speeds = [];
@@ -158,6 +158,20 @@ function summerDialogue(sceneData) {
 }
 
 function makePages(s) {
+  const reunion = s.my02_0030;
+  const reunionPages = [];
+  const reunionParts = [];
+  for (const event of reunion.events) {
+    if (event.text || event.name !== undefined) reunionParts.push(event);
+    else if (event.command === 4) reunionParts.push({text:'\n'});
+    else if (event.command === 9 || event.command === 11) {
+      const parts = reunionParts.slice();
+      reunionPages.push({retainMovie:true, append:reunionPages.length > 0, end:event.command === 11,
+        text: () => parts.map(part => part.text ?? names[part.name]).join('').trimEnd()});
+    }
+  }
+  Object.assign(reunionPages[0], {movie:'my0006',
+    waits: () => [{offset:0, remaining:reunion.introWaits[0] * 1000 / 59.94}]});
   const start = s.my01_0010, first = s.my01_0012, hero = s.my01_0040;
   const second = s.my01_0055, last = s.my01_0070;
   const heroLine = () => second[0] + names[0] + second[1];
@@ -240,6 +254,7 @@ function makePages(s) {
       waits: () => [{offset:0, remaining:(s.my02_0015.introWaits[0] + s.my02_0015.introWaits[1]) * 1000 / 59.94}],
       text: () => '' },
     ...summerDialogue(s.my02_0015),
+    ...reunionPages,
   ];
 }
 
