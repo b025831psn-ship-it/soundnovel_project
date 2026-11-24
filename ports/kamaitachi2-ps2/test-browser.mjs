@@ -281,7 +281,7 @@ try {
       await key('Enter');
       await page.waitForTimeout(100);
     }
-    await at('complete');
+    await at('choice');
     assert.ok([...discussion].some(line => line.includes('「我孫子武丸って誰なんだろう」')));
     assert.ok([...discussion].some(line => line.endsWith('真理は自信ありげに言った。')));
     assert.ok([...discussion].some(line => line.includes('香山さんが透ああああぁに就職の世話')));
@@ -298,8 +298,14 @@ try {
     assert.ok([...discussion].some(line => line.endsWith('真理が叫んだ。')));
     assert.ok([...discussion].some(line => line.includes('三日月島」らしい。')));
     assert.ok([...discussion].some(line => line.endsWith('あまりリゾート地らしく思えない。')));
-    assert.match(await label(), /これで三往復目じゃ」/);
-    assert.match(await label(), /船長さんが、急に口を開いた。$/);
+    assert.ok([...discussion].some(line => line.includes('これで三往復目じゃ」')));
+    assert.ok([...discussion].some(line => line.endsWith('船長さんが、急に口を開いた。')));
+    assert.match(await label(), /いつも送迎をしてるんですか/);
+    await key('ArrowDown');
+    assert.match(await label(), /何で三日月島って言うんですか/);
+    await key('Enter'); await at('story'); await advanceTo('complete', 150);
+    assert.match(await label(), /あの島は、三日月の形をしとるから/);
+    assert.match(await label(), /あんな島に行くとはのう」$/);
     assert.ok([...requests].some(url => url.endsWith('/my0018.mp4')));
     assert.ok([...requests].some(url => url.endsWith('/my0012.mp4')));
     assert.ok([...requests].some(url => url.endsWith('/my0004.mp4')));

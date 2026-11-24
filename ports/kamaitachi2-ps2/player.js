@@ -340,7 +340,14 @@ function makePages(s) {
     ...narrationPages(s.my02_0280, false).map((block, i) => ({
       ...block, rubies:s.my02_0280.ruby, ...(i === 0 ? {movie:'my0012'} : {}),
     })),
-    ...narrationPages(s.my02_0300, true).map((block, i) => i === 0 ? {...block, movie:'my0018'} : block),
+    ...narrationPages(s.my02_0300, false).map((block, i) => i === 0 ? {...block, movie:'my0018'} : block),
+    {retainMovie:true, text:() => s.my02_0330.text, choice:data.captainChoice},
+    ...data.captainChoice.flatMap(route => {
+      const pages = narrationPages(s[route.target], true);
+      pages[0].target = route.target;
+      pages[1].movie = 'my0014';
+      return pages;
+    }),
   ];
 }
 
