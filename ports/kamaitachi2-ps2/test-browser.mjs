@@ -90,9 +90,17 @@ try {
     await new Promise(requestAnimationFrame);
     pressed.clear();
     await new Promise(requestAnimationFrame);
+    // Right moves once immediately, again after 18 polls, then after six.
+    pressed.add(15);
+    for (let frame=0; frame<25; frame++) await new Promise(requestAnimationFrame);
+    pressed.add(1);
+    await new Promise(requestAnimationFrame);
+    pressed.clear();
+    await new Promise(requestAnimationFrame);
     delete navigator.getGamepads;
   });
-  await at('name'); assert.equal(await label(),'주인공 透か');
+  await at('name'); assert.equal(await label(),'주인공 透かガ');
+  await key('Escape');
   await key('q'); await key('Escape'); await key('Enter');
   assert.equal(await label(),'주인공 透あ');
   await key('s'); await at('confirm'); await key('ArrowUp'); await key('Enter');

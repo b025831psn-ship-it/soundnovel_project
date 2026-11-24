@@ -19,6 +19,7 @@ let idleMovie = 'pre_dv';
 let textWaits = [];
 let textSpeeds = [];
 const padDown = new Set();
+let previousPadDirection = '', padRepeatFrames = 0;
 const images = {};
 
 function enter(next, selected = 0) {
@@ -478,13 +479,25 @@ function frame(now) {
     if (pressed && !padDown.has(i)) { padDown.add(i); actions.push(action); }
     if (!pressed) padDown.delete(i);
   }
-  if (scene === 'name' && actions.length > 1) {
+  if (scene === 'name') {
     const group = ['r1', 'l1'].find(action => actions.includes(action));
     const edit = ['circle', 'cross', 'triangle'].find(action => actions.includes(action));
+    const up = padDown.has('12'), down = padDown.has('13');
+    const left = padDown.has('14'), right = padDown.has('15');
+    // EE 0x11BFE8 picks a diagonal first, then up/down/left/right.
+    const vertical = up ? 'up' : down ? 'down' : '';
+    const horizontal = left ? 'left' : right ? 'right' : '';
+    const direction = horizontal + vertical;
     if (group) step(group);
-    for (const direction of actions.filter(action => ['up', 'down', 'left', 'right'].includes(action))) step(direction);
+    if (direction && (direction !== previousPadDirection || --padRepeatFrames <= 0)) {
+      padRepeatFrames = direction === previousPadDirection ? 6 : 18;
+      if (horizontal) step(horizontal);
+      if (vertical) step(vertical);
+    }
+    previousPadDirection = direction;
     if (edit) step(edit);
   } else {
+    previousPadDirection = '';
     for (const action of actions) step(action);
   }
   requestAnimationFrame(frame);
