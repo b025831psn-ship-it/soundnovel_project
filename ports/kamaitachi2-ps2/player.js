@@ -347,7 +347,15 @@ function makePages(s) {
       pages[0].target = route.target;
       pages[1].movie = 'my0014';
       if (route.target === 'my02_0340') return [...pages, ...narrationPages(s.my02_0350, true)];
-      return [...pages, ...narrationPages(s.myb02_0330, false), ...narrationPages(s.myb02_0335, true)];
+      const nickname = narrationPages(s.myb02_0340, false);
+      nickname[0].movie = 'my0012';
+      nickname[1].music = 'k2t002.ogg';
+      nickname[1].movie = 'my0012';
+      const history = narrationPages(s.my02_0400, true);
+      for (const block of nickname) Object.assign(block, {rubies:s.myb02_0340.ruby, firstRuby:true});
+      for (const block of history) Object.assign(block, {rubies:s.my02_0400.ruby, firstRuby:true});
+      return [...pages, ...narrationPages(s.myb02_0330, false), ...narrationPages(s.myb02_0335, false),
+        ...nickname, ...history];
     }),
   ];
 }
@@ -467,7 +475,7 @@ function drawStory(time) {
   const rubies = block.rubies ?? (block.ruby ? [block.ruby] : []);
   const readings = rubies.length ? new Map() : undefined;
   for (const ruby of rubies) {
-    const start = storyText().lastIndexOf(ruby.word);
+    const start = block.firstRuby ? storyText().indexOf(ruby.word) : storyText().lastIndexOf(ruby.word);
     if (start >= 0) ruby.readings.forEach((reading, i) => readings.set(start + i, reading));
   }
   const end = screen.text(text, x, y, {scale:.91, max:Math.min(580, 640 - x), readings, colors:textColors});
