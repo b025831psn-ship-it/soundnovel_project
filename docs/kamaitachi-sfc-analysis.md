@@ -87,6 +87,12 @@ handler 재분석과 `$00:E909` sound command table 결합으로 99개 모두 �
 read-ahead/prepare와 on-screen print의 두 단계이므로 포트에서도 두 phase를
 분리해야 한다.
 
+sound command의 다음 계층도 `$00:B51E..$00:B733` execution handler와
+`$00:B950` 32-entry ring queue까지 분석했다. queue는 `$1E10/$1E30/$1E50/$1E70`
+네 배열에 message와 인수를 보존하고 `$1EA6/$1EA8`을 write/read index로 쓴다.
+command 18개와 queue helper 15개의 edge를 비공개 `data/sound-cfg.json`에서
+원본 opcode signature로 검증한다.
+
 ## 기준 코어 probe 대조
 
 native Snes9x probe에서 CHUN SOFT logo, SFC title, 음향 설정, 기본 이름 확인
