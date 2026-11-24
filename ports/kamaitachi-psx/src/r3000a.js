@@ -52,7 +52,7 @@ export class PsxMemory {
 }
 
 export class R3000A {
-  constructor({ memory = new PsxMemory(), pc = 0, hooks = new Map(), syscall = null, trace = null } = {}) {
+  constructor({ memory = new PsxMemory(), pc = 0, hooks = new Map(), syscall = null, breakpoint = null, trace = null } = {}) {
     this.memory = memory;
     this.regs = new Uint32Array(32);
     this.cop0 = new Uint32Array(32);
@@ -62,6 +62,7 @@ export class R3000A {
     this.nextPc = u32(pc + 4);
     this.hooks = hooks;
     this.syscall = syscall;
+    this.breakpoint = breakpoint;
     this.trace = trace;
     this.instructions = 0;
   }
@@ -125,6 +126,10 @@ export class R3000A {
         case 0x0c:
           if (!this.syscall) throw new Error(`R3000A syscall at 0x${at.toString(16)}`);
           this.syscall(this, word >>> 6);
+          return;
+        case 0x0d:
+          if (this.breakpoint) this.breakpoint(this, word >>> 6);
+          else this.exception(9, at);
           return;
         case 0x10: this.regs[rd] = this.hi; return;
         case 0x11: this.hi = this.regs[rs]; return;

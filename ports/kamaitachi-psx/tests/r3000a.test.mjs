@@ -138,6 +138,26 @@ test("syscall delegates to the configured exception hook", () => {
   assert.equal(code, 0x48c);
 });
 
+test("BREAK enters the COP0 breakpoint exception", () => {
+  const memory = new PsxMemory();
+  memory.set32(0, (0x12345 << 6) | 0x0d);
+  const cpu = new R3000A({ memory });
+  cpu.step();
+  assert.equal(cpu.pc, 0x80000080);
+  assert.equal(cpu.cop0[14], 0);
+  assert.equal((cpu.cop0[13] >>> 2) & 31, 9);
+});
+
+test("BREAK may delegate to a debugger hook", () => {
+  const memory = new PsxMemory();
+  memory.set32(0, (7 << 6) | 0x0d);
+  let code;
+  const cpu = new R3000A({ memory, breakpoint: (_cpu, value) => { code = value; } });
+  cpu.step();
+  assert.equal(code, 7);
+  assert.equal(cpu.pc, 4);
+});
+
 test("COP0 registers round-trip through mtc0 and mfc0", () => {
   const memory = new PsxMemory();
   memory.set32(0, 0x40826000); // mtc0 v0, Status
