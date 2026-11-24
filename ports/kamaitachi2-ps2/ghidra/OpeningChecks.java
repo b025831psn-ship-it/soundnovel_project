@@ -78,6 +78,12 @@ public class OpeningChecks extends GhidraScript {
             directCall(0x1010bc, 0x10ba28);
             directCall(0x10ba38, 0x1126a0);
             directCall(0x112748, 0x112ec0);
+            directCall(0x10113c, 0x154480);
+            directCall(0x1544c8, 0x1ccd60);
+            directCall(0x154268, 0x1ccd40);
+            // Both delay slots load the same synchronization object into a0.
+            if (getInt(va(0x1544cc)) != 0x8f849128 || getInt(va(0x15426c)) != 0x8f849128)
+                throw new Exception("Unexpected game loop synchronization object");
             directCall(0x12ec04, 0x101348);
             directCall(0x10135c, 0x1013d8);
             directCall(0x12ec20, 0x10cec8);
