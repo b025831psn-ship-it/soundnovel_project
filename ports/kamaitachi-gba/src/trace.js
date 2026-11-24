@@ -1,1 +1,18 @@
-export const traceLine=e=>[e.frame,e.bank.toString(16).padStart(2,'0'),e.offset.toString(16).padStart(4,'0'),e.opcode.toString(16).padStart(2,'0'),Buffer.from(e.args).toString('hex'),e.group,e.slot,e.pending].join('\t');
+const hex = (value, width) => value.toString(16).padStart(width, "0");
+export const TRACE_HEADER =
+  "frame\tbank\toffset\topcode\targs\tgroup\tslot\tpending\tsp\twrites\twait";
+export function traceLine(event) {
+  return [
+    event.frame,
+    hex(event.bank, 2),
+    hex(event.offset, 4),
+    hex(event.opcode, 2),
+    event.args.map((value) => hex(value, value > 255 ? 4 : 2)).join(","),
+    event.group,
+    event.slot,
+    event.pending,
+    event.sp,
+    event.writes.join(","),
+    event.wait,
+  ].join("\t");
+}
