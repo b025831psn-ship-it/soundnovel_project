@@ -1,7 +1,5 @@
 // Per-frame sequencer and channel state, to diff against the same fields read from mGBA RAM.
 // Usage: node trace.mjs <port-data/sound dir> <song> <frames>
-// Columns: frame, then for player 0..: clock, tempoD, tempoC; per track: cmdPtr(hex), wait, key, vol;
-// then per DirectSound channel: status(hex), key, env, frequency.
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { M4A, Memory } from './m4a.js';

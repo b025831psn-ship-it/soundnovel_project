@@ -77,11 +77,26 @@ check(t.patternLevel === 1, '패턴 호출로 한 단계 들어감');
 for (let f = 0; f < 3; f++) e.vblank();
 check(t.patternLevel === 0, '3틱 뒤 PEND로 복귀');
 check(t.repN === 0 && t.cmdPtr > rept, 'REPT 2는 한 번 되돌아간 뒤 다음으로 진행');
-check(live() === 1 && ch.key === 62 && ch.gateTime === 0, 'TIE 음은 길이 없이 시작');
+check(live() === 1 && ch.key === 60 && ch.midiKey === 62 && ch.gateTime === 0, 'TIE 음은 길이 없이 시작');
 for (let f = 0; f < 6; f++) e.vblank();
 check(!(ch.status & 0xc7) || (ch.status & 0x40), 'EOT 62로 TIE 음 해제');
 for (let f = 0; f < 3; f++) e.vblank();
 check(!e.players[0].active, 'FINE 뒤 플레이어 정지');
+
+// Track volume measured in mGBA, starting at the first fade update.
+for (const [speed, expected] of [
+  [10, [22, 28, 34, 40, 46, 54, 60, 64, 64, 64]],
+  [17, [18, 22, 26, 30, 34, 38, 42, 46, 48, 52, 56, 60, 64, 64, 64, 64, 64]],
+]) {
+  e.startSong(0);
+  e.fadeInSong(0, speed);
+  const track = e.players[0].tracks[0];
+  const actual = expected.map(() => {
+    e.vblank();
+    return track.volX;
+  });
+  check(actual.every((value, frame) => value === expected[frame]), `페이드인 속도 ${speed} 프레임별 volX`);
+}
 
 // Fade-out: four steps of 16/256 every frame at speed 1 stop the player after 16 frames.
 e.startSong(0);

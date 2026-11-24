@@ -42,7 +42,7 @@ function umul3232H32(a, b) {
 
 function newTrack() {
   return {
-    flags: 0, wait: 0, patternLevel: 0, repN: 0, gateTime: 0, key: 60, velocity: 127, runningStatus: 0,
+    flags: 0, wait: 0, patternLevel: 0, repN: 0, gateTime: 0, key: 0, velocity: 127, runningStatus: 0,
     keyM: 0, pitM: 0, keyShift: 0, keyShiftX: 0, tune: 0, pitX: 0, bend: 0, bendRange: 2,
     volMR: 0, volML: 0, vol: 0, volX: 64, pan: 0, panX: 0,
     modM: 0, mod: 0, modT: 0, lfoSpeed: 22, lfoSpeedC: 0, lfoDelay: 0, lfoDelayC: 0,
@@ -60,6 +60,7 @@ class Player {
     this.priority = 0;
     this.tempoD = 150; this.tempoU = 0x100; this.tempoI = 150; this.tempoC = 0;
     this.fadeOI = 0; this.fadeOC = 0; this.fadeOV = 0;
+    this.fadeIn = null;
     this.voicegroup = 0;
     this.clock = 0;
   }
@@ -116,6 +117,18 @@ export class M4A {
     p.fadeOI = speed; p.fadeOC = speed; p.fadeOV = 64 << 2;
   }
 
+  fadeInSong(song, speed) {
+    const player = this.players[this.mem.u16(this.cfg.songTable + 8 * song + 4)];
+    if (!player || !speed) return;
+    // Native volume starts at one quarter of the fixed-point scale.
+    player.fadeIn = { remaining: speed, value: 0x4000, delta: Math.floor(0x10000 / speed) };
+    for (const t of player.tracks) {
+      if (!(t.flags & FLG_EXIST)) continue;
+      t.volX = 16;
+      t.flags |= FLG_VOLSET;
+    }
+  }
+
   mplayStart(p, header, n) {
     const mem = this.mem;
     const count = Math.min(mem.u8(header), p.maxTracks);
@@ -126,6 +139,7 @@ export class M4A {
     p.voicegroup = mem.u32(header + 4);
     p.tempoD = 150; p.tempoU = 0x100; p.tempoI = 150; p.tempoC = 0;
     p.fadeOI = 0;
+    p.fadeIn = null;
     p.clock = 0;
     for (let i = 0; i < p.maxTracks; i++) {
       const t = newTrack();
@@ -158,6 +172,18 @@ export class M4A {
 
   mplayMain(p) {
     if (p.status & 0x80000000) return;
+    if (p.fadeIn) {
+      const fade = p.fadeIn;
+      // The native routine decrements the timer before applying the increment.
+      if (--fade.remaining > 0) fade.value = Math.min(0x10000, fade.value + fade.delta);
+      const volume = (fade.value >> 11) * 2;
+      for (const t of p.tracks) {
+        if (!(t.flags & FLG_EXIST)) continue;
+        t.volX = volume;
+        t.flags |= FLG_VOLSET;
+      }
+      if (!fade.remaining) p.fadeIn = null;
+    }
     if (p.fadeOI) this.fadeOutBody(p);
     p.tempoC += p.tempoI;
     while (p.tempoC >= 150) {
@@ -261,7 +287,7 @@ export class M4A {
         let key = t.key;
         if (mem.u8(t.cmdPtr) < 0x80) { key = this.readArg(t); t.key = key; }
         for (const c of t.chans) {
-          if ((c.status & SF_ON) && !(c.status & SF_STOP) && c.key === key && c.gateTime === 0) c.status |= SF_STOP;
+          if ((c.status & SF_ON) && !(c.status & SF_STOP) && c.midiKey === key && c.gateTime === 0) c.status |= SF_STOP;
         }
         break;
       }
@@ -334,7 +360,7 @@ export class M4A {
     this.clearChain(c);
     if (this.trkVolPitPending(t)) this.trkVolPitSet(t);
     Object.assign(c, {
-      track: t, player: p, priority, key: t.key, midiKey: key, rhythmPan,
+      track: t, player: p, priority, key: tone.type & 8 ? tone.key : key, midiKey: key, rhythmPan,
       type: tone.type, wav: tone.wav, length: tone.length, panSweep: tone.panSweep,
       attack: tone.attack, decay: tone.decay, sustain: tone.sustain, release: tone.release,
       echoVolume: t.echoVolume, echoLength: t.echoLength, gateTime: t.gateTime, velocity: t.velocity,
@@ -374,7 +400,8 @@ export class M4A {
     c.leftVolume = Math.min(255, l);
     const key = c.midiKey + t.keyM;
     if (c.type & 7) c.frequency = this.cgbFreq(c.type & 7, key, t.pitM);
-    else if (!(c.type & 8)) c.frequency = this.midiKeyToFreq(c.wav, key, t.pitM); // type 8 plays at the mixer rate
+    else if (c.type & 8) c.frequency = 18000;
+    else c.frequency = this.midiKeyToFreq(c.wav, key, t.pitM);
   }
 
   midiKeyToFreq(wav, key, fine) {
