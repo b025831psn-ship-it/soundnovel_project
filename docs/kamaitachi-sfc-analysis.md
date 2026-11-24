@@ -114,6 +114,13 @@ destination `$8C/$8D`와 remaining length `$8E/$8F`를 갱신하는 경로 및 `
 acknowledge까지 비공개 `data/spc-driver-map.json`에 고정했다. CPU queue의 29개
 message와 SPC command 25개는 서로 다른 dispatch 계층이다.
 
+이름 입력은 `$04:893D`의 COP frame 이후 `$04:89FF`에서 frame/input을 기다린다.
+`$0399` controller word를 DP `$05`에 latch한 뒤 `$04:8A10`부터 START, A/L,
+B, X, Y와 8방향 d-pad의 13개 handler를 고정 순서로 호출한다. DP `$03/$04`는
+current/target grid position이며, d-pad는 `$0F00` mask로 상반 방향 동시 입력을
+거부한다. 제출 완료 bit `$2000`과 OAM/tilemap redraw flag도 비공개
+`data/name-input-map.json`에서 opcode signature로 검증한다.
+
 ## 기준 코어 probe 대조
 
 native Snes9x probe에서 CHUN SOFT logo, SFC title, 음향 설정, 기본 이름 확인
