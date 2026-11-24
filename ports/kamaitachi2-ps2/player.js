@@ -16,7 +16,6 @@ let data, screen, groups, editor, pages;
 let scene = 'loading', index = 0, role = 0, page = 0, revealed = 0;
 let names = [], autosave = false, slot = 0, entered = 0, lastFrame, userNotice = '';
 let idleMovie = 'pre_dv';
-let selectedRoute;
 const padDown = new Set();
 const images = {};
 
@@ -114,7 +113,6 @@ function beginStory() {
 }
 
 function storyText() {
-  if (scene === 'complete' && selectedRoute) return selectedRoute.text;
   return pages?.[page]?.text?.() ?? '';
 }
 
@@ -126,7 +124,7 @@ function printPage() {
     enter('name');
   } else {
     revealed = block.append ? pages[page - 1].text().length : 0;
-    enter('story');
+    enter(block.end ? 'complete' : 'story');
   }
 }
 
@@ -137,6 +135,8 @@ function makePages(s) {
   const partnerLead = () => second.slice(2, 5).join('');
   const partnerLine = () => last[0] + names[1] + last[1];
   const classmates = () => partnerLine() + '\n' + last[2] + names[1] + last[3];
+  const north = s.my01_0076;
+  const outcome = target => data.prologueChoice.find(route => route.target === target).text;
   return [
     { center:true, book:true, text: () => start.join('') },
     { text: () => first[0] },
@@ -151,6 +151,10 @@ function makePages(s) {
     { checkpoint:true, text: partnerLine },
     { append:true, text: classmates },
     { append:true, choice:true, text: () => classmates() + '\n' + last[4] + names[1] + last[5] + '\n' + last[6] },
+    { target:'my01_0073', end:true, text: () => outcome('my01_0073') },
+    { target:'my01_0075', book:true, text: () => outcome('my01_0075') },
+    { text: () => north[0] },
+    { append:true, end:true, book:true, text: () => north[0] + '\n' + north[1] + names[1] + north[2] + '\n' + north[3] + names[1] + north[4] },
   ];
 }
 
@@ -205,9 +209,8 @@ function step(key) {
       index = (index + (key === 'up' ? -1 : 1) + data.prologueChoice.length) % data.prologueChoice.length;
       cue('move'); announce();
     } else if (key === 'circle') {
-      selectedRoute = data.prologueChoice[index];
-      revealed = 0;
-      cue('confirm'); enter('complete');
+      page = pages.findIndex(block => block.target === data.prologueChoice[index].target);
+      cue('confirm'); printPage();
     }
     return;
   }

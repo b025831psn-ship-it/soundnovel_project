@@ -113,8 +113,11 @@ try {
     await key('s'); await at('confirm'); await key('ArrowUp'); await key('Enter');
     if (!i) await advanceTo('name');
   }
-  await advanceTo('choice'); await key('Enter'); await at('complete');
+  await advanceTo('choice'); await key('Enter'); await at('story');
   assert.equal(await label(), '急速に親しくなった。');
+  await advanceTo('complete');
+  assert.match(await label(), /真理のお父さんが北海道に転勤/);
+  assert.match(await label(), /真理は大学をやめ、北海道に引っ越してしまった。$/);
   const saved = await page.evaluate(()=>JSON.parse(localStorage.getItem('soundnovel.slps25132.opening.v1')));
   assert.deepEqual(saved,{names:['透ああああぁ','真理'],slot:1});
   await page.reload(); await page.getByRole('button',{name:'게임 시작'}).click();

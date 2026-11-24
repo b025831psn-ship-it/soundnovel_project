@@ -80,14 +80,14 @@ def scenario_strings(data):
     story = {}
     for current, following in zip(labels, labels[1:]):
         name = current[1].decode("ascii")
-        if name in {"my01_0010", "my01_0012", "my01_0022", "my01_0040", "my01_0055", "my01_0070"}:
+        if name in {"my01_0010", "my01_0012", "my01_0022", "my01_0040", "my01_0055", "my01_0070", "my01_0076"}:
             block = data[current.end():following.start()]
             story[name] = [s.decode("cp932") for s in re.findall(rb"\x02([^\x00-\x1f]+)\x03", block)]
         if name in {"my01_0047", "my01_0062"}:
             expected = 0x12 if name.endswith("0047") else 0x13
             if data[following.start() - 1] != expected:
                 raise ValueError(f"Unexpected name command in {name}")
-    if len(story) != 6:
+    if len(story) != 7:
         raise ValueError("Opening labels could not be resolved")
     return story
 
