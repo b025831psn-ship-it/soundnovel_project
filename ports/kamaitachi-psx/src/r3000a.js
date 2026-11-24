@@ -199,12 +199,56 @@ export class R3000A {
       }
       case 0x20: this.regs[rt] = u32(s8(this.memory.u8(this.regs[rs] + s16(imm)))); break;
       case 0x21: this.regs[rt] = u32(s16(this.memory.u16(this.regs[rs] + s16(imm)))); break;
+      case 0x22: {
+        const address = u32(this.regs[rs] + s16(imm));
+        const value = this.memory.u32(address & ~3);
+        switch (address & 3) {
+          case 0: this.regs[rt] = u32((this.regs[rt] & 0x00ffffff) | (value << 24)); break;
+          case 1: this.regs[rt] = u32((this.regs[rt] & 0x0000ffff) | (value << 16)); break;
+          case 2: this.regs[rt] = u32((this.regs[rt] & 0x000000ff) | (value << 8)); break;
+          case 3: this.regs[rt] = value; break;
+        }
+        break;
+      }
       case 0x23: this.regs[rt] = this.memory.u32(this.regs[rs] + s16(imm)); break;
       case 0x24: this.regs[rt] = this.memory.u8(this.regs[rs] + s16(imm)); break;
       case 0x25: this.regs[rt] = this.memory.u16(this.regs[rs] + s16(imm)); break;
+      case 0x26: {
+        const address = u32(this.regs[rs] + s16(imm));
+        const value = this.memory.u32(address & ~3);
+        switch (address & 3) {
+          case 0: this.regs[rt] = value; break;
+          case 1: this.regs[rt] = u32((this.regs[rt] & 0xff000000) | (value >>> 8)); break;
+          case 2: this.regs[rt] = u32((this.regs[rt] & 0xffff0000) | (value >>> 16)); break;
+          case 3: this.regs[rt] = u32((this.regs[rt] & 0xffffff00) | (value >>> 24)); break;
+        }
+        break;
+      }
       case 0x28: this.memory.set8(this.regs[rs] + s16(imm), this.regs[rt]); break;
       case 0x29: this.memory.set16(this.regs[rs] + s16(imm), this.regs[rt]); break;
+      case 0x2a: {
+        const address = u32(this.regs[rs] + s16(imm));
+        const aligned = address & ~3, value = this.memory.u32(aligned), source = this.regs[rt];
+        switch (address & 3) {
+          case 0: this.memory.set32(aligned, (value & 0xffffff00) | (source >>> 24)); break;
+          case 1: this.memory.set32(aligned, (value & 0xffff0000) | (source >>> 16)); break;
+          case 2: this.memory.set32(aligned, (value & 0xff000000) | (source >>> 8)); break;
+          case 3: this.memory.set32(aligned, source); break;
+        }
+        break;
+      }
       case 0x2b: this.memory.set32(this.regs[rs] + s16(imm), this.regs[rt]); break;
+      case 0x2e: {
+        const address = u32(this.regs[rs] + s16(imm));
+        const aligned = address & ~3, value = this.memory.u32(aligned), source = this.regs[rt];
+        switch (address & 3) {
+          case 0: this.memory.set32(aligned, source); break;
+          case 1: this.memory.set32(aligned, u32((value & 0x000000ff) | (source << 8))); break;
+          case 2: this.memory.set32(aligned, u32((value & 0x0000ffff) | (source << 16))); break;
+          case 3: this.memory.set32(aligned, u32((value & 0x00ffffff) | (source << 24))); break;
+        }
+        break;
+      }
       default: throw new Error(`unimplemented R3000A opcode 0x${op.toString(16)} at 0x${at.toString(16)}`);
     }
   }

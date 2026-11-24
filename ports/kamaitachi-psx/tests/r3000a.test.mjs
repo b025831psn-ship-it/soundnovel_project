@@ -169,3 +169,29 @@ test("RFE restores the previous interrupt mode", () => {
   cpu.step();
   assert.equal(cpu.cop0[12], 0x00000401);
 });
+
+test("LWL and LWR merge an unaligned little-endian word", () => {
+  const memory = new PsxMemory();
+  memory.bytes.set([0xaa, 0x11, 0x22, 0x33, 0x44, 0xbb, 0xcc, 0xdd], 0x100);
+  memory.set32(0, (0x22 << 26) | (1 << 21) | (2 << 16) | 3); // lwl v0,3(at)
+  memory.set32(4, (0x26 << 26) | (1 << 21) | (2 << 16)); // lwr v0,0(at)
+  const cpu = new R3000A({ memory });
+  cpu.regs[1] = 0x101;
+  cpu.regs[2] = 0xdeadbeef;
+  cpu.step();
+  cpu.step();
+  assert.equal(cpu.regs[2], 0x44332211);
+});
+
+test("SWL and SWR store an unaligned little-endian word", () => {
+  const memory = new PsxMemory();
+  memory.bytes.fill(0xaa, 0x100, 0x108);
+  memory.set32(0, (0x2a << 26) | (1 << 21) | (2 << 16) | 3); // swl v0,3(at)
+  memory.set32(4, (0x2e << 26) | (1 << 21) | (2 << 16)); // swr v0,0(at)
+  const cpu = new R3000A({ memory });
+  cpu.regs[1] = 0x101;
+  cpu.regs[2] = 0x44332211;
+  cpu.step();
+  cpu.step();
+  assert.deepEqual([...memory.bytes.subarray(0x100, 0x106)], [0xaa, 0x11, 0x22, 0x33, 0x44, 0xaa]);
+});
