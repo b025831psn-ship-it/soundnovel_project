@@ -127,8 +127,8 @@ function printPage() {
     revealed = block.append ? pages[page - 1].text().length : 0;
     textWaits = block.waits?.() ?? [];
     if (block.movie) {
-      playMovie(block.movie, null);
-      playMusic(block.music);
+      playMovie(block.movie, block.loopMovie ? () => playMovie(block.loopMovie, null, true) : null);
+      if (block.music) playMusic(block.music);
     }
     enter(block.end ? 'complete' : 'story');
   }
@@ -209,9 +209,16 @@ function makePages(s) {
     { background:'my0002', append:true, text:beforeGreeting },
     { background:'my0002', append:true, text:greeting, waits:greetingWaits },
     { background:'my0002', append:true, autoAdvance:true, text: () => greeting() + s.phoneGreeting.at(-1).text },
-    { background:'my0000', positioned:s.my02_0010.lines, end:true,
-      waits: () => [{offset:0, remaining:s.my02_0010.waitBefore * 1000 / 59.94}],
+    { background:'my0000', positioned:s.my02_0010.lines, autoAdvance:true,
+      waits: () => [{offset:0, remaining:s.my02_0010.waitBefore * 1000 / 59.94},
+        {offset:s.my02_0010.lines.reduce((size,line) => size + line.text.length, 0), remaining:s.my02_0010.waitAfter * 1000 / 59.94}],
       text: () => s.my02_0010.lines.map(run => run.text).join('') },
+    { movie:'my0003-1', loopMovie:'my0003-2', music:'k2h003.ogg', autoAdvance:true,
+      waits: () => [{offset:0, remaining:(s.my02_0015.introWaits[0] + s.my02_0015.introWaits[1]) * 1000 / 59.94}],
+      text: () => '' },
+    { movie:'my0005-1', loopMovie:'my0005-2', end:true,
+      waits: () => [{offset:0, remaining:s.my02_0015.introWaits[2] * 1000 / 59.94}],
+      text: () => s.my02_0015.events[0].text },
   ];
 }
 
@@ -274,6 +281,7 @@ function step(key) {
   if (scene === 'story' || scene === 'complete') {
     if (key === 'circle' || key === 'start') {
       if (revealed < storyText().length) revealed = textWaits[0]?.offset ?? storyText().length;
+      else if (textWaits.length) return;
       else if (scene === 'story' && pages[page].choice) enter('choice');
       else if (scene === 'story') { page++; printPage(); }
     }
@@ -316,6 +324,7 @@ function drawStory(time) {
     }
     return;
   }
+  if (block.movie && !text) return;
   if (!block.movie && !block.retainMovie) screen.background(background, background === 'my0645', time);
   const origin = block.background === 'my0000' ? data.invitationOrigin : {x:32, y:31};
   const y = block.center ? 189 : origin.y;
@@ -371,7 +380,7 @@ function frame(now) {
       if (wait.remaining <= 0) textWaits.shift();
     } else revealed = Math.min(wait?.offset ?? storyText().length, revealed + dt / 35);
     drawStory(time);
-    if (pages[page].autoAdvance && revealed >= storyText().length) { page++; printPage(); }
+    if (pages[page].autoAdvance && !textWaits.length && revealed >= storyText().length) { page++; printPage(); }
   } else if (scene === 'name' || scene === 'confirm') {
     screen.background('my0645', true, time);
     if (scene === 'name') screen.editor(editor, role, time);

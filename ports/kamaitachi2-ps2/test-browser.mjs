@@ -159,8 +159,7 @@ try {
   await page.waitForTimeout(3000);
   await key('Enter');
   assert.match(await label(), /真理？ひさしぶりだね……」$/);
-  await at('complete');
-  assert.equal(await label(), '八月十五日正午');
+  await page.waitForFunction(() => document.querySelector('canvas').getAttribute('aria-label') === '八月十五日正午');
   await page.waitForFunction(() => {
     const ctx = document.querySelector('canvas').getContext('2d');
     return [[220,150],[270,230]].every(([x,y]) => {
@@ -168,6 +167,15 @@ try {
       return pixels.some((value,i) => i % 4 === 0 && value > 200);
     });
   });
+  for (const clip of ['my0003-1','my0003-2','my0005-1','my0005-2']) {
+    await page.waitForFunction(name => {
+      const v = document.querySelector('video');
+      return v.src.endsWith('/' + name + '.mp4') && v.videoWidth === 640 && v.currentTime > 0;
+    }, clip);
+  }
+  await at('complete');
+  assert.equal(await label(), '「暑いわね」');
+  assert.ok([...requests].some(url => url.endsWith('/k2h003.ogg')));
   const saved = await page.evaluate(()=>JSON.parse(localStorage.getItem('soundnovel.slps25132.opening.v1')));
   assert.deepEqual(saved,{names:['透ああああぁ','真理'],slot:1});
   await page.reload(); await page.getByRole('button',{name:'게임 시작'}).click();
