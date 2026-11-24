@@ -54,13 +54,13 @@ export class Screen {
     return tile;
   }
 
-  text(str, x, y, { scale = 1, max = Infinity, leading = 40, spacing = 1, readings, colors, tint } = {}) {
+  text(str, x, y, { scale = 1, max = Infinity, leading = 40, spacing = 1, advanceScale = scale, readings, colors, tint } = {}) {
     let px = x, py = y, offset = 0;
     for (const ch of str) {
       const rgb = colors?.get(offset);
       if (rgb) tint = rgb.every(channel => channel === 128) ? undefined : rgb;
       const glyph = this.data.font[ch];
-      const advance = ((glyph?.[2] ?? 16) + spacing) * scale;
+      const advance = ((glyph?.[2] ?? 16) + spacing) * advanceScale;
       if (ch === '\n' || px + advance > x + max) { px = x; py += leading; }
       const reading = readings?.get(offset);
       offset += ch.length;
