@@ -145,12 +145,21 @@ try {
   for (let i=0; i<8 && !(await label()).endsWith('出会ったことがないからだ。'); i++) await key('Enter');
   assert.match(await label(), /^この『我孫子武丸』というのは、『かまいたちの夜』/);
   assert.match(await label(), /出会ったことがないからだ。$/);
-  await advanceTo('complete');
+  for (let i=0; i<10 && !(await label()).endsWith('会えるかもしれない……。'); i++) await key('Enter');
   assert.deepEqual((await label()).split('\n'), [
     'この招待状は、真理にも届いているのだろうか。',
     'ぼくは、すぐに、真理に電話をした。',
     'もしかしたら、また、真理と会えるかもしれない……。',
   ]);
+  await key('Enter');
+  await key('Enter');
+  assert.match(await label(), /「もしもし・・・・・・あ、真理？$/);
+  await key('Enter');
+  assert.equal(await canvas.getAttribute('data-scene'), 'story');
+  await page.waitForTimeout(3000);
+  await key('Enter');
+  await at('complete');
+  assert.match(await label(), /真理？ひさしぶりだね……」$/);
   const saved = await page.evaluate(()=>JSON.parse(localStorage.getItem('soundnovel.slps25132.opening.v1')));
   assert.deepEqual(saved,{names:['透ああああぁ','真理'],slot:1});
   await page.reload(); await page.getByRole('button',{name:'게임 시작'}).click();

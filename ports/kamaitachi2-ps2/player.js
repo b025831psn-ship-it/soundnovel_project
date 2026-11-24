@@ -16,6 +16,7 @@ let data, screen, groups, editor, pages;
 let scene = 'loading', index = 0, role = 0, page = 0, revealed = 0;
 let names = [], autosave = false, slot = 0, entered = 0, lastFrame, userNotice = '';
 let idleMovie = 'pre_dv';
+let textWaits = [];
 const padDown = new Set();
 const images = {};
 
@@ -124,6 +125,7 @@ function printPage() {
     enter('name');
   } else {
     revealed = block.append ? pages[page - 1].text().length : 0;
+    textWaits = block.waits?.() ?? [];
     if (block.movie) {
       playMovie(block.movie, null);
       playMusic(block.music);
@@ -144,6 +146,19 @@ function makePages(s) {
   const phone = s.my01_0085;
   const invitationQuestion = () => phone[2] + names[1] + phone[3];
   const phoneCall = () => invitationQuestion() + '\n' + phone[4] + names[1] + phone[5];
+  const beforeGreeting = () => phoneCall() + '\n' + phone[6] + names[1] + phone[7];
+  const greetingParts = s.phoneGreeting.slice(0, s.phoneGreeting.findIndex(part => part.pause) + 1);
+  const partText = part => part.name === undefined ? part.text : names[part.name];
+  const greeting = () => beforeGreeting() + '\n' + greetingParts.map(partText).join('');
+  function greetingWaits() {
+    let offset = beforeGreeting().length + 1;
+    const waits = [];
+    for (const part of greetingParts) {
+      if (part.wait) waits.push({offset, remaining:part.wait * 1000 / 59.94});
+      offset += partText(part).length;
+    }
+    return waits;
+  }
   const author = s.my01_0081;
   const introduction = () => author.slice(0, 9).join('');
   const sceneryRuby = {word:middle[4].slice(0, 4), readings:middle.slice(0, 4)};
@@ -191,7 +206,9 @@ function makePages(s) {
     { background:'my0002', append:true, book:true, text: () => introduction() + '\n' + author.slice(9).join('') },
     { background:'my0002', text:invitationQuestion },
     { background:'my0002', append:true, text:phoneCall },
-    { background:'my0002', append:true, end:true, text: () => phoneCall() + '\n' + phone[6] + names[1] + phone[7] },
+    { background:'my0002', append:true, text:beforeGreeting },
+    { background:'my0002', append:true, text:greeting, waits:greetingWaits },
+    { background:'my0002', append:true, end:true, text: () => greeting() + s.phoneGreeting.at(-1).text },
   ];
 }
 
@@ -253,7 +270,7 @@ function step(key) {
   }
   if (scene === 'story' || scene === 'complete') {
     if (key === 'circle' || key === 'start') {
-      if (revealed < storyText().length) revealed = storyText().length;
+      if (revealed < storyText().length) revealed = textWaits[0]?.offset ?? storyText().length;
       else if (scene === 'story' && pages[page].choice) enter('choice');
       else if (scene === 'story') { page++; printPage(); }
     }
@@ -344,7 +361,11 @@ function frame(now) {
       screen.text(route.text, 32, y, {scale:.91, max:580});
     });
   } else if (scene === 'story' || scene === 'complete') {
-    revealed = Math.min(storyText().length, revealed + dt / 35);
+    const wait = textWaits[0];
+    if (wait && revealed >= wait.offset) {
+      wait.remaining -= dt;
+      if (wait.remaining <= 0) textWaits.shift();
+    } else revealed = Math.min(wait?.offset ?? storyText().length, revealed + dt / 35);
     drawStory(time);
   } else if (scene === 'name' || scene === 'confirm') {
     screen.background('my0645', true, time);
