@@ -12,6 +12,6 @@
 node --test sfc-vm/tests
 ```
 
-초기 구현은 reset 직후의 CPU 모드 전환과 PPU/CPU I/O 초기화를 실제 opcode로
-실행합니다. 미구현 opcode는 즉시 예외를 내므로, reference trace와 대조하면서
-한 명령씩 범위를 넓힐 수 있습니다.
+초기 구현은 reset 직후의 CPU 모드 전환, WRAM 상태 비교, PPU/DMA 레지스터 설정과
+LoROM SRAM checksum 진입까지 실제 opcode로 실행합니다. 미구현 opcode는 즉시
+예외를 내므로, reference trace와 대조하면서 한 명령씩 범위를 넓힐 수 있습니다.

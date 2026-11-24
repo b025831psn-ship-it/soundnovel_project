@@ -27,6 +27,12 @@ trace는 비공개 `kamaitachi-sfc-kor` 저장소에서 관리합니다.
 이 단계는 추정 UI가 아니라 실제 opcode와 I/O write를 실행한 결과이며,
 `sfc-vm/tests/reset.test.mjs`가 공개 가능한 짧은 reset byte fixture로 고정한다.
 
+reset preamble 뒤에는 `$01:829E`의 4-word 표를 WRAM `$03E1`과 비교하고,
+DMA channel 0을 `$01:829C`에서 PPU `$2180`으로 향하도록 설정한다. 이어
+`$70:0800/$70:1000/$70:1800`의 LoROM SRAM 세 구간을 XOR해 초기화 상태를
+판정한다. VM은 header의 SRAM size code `$03`에 맞춰 이 창을 8 KiB로
+미러링한다. 현재 실제 ROM 실행은 `$00:8231`까지 172명령을 통과한다.
+
 ## 관통 조건
 
 - reference emulator와 JS VM의 instruction trace(PC/opcode/P/E/M/X/A/X/Y/S/D/DBR)
