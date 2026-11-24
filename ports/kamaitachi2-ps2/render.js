@@ -1,4 +1,6 @@
 const blue = 'rgba(48,84,137,.80)';
+const editorInk = { tint: Array(3).fill(219 * 128 / 255) };
+const editorDimInk = { tint: Array(3).fill(109 * 128 / 255) };
 
 export class Screen {
   constructor(canvas, images, data) {
@@ -38,9 +40,8 @@ export class Screen {
     return tile;
   }
 
-  text(str, x, y, { scale = 1, max = Infinity, leading = 40, spacing = 1, readings, colors } = {}) {
+  text(str, x, y, { scale = 1, max = Infinity, leading = 40, spacing = 1, readings, colors, tint } = {}) {
     let px = x, py = y, offset = 0;
-    let tint;
     for (const ch of str) {
       const rgb = colors?.get(offset);
       if (rgb) tint = rgb.every(channel => channel === 128) ? undefined : rgb;
@@ -201,14 +202,15 @@ export class Screen {
   }
 
   editor(editor, role, time) {
+    const glyph = (ch, x, y, dim = false) => {
+      this.text(ch, x, y, dim ? editorDimInk : editorInk);
+    };
     this.rect(0, 28, 640, 36);
     this.sprite('name_e01', 0, role ? 33 : 0, role ? 183 : 94, 32, role ? 63 : 123, 29, role ? 150 : 91, 34);
     this.sprite('name_e01', 160, 0, 93, 32, 215, 29, 96, 34);
     for (let i = 0; i < 6; i++) {
-      this.c.globalAlpha = i < editor.value.length ? 1 : .61;
-      this.text(editor.value[i] ?? '＊', 352 + 32 * i, 31);
+      glyph(editor.value[i] ?? '＊', 352 + 32 * i, 31, i >= editor.value.length);
     }
-    this.c.globalAlpha = 1;
     if (time % 1 < .65) this.rect(352 + 32 * Math.min(5, editor.value.length), 61, 28, 2, '#eee');
     this.rect(136, 74, 368, 32);
     this.sprite('name_e01', 0, 234, 31, 21, 80, 80);
@@ -216,10 +218,8 @@ export class Screen {
     this.sprite('name_e01', 242, 65, 14, 22, 119, 79, 13, 19);
     this.sprite('name_e01', 242, 90, 14, 22, 506, 79, 13, 19);
     editor.groups.forEach((g, i) => {
-      this.c.globalAlpha = i === editor.group ? 1 : .67;
-      this.text(g[0][0], 145 + 32 * i, 76);
+      glyph(g[0][0], 145 + 32 * i, 76, i !== editor.group);
     });
-    this.c.globalAlpha = 1;
     this.rect(75, 116, 490, 262);
     for (let r = editor.scroll; r < Math.min(editor.rows.length, editor.scroll + 8); r++) {
       editor.rows[r].forEach((ch, col) => {
@@ -227,7 +227,7 @@ export class Screen {
         const x = 80 + 32 * col, y = 119 + 32 * (r - editor.scroll);
         if (col === editor.column && r === editor.row) this.rect(x, y, 32, 32, '#395d18');
         else if (!col) this.rect(x, y, 31, 31, '#444954');
-        this.text(ch, x + 1, y + 1);
+        glyph(ch, x + 1, y + 1);
       });
     }
     if (editor.scroll > 0) this.sprite('name_e01', 50, 136, 28, 15, 306, 106);
