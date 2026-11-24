@@ -80,7 +80,17 @@ try {
   await key('Escape'); await key('q'); await key('w'); await key('ArrowRight'); await key('Enter');
   assert.equal(await label(), afterRepeatedKey);
   await key('Escape'); await key('ArrowLeft');
-  await key('ArrowRight');
+  // The browser can lose focus before delivering the arrow's keyup event.
+  await page.keyboard.down('ArrowRight');
+  await page.evaluate(async () => {
+    window.dispatchEvent(new FocusEvent('blur'));
+    const start = performance.now();
+    while (await new Promise(requestAnimationFrame) - start < 450) {}
+  });
+  await page.keyboard.up('ArrowRight');
+  await key('Enter');
+  assert.equal(await label(), afterRepeatedKey);
+  await key('Escape');
   for (let i=0; i<9; i++) await key('ArrowDown');
   await page.getByRole('button',{name:'L1',exact:true}).click();
   await key('Enter'); assert.equal(await label(),'주인공 透Ａ');
