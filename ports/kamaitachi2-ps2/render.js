@@ -284,7 +284,10 @@ export class Screen {
     this.text('はい', 272, 254, {spacing:0});
     this.text('いいえ', 272, 286, {spacing:0});
     this.c.restore();
+    this.c.save();
+    this.c.globalAlpha = .73;
     this.sprite('sys_fc01', 0, 73, 15, 22, 248, 265 + 32 * selection, 15, 14);
+    this.c.restore();
     this.footer(false);
   }
 }
