@@ -24,11 +24,28 @@ const routes = new Map([
   ['/AGB-AKZJ.gba', [path.join(__dirname, '..', 'AGB-AKZJ.gba'), 'application/octet-stream']]
 ]);
 
+// The native-bytecode port (ports/kamaitachi-gba) and its extracted cartridge data (port-data).
+const portTypes = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8',
+  '.json': 'application/json; charset=utf-8', '.bin': 'application/octet-stream' };
+function portRoute(url) {
+  for (const [prefix, dir, exts] of [
+    ['/ports/kamaitachi-gba/', path.join(__dirname, 'ports', 'kamaitachi-gba'), ['.html', '.js']],
+    ['/kamaitachi-gba-kor/port-data/', path.join(__dirname, 'kamaitachi-gba-kor', 'port-data'), ['.json', '.bin']],
+  ]) {
+    if (!url.startsWith(prefix)) continue;
+    const file = path.join(dir, decodeURIComponent(url.slice(prefix.length)) || 'index.html');
+    const ext = path.extname(file);
+    if (!file.startsWith(dir + path.sep) || !exts.includes(ext) || /(^|[\\/])(tests?|tools)[\\/]/.test(file.slice(dir.length))) return null;
+    return [file, portTypes[ext]];
+  }
+  return null;
+}
+
 http.createServer((request, response) => {
   const url = request.url.split('?')[0];
   // scene images from kamaitachi-gba-kor/tools/export_images.py: NNN.png and palette variants NNN-v.png
   const bg = /^\/kamaitachi-gba-kor\/assets\/bg\/(\d{3}(?:-[1-3])?\.png)$/.exec(url);
-  const route = bg ? [path.join(__dirname, 'kamaitachi-gba-kor', 'assets', 'bg', bg[1]), 'image/png'] : routes.get(url);
+  const route = bg ? [path.join(__dirname, 'kamaitachi-gba-kor', 'assets', 'bg', bg[1]), 'image/png'] : routes.get(url) ?? portRoute(url);
   if (!route || !['HEAD', 'GET'].includes(request.method)) {
     response.writeHead(404).end();
     return;
