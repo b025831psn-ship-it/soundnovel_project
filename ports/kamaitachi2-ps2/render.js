@@ -220,9 +220,12 @@ export class Screen {
     this.sprite('name_e01', 160, 0, 32, 32, 302, 29);
     this.sprite('name_e01', 185, 32, 67, 32, 335, 29);
     const left = role ? 48 : 112;
-    this.text(this.data.prompts[role] + name + '。', left, 144, {scale:.90});
-    this.text(this.data.prompts[2], 176, 199, {scale:.90});
-    this.yesNo(235, 252, selection, 138);
+    this.text(this.data.prompts[role] + name + '。', left, 144, {scale:.96});
+    this.text(this.data.prompts[2], 176, 199, {scale:.96});
+    this.rect(235, 252, 138, 72);
+    this.sprite('sys_fc01', 134, 72, 48, 24, 271, 258, 60, 28);
+    this.sprite('sys_fc01', 191, 72, 60, 24, 271, 290, 78, 28);
+    this.sprite('sys_fc01', 0, 73, 15, 22, 248, 264 + 32 * selection, 15, 17);
     this.footer(false);
   }
 }
