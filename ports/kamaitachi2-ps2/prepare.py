@@ -137,9 +137,12 @@ def prepare(image, output):
                 video(title, stage / "title-1.mp4")
             elif segment != loop:
                 raise ValueError("Unrecognized title loop in MMV")
+        recollection = stage / "mo0001.m2v"
+        recollection.write_bytes(asset("GRA/MO/mo0001.m2v"))
+        video(recollection, stage / "mo0001.mp4")
         opening_assets(disc, stage, encode)
         for file in stage.iterdir():
-            if file.suffix in {".mp4", ".png", ".ogg", ".json"} or file.name in {"move.wav", "confirm.wav"}:
+            if file.suffix in {".mp4", ".png", ".ogg", ".json"} or file.name in {"move.wav", "confirm.wav", "cancel.wav"}:
                 os.replace(file, assets / file.name)
     for filename in ("index.html", "player.css", "player.js", "render.js", "names.js"):
         shutil.copyfile(Path(__file__).with_name(filename), output / filename)
