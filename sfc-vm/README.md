@@ -18,3 +18,6 @@ LoROM SRAM checksum 진입까지 실제 opcode로 실행합니다. 미구현 opc
 예외를 내므로, reference trace와 대조하면서 한 명령씩 범위를 넓힐 수 있습니다.
 장시간 runner는 trace 객체를 전부 보관하지 않고 마지막 상태만 유지하며, 원본의
 `$00:825D` VBlank 대기 루프에서 native NMI vector를 호출합니다.
+DMA mode 0–7의 B-bus 패턴과 VRAM/CGRAM/OAM/WRAM data port를 모델링해 원본이
+생성한 PPU 메모리와 전송 통계를 보존합니다. auto-joypad 결과는 controller 1의
+16-bit SNES 버튼 mask로 공급합니다.

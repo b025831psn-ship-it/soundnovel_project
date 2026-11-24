@@ -36,6 +36,12 @@ SPC700 IPL 업로드와 `Chun` → `SOFT` 드라이버 identity handshake를 통
 VBlank NMI를 공급한 실제 ROM 실행은 166 frame, 126만 명령 이상을 지나
 타이틀 초기화용 데이터 처리 루틴까지 진행한다.
 
+PPU 관통 단계에서는 `$420B` DMA의 mode별 B-bus 패턴을 실행해 `$2118/$2119`
+VRAM, `$2122` CGRAM, `$2104` OAM, `$2180` WRAM port의 결과를 별도 메모리에
+보존한다. 2백만 명령 기준 forced blank가 해제된 밝기 `$0F`와 CGRAM/OAM
+변경을 확인했으며, 장시간 runner는 각 destination별 transfer/byte 수와 세 PPU
+메모리 SHA-256을 출력한다.
+
 ## 관통 조건
 
 - reference emulator와 JS VM의 instruction trace(PC/opcode/P/E/M/X/A/X/Y/S/D/DBR)

@@ -102,3 +102,31 @@ test('enters the native NMI vector with a restorable interrupt frame', () => {
   cpu.step();
   assert.equal(cpu.address(), 0x024567);
 });
+
+test('DMA mode 1 writes source bytes through the VRAM data ports', () => {
+  const bus = new SfcBus(fixture());
+  bus.wram.set([0x11, 0x22, 0x33, 0x44], 0x100);
+  bus.write8(0x2115, 0x80);
+  bus.write16(0x2116, 0);
+  bus.write8(0x4300, 1);
+  bus.write8(0x4301, 0x18);
+  bus.write16(0x4302, 0x0100);
+  bus.write8(0x4304, 0x7e);
+  bus.write16(0x4305, 4);
+  bus.write8(0x420b, 1);
+  assert.deepEqual([...bus.vram.slice(0, 4)], [0x11, 0x22, 0x33, 0x44]);
+  assert.deepEqual(bus.events.at(-1), { kind: 'dma', channel: 0, bytes: 4, destination: 0x2118 });
+});
+
+test('NMI latches the standard auto-joypad result', () => {
+  const rom = fixture();
+  rom[0x7fea] = 0x00;
+  rom[0x7feb] = 0x80;
+  const bus = new SfcBus(rom);
+  const cpu = new Cpu65816(bus);
+  cpu.e = false;
+  bus.write8(0x4200, 1);
+  bus.setController1(0x8010); // A + Start
+  cpu.nmi();
+  assert.equal(bus.read16(0x4218), 0x8010);
+});
