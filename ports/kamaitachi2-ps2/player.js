@@ -275,11 +275,11 @@ function makePages(s) {
   return [
     { center:true, book:true, text: () => start.join(''),
       waits:() => [{offset:0, remaining:120 * 1000 / 59.94}], speeds:[{offset:0, speed:0}] },
-    { music:'k1a001.ogg', text: () => first[0], textY:47, advanceMark:{x:33, y:133},
+    { music:'k1a001.ogg', text: () => first[0], advanceMark:{x:33, y:117},
       waits:() => [{offset:0, remaining:60 * 1000 / 59.94}] },
-    { append:true, book:true, textY:47, advanceMark:{x:36, y:173}, text: () => first[0] + '\n' + first[1] + s.my01_0022[0] },
-    { text: () => hero[1], textY:47, advanceMark:{x:39, y:93} },
-    { append:true, book:true, textY:47, advanceMark:{x:278, y:93}, text: () => hero[1] + '\n' + hero[2] },
+    { append:true, book:true, advanceMark:{x:36, y:157}, text: () => first[0] + '\n' + first[1] + s.my01_0022[0] },
+    { text: () => hero[1], advanceMark:{x:39, y:77} },
+    { append:true, book:true, advanceMark:{x:278, y:77}, text: () => hero[1] + '\n' + hero[2] },
     { name:0 },
     { text: heroLine },
     { append:true, text: () => heroLine() + '\n' + partnerLead(),
@@ -531,7 +531,7 @@ function drawStory(time) {
   if (!block.movie && !block.retainMovie) screen.background(background, background === 'my0645', time);
   const origin = block.background === 'my0000' ? data.invitationOrigin : {x:32, y:31};
   const scale = block.center || (background === 'my0645' && !block.movie && !block.retainMovie) ? .96 : .91;
-  const y = block.center ? 192 : (block.textY ?? origin.y);
+  const y = block.center ? 192 : origin.y;
   const x = block.center ? (640 - screen.width(storyText(), scale)) / 2 : origin.x;
   const rubies = block.rubies ?? (block.ruby ? [block.ruby] : []);
   const readings = rubies.length ? new Map() : undefined;
