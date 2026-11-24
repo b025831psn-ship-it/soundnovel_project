@@ -143,7 +143,6 @@ function newGame() {
 }
 
 function beginStory() {
-  playMusic('k1a001.ogg');
   page = 0;
   printPage();
 }
@@ -276,7 +275,7 @@ function makePages(s) {
   return [
     { center:true, book:true, text: () => start.join(''),
       waits:() => [{offset:0, remaining:120 * 1000 / 59.94}], speeds:[{offset:0, speed:0}] },
-    { text: () => first[0] },
+    { music:'k1a001.ogg', text: () => first[0] },
     { append:true, book:true, nextLine:true, text: () => first[0] + '\n' + first[1] + s.my01_0022[0] },
     { text: () => hero[1] },
     { append:true, book:true, text: () => hero[1] + '\n' + hero[2] },
