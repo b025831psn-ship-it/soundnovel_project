@@ -6,6 +6,7 @@ import { ObjTextSurface } from "./obj-text.js";
 import { NameEntry, NAME_PICTURES } from "./name-entry.js";
 import { Books, pageState, restoreData, restorePosition } from "./save.js";
 import { FlowMap, MapSurface, FLOW_COLUMNS, FLOW_ROWS, flowScaleX } from "./flow-map.js";
+import { Options, CONTROLS_PICTURE, TONE_PICTURE, CAST_PICTURES } from "./options.js";
 
 // Image ids passed to 08003878. 08000DC4 maps 0x2329-0x2331 to picture id - 0x2328 + 0xE7 and
 // 0x238C-0x2422 through the signed byte table at 08019400 (+0xE7).
@@ -47,7 +48,10 @@ const CURSOR_RETURN_TICK = 2;
 const CURSOR_HIDDEN = 2;
 
 // Palette bank 15 colors (BGR555) the title menu uses: BG1 box 0x0E, OBJ outline 1, white 2, grey 3.
+// BOX is what mGBA shows at the default 明度 and 彩度; BOX_RAW is the color before 08001D74
+// (both settings at 5 turn it into 0x15D9).
 const BOX = 0x15d9;
+const BOX_RAW = 0x1594;
 // OBJ palette 15 (mGBA, the 移動 screen): text, gray, pink links, page map colors, box colors.
 const OBJ_COLORS = {
   1: 0x0000, 2: 0x7fff, 3: 0x56b5, 4: 0x6dff, 5: 0x03e0, 6: 0x7ed6, 7: 0x3fff, 8: 0x7fff,
@@ -136,6 +140,8 @@ export class Boot {
     this.repeat = false; // 020289C4: d-pad auto-repeat
     this.repeatCount = 0;
     this.repeatKeys = 0;
+    this.titlePicture = TITLE;
+    this.menuPicture = MENU_PICTURE;
   }
 
   async load() {
@@ -147,7 +153,12 @@ export class Boot {
       const [glyphs, titles] = await Promise.all([this.assets.bin("ui/map-glyphs.bin"), this.assets.bin("ui/map-titles.bin")]);
       if (this.flow) this.flowMap = new FlowMap({ flow: this.flow, glyphs, titles });
     } catch { this.flowMap = null; }
-    for (const id of [LOGO, COPYRIGHT, TITLE, ...BOOKS, ...NAME_PICTURES, MENU_PICTURE]) {
+    try {
+      const [text, tables] = await Promise.all([this.assets.bin("ui/option-text.bin"), this.assets.bin("ui/option-tables.bin")]);
+      this.options = new Options({ boot: this, text, tables });
+    } catch { this.options = null; }
+    const optionPictures = this.options ? [CONTROLS_PICTURE, TONE_PICTURE, ...CAST_PICTURES] : [];
+    for (const id of [LOGO, COPYRIGHT, TITLE, ...BOOKS, ...NAME_PICTURES, MENU_PICTURE, ...optionPictures]) {
       const name = String(pictureIndex(id, this.pictureMap)).padStart(3, "0");
       const [tiles, palette] = await Promise.all([
         this.assets.bin(`bg/${name}.bin`),
@@ -222,6 +233,7 @@ export class Boot {
   // not drawn by this port.
   restore(book) {
     const state = book.state;
+    if (book.tone) Object.assign(this.screen.tone, book.tone); // 0800B2AE
     restoreData(this.vm, state);
     Object.assign(this.names, state.names ?? {});
     if (state.picture !== null && state.picture !== undefined) this.vm.scene?.load?.(state.picture);
@@ -341,12 +353,25 @@ export class Boot {
     if (late) this.screen.setBackground(tiles, palette, 0);
   }
 
+  // Frames the cartridge spends decoding or reading flash. The web version skips these pure
+  // loading pauses; `?timing=original` keeps them.
+  loadLag(frames) {
+    return this.originalLoadTiming === false ? 0 : frames;
+  }
+
   showPicture(id) {
     const { tiles, palette } = this.pictures.get(id);
     this.screen.setBackground(tiles, palette, 0);
   }
 
-  // 080065A8: set a slot's brightness at once.
+  // 080065A8(slot, level): the slot's maximum becomes level << 8 (0x100 at most) and the slot
+  // stands at half of it at once, so later fades (080063F4) stop there too.
+  setLevel(slot, level) {
+    this.vm.ram.brightness[slot].maximum = Math.min(level, 0x100) << 8;
+    this.setBrightness(slot, Math.min(level, 0x100) << 7);
+  }
+
+  // The slot's brightness at once, its maximum kept.
   setBrightness(slot, value) {
     const effect = this.vm.ram.brightness[slot];
     effect.current = effect.target = value;
@@ -495,7 +520,8 @@ export class Boot {
       this.layer = null;
       yield; // 08006B8C clears the OBJ text surface
       if (selected === 0) return;
-      // 説明 (0800C50C) is not ported yet; return to the menu.
+      // 0800EDA4: 説明 runs オプション in its title mode over the title picture.
+      if (this.options) yield* this.options.run(1);
     }
   }
 
@@ -511,15 +537,35 @@ export class Boot {
   }
 
   // 08006F1C/08006C64 for one Shift JIS string: the routine takes y in a 0-228 range and draws
-  // at y * 14 / 20. The ideographic space advances 2 pixels; other glyphs advance their width.
-  text(glyphs, bytes, x, y, color, scaleY = false) {
-    const top = scaleY ? Math.trunc((y * 14) / 20) : y;
+  // at y * 14 / 20. The ideographic space advances 2 pixels; other glyphs advance their width, or
+  // `advance` when it is set. Control pairs: rr starts a new line 0x14 lower, s8 / ss move 6 / 12
+  // pixels, c0-c7 set OBJ color 8-15 (this port's color 2-9), n1 / n2 print the hero's and the
+  // girlfriend's names (02006649 + 16 * n).
+  text(glyphs, bytes, x, y, color, scaleY = false, advance = 0) {
+    const left = x;
     for (let i = 0; i + 1 < bytes.length && bytes[i]; i += 2) {
       const encoded = (bytes[i] << 8) | bytes[i + 1];
+      const top = scaleY ? Math.trunc((y * 14) / 20) : y;
+      if (encoded === 0x7272) { x = left; y += scaleY ? 0x14 : 14; continue; }
+      if (encoded === 0x7338) { x += 6; continue; }
+      if (encoded === 0x7373) { x += 12; continue; }
+      if (bytes[i] === 0x63 && bytes[i + 1] >= 0x30 && bytes[i + 1] <= 0x37) { color = bytes[i + 1] - 0x30 + 2; continue; }
+      if (encoded === 0x6e31 || encoded === 0x6e32) {
+        const name = this.names[encoded - 0x6e30] ?? [];
+        for (let n = 0; n + 1 < name.length && name[n]; n += 2) {
+          const code = (name[n] << 8) | name[n + 1];
+          const index = this.font.find(code);
+          glyphs.push({ x, y: top, encoded: code, color });
+          x += advance || (index < 0 ? 8 : this.font.glyph(index).width);
+        }
+        continue;
+      }
       if (encoded === 0x8140) { x += SPACE_ADVANCE; continue; }
       const index = this.font.find(encoded);
       glyphs.push({ x, y: top, encoded, color });
-      x += index < 0 ? 8 : this.font.glyph(index).width;
+      // 、 and 。 advance 8 pixels (mGBA: 明度、彩度の調整).
+      const punctuation = encoded === 0x8141 || encoded === 0x8142;
+      x += advance || (punctuation ? 8 : index < 0 ? 8 : this.font.glyph(index).width);
     }
     return glyphs;
   }
@@ -655,6 +701,7 @@ export class Boot {
       turns: Math.min(999, (old?.turns ?? 0) + 1),
       good: old?.good ?? 0,
       bad: old?.bad ?? 0,
+      tone: { ...this.screen.tone }, // 0800A840 keeps 03001EE4/5 at +0x5E/+0x5F
       state,
     });
     for (let n = 0; n < 30; n++) yield;
@@ -771,7 +818,7 @@ export class Boot {
     }
   }
 
-  // 0800C9xx: the in-game menu (R). 移動 and オプション are not ported yet.
+  // 0800C9xx: the in-game menu (R).
   // 0800D9A0 with 0 (the menu's background) or 1 (移動): the map state for the page under the
   // cursor, which starts on the current scene.
   openMap() {
@@ -953,6 +1000,14 @@ export class Boot {
         background();
         continue;
       }
+      if (selected === 1 && this.options) {
+        // 0800CBE8: オプション over the menu picture, then the menu and its map are drawn again.
+        this.effect(0);
+        this.layer = { boxes: [HEADER], glyphs: this.layer.glyphs };
+        yield* this.options.run(0);
+        background();
+        continue;
+      }
       if (selected === 2) {
         this.effect(0);
         this.fadeOut(1, 1);
@@ -965,7 +1020,6 @@ export class Boot {
         this.fadeIn(1, 1);
         this.fadeIn(1, 5);
       }
-      // 移動 (0800D9A0) and オプション (0800C50C) come later.
     }
     this.fadeOut(1, 1);
     this.fadeOut(1, 5);
@@ -1040,7 +1094,7 @@ export class Boot {
         cursor.fill(1, py * 240 + Math.max(0, x), py * 240 + Math.min(240, x + w));
     }
     // The bookmark screen's first lit frame shows the header bar before its palette lands (mGBA 604).
-    const boxColor = rgb(layer.boxBlack ? 0 : BOX);
+    const boxColor = rgb(layer.boxBlack ? 0 : screen.menuColor?.(BOX_RAW) ?? BOX);
     for (let pixel = 0; pixel < 240 * 160; pixel++) {
       const glyph = text.pixels[pixel];
       if (glyph) put(pixel, rgb(OBJ_COLORS[glyph]));
