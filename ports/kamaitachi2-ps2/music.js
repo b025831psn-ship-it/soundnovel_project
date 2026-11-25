@@ -79,6 +79,12 @@ export class LoopingMusic {
     voice.source.onended = () => voice.gain.disconnect();
   }
 
+  volume(volume, { fadeFrames = 0 } = {}) {
+    const level = Math.floor(Math.min(100, Math.max(0, volume)) * 127 / 100) / 127;
+    if (this.voice) return this.ramp(this.voice, level, fadeFrames);
+    return 0;
+  }
+
   // Resume after a user gesture when the browser held audio back.
   unlock() {
     this.context?.resume().catch(() => {});

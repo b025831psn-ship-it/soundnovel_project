@@ -40,6 +40,9 @@ try {
     const started = {loopStart: music.voice.source.loopStart, loop: music.voice.source.loop, initial: music.voice.gain.gain.value};
     await new Promise(r => setTimeout(r, 700));
     started.after = music.voice.gain.gain.value;
+    music.volume(20, {fadeFrames:30});
+    await new Promise(r => setTimeout(r, 700));
+    started.changed = music.voice.gain.gain.value;
     const voice = music.voice;
     music.stop({fadeFrames:60});
     await new Promise(r => setTimeout(r, 300));
@@ -56,9 +59,11 @@ try {
   assert.equal(seams.started.initial, 0);
   const volume50 = 63 / 127;
   assert.ok(Math.abs(seams.started.after - volume50) < 1e-6, 'fade-in reaches quantized volume 50');
-  assert.ok(seams.fading > 0 && seams.fading < volume50, 'fade-out in progress');
+  const volume20 = 25 / 127;
+  assert.ok(Math.abs(seams.started.changed - volume20) < 1e-6, 'volume change reaches quantized volume 20');
+  assert.ok(seams.fading > 0 && seams.fading < volume20, 'fade-out in progress');
   assert.equal(seams.playing, false);
-  console.log('PASS music: 6 loop seams sample-exact at L=, EE volume quantization, fade-in/fade-out');
+  console.log('PASS music: 6 loop seams sample-exact at L=, EE volume quantization/change, fade-in/fade-out');
 } finally {
   await browser.close();
 }

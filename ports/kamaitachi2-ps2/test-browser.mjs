@@ -69,15 +69,41 @@ try {
       while (event.type === 'pause') event = vm.run();
       if (event.type !== 'choice') throw new Error('VM did not reach first choice');
       const targets = event.targets;
+      const captions = [];
+      vm.hooks.caption = value => { captions.push(value); return 0; };
       event = vm.choose(index);
-      return {targets, label:event.label, text:event.text};
+      const texts = [];
+      while (event.type !== 'end') {
+        if (event.text) texts.push(event.text);
+        if (!['pause', 'wait'].includes(event.type)) throw new Error('Unexpected branch event ' + event.type);
+        event = vm.run();
+      }
+      if (event.text) texts.push(event.text);
+      return {targets, label:event.label, text:event.text, texts, captions};
     });
   });
   assert.deepEqual(vmBranches.map(branch => branch.targets), [
     ['my01_0075', 'my01_0073'], ['my01_0075', 'my01_0073'],
   ]);
-  assert.deepEqual(vmBranches.map(branch => branch.label), ['my01_0075', 'my01_0073']);
+  assert.deepEqual(vmBranches.map(branch => branch.label), ['my01_0077', 'my01_0073']);
   assert.ok(vmBranches.every(branch => branch.text.length > 0));
+  assert.deepEqual(vmBranches[0].captions, ['my0002e_10']);
+  assert.deepEqual(vmBranches[1].captions, []);
+  assert.ok(vmBranches[0].texts.some(text => text.includes('北海道に引っ越してしまった')));
+  const musicWait = await page.evaluate(async () => {
+    const {Sn4Vm} = await import('./sn4.js');
+    const vm = new Sn4Vm({entry:'wait', labels:[{label:'wait', ops:[
+      {op:0x02, offset:1, args:['before']}, {op:0x74, offset:2, args:['fade']},
+      {op:0x02, offset:3, args:['after']},
+    ]}]}, {caption:name => name === 'fade' ? 31 : 0});
+    const waiting = vm.run();
+    const finished = vm.run();
+    return {waiting, finished};
+  });
+  assert.deepEqual(musicWait.waiting, {type:'wait', reason:'music', label:'wait', offset:2,
+    ticks:31, text:'before'});
+  assert.equal(musicWait.finished.type, 'end');
+  assert.equal(musicWait.finished.text, 'beforeafter');
   assert.equal(await page.locator('input[type=file]').count(),0);
   await page.getByRole('button', {name:'게임 시작'}).click();
   await at('logo');
@@ -241,7 +267,7 @@ try {
   }
   await advanceTo('choice'); await key('Enter'); await at('story');
   assert.equal(await label(), '急速に親しくなった。');
-  for (let i=0; i<8 && !(await label()).includes('北海道に転勤'); i++) await key('Enter');
+  for (let i=0; i<8 && !(await label()).includes('北海道に引っ越してしまった'); i++) await key('Enter');
   assert.match(await label(), /真理のお父さんが北海道に転勤/);
   assert.match(await label(), /真理は大学をやめ、北海道に引っ越してしまった。$/);
   for (let i=0; i<8 && !(await label()).includes('一通の招待状'); i++) await key('Enter');

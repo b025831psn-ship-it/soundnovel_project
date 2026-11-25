@@ -90,12 +90,16 @@ function playMusic(file, options) {
 
 function applyScenePack(name) {
   const command = data.scenePack?.[name];
-  if (!command) return;
+  if (!command) return 0;
   if (command.image) sn4Style.scene = command.image;
   if (command.music?.operation === 0x14) {
     const { file, volume, fadeFrames } = command.music;
     playMusic(file, {volume, fadeFrames});
   } else if (command.music?.operation === 0x15) stopMusic({fadeFrames:command.music.fadeFrames});
+  else if (command.music?.operation === 0x17) {
+    music.volume(command.music.volume, {fadeFrames:command.music.fadeFrames});
+  }
+  return command.music?.wait ? command.music.fadeFrames + 1 : 0;
 }
 
 function stopMusic(options) {
@@ -346,10 +350,7 @@ function makePages(s) {
       retainMovie:true, append:i > 0, end:i === lines.length - 1, book:i === lines.length - 1,
       text: () => lines.slice(0, i + 1).join('\n'),
     })),
-    { target:'my01_0075-cont', text: () => north[0] },
-    { append:true, book:true, text: () => north[0] + '\n' + north[1] + names[1] + north[2] + '\n' + north[3] + names[1] + north[4] },
-    { text: correspondence },
-    { append:true, book:true, text: () => correspondence() + '\n' + letter[3] },
+    { target:'my01_0077-cont', book:true, text: () => correspondence() + '\n' + letter[3] },
     { background:'my0000', text: () => s.my01_0078.slice(0, 2).join('\n') },
     { background:'my0000', append:true, book:true, text: () => s.my01_0078.join('\n') },
     { background:'my0000', ruby:sceneryRuby, text: () => middle.slice(4, 7).join('\n') },
@@ -775,7 +776,7 @@ try {
     spacing:value => { sn4Style.spacing = value; },
     position:value => { sn4Style.position = value; },
     scene:value => { sn4Style.scenePack = value; },
-    caption:value => { sn4Style.caption = value; applyScenePack(value); },
+    caption:value => { sn4Style.caption = value; return applyScenePack(value); },
   });
   pages = makePages(data.story);
   screen = new Screen(canvas, images, data);

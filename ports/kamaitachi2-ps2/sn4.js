@@ -70,7 +70,11 @@ export class Sn4Vm {
           return {type:'pause', label:this.label, offset:command.offset, text:this.text};
         case 0x0d: this.text += this.names[0]; break;
         case 0x0e: this.text += this.names[1]; break;
-        case 0x16: break;
+        // CommandNoop16 has no EE-side visual call, but it terminates a choice
+        // response record. Yield the accumulated response before continuing.
+        case 0x16:
+          return {type:'pause', reason:'choice-separator', label:this.label,
+            offset:command.offset, text:this.text};
         case 0x1e: this.hooks.captionSync?.(); break;
         case 0x12:
         case 0x13:
@@ -96,7 +100,12 @@ export class Sn4Vm {
         }
         case 0x72: this.hooks.prepareScene?.(args[0]); break;
         case 0x73: this.hooks.scene?.(args[0]); break;
-        case 0x74: this.hooks.caption?.(args[0]); break;
+        case 0x74: {
+          const ticks = this.hooks.caption?.(args[0]) ?? 0;
+          if (ticks > 0) return {type:'wait', reason:'music', label:this.label,
+            offset:command.offset, ticks, text:this.text};
+          break;
+        }
         case 0x75: this.hooks.color?.(...args); break;
         default:
           throw new Error(`Unsupported SN4 opcode 0x${command.op.toString(16).padStart(2, '0')} at ${this.label}+0x${command.offset.toString(16)}`);

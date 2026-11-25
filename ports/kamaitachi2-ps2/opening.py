@@ -398,7 +398,8 @@ def first_choice_program(data):
     blocks = {a[1].decode("ascii"): (a.end(), data[a.end():b.start()])
               for a, b in zip(labels, labels[1:])}
 
-    def decode(name, stop_at_choice=False, first_text_only=False):
+    def decode(name, stop_at_choice=False, first_text_only=False,
+               stop_caption=None, stop_jump=False):
         base, block = blocks[name]
         pos = block.find(b"\x02") if first_text_only else 0
         if pos < 0:
@@ -431,6 +432,17 @@ def first_choice_program(data):
                     raise ValueError(f"Invalid resource command in {name} at {offset:#x}")
                 ops.append({"op": op, "offset": offset, "args": [raw[:-1].decode("ascii")]})
                 pos += size + 1
+                if op == 0x74 and ops[-1]["args"][0] == stop_caption:
+                    break
+            elif op in (0x6A, 0x6B):
+                size = block[pos]
+                raw = block[pos + 1:pos + 1 + size]
+                if len(raw) != size or size < 2 or raw[-1] != 0:
+                    raise ValueError(f"Invalid CommandJump in {name} at {offset:#x}")
+                if stop_jump:
+                    break
+                ops.append({"op": op, "offset": offset, "args": [raw[1:-1].decode("ascii")]})
+                pos += size + 1
             elif op == 0x6C:
                 size = block[pos]
                 payload = block[pos + 1:pos + 1 + size]
@@ -460,7 +472,12 @@ def first_choice_program(data):
     decoded = [decode(name, stop_at_choice=name == "my01_0070") for name in names]
     for current, following in zip(decoded, decoded[1:]):
         current["next"] = following["label"]
-    decoded.extend(decode(name, first_text_only=True) for name in ("my01_0075", "my01_0073"))
+    branch = [decode("my01_0075", first_text_only=True), decode("my01_0076"),
+              decode("my01_0077", stop_caption="my0002e_10")]
+    branch[0]["next"] = branch[1]["label"]
+    branch[1]["next"] = branch[2]["label"]
+    decoded.extend(branch)
+    decoded.append(decode("my01_0073", first_text_only=True, stop_jump=True))
     return {"entry": names[0], "labels": decoded}
 
 
@@ -564,6 +581,8 @@ def opening_assets(disc, out, encode):
     scene_pack = asset("SCENARIO/scene_pk.spk")
     music_pattern = re.compile(rb"\x14\x00\x27\x00([^\0]+\.ogg)\x00\x2f\x00(.{2})"
                                rb"\x2e\x00(.{2})\x2b\x00(.{2})\x07\x00", re.S)
+    volume_pattern = re.compile(rb"\x17\x00\x2f\x00(.{2})\x2b\x00(.{2})"
+                                rb"\x2e\x00(.{2})\x0a\x00", re.S)
     scene_pack_opening = {}
     for name, offset in {"my0002b_00": 0x72217, "my0002c_00": 0x7227B,
                          "my0002d_00": 0x722DF,
@@ -581,6 +600,16 @@ def opening_assets(disc, out, encode):
                       "wait": int.from_bytes(music[3], "little"),
                       "fadeFrames": int.from_bytes(music[4], "little")},
         }
+    command = scene_pack[0x723A7:0x723E1]
+    volume = volume_pattern.search(command)
+    if not volume:
+        raise ValueError("Unexpected ScenePack volume command my0002e_10")
+    scene_pack_opening["my0002e_10"] = {
+        "music": {"operation": 0x17, "command": 0x0A,
+                  "volume": int.from_bytes(volume[1], "little"),
+                  "fadeFrames": int.from_bytes(volume[2], "little"),
+                  "wait": int.from_bytes(volume[3], "little")},
+    }
     config = {
         "font": font_atlas(asset("SCENARIO/sn4.fnt"), out),
         "rows": asset("SCENARIO/namkan.txt").decode("cp932").strip("\n").split("\n\n"),
