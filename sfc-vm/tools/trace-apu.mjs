@@ -21,7 +21,7 @@ const apu = new APU({
   onPortWrite: (clock, port, value) => spcPortTrace.push([clock, port, value]),
   onDspWrite: (clock, reg, value) => dspTrace.push([clock, reg, value]),
 });
-if (iplPath) apu.cpu.loadIplImage(fs.readFileSync(iplPath));
+apu.powerOn(iplPath ? fs.readFileSync(iplPath) : null);
 const joypad = new Map();
 if (joypadPath) {
   for (const line of fs.readFileSync(joypadPath, 'utf8').trim().split('\n').slice(1)) {
