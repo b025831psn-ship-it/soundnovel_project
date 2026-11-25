@@ -22,9 +22,9 @@ const routes = new Map([
   ['/art/kamaitachi-still.png', [path.join(__dirname, 'kamaitachi-gba-kor/assets/bg/002.png'), 'image/png']],
   // Title logo: the official clear logo traced to vector paths and laid out on one line (kamaitachi-gba-kor/assets/hub).
   ['/art/kamaitachi-logo.svg', [path.join(__dirname, 'kamaitachi-gba-kor/assets/hub/logo-row.svg'), 'image/svg+xml']],
-  // Cover art for the works list: original drawings, one per work (art/covers).
+  // Cover art for the works list: each work's package front, cropped to 3:2 (kamaitachi-gba-kor/assets/hub/covers).
   ...['higanbana', 'otogirisou', 'machi', 'majo', 'yakouchuu', 'yakouchuu2', 'zakuro', 'anubis'].map(slug =>
-    ['/art/covers/' + slug + '.svg', [path.join(__dirname, 'art', 'covers', slug + '.svg'), 'image/svg+xml']]),
+    ['/art/covers/' + slug + '.jpg', [path.join(__dirname, 'kamaitachi-gba-kor', 'assets', 'hub', 'covers', slug + '.jpg'), 'image/jpeg']]),
   ['/style.css', [path.join(__dirname, 'style.css'), 'text/css; charset=utf-8']],
   ['/games.js', [path.join(__dirname, 'games.js'), 'text/javascript; charset=utf-8']],
   ['/AGB-AHZJ.gba', [path.join(__dirname, '..', 'AGB-AHZJ.gba'), 'application/octet-stream']],
