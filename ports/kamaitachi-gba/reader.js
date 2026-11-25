@@ -435,11 +435,21 @@ let shownKey = "", shownChoices = null, shownSelected = -1, shownScale = 0;
 function drawText(game) {
   const { page, font, vm } = game;
   const scale = textScale();
-  const glyphs = (page.layout ?? []).slice(0, page.shown ?? 0);
-  const key = `${scale}|${glyphs.map((g) => `${g.encoded}.${g.x}.${g.y}.${g.color}`).join(",")}`;
+  // Phones: the story in the large mobile type (large-text.js: 1.25 times the glyphs, wider rows,
+  // Korean wrapped at spaces), laid out by PageText on its K-times canvas and brought back to glyph
+  // pixels here; the page fills the reader's width. Elsewhere the cartridge's own layout.
+  const big = page.large?.enabled && page.largeLayout && page.largeSource === page.layout ? page.large.geometry : null;
+  const unit = big ? big.scale : 1;
+  const source = big ? page.largeLayout : page.layout ?? [];
+  const glyphs = source.slice(0, page.shown ?? 0).map((g) => (big ? { ...g, x: Math.round(g.x / unit), y: Math.round(g.y / unit) } : g));
+  const bandLeft = big ? Math.round((8 * big.k) / unit) - 1 : TEXT_LEFT;
+  const bandWidth = big ? Math.round((big.right + 6 * big.k) / unit) - bandLeft : TEXT_WIDTH;
+  const bandTop = big ? Math.round((11 * big.k) / unit) - 2 : 9;
+  const typeScale = big ? Math.max(1, ((reader.clientWidth - 8) * (devicePixelRatio || 1)) / bandWidth) : scale;
+  const key = `${typeScale}|${big ? 1 : 0}|${glyphs.map((g) => `${g.encoded}.${g.x}.${g.y}.${g.color}`).join(",")}`;
   if (key !== shownKey) {
-    const bottom = glyphs.length ? Math.max(...glyphs.map((g) => g.y)) + 15 : 9;
-    paint(pageCanvas, font, glyphs, TEXT_LEFT, 9, TEXT_WIDTH, Math.max(1, bottom - 9), scale);
+    const bottom = glyphs.length ? Math.max(...glyphs.map((g) => g.y)) + 15 : bandTop;
+    paint(pageCanvas, font, glyphs, bandLeft, bandTop, bandWidth, Math.max(1, bottom - bandTop), typeScale);
     pageCanvas.hidden = !glyphs.length;
     shownKey = key;
   }
