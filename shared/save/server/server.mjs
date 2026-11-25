@@ -15,13 +15,19 @@ const PAIR = /^[0-9A-HJKMNP-TV-Z]{4}$/;
 // Pairing: a one-time, short-lived 4-character code hands a wrapped secret from one device to another.
 // It is never an account password; failed claims are rate limited per client and globally.
 export function createServer({ dir, maxBody = MAX_BODY, maxSlots = MAX_SLOTS, now = Date.now,
-  pairTtlMs = 5 * 60 * 1000, maxPairs = 1000, maxFailsPerClient = 10, maxFailsGlobal = 200, failWindowMs = 10 * 60 * 1000 } = {}) {
-  const pairs = new Map(); // code -> { blob, expires }
+  pairTtlMs = null, pairSingleUse = false, maxPairs = 1000, maxFailsPerClient = 10, maxFailsGlobal = 200, failWindowMs = 10 * 60 * 1000 } = {}) {
+  fs.mkdirSync(dir, { recursive: true });
+  const pairFile = path.join(dir, "pairs.json");
+  // code -> { blob, auth, expires|null }. Persistent by default (beta: a few dozen users); a short TTL and
+  // single use can be switched on for a stricter deployment.
+  const pairs = new Map(Object.entries((() => { try { return JSON.parse(fs.readFileSync(pairFile, "utf8")); } catch { return {}; } })()));
+  const savePairs = () => { fs.writeFileSync(pairFile + ".tmp", JSON.stringify(Object.fromEntries(pairs))); fs.renameSync(pairFile + ".tmp", pairFile); };
   const fails = new Map(); // client -> [timestamps]
   let globalFails = [];
   const recent = (list) => list.filter((t) => now() - t < failWindowMs);
   const clientOf = (req) => req.headers["cf-connecting-ip"] ?? req.socket.remoteAddress ?? "?";
-  const sweep = () => { for (const [c, p] of pairs) if (p.expires <= now()) pairs.delete(c); };
+  const sweep = () => { let n = 0; for (const [c, p] of pairs) if (p.expires != null && p.expires <= now()) { pairs.delete(c); n++; } if (n) savePairs(); };
+  const shaOf = (t) => crypto.createHash("sha256").update(t).digest("hex");
   fs.mkdirSync(dir, { recursive: true });
   const sha = (s) => crypto.createHash("sha256").update(s).digest("hex");
   const vaultFile = (id) => path.join(dir, `${id}.json`);
@@ -49,8 +55,19 @@ export function createServer({ dir, maxBody = MAX_BODY, maxSlots = MAX_SLOTS, no
           let body;
           try { body = JSON.parse(await readBody(req)); } catch { return send(res, 400, { error: "bad body" }); }
           if (!body?.blob || typeof body.blob.ct !== "string" || typeof body.blob.iv !== "string") return send(res, 400, { error: "bad blob" });
-          pairs.set(code, { blob: body.blob, expires: now() + pairTtlMs });
-          return send(res, 201, { expiresInSec: Math.floor(pairTtlMs / 1000) });
+          const tk = /^Bearer (.+)$/.exec(req.headers.authorization ?? "")?.[1];
+          if (!tk) return send(res, 401, { error: "auth required" });
+          pairs.set(code, { blob: body.blob, auth: shaOf(tk), expires: pairTtlMs == null ? null : now() + pairTtlMs });
+          savePairs();
+          return send(res, 201, { expiresInSec: pairTtlMs == null ? null : Math.floor(pairTtlMs / 1000) });
+        }
+        if (req.method === "DELETE" && !pm[2]) {
+          const tk = /^Bearer (.+)$/.exec(req.headers.authorization ?? "")?.[1];
+          const p = pairs.get(code);
+          if (!p) return send(res, 404, { error: "no such code" });
+          if (!tk || shaOf(tk) !== p.auth) return send(res, 401, { error: "bad token" });
+          pairs.delete(code); savePairs();
+          return send(res, 204);
         }
         if (req.method === "POST" && pm[2]) {
           const who = clientOf(req);
@@ -59,7 +76,7 @@ export function createServer({ dir, maxBody = MAX_BODY, maxSlots = MAX_SLOTS, no
           if (mine.length >= maxFailsPerClient || globalFails.length >= maxFailsGlobal) return send(res, 429, { error: "too many attempts" });
           const p = pairs.get(code);
           if (!p) { mine.push(now()); globalFails.push(now()); return send(res, 404, { error: "no such code" }); }
-          pairs.delete(code); // single use
+          if (pairSingleUse) { pairs.delete(code); savePairs(); }
           return send(res, 200, { blob: p.blob });
         }
         return send(res, 405, { error: "method" });
