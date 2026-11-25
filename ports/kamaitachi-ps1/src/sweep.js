@@ -4,6 +4,21 @@ import { ScenarioFault, ScenarioVM } from "./vm.js";
 const locationKey = ({ resourceId, recordId, offset = 0 }) => `${resourceId}:${recordId}+${offset}`;
 const isEndingTarget = (target) => target?.resourceId === 31 && target?.recordId === 11;
 
+function resolveLocation(data, location) {
+  if (!location) return null;
+  if (location.kind === "label-or-resource-offset") {
+    const labelResource = data.resources.get(Number(location.labelTarget.resourceId));
+    location = labelResource?.records?.some((record) => record.id === Number(location.labelTarget.recordId))
+      ? location.labelTarget : location.offsetTarget;
+  }
+  if (location.kind !== "resource-offset") return location;
+  const resource = data.resources.get(Number(location.resourceId)), absoluteOffset = location.resourceOffset;
+  const record = resource?.records?.find((candidate, index) => { const next = resource.records[index + 1];
+    return absoluteOffset >= candidate.memberOffset && (!next || absoluteOffset < next.memberOffset); });
+  return record ? { resourceId: location.resourceId, recordId: record.id,
+    offset: absoluteOffset - record.memberOffset } : location;
+}
+
 export async function sweep(portDataRoot, {
   resourceId = 25, recordId = 7, maxStates = 200000, includeResourceEntries = false,
   unlockPolicy = "fresh", includeFreshRoot = true, additionalRoots = [], distinguishRoots = false,
@@ -28,11 +43,7 @@ export async function sweep(portDataRoot, {
   let activeState = null;
   const enqueue = (location, stack, nextResource = null, root = "unknown") => {
     if (!location) return;
-    if (location.kind === "label-or-resource-offset") {
-      const labelResource = data.resources.get(Number(location.labelTarget.resourceId));
-      location = labelResource?.records?.some((record) => record.id === Number(location.labelTarget.recordId))
-        ? location.labelTarget : location.offsetTarget;
-    }
+    location = resolveLocation(data, location);
     if (location.kind === "next-resource") {
       if (nextResource == null) { failures.push({ location: "dynamic", reason: "missing-next-resource" }); return; }
       location = { resourceId: nextResource, recordId: location.recordId || 0, offset: 0 };
@@ -126,14 +137,33 @@ export async function catalogTransfers(portDataRoot, targetResourceId = 31) {
     primaryLengths: primary.lengths || [], sub1dLengths: sub1d.lengths || [] });
   const transfers = [];
   for (const resource of data.resources.values()) for (const record of resource.records || []) {
-    let events;
-    try { events = vm.run((await data.record(resource.id, record.id)).bytes, { resourceId: resource.id, recordId: record.id }); }
-    catch (error) { if (!(error instanceof ScenarioFault)) throw error; events = error.events; }
-    for (const event of events) for (const target of
-      [event.target, ...(event.options || []).map((option) => option.target)].filter(Boolean))
-      if (target.resourceId === targetResourceId) transfers.push({ source: `${resource.id}:${record.id}+${event.offset}`,
-        opcode: event.opcode, kind: event.kind, target: `${target.resourceId}:${target.recordId}` });
+    const bytes = (await data.record(resource.id, record.id)).bytes;
+    const queue = [0], offsets = new Set();
+    while (queue.length) {
+      const offset = queue.shift();
+      if (offset >= bytes.length || offsets.has(offset)) continue;
+      offsets.add(offset);
+      let events;
+      try { events = vm.run(bytes, { resourceId: resource.id, recordId: record.id, offset }); }
+      catch (error) { if (!(error instanceof ScenarioFault)) throw error; events = error.events; }
+      const transfer = [...events].reverse().find((event) =>
+        ["choice", "choice-table", "jump", "call", "return", "branch", "ending"].includes(event.kind));
+      if (!transfer) continue;
+      const rawTargets = [transfer.target, ...(transfer.options || []).map((option) => option.target)].filter(Boolean);
+      for (const rawTarget of rawTargets) {
+        const target = resolveLocation(data, rawTarget);
+        if (target.resourceId === targetResourceId) transfers.push({
+          source: `${resource.id}:${record.id}+${transfer.offset}`, opcode: transfer.opcode,
+          kind: transfer.kind, target: `${target.resourceId}:${target.recordId}`,
+        });
+        if (target.resourceId === resource.id && target.recordId === record.id) queue.push(target.offset || 0);
+      }
+      for (const continuation of [transfer.fallthrough, transfer.returnTo].filter(Boolean))
+        if (continuation.resourceId === resource.id && continuation.recordId === record.id)
+          queue.push(continuation.offset || 0);
+    }
   }
-  const endingRoutes = transfers.filter((row) => row.target === "31:11");
-  return { targetResourceId, transfers, endingRoutes, endingCount: endingRoutes.length };
+  const uniqueTransfers = [...new Map(transfers.map((row) => [`${row.source}>${row.target}`, row])).values()];
+  const endingRoutes = uniqueTransfers.filter((row) => row.target === "31:11");
+  return { targetResourceId, transfers: uniqueTransfers, endingRoutes, endingCount: endingRoutes.length };
 }

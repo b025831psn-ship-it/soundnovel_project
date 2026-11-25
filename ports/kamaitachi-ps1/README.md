@@ -106,7 +106,19 @@ hub without treating resource fall-off as an ending.
 
 The report also runs two native-entry root families that are not reachable by
 scenario bytecode alone: `title-menu:main` at `31:0` and
-`title-menu:scenario-select:<N>` for every record in resource 39. Resource 31
+`title-menu:scenario-select:<N>` for each resource-39 record whose decoded
+opcode `53` checkpoint ID is `N + 1`. This yields 260 native checkpoint entries;
+records 54, 200, 203, and 263 have no such control-flow-aligned marker and are
+reported separately as internal control rows rather than assumed menu entries.
+The retail `53` handler
+at `0x80022448` stores its u16 operand as the current checkpoint, which is the
+native-code link between the saved menu index and these SCE records. The native
+selector at `0x800292b0` reduces its saved label to a record index at
+`0x80029370`–`0x800293a8`, applies its table/unlock policy at
+`0x800293b4` and `0x800296b8`–`0x80029738`, and passes the selected index to
+the resource loader at `0x80029404` or `0x8002975c`. Thus the root list is
+generated from actual checkpoint producers, not from the resource's record
+count. Resource 31
 initializes/returns from the title flow, while each `39:N` is one native-indexed
 scenario/bookmark menu entry with its own flag checks and destination. These roots are
 reported separately from fresh play rather than silently inflating it.
@@ -118,7 +130,18 @@ wins; otherwise the same word is a current-resource byte offset.
 Ending coverage counts decoded source transfers into the shared `31:11`
 title-return record. The opcode `44` there is one shared implementation, not
 one story ending. `endingRoutes` reports only routes reached by a sweep;
-`catalog.endingRoutes` enumerates all instruction-aligned decoded transfers.
+`catalog.endingRoutes` enumerates all control-flow-aligned decoded transfers.
+It uses the same ambiguous-label and resource-offset resolver as the sweep and
+continues through branch fallthroughs and call return sites within each record.
+
+Resources 22 and 32 remain native-entry islands, not silently dropped SCE
+transfers. Re-decoding the previously reported sources on instruction boundaries
+shows that `0:87` returns at `+18`; its later byte pattern resembling opcode `02`
+is not reachable from that record entry. The apparent `4b` instances in `4:13`
+and `11:13`, and the apparent resource-32 transfer in `19:107`, are Shift-JIS or
+operand bytes found by the old isolated byte scan. The unified catalog contains
+no external control-flow-aligned edge into resource 22 or 32. They therefore need
+separate native entry evidence before either resource is added as a sweep root.
 Raw byte-pattern hits are not counted because most occur inside text or
 operands rather than at opcode boundaries.
 
