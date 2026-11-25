@@ -40,12 +40,18 @@ const EXTENDED = [1, 2, 9, 201, 202];
 const EXTENDED_TOP = 100, EXTENDED_HEIGHT = 360;
 const extended = new Map(); // tiles signature -> { pixels, raw }
 const signature = (tiles) => { let h = tiles.length; for (let i = 0; i < tiles.length; i += 61) h = (h * 31 + tiles[i]) | 0; return h; };
+// The picture without the game's tone: its pixels and channel sums.
 function untoned(tiles, palette) {
-  const out = new Float64Array(3);
+  const sums = new Float64Array(3);
+  const pixels = new Uint8ClampedArray(240 * 160 * 3);
   const colors = [];
   for (let i = 0; i < 256; i++) { const c = palette[2 * i] | (palette[2 * i + 1] << 8); colors.push([c & 31, (c >> 5) & 31, (c >> 10) & 31].map((v) => (v << 3) | (v >> 2))); }
-  for (let i = 0; i < 240 * 160; i++) { const c = colors[tiles[i]]; out[0] += c[0]; out[1] += c[1]; out[2] += c[2]; }
-  return out;
+  for (let y = 0; y < 160; y++) for (let x = 0; x < 240; x++) {
+    const c = colors[tiles[((y >> 3) * 30 + (x >> 3)) * 64 + (y & 7) * 8 + (x & 7)]];
+    pixels.set(c, 3 * (y * 240 + x));
+    sums[0] += c[0]; sums[1] += c[1]; sums[2] += c[2];
+  }
+  return { sums, pixels };
 }
 const outpaint = new URLSearchParams(location.search).get("outpaint") !== "0";
 async function loadExtended(game) {
@@ -71,30 +77,41 @@ function compose(screen, base) {
   sizeTo(EXTENDED_HEIGHT);
   const live = new Float64Array(3);
   for (let i = 0; i < base.length; i += 4) { live[0] += base[i]; live[1] += base[i + 1]; live[2] += base[i + 2]; }
-  const gain = [0, 1, 2].map((c) => (entry.raw[c] ? live[c] / entry.raw[c] : 1));
+  const gain = [0, 1, 2].map((c) => (entry.raw.sums[c] ? live[c] / entry.raw.sums[c] : 1));
   const out = new Uint8ClampedArray(entry.pixels.length);
   for (let i = 0; i < out.length; i += 4) {
     out[i] = entry.pixels[i] * gain[0]; out[i + 1] = entry.pixels[i + 1] * gain[1]; out[i + 2] = entry.pixels[i + 2] * gain[2]; out[i + 3] = 255;
   }
-  // The game's tone is not a plain gain: match the margin to the live edge rows column by column
-  // (smoothed over 31 columns), fading back with distance, so there is no step at the original's edge.
-  const match = (edgeRow, marginRow, step) => {
+  // The game's tone is not a plain gain: per column, what the live edge row differs from the toned
+  // picture there (smoothed over 31 columns) is carried onto the picture's feathered edge and margin,
+  // fading out with distance, so nothing steps at the join.
+  const FEATHER = 14;
+  const match = (edgeRow, step) => {
     const diff = new Float32Array(240 * 3);
     for (let x = 0; x < 240; x++) for (let c = 0; c < 3; c++) {
       let sum = 0, count = 0;
       for (let k = Math.max(0, x - 15); k <= Math.min(239, x + 15); k++) {
-        sum += base[4 * (edgeRow * 240 + k) + c] - out[4 * (marginRow * 240 + k) + c]; count++;
+        sum += base[4 * (edgeRow * 240 + k) + c] - entry.raw.pixels[3 * (edgeRow * 240 + k) + c] * gain[c]; count++;
       }
       diff[x * 3 + c] = sum / count;
     }
-    for (let i = 0, row = marginRow; row >= 0 && row < EXTENDED_HEIGHT; i++, row += step) {
-      const weight = Math.exp(-i / 45);
+    const start = EXTENDED_TOP + edgeRow + (step < 0 ? FEATHER - 1 : 1 - FEATHER);
+    for (let i = 0, row = start; row >= 0 && row < EXTENDED_HEIGHT; i++, row += step) {
+      const weight = i < FEATHER ? 1 : Math.exp(-(i - FEATHER) / 45);
       for (let x = 0; x < 240; x++) for (let c = 0; c < 3; c++) out[4 * (row * 240 + x) + c] += diff[x * 3 + c] * weight;
     }
   };
-  match(0, EXTENDED_TOP - 1, -1);
-  match(159, EXTENDED_TOP + 160, 1);
-  out.set(base, EXTENDED_TOP * 240 * 4);
+  match(0, -1);
+  match(159, 1);
+  // The live screen in the middle; its outer 14 rows fade into the picture's own feathered edge.
+  for (let y = 0; y < 160; y++) {
+    const d = Math.min(y, 159 - y);
+    let t = d >= FEATHER ? 1 : (d + 0.5) / FEATHER;
+    t = t * t * (3 - 2 * t);
+    const from = y * 240 * 4, to = (EXTENDED_TOP + y) * 240 * 4;
+    if (t === 1) { out.set(base.subarray(from, from + 960), to); continue; }
+    for (let i = 0; i < 960; i++) out[to + i] = i % 4 === 3 ? 255 : out[to + i] * (1 - t) + base[from + i] * t;
+  }
   sourceCtx.putImageData(new ImageData(out, 240, EXTENDED_HEIGHT), 0, 0);
   return EXTENDED_TOP;
 }
