@@ -22,12 +22,82 @@ let enabled = asked ? asked === "1" : store.get("kamaitachi.reader", touch ? "1"
 // The picture: drawn three times over with whole pixels, then scaled by the browser with smoothing,
 // so edges soften a little without the blur of stretching 240x160 straight to a phone.
 const UP = 3;
-const source = Object.assign(document.createElement("canvas"), { width: 240, height: 160 });
+const source = document.createElement("canvas");
 const sourceCtx = source.getContext("2d");
-picture.width = 240 * UP;
-picture.height = 160 * UP;
 const pictureCtx = picture.getContext("2d");
-pictureCtx.imageSmoothingEnabled = false;
+function sizeTo(height) {
+  if (source.height === height) return;
+  source.width = 240; source.height = height;
+  picture.width = 240 * UP; picture.height = height * UP;
+  pictureCtx.imageSmoothingEnabled = false;
+}
+
+// Pictures extended for an upright screen (outpainting pilot, kamaitachi-gba-kor assets/outpaint-pilot):
+// 240x360 with the cartridge's 240x160 at rows 100-259. The middle is always the live screen (tone,
+// fades and silhouettes as the game draws them); the margins follow the picture's tone by the ratio of
+// the live screen to the untoned picture.
+const EXTENDED = [1, 2, 9, 201, 202];
+const EXTENDED_TOP = 100, EXTENDED_HEIGHT = 360;
+const extended = new Map(); // tiles signature -> { pixels, raw }
+const signature = (tiles) => { let h = tiles.length; for (let i = 0; i < tiles.length; i += 61) h = (h * 31 + tiles[i]) | 0; return h; };
+function untoned(tiles, palette) {
+  const out = new Float64Array(3);
+  const colors = [];
+  for (let i = 0; i < 256; i++) { const c = palette[2 * i] | (palette[2 * i + 1] << 8); colors.push([c & 31, (c >> 5) & 31, (c >> 10) & 31].map((v) => (v << 3) | (v >> 2))); }
+  for (let i = 0; i < 240 * 160; i++) { const c = colors[tiles[i]]; out[0] += c[0]; out[1] += c[1]; out[2] += c[2]; }
+  return out;
+}
+const outpaint = new URLSearchParams(location.search).get("outpaint") !== "0";
+async function loadExtended(game) {
+  if (!outpaint) return;
+  for (const id of EXTENDED) {
+    try {
+      const name = String(id).padStart(3, "0");
+      const [tiles, palette] = await Promise.all([game.assets.bin(`bg/${name}.bin`), game.assets.bin(`palette/${name}.bin`)]);
+      const image = new Image();
+      image.src = `/art/outpaint/${name}.png`;
+      await image.decode();
+      const canvas = Object.assign(document.createElement("canvas"), { width: 240, height: EXTENDED_HEIGHT });
+      const ctx = canvas.getContext("2d");
+      ctx.drawImage(image, 0, 0);
+      extended.set(signature(tiles), { pixels: ctx.getImageData(0, 0, 240, EXTENDED_HEIGHT).data, raw: untoned(tiles, palette) });
+    } catch { /* not served: the picture is cut from the original only */ }
+  }
+}
+let extendedLoading = null;
+function compose(screen, base) {
+  const entry = screen.background?.tiles && extended.get(signature(screen.background.tiles));
+  if (!entry) { sizeTo(160); sourceCtx.putImageData(new ImageData(new Uint8ClampedArray(base), 240, 160), 0, 0); return 0; }
+  sizeTo(EXTENDED_HEIGHT);
+  const live = new Float64Array(3);
+  for (let i = 0; i < base.length; i += 4) { live[0] += base[i]; live[1] += base[i + 1]; live[2] += base[i + 2]; }
+  const gain = [0, 1, 2].map((c) => (entry.raw[c] ? live[c] / entry.raw[c] : 1));
+  const out = new Uint8ClampedArray(entry.pixels.length);
+  for (let i = 0; i < out.length; i += 4) {
+    out[i] = entry.pixels[i] * gain[0]; out[i + 1] = entry.pixels[i + 1] * gain[1]; out[i + 2] = entry.pixels[i + 2] * gain[2]; out[i + 3] = 255;
+  }
+  // The game's tone is not a plain gain: match the margin to the live edge rows column by column
+  // (smoothed over 31 columns), fading back with distance, so there is no step at the original's edge.
+  const match = (edgeRow, marginRow, step) => {
+    const diff = new Float32Array(240 * 3);
+    for (let x = 0; x < 240; x++) for (let c = 0; c < 3; c++) {
+      let sum = 0, count = 0;
+      for (let k = Math.max(0, x - 15); k <= Math.min(239, x + 15); k++) {
+        sum += base[4 * (edgeRow * 240 + k) + c] - out[4 * (marginRow * 240 + k) + c]; count++;
+      }
+      diff[x * 3 + c] = sum / count;
+    }
+    for (let i = 0, row = marginRow; row >= 0 && row < EXTENDED_HEIGHT; i++, row += step) {
+      const weight = Math.exp(-i / 45);
+      for (let x = 0; x < 240; x++) for (let c = 0; c < 3; c++) out[4 * (row * 240 + x) + c] += diff[x * 3 + c] * weight;
+    }
+  };
+  match(0, EXTENDED_TOP - 1, -1);
+  match(159, EXTENDED_TOP + 160, 1);
+  out.set(base, EXTENDED_TOP * 240 * 4);
+  sourceCtx.putImageData(new ImageData(out, 240, EXTENDED_HEIGHT), 0, 0);
+  return EXTENDED_TOP;
+}
 
 // Where to cut: the silhouette when one is up (people are what the page is about), otherwise the band
 // with the most detail and color, pulled a little toward the middle.
@@ -86,11 +156,11 @@ function drawPicture(game) {
   const base = screen.base;
   const size = { width: reader.clientWidth, height: reader.clientHeight };
   if (!base || !size.height) return;
-  const width = Math.min(240, (160 * size.width) / size.height);
-  const scale = size.height / 160;
+  extendedLoading ??= loadExtended(game).then(() => { shownBase = null; });
   if (base !== shownBase) {
-    sourceCtx.putImageData(new ImageData(new Uint8ClampedArray(base), 240, 160), 0, 0);
-    pictureCtx.drawImage(source, 0, 0, 240 * UP, 160 * UP);
+    compose(screen, base);
+    pictureCtx.drawImage(source, 0, 0, 240 * UP, source.height * UP);
+    const width = Math.min(240, (source.height * size.width) / size.height);
     // A new picture cuts straight to its place; a silhouette coming or going on the same one pans.
     const same = screen.background === shownBackground;
     const layerChanged = (screen.silhouette ? silhouetteSpan(screen.silhouette)?.left : null) !== shownLayer;
@@ -103,6 +173,7 @@ function drawPicture(game) {
     shownBackground = screen.background;
     shownLayer = screen.silhouette ? silhouetteSpan(screen.silhouette)?.left : null;
   }
+  const scale = size.height / source.height;
   picture.style.width = `${240 * scale}px`;
   picture.style.height = `${size.height}px`;
   picture.style.transform = `translateX(${-crop * scale}px)`;
