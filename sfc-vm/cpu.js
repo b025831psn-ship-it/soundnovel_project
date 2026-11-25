@@ -10,14 +10,15 @@ const M = 0x20;
 const IMPLIED_INTERNAL = new Set([
   0x0a, 0x18, 0x1a, 0x1b, 0x2a, 0x38, 0x3a, 0x3b, 0x4a, 0x58, 0x5b,
   0x6a, 0x78, 0x7b, 0x88, 0x8a, 0x98, 0x9a, 0x9b, 0xa8, 0xaa,
-  0xba, 0xbb, 0xc2, 0xc8, 0xca, 0xe2, 0xe8, 0xea, 0xeb, 0xfb,
+  0xba, 0xc2, 0xc8, 0xca, 0xe2, 0xe8, 0xea, 0xeb, 0xfb,
 ]);
 const PUSH_OPS = new Set([0x08, 0x48, 0x4b, 0x5a, 0x8b, 0x0b, 0xda]);
-const PULL_OPS = new Set([0x68, 0x7a, 0xab, 0x2b, 0xfa]);
+const PULL_OPS = new Set([0x28, 0x68, 0x7a, 0xab, 0x2b, 0xfa]);
 const BRANCH_OPS = new Set([0x10, 0x30, 0x50, 0x70, 0x80, 0x90, 0xb0, 0xd0, 0xf0]);
 const INDEXED_DP_OPS = new Set([
   0x15, 0x35, 0x55, 0x75, 0x95, 0xb5, 0xd5, 0xf5,
   0x16, 0x36, 0x56, 0x76, 0x96, 0xb6, 0xd6, 0xf6,
+  0x74,
   0x03, 0x23, 0x43, 0x63, 0x83, 0xa3, 0xc3, 0xe3,
 ]);
 const DIRECT_PAGE_OPS = new Set([
@@ -35,7 +36,10 @@ const DIRECT_PAGE_OPS = new Set([
 const INDEXED_STORE_OPS = new Set([0x99, 0x9d, 0x9e]);
 const ABSOLUTE_X_READ_OPS = new Set([0x1d, 0x3d, 0x5d, 0x7d, 0xbc, 0xbd, 0xdd, 0xfd]);
 const ABSOLUTE_Y_READ_OPS = new Set([0x19, 0x39, 0x59, 0x79, 0xb9, 0xbb, 0xd9, 0xf9]);
-const RMW_OPS = new Set([0x04, 0x0c, 0x14, 0x1c, 0x46, 0xc6, 0xce, 0xe6, 0xee]);
+const RMW_OPS = new Set([
+  0x04, 0x06, 0x0c, 0x14, 0x16, 0x1c, 0x26, 0x2e, 0x46, 0x66,
+  0xc6, 0xce, 0xd6, 0xe6, 0xee, 0xf6,
+]);
 
 const hex = (n, width) => n.toString(16).toUpperCase().padStart(width, '0');
 
@@ -127,6 +131,7 @@ export class Cpu65816 {
     if (PUSH_OPS.has(opcode)) this.internalCycle();
     if (PULL_OPS.has(opcode)) this.internalCycle(2);
     if (opcode === 0x20 || opcode === 0x22) this.internalCycle();
+    if (opcode === 0x7c || opcode === 0xfc) this.internalCycle();
     if (opcode === 0x60) this.internalCycle(3);
     if (opcode === 0x6b) this.internalCycle(2);
     if (opcode === 0x40) this.internalCycle(2);
@@ -136,11 +141,13 @@ export class Cpu65816 {
       if (this.address() !== fallthrough) this.internalCycle();
     }
     if (opcode === 0x82) this.internalCycle();
+    if (opcode === 0xeb) this.internalCycle();
 
     if (INDEXED_DP_OPS.has(opcode)) this.internalCycle();
     if (DIRECT_PAGE_OPS.has(opcode) && (this.d & 0xff)) this.internalCycle();
 
     if (INDEXED_STORE_OPS.has(opcode)) this.internalCycle();
+    if (opcode === 0xb1 && !this.x8()) this.internalCycle();
     if (ABSOLUTE_X_READ_OPS.has(opcode) || ABSOLUTE_Y_READ_OPS.has(opcode)) {
       const low = this.rawBus.read8((at + 1) & 0xffffff);
       const high = this.rawBus.read8((at + 2) & 0xffffff);
@@ -148,7 +155,7 @@ export class Cpu65816 {
       const index = ABSOLUTE_X_READ_OPS.has(opcode) ? this.x : this.y;
       if (!this.x8() || (base & 0xff) + (index & 0xff) > 0xff) this.internalCycle();
     }
-    if (RMW_OPS.has(opcode)) this.internalCycle(2);
+    if (RMW_OPS.has(opcode)) this.internalCycle();
 
     this.lastInstructionTransactions = this.busTransactions - startTransactions;
   }
@@ -168,6 +175,7 @@ export class Cpu65816 {
     this.bus.latchControllers?.();
     this.bus.latchNmi?.();
     this.interrupt(this.e ? 0x00fffa : 0x00ffea);
+    this.internalCycle(2);
   }
 
   address() { return (this.pbr << 16) | this.pc; }

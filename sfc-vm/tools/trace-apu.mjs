@@ -88,7 +88,7 @@ try {
     if (cpu.masterCycle >= instructionTraceStart && cpu.masterCycle <= instructionTraceEnd)
       instructionTrace.push([cpu.masterCycle, frame, instructionAddress, bus.read8(instructionAddress),
         cpu.a, cpu.x, cpu.y, cpu.s, cpu.d, cpu.dbr, cpu.p].join('\t'));
-    if (probePcs.has(instructionAddress)) pcProbes.push({ frame, pc: instructionAddress,
+    if (probePcs.has(instructionAddress)) pcProbes.push({ masterCycle: cpu.masterCycle, frame, pc: instructionAddress,
       a: cpu.a, x: cpu.x, y: cpu.y, dbr: cpu.dbr, p: cpu.p });
     cpu.step();
     for (const address of watchedWram) {

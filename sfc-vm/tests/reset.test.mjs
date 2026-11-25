@@ -224,6 +224,7 @@ test('native timing includes direct-page, PHP, TSC and 16-bit indexed penalties'
   const cases = [
     { bytes: [0x85, 0x20], setup: (cpu) => { cpu.d = 0x0101; }, cycles: 30 },
     { bytes: [0x08], cycles: 22 },
+    { bytes: [0x28], cycles: 28 },
     { bytes: [0x3b], cycles: 14 },
     { bytes: [0xbd, 0x00, 0x01], setup: (cpu) => { cpu.p &= ~0x10; }, cycles: 38 },
   ];
@@ -263,9 +264,11 @@ test('enters the native NMI vector with a restorable interrupt frame', () => {
   cpu.pbr = 2;
   cpu.pc = 0x4567;
   const stack = cpu.s;
+  const master = cpu.masterCycle;
   cpu.nmi();
   assert.equal(cpu.address(), 0x001234);
   assert.equal(cpu.s, stack - 4);
+  assert.equal(cpu.masterCycle - master, 60, 'native NMI uses six bus and two internal cycles');
   cpu.pc = 0x8000;
   rom[0] = 0x40; // RTI
   cpu.step();
