@@ -10,7 +10,7 @@
 <article>
   <a class="logo" href="#kamaitachi" aria-label="카마이타치의 밤 어드밴스 실행"><img src="/art/kamaitachi.png?logo" alt="かまいたちの夜 ADVANCE"></a>
   <div><h2>카마이타치의 밤 어드밴스 <small>(2002)</small></h2>
-  <div class="meta"><span>GBA · 한글 패치 적용</span>
+  <div class="meta"><span>GBA · 일본어 원작 (한글화 예정)</span>
   <a target="_blank" rel="noopener" href="https://www.spike-chunsoft.co.jp/pages/games/kamagba/">소개</a>
   <a target="_blank" rel="noopener" href="https://78514.com/games/kama/kama_endlist.html">공략</a></div></div>
 </article>
@@ -40,7 +40,7 @@
     if (selected) {
       frame.title = selected.getAttribute('aria-label');
       frame.src = selected.hash === '#kamaitachi'
-        ? '/web-player/index.html?embed=1&start=1&data=/kamaitachi-gba-kor/data/first-choice.ko.json'
+        ? '/ports/kamaitachi-gba/index.html'
         : '/play/' + selected.hash.slice(1) + '/';
     } else {
       frame.removeAttribute('src');

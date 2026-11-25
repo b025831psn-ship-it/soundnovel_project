@@ -12,15 +12,40 @@ const routes = new Map([
     const types = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.json': 'application/json' };
     return ['/web-player/' + file, [path.join(__dirname, 'web-player', file), types[path.extname(file)] + '; charset=utf-8']];
   }),
-  ['/kamaitachi-gba-kor/data/first-choice.ko.json', [path.join(__dirname, 'kamaitachi-gba-kor/data/first-choice.ko.json'), 'application/json; charset=utf-8']],
+  ['/kamaitachi-gba-kor/data/kamaitachi.ja.json', [path.join(__dirname, 'kamaitachi-gba-kor/data/kamaitachi.ja.json'), 'application/json; charset=utf-8']],
+  // MP2K sound module and the cartridge's sound data (kamaitachi-gba-kor/tools/extract_sound.py)
+  ...['index.html', 'm4a.js', 'output.js', 'worklet.js'].map(file => ['/ports/kamaitachi-gba/sound/' + file,
+    [path.join(__dirname, 'ports/kamaitachi-gba/sound', file), (file.endsWith('.html') ? 'text/html' : 'text/javascript') + '; charset=utf-8']]),
+  ['/kamaitachi-gba-kor/port-data/sound/m4a.json', [path.join(__dirname, 'kamaitachi-gba-kor/port-data/sound/m4a.json'), 'application/json; charset=utf-8']],
+  ['/kamaitachi-gba-kor/port-data/sound/m4a.bin', [path.join(__dirname, 'kamaitachi-gba-kor/port-data/sound/m4a.bin'), 'application/octet-stream']],
   ['/style.css', [path.join(__dirname, 'style.css'), 'text/css; charset=utf-8']],
   ['/games.js', [path.join(__dirname, 'games.js'), 'text/javascript; charset=utf-8']],
   ['/AGB-AHZJ.gba', [path.join(__dirname, '..', 'AGB-AHZJ.gba'), 'application/octet-stream']],
   ['/AGB-AKZJ.gba', [path.join(__dirname, '..', 'AGB-AKZJ.gba'), 'application/octet-stream']]
 ]);
 
+// The native-bytecode port (ports/kamaitachi-gba) and its extracted cartridge data (port-data).
+const portTypes = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8',
+  '.json': 'application/json; charset=utf-8', '.bin': 'application/octet-stream' };
+function portRoute(url) {
+  for (const [prefix, dir, exts] of [
+    ['/ports/kamaitachi-gba/', path.join(__dirname, 'ports', 'kamaitachi-gba'), ['.html', '.js']],
+    ['/kamaitachi-gba-kor/port-data/', path.join(__dirname, 'kamaitachi-gba-kor', 'port-data'), ['.json', '.bin']],
+  ]) {
+    if (!url.startsWith(prefix)) continue;
+    const file = path.join(dir, decodeURIComponent(url.slice(prefix.length)) || 'index.html');
+    const ext = path.extname(file);
+    if (!file.startsWith(dir + path.sep) || !exts.includes(ext) || /(^|[\\/])(tests?|tools)[\\/]/.test(file.slice(dir.length))) return null;
+    return [file, portTypes[ext]];
+  }
+  return null;
+}
+
 http.createServer((request, response) => {
-  const route = routes.get(request.url.split('?')[0]);
+  const url = request.url.split('?')[0];
+  // scene images from kamaitachi-gba-kor/tools/export_images.py: NNN.png and palette variants NNN-v.png
+  const bg = /^\/kamaitachi-gba-kor\/assets\/bg\/(\d{3}(?:-[1-3])?\.png)$/.exec(url);
+  const route = bg ? [path.join(__dirname, 'kamaitachi-gba-kor', 'assets', 'bg', bg[1]), 'image/png'] : routes.get(url) ?? portRoute(url);
   if (!route || !['HEAD', 'GET'].includes(request.method)) {
     response.writeHead(404).end();
     return;
