@@ -73,6 +73,7 @@ const password = (process.env.SOUNDNOVEL_PASSWORD ?? (() => {
 const SFC_GAME = '/kamaitachi-sfc-kor/port-data/game/kamaitachi.sfc';
 const sfcRom = (() => { try { return fs.readFileSync(path.join(__dirname, 'serve.sfcrom'), 'utf8').trim(); } catch { return ''; } })();
 if (sfcRom) routes.set(SFC_GAME, [path.resolve(__dirname, sfcRom), 'application/octet-stream']);
+const EDITS = path.join(__dirname, 'portrait-edits.json');
 const OUTPAINT = path.join(__dirname, 'kamaitachi-gba-kor', 'assets', 'outpaint', 'portrait');
 const cartridges = new Set(['/AGB-AHZJ.gba', '/AGB-AKZJ.gba', SFC_GAME]);
 // Open beta: while a local, uncommitted serve.open file exists (or SOUNDNOVEL_OPEN=1), tunnel visitors
@@ -158,6 +159,30 @@ http.createServer((request, response) => {
   const url = request.url.split('?')[0];
   if (url === '/sync' || url.startsWith('/sync/')) { if (syncAllowedFromOutside(request, response)) proxySync(request, response); return; }
   if (!allowedFromOutside(request, response, url)) return;
+  // Upright-screen choices per picture from the editor (ports/kamaitachi-gba/editor.html), kept in a
+  // local, uncommitted portrait-edits.json: everyone reads it; only this PC (no tunnel) writes it.
+  if (url === '/art/portrait-edits.json' && request.method === 'GET') {
+    fs.readFile(EDITS, 'utf8', (error, text) => {
+      response.writeHead(200, {'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-cache'}).end(error ? '{}' : text);
+    });
+    return;
+  }
+  if (url === '/edit/portrait-edits.json' && request.method === 'PUT') {
+    if (['cf-connecting-ip', 'x-forwarded-for', 'x-forwarded-host'].some(name => name in request.headers)) { response.writeHead(403).end(); return; }
+    const chunks = []; let size = 0;
+    request.on('data', chunk => { size += chunk.length; if (size > 256 * 1024) request.destroy(); else chunks.push(chunk); });
+    request.on('end', () => {
+      let value;
+      try { value = JSON.parse(Buffer.concat(chunks).toString('utf8')); } catch { value = null; }
+      if (!value || typeof value !== 'object' || Array.isArray(value)) { response.writeHead(400).end(); return; }
+      const temp = EDITS + '.tmp';
+      fs.writeFile(temp, JSON.stringify(value, null, 1), (error) => {
+        if (error) { response.writeHead(500).end(); return; }
+        fs.rename(temp, EDITS, (failure) => response.writeHead(failure ? 500 : 204).end());
+      });
+    });
+    return;
+  }
   // scene images from kamaitachi-gba-kor/tools/export_images.py: NNN.png and palette variants NNN-v.png
   // Pictures extended for upright phones (kamaitachi-gba-kor assets/outpaint/portrait/NNN.png) and their list.
   if (url === '/art/outpaint/index.json') {

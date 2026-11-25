@@ -84,9 +84,44 @@ async function loadExtended(game) {
 const FIRST_SHOWN = [259, 256, 257, 258, 222, 285, 286, 287, 288, 289, 290, 291, 292, 293, 294, 295, 296, 297,
   200, 74, 1, 2, 3, 209, 9, 12, 6, 17, 11, 7, 23, 22, 24, 8, 10];
 let extendedLoading = null;
+// Per-picture choices made in the editor (editor.html, saved as /art/portrait-edits.json on the test
+// server, 태우 2026-11-25): { "<picture id>": { mode, shift, crop } }
+//   mode  "ai" (the extended picture; the default when there is one), "fill" (the original cut to fill
+//         the screen) or "frame" (the original whole, over a blurred enlargement of itself)
+//   shift GBA rows the picture moves (+ down) in "ai" and "frame"
+//   crop  the left column of the cut in "fill" (otherwise placed automatically)
+let edits = {};
+let editVersion = 0;
+fetch("/art/portrait-edits.json", { cache: "no-cache" }).then((r) => (r.ok ? r.json() : {}))
+  .then((value) => { edits = value && typeof value === "object" ? value : {}; editVersion++; }).catch(() => {});
+let currentId = null;
+const editFor = (id) => (id === null || id === undefined ? null : edits[id] ?? null);
+function pictureId(game) {
+  const scene = game.vm?.scene;
+  if (!scene || scene.current === undefined || scene.current === null) return null;
+  return scene.resolve(scene.current).image;
+}
+// The original whole, over a blurred, darkened enlargement of itself.
+function paintFrame(ctx, base, width, height) {
+  const scale = width / 240;
+  middleCtx.putImageData(new ImageData(new Uint8ClampedArray(base), 240, 160), 0, 0);
+  const cover = height / 160;
+  ctx.save();
+  ctx.imageSmoothingEnabled = true;
+  ctx.filter = `blur(${Math.round(8 * scale)}px) brightness(.55)`;
+  ctx.drawImage(middle, (width - 240 * cover) / 2, 0, 240 * cover, height);
+  ctx.filter = "none";
+  ctx.imageSmoothingEnabled = false;
+  ctx.drawImage(middle, 0, EXTENDED_TOP * scale, width, 160 * scale);
+  ctx.restore();
+  const shift = Math.round((editFor(currentId)?.shift ?? 0) * scale);
+  if (shift) shiftPicture(ctx, width, height, shift, scale);
+}
 const extendedFor = (screen) => screen.background?.tiles && extended.get(signature(screen.background.tiles));
 function compose(screen, base) {
-  const entry = extendedFor(screen);
+  const mode = editFor(currentId)?.mode;
+  if (mode === "frame") { sizeTo(EXTENDED_HEIGHT); paintFrame(pictureCtx, base, picture.width, picture.height); return EXTENDED_TOP; }
+  const entry = mode === "fill" ? null : extendedFor(screen);
   if (!entry) { sizeTo(160); sourceCtx.putImageData(new ImageData(new Uint8ClampedArray(base), 240, 160), 0, 0); }
   else {
     sizeTo(EXTENDED_HEIGHT);
@@ -198,26 +233,33 @@ function paintSharp(ctx, entry, base, width, height, layer) {
     ctx.drawImage(shifted, 0, below - 6 * scale);
     ctx.restore();
   }
-  const drop = Math.round(level.bottom * DROP * scale);
-  if (drop > 0) {
-    shifted.width = width; shifted.height = height;
-    shifted.getContext("2d").drawImage(ctx.canvas, 0, 0);
-    const blend = 16 * scale; // the stretched sky fades into the picture's own top rows
-    sky.width = width; sky.height = drop + blend;
-    const k = sky.getContext("2d");
-    k.filter = `blur(${Math.round(6 * scale)}px)`;
-    k.drawImage(shifted, 0, 0, width, 12 * scale, 0, -6 * scale, width, sky.height + 12 * scale);
-    k.filter = "none";
-    k.globalCompositeOperation = "destination-in";
-    const fade = k.createLinearGradient(0, drop, 0, drop + blend);
-    fade.addColorStop(0, "#000"); fade.addColorStop(1, "rgba(0,0,0,0)");
-    k.fillStyle = fade; k.fillRect(0, 0, width, sky.height);
-    k.globalCompositeOperation = "source-over";
-    ctx.save();
-    ctx.drawImage(shifted, 0, 0, width, height - drop, 0, drop, width, height - drop);
-    ctx.drawImage(sky, 0, 0);
-    ctx.restore();
-  }
+  // Moved by the editor (portrait-edits.json: shift, in GBA rows, + down) and for a figure standing
+  // on the bottom edge.
+  const drop = Math.round((level.bottom * DROP + (editFor(currentId)?.shift ?? 0)) * scale);
+  if (drop) shiftPicture(ctx, width, height, drop, scale);
+}
+// Moves the whole picture down (drop > 0) or up; the side left open is filled with that edge's rows,
+// stretched, blurred and faded into the picture.
+function shiftPicture(ctx, width, height, drop, scale) {
+  shifted.width = width; shifted.height = height;
+  shifted.getContext("2d").drawImage(ctx.canvas, 0, 0);
+  const open = Math.abs(drop), blend = 16 * scale;
+  sky.width = width; sky.height = open + blend;
+  const k = sky.getContext("2d");
+  k.filter = `blur(${Math.round(6 * scale)}px)`;
+  if (drop > 0) k.drawImage(shifted, 0, 0, width, 12 * scale, 0, -6 * scale, width, sky.height + 12 * scale);
+  else k.drawImage(shifted, 0, height - 12 * scale, width, 12 * scale, 0, -6 * scale, width, sky.height + 12 * scale);
+  k.filter = "none";
+  k.globalCompositeOperation = "destination-in";
+  const fade = drop > 0 ? k.createLinearGradient(0, open, 0, open + blend) : k.createLinearGradient(0, blend, 0, 0);
+  fade.addColorStop(0, "#000"); fade.addColorStop(1, "rgba(0,0,0,0)");
+  k.fillStyle = fade; k.fillRect(0, 0, width, sky.height);
+  k.globalCompositeOperation = "source-over";
+  ctx.save();
+  ctx.clearRect(0, 0, width, height);
+  if (drop > 0) { ctx.drawImage(shifted, 0, 0, width, height - open, 0, open, width, height - open); ctx.drawImage(sky, 0, 0); }
+  else { ctx.drawImage(shifted, 0, open, width, height - open, 0, 0, width, height - open); ctx.drawImage(sky, 0, height - sky.height); }
+  ctx.restore();
 }
 // How far (GBA rows) the picture moves down for a figure standing on the bottom edge: half the bottom
 // margin, so a band of blurred picture stays below the feet.
@@ -415,23 +457,29 @@ function cropLeft(base, layer, width) {
   return best;
 }
 
-let shownBase = null, shownBackground = null, shownLayer = null, crop = -1;
+let shownBase = null, shownBackground = null, shownLayer = null, crop = -1, shownEdit = -1;
 function drawPicture(game) {
   const screen = game.screen;
   const base = screen.base;
   const size = { width: reader.clientWidth, height: reader.clientHeight };
   if (!base || !size.height) return;
   extendedLoading ??= loadExtended(game).then(() => { shownBase = null; });
-  if (base !== shownBase || cutEasing) {
+  currentId = pictureId(game);
+  const edit = editFor(currentId);
+  if (base !== shownBase || cutEasing || editVersion !== shownEdit) {
+    const edited = editVersion !== shownEdit;
+    shownEdit = editVersion;
     cutEasing = false;
     compose(screen, base);
-    picture.classList.toggle("sharp", Boolean(extendedFor(screen)?.hd));
+    picture.classList.toggle("sharp", edit?.mode !== "fill" && edit?.mode !== "frame" && Boolean(extendedFor(screen)?.hd));
+    if (edited) crop = -1;
     const width = Math.min(240, (source.height * size.width) / size.height);
     // A new picture cuts straight to its place; a silhouette coming or going on the same one pans.
     const same = screen.background === shownBackground;
     const layerChanged = (screen.silhouette ? silhouetteSpan(screen.silhouette)?.left : null) !== shownLayer;
     if (!same || layerChanged || crop < 0) {
-      const next = cropLeft(base, screen.silhouette, width);
+      const next = edit?.mode === "fill" && Number.isFinite(edit.crop)
+        ? Math.max(0, Math.min(240 - width, Math.round(edit.crop))) : cropLeft(base, screen.silhouette, width);
       picture.classList.toggle("pan", same && crop >= 0);
       crop = next;
     }
@@ -646,3 +694,28 @@ toggle.addEventListener("click", () => {
   showToggle();
 });
 showToggle();
+
+// Editor preview (editor.html frames the player with ?preview=1): the game holds still and shows the
+// picture the editor names, with the editor's unsaved choices for it.
+if (new URLSearchParams(location.search).has("preview")) {
+  addEventListener("message", async (event) => {
+    if (event.origin !== location.origin || event.data?.type !== "preview") return;
+    const game = window.kamaitachi;
+    if (!game?.vm) return;
+    const { id, edit } = event.data;
+    if (edit) edits[id] = edit; else delete edits[id];
+    editVersion++;
+    if (pictureId(game) !== id || game.vm.waiting !== "hold") {
+      game.vm.waiting = "hold";
+      game.boot.run = null;
+      game.page.hideMenu?.();
+      game.vm.text?.clearPage?.();
+      await game.vm.scene.load(id);
+      game.screen.setSilhouetteLayer?.(null);
+      game.screen.setBrightness(1, 0x8000);
+      game.screen.setBrightness(5, 0x8000);
+    }
+    parent.postMessage({ type: "preview-shown", id }, location.origin);
+  });
+  parent.postMessage({ type: "preview-ready" }, location.origin);
+}
