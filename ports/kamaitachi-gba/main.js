@@ -4,6 +4,7 @@ import { NativeFont, TextWindow } from "./src/font.js";
 import { GBAInput } from "./src/input.js";
 import { VM } from "./src/vm.js";
 import { PageText } from "./src/page-text.js";
+import { LargeText, wantsLargeText } from "./src/large-text.js";
 import { Boot, KEY } from "./src/boot.js";
 import { createSound } from "./sound/output.js";
 import { Silhouettes } from "./src/silhouette.js";
@@ -75,6 +76,13 @@ const vm = new VM({ banks, scene, text, musicMap: music.request_to_song, audio: 
   audioTables, choiceView, transitionTimings,
   entryRow: Number.isInteger(entryRow) ? entryRow : 31000 });
 const page = new PageText(screen, font, text);
+// Phones: the story text larger, with wider rows, over the game screen (?bigtext=0|1 overrides).
+if (wantsLargeText()) {
+  page.large = new LargeText(screen.canvas);
+  const redraw = () => { page.drawn = -1; };
+  addEventListener("resize", redraw);
+  document.addEventListener("fullscreenchange", redraw);
+}
 // Opcode 1D's native screens (1D 00: logo, copyright, title menu, bookmarks; 1D 03/04: names).
 // Bookmarks live in the shared SaveStore (IndexedDB), opened before the game starts.
 const books = await openBooks();
@@ -197,7 +205,7 @@ function loop(now) {
     }
     vm.vblank();
     boot.vblank();
-    if (vm.waiting === "boot") boot.frame(trigger, held);
+    if (vm.waiting === "boot") { page.large?.clear(); boot.frame(trigger, held); }
     else {
       // 080073F4: the click-wait marker (8484, or 8483 when the page is cleared after the press).
       page.waitMarker = vm.waiting === "click" && vm.ram.inGame ? (text.pendingClear ? 0x8483 : 0x8484) : 0;

@@ -18,6 +18,7 @@ const MENU_BLINK_ON = 16;
 const TEXT_COLOR = { 0: 2, 4: 4 };
 
 // 。！？、・」』）…―～ (08007F04)
+const NATIVE = { k: 1, scale: 1, pitch: 14 };
 const HANGING = new Set([0x8142, 0x8149, 0x8148, 0x8141, 0x8145, 0x8176, 0x8178, 0x816a, 0x8163, 0x815c, 0x8160]);
 
 export class PageText {
@@ -80,27 +81,30 @@ export class PageText {
     return glyphs;
   }
 
-  // Glyph positions for the page collected so far.
-  place(fragments) {
+  // Glyph positions for the page collected so far. `g` scales the cartridge's geometry for the
+  // large mobile text (large-text.js); the default is the screen's own (k = 1, scale = 1).
+  place(fragments, g = NATIVE) {
     const glyphs = [];
-    let x = 8, y = 11, color = 2, hung = false;
+    const left = 8 * g.k, top = 11 * g.k, limit = g.limit ?? 0xdb;
+    let x = left, y = top, color = 2, hung = false;
+    const newline = () => { x = left; y += g.pitch; };
     const put = (encoded) => {
       const index = this.font.find(encoded);
       const width = index < 0 ? 8 : this.font.glyph(index).width;
       // 、。 advance 8; the ideographic space advances 2 (mGBA: 「は　　　透」 leaves 6 pixels).
-      const advance = encoded === 0x8141 || encoded === 0x8142 ? 8 : encoded === 0x8140 ? 2 : width;
+      const advance = (encoded === 0x8141 || encoded === 0x8142 ? 8 : encoded === 0x8140 ? 2 : width) * g.scale;
       // 08007F04: past x 0xDB a glyph goes to the next row, but closing punctuation may stay
       // on the row once (02024E1A); a second one in a row wraps.
-      if (x > 0xdb) {
+      if (x > limit) {
         if (HANGING.has(encoded) && !hung) hung = true;
-        else { hung = false; x = 8; y += 14; }
+        else { hung = false; newline(); }
       } else if (!HANGING.has(encoded)) hung = false;
       glyphs.push({ encoded, x, y, color });
       x += advance;
     };
     for (const fragment of fragments) {
-      if (fragment === "\n") { x = 8; y += 14; continue; }
-      if (fragment.breakPast !== undefined) { if (x > fragment.breakPast) { x = 8; y += 14; } continue; }
+      if (fragment === "\n") { newline(); continue; }
+      if (fragment.breakPast !== undefined) { if (x > fragment.breakPast * g.k) newline(); continue; }
       if (fragment.color !== undefined) { color = TEXT_COLOR[fragment.color] ?? 2; continue; }
       if (typeof fragment === "string") {
         // TextWindow gives the name, or {name:n} with n the raw argument byte ('1' = 0x31).
@@ -112,7 +116,8 @@ export class PageText {
       }
       put((fragment[0] << 8) | fragment[1]);
     }
-    glyphs.end = { x, y }; // where the next glyph would go (the wait marker's place)
+    // Where the next glyph would go (the wait marker's place; the next row past the limit).
+    glyphs.end = x > limit ? { x: left, y: y + g.pitch } : { x, y };
     return glyphs;
   }
 
@@ -138,20 +143,27 @@ export class PageText {
     this.waitFrames = marking ? (this.waitFrames ?? -1) + 1 : -1;
     const markerOn = marking && ((this.waitFrames >> 4) & 1) === 1;
     if (markerOn !== Boolean(this.markerShown)) { this.markerShown = markerOn; this.drawn = -1; }
-    if (hidden) { this.drawn = -1; return; }
+    if (hidden) { this.drawn = -1; this.large?.clear(); return; }
     const screen = this.screen;
     if (this.menu) { this.menu.blink++; this.drawn = -1; }
+    // Mobile: the story text goes to the large overlay instead (not while a menu sits under it).
+    const large = this.large?.enabled && !this.menu ? this.large : null;
+    if (large !== this.largeUsed) { this.largeUsed = large; this.drawn = -1; if (!large) this.large?.clear(); }
     if (!screen.base || (this.drawn === this.shown && this.base === screen.base)) return;
     this.base = screen.base;
     this.drawn = this.shown;
     const surface = new ObjTextSurface();
-    for (const glyph of this.layout.slice(0, this.shown)) surface.glyph(this.font, glyph.encoded, glyph.x, glyph.y, glyph.color);
-    if (this.menu) for (const glyph of this.menuGlyphs()) surface.glyph(this.font, glyph.encoded, glyph.x, glyph.y, glyph.color);
-    if (this.markerShown) {
-      const { x, y } = this.layout.end ?? { x: 8, y: 11 };
-      if (x > 0xdb) surface.glyph(this.font, this.waitMarker, 8, y + 14, 2);
-      else surface.glyph(this.font, this.waitMarker, x, y, 2);
+    if (large) {
+      if (this.largeSource !== this.layout) { this.largeSource = this.layout; this.largeLayout = this.place(fragments, large.geometry); }
+      large.draw(this.font, this.largeLayout, this.shown, this.markerShown ? this.waitMarker : 0, COLORS);
+    } else {
+      for (const glyph of this.layout.slice(0, this.shown)) surface.glyph(this.font, glyph.encoded, glyph.x, glyph.y, glyph.color);
+      if (this.markerShown) {
+        const { x, y } = this.layout.end ?? { x: 8, y: 11 };
+        surface.glyph(this.font, this.waitMarker, x, y, 2);
+      }
     }
+    if (this.menu) for (const glyph of this.menuGlyphs()) surface.glyph(this.font, glyph.encoded, glyph.x, glyph.y, glyph.color);
     const data = screen.image.data;
     data.set(screen.base);
     for (let pixel = 0; pixel < surface.pixels.length; pixel++) {
