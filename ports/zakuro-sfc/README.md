@@ -70,6 +70,8 @@
 - `replay-cpu.mjs <port-data> --snapshot --link [--sync-every n]`: 같은 경로를 Node에서 확인한다. `--sync-every` 357366·35791·1001 모두 CPU 읽기 982,716건과 DSP 264,389건이 같다.
 - 시각 상수는 브라우저에서도 읽도록 `sound/zakuro-timing.js`로 옮겼다(`tools/rom.mjs`가 다시 내보낸다).
 - 헤드리스 Chromium에서 25초 재생: 포트 읽기 714,198건 중 불일치 0, 실시간 유지.
+- `?mode=vm`(VM 입력): Codex의 65c816 VM(`../vm/`, codex/27-zakuro-65c816-vm)이 게임을 실행하고 그 포트 접근이 같은 `MasterLink`로 소리를 낸다. 비공개 `sound/ipl.bin`·`trace/input.tsv`를 쓰고, ROM은 사용자가 고른 로컬 파일을 SHA-256으로 확인해 브라우저 안에서만 읽는다. 화면에 기록과 순서·값이 같은 접근 수와 CPU 쓰기 대조를 표시한다. VM 241cb05로 헤드리스 Chromium 60초 실시간 재생(frame 3610), 엄격 일치 66,427행, 쓰기 252,612건 순서 일치(엄격 비교라 frame 422 등 extra idle-clear 뒤에서 조금 덜 센다). 출력 부족 약 0.5초 분(초기·VM 무거운 구간).
+- `APU`는 `ipl` 인수를 받는다(Codex 241cb05와 같은 변경).
 
 ### VM 전체 실행 (`tools/vm-full-run.mjs`)
 

@@ -7,8 +7,9 @@ export const SPC_CLOCK_HZ = 1024000;
 export const SAMPLE_RATE = 32000;
 
 export class APU {
-  constructor({ gauss = null, onDspWrite = null, onPortWrite = null } = {}) {
+  constructor({ gauss = null, onDspWrite = null, onPortWrite = null, ipl = null } = {}) {
     this.cpu = new SPC700({ onDspWrite, onPortWrite });
+    if (ipl) this.cpu.loadIplImage(ipl);
     this.dsp = new SDSP(this.cpu.ram, { gauss });
     this.cpu.dsp = this.dsp;
   }
