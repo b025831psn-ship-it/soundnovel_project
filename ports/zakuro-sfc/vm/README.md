@@ -29,10 +29,12 @@ the remaining apparent refresh conflict was actually a store-cycle bug: most
 STA/STX/STY/STZ modes added their documented total on top of the common opcode
 fetch cycle. Correcting that one-cycle overcharge removes 60,088 master clocks
 in the critical interval while keeping the hardware's 40-clock-per-scanline
-DRAM refresh enabled. Against private trace commit e286471, the matching APUIO
-prefix is now 110 rows and the maximum error is 40 master cycles. The next work
-is the single-refresh phase difference at upload byte 0b. The comparator
-intentionally fails at the first semantic mismatch so timing cannot be hidden
-by resynchronizing the trace.
+DRAM refresh enabled. Refresh timing now follows the real PPU scanline grid:
+H=538/H=534 alternate, odd-field V=240 is 1360 clocks, and that short line does
+not toggle the refresh phase. Against private trace commit e286471, the matching
+APUIO prefix is now 24,613 rows; the greeting and initial upload begin with zero
+cycle error. The next mismatch is a new one-field state transition after NMI is
+enabled near 72.5M master cycles. The comparator intentionally fails at the
+first semantic mismatch so timing cannot be hidden by resynchronizing the trace.
 
 The CPU core provenance and license are in `THIRD_PARTY_NOTICES.md`.

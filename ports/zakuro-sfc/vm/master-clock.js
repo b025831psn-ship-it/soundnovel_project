@@ -26,6 +26,46 @@ export function inAutoJoypadRead(master) {
   const index = vblankOrdinal(master);
   return index >= 0 && master - vblankBoundary(index) < 3 * SCANLINE_MASTER_CYCLES;
 }
+
+export function scanlineTiming(master) {
+  const pair = Math.floor(master / FIELD_PAIR_MASTER_CYCLES);
+  const pairOffset = master - pair * FIELD_PAIR_MASTER_CYCLES;
+  const oddField = pairOffset >= FRAME_MASTER_CYCLES;
+  const fieldOffset = oddField ? pairOffset - FRAME_MASTER_CYCLES : pairOffset;
+  let line, lineStart, completedNormalLines;
+  const shortLineStart = 240 * SCANLINE_MASTER_CYCLES;
+  if (!oddField || fieldOffset < shortLineStart) {
+    line = Math.floor(fieldOffset / SCANLINE_MASTER_CYCLES);
+    lineStart = fieldOffset - (fieldOffset % SCANLINE_MASTER_CYCLES);
+    completedNormalLines = line;
+  } else if (fieldOffset < shortLineStart + SCANLINE_MASTER_CYCLES - 4) {
+    line = 240; lineStart = shortLineStart; completedNormalLines = 240;
+  } else {
+    const afterShort = fieldOffset - (shortLineStart + SCANLINE_MASTER_CYCLES - 4);
+    line = 241 + Math.floor(afterShort / SCANLINE_MASTER_CYCLES);
+    lineStart = shortLineStart + SCANLINE_MASTER_CYCLES - 4
+      + Math.floor(afterShort / SCANLINE_MASTER_CYCLES) * SCANLINE_MASTER_CYCLES;
+    completedNormalLines = line - 1;
+  }
+  const fieldStart = pair * FIELD_PAIR_MASTER_CYCLES + (oddField ? FRAME_MASTER_CYCLES : 0);
+  const normalLinesBefore = pair * 523 + (oddField ? 262 : 0) + completedNormalLines;
+  return {
+    field: pair * 2 + (oddField ? 1 : 0), line,
+    start: fieldStart + lineStart,
+    length: oddField && line === 240 ? SCANLINE_MASTER_CYCLES - 4 : SCANLINE_MASTER_CYCLES,
+    refresh: 538 - ((normalLinesBefore & 1) ? 4 : 0),
+  };
+}
+
+function nextRefreshAfter(master) {
+  let timing = scanlineTiming(master);
+  let refresh = timing.start + timing.refresh;
+  if (refresh <= master) {
+    timing = scanlineTiming(timing.start + timing.length);
+    refresh = timing.start + timing.refresh;
+  }
+  return refresh;
+}
 export function accessCycles(address, fastRom = false) {
   const a = address & 0xffffff, bank = a >>> 16, offset = a & 0xffff;
   if ((bank & 0x40) === 0 && offset < 0x2000) return 8;
@@ -43,9 +83,10 @@ export class MasterClock {
     let target = this.master + count;
     if (this.refresh) {
       // S-CPU DRAM refresh steals 40 master clocks once per 1364-clock scanline,
-      // starting at H=538. A steal can move the endpoint past another boundary.
+      // at alternating H=538/H=534. Odd-field V=240 is four clocks short and
+      // does not toggle the refresh phase. A steal can cross another boundary.
       for (;;) {
-        const next = 538 + (Math.floor((this.master - 538) / 1364) + 1) * 1364;
+        const next = nextRefreshAfter(this.master);
         if (next > target) break;
         target += 40; this.master = next;
       }

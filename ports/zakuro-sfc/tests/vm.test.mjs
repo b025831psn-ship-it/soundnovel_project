@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { ApuTraceComparator, MasterClock, ZakuroBus, ZakuroVM, accessCycles, createApuLink, inAutoJoypadRead, inVblank, vblankBoundary } from '../vm/index.js';
+import { ApuTraceComparator, MasterClock, ZakuroBus, ZakuroVM, accessCycles, createApuLink, inAutoJoypadRead, inVblank, scanlineTiming, vblankBoundary } from '../vm/index.js';
 import { LINK_TIMING, POWER_ON } from '../tools/rom.mjs';
 
 function fixtureRom(program) {
@@ -30,6 +30,15 @@ test('PPU fields alternate 357368/357364 master cycles', () => {
   assert.equal(inAutoJoypadRead(306900), true);
   assert.equal(inAutoJoypadRead(306900 + 4091), true);
   assert.equal(inAutoJoypadRead(306900 + 4092), false);
+});
+
+test('DRAM refresh follows alternating H positions across the short scanline', () => {
+  assert.deepEqual(scanlineTiming(0), { field: 0, line: 0, start: 0, length: 1364, refresh: 538 });
+  assert.equal(scanlineTiming(1364).refresh, 534);
+  const odd240 = scanlineTiming(357368 + 240 * 1364);
+  assert.deepEqual({ line: odd240.line, length: odd240.length, refresh: odd240.refresh }, { line: 240, length: 1360, refresh: 538 });
+  assert.equal(scanlineTiming(odd240.start + odd240.length).refresh, 538);
+  assert.equal(scanlineTiming(357368 + 357364).refresh, 534);
 });
 
 test('65C816 reset executes LoROM and routes $2140 through MasterLink', () => {
