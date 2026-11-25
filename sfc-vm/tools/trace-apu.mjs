@@ -33,7 +33,7 @@ if (joypadPath) {
   }
 }
 const output = fs.createWriteStream(outputPath);
-output.write('frame\tcpu_cycle\tdir(w/r)\tport\tvalue\n');
+output.write('frame\tcpu_cycle\tdir(w/r)\tport\tvalue\tpc\topcode\n');
 let frame = 0;
 let inVblank = false;
 let pendingNmiAt = Infinity;
@@ -53,7 +53,8 @@ const bus = new SfcBus(fs.readFileSync(romPath), {
   eventLimit: 0,
   apuTraceLimit: 0,
   onApuAccess: (event) => {
-    output.write(`${frame}\t${event.masterCycle}\t${event.direction}\t${event.port}\t${event.value.toString(16).padStart(2, '0').toUpperCase()}\n`);
+    const ins = cpu?.currentInstruction;
+    output.write(`${frame}\t${event.masterCycle}\t${event.direction}\t${event.port}\t${event.value.toString(16).padStart(2, '0').toUpperCase()}\t${ins ? ins.address.toString(16).padStart(6, '0').toUpperCase() : ''}\t${ins ? ins.opcode.toString(16).padStart(2, '0').toUpperCase() : ''}\n`);
     const semantic = event.direction === 'w' || lastApuRead[event.port] !== event.value;
     if (event.direction === 'r') lastApuRead[event.port] = event.value;
     if (!semantic) return;

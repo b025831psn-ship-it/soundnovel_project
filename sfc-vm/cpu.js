@@ -69,8 +69,10 @@ export class Cpu65816 {
     this.p = 0x34;
     this.e = true;
     this.pbr = 0;
-    // Snes9x starts at 182 master clocks just after the hardware reset-vector jump.
-    this.masterCycle = 182;
+    // The first post-reset opcode fetch starts at master 166.  Snes9x's
+    // APUIO bus trace records the access point before the bus cycle advances;
+    // using 182 here put every pre-IPL CPU access 16 master clocks late.
+    this.masterCycle = 166;
     this.nextWramRefresh = 538;
     this.busTransactions = 0;
     this.pc = this.rawBus.read16(0x00fffc);
@@ -200,6 +202,7 @@ export class Cpu65816 {
     const at = this.address();
     const startTransactions = this.busTransactions;
     const op = this.fetch8();
+    this.currentInstruction = { address: at, opcode: op };
     let name;
     switch (op) {
       case 0x00: {

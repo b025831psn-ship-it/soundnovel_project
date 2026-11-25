@@ -120,10 +120,10 @@ test('charges memory-speed and internal master cycles per CPU bus transaction', 
   const cpu = new Cpu65816(bus);
   cpu.step();
   assert.deepEqual(bus.apuTrace[0], {
-    masterCycle: 182 + 8 + 8 + 8,
+    masterCycle: 166 + 8 + 8 + 8,
     direction: 'r', port: 0, value: 0xaa,
   });
-  assert.equal(cpu.masterCycle, 182 + 8 + 8 + 8 + 6);
+  assert.equal(cpu.masterCycle, 166 + 8 + 8 + 8 + 6);
 });
 
 test('8-bit LSR A does not shift the hidden B accumulator into A', () => {

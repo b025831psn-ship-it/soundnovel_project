@@ -214,9 +214,10 @@ export class SPC700 {
     const op = this.fetch();
     this.curOp = op;
     let extra = this.exec(op);
-    // The IPL's final JMP [!abs+X] into the uploaded program takes one clock more than the
-    // same opcode in RAM (measured: reset-to-frame-5700 CPU reads and PCM, see apu.js).
-    if (inIpl && op === 0x1f) extra += 1;
+    // At the IPL hand-off, JMP [!abs+X] reaches the uploaded driver four clocks later
+    // than the base table.  This is measured at the first driver DSP write; treating it
+    // as an ordinary RAM opcode starts the driver four clocks early.
+    if (inIpl && op === 0x1f) extra += 4;
     const clocks = CYCLES[op] + extra;
     this.tick(clocks);
     return clocks;
