@@ -10,7 +10,18 @@ const MAX_SLOTS = 200;
 const HEX = /^[0-9a-f]{64}$/;
 const ID = /^[a-z0-9][a-z0-9:_-]{0,63}$/;
 
-export function createServer({ dir, maxBody = MAX_BODY, maxSlots = MAX_SLOTS } = {}) {
+const PAIR = /^[0-9A-HJKMNP-TV-Z]{4}$/;
+
+// Pairing: a one-time, short-lived 4-character code hands a wrapped secret from one device to another.
+// It is never an account password; failed claims are rate limited per client and globally.
+export function createServer({ dir, maxBody = MAX_BODY, maxSlots = MAX_SLOTS, now = Date.now,
+  pairTtlMs = 5 * 60 * 1000, maxPairs = 1000, maxFailsPerClient = 10, maxFailsGlobal = 200, failWindowMs = 10 * 60 * 1000 } = {}) {
+  const pairs = new Map(); // code -> { blob, expires }
+  const fails = new Map(); // client -> [timestamps]
+  let globalFails = [];
+  const recent = (list) => list.filter((t) => now() - t < failWindowMs);
+  const clientOf = (req) => req.headers["cf-connecting-ip"] ?? req.socket.remoteAddress ?? "?";
+  const sweep = () => { for (const [c, p] of pairs) if (p.expires <= now()) pairs.delete(c); };
   fs.mkdirSync(dir, { recursive: true });
   const sha = (s) => crypto.createHash("sha256").update(s).digest("hex");
   const vaultFile = (id) => path.join(dir, `${id}.json`);
@@ -27,6 +38,32 @@ export function createServer({ dir, maxBody = MAX_BODY, maxSlots = MAX_SLOTS } =
   return http.createServer(async (req, res) => {
     try {
       if (req.method === "OPTIONS") return send(res, 204);
+      const pm = /^\/v1\/pair\/([^/]+)(\/claim)?$/.exec(new URL(req.url, "http://x").pathname);
+      if (pm) {
+        const code = pm[1].toUpperCase();
+        if (!PAIR.test(code)) return send(res, 400, { error: "bad code" });
+        sweep();
+        if (req.method === "PUT" && !pm[2]) {
+          if (pairs.has(code)) return send(res, 409, { error: "in use" });
+          if (pairs.size >= maxPairs) return send(res, 429, { error: "busy" });
+          let body;
+          try { body = JSON.parse(await readBody(req)); } catch { return send(res, 400, { error: "bad body" }); }
+          if (!body?.blob || typeof body.blob.ct !== "string" || typeof body.blob.iv !== "string") return send(res, 400, { error: "bad blob" });
+          pairs.set(code, { blob: body.blob, expires: now() + pairTtlMs });
+          return send(res, 201, { expiresInSec: Math.floor(pairTtlMs / 1000) });
+        }
+        if (req.method === "POST" && pm[2]) {
+          const who = clientOf(req);
+          const mine = recent(fails.get(who) ?? []); fails.set(who, mine);
+          globalFails = recent(globalFails);
+          if (mine.length >= maxFailsPerClient || globalFails.length >= maxFailsGlobal) return send(res, 429, { error: "too many attempts" });
+          const p = pairs.get(code);
+          if (!p) { mine.push(now()); globalFails.push(now()); return send(res, 404, { error: "no such code" }); }
+          pairs.delete(code); // single use
+          return send(res, 200, { blob: p.blob });
+        }
+        return send(res, 405, { error: "method" });
+      }
       const m = /^\/v1\/vaults\/([0-9a-f]{64})(\/saves(?:\/([^/]+)\/([^/]+))?)?$/.exec(new URL(req.url, "http://x").pathname);
       if (!m || !HEX.test(m[1])) return send(res, 404, { error: "not found" });
       const [, vaultId, savesPart, gameId, slot] = m;
