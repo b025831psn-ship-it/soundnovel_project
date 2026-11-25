@@ -74,6 +74,9 @@ export class Cpu65816 {
     // using 182 here put every pre-IPL CPU access 16 master clocks late.
     this.masterCycle = 166;
     this.nextWramRefresh = 538;
+    this.refreshPosition = 538;
+    this.refreshScanline = 0;
+    this.refreshField = 0;
     this.busTransactions = 0;
     this.pc = this.rawBus.read16(0x00fffc);
   }
@@ -120,7 +123,22 @@ export class Cpu65816 {
     let target = this.masterCycle + cycles;
     while (this.nextWramRefresh <= target) {
       target += 40;
-      this.nextWramRefresh += 1364;
+      // Snes9x's 5A22-v2 timing alternates WRAM refresh between H=538 and
+      // H=534.  On the odd field's one-dot-short V=240 line the position does
+      // not toggle.  Preserve that H-event order instead of using a fixed
+      // 1364-master period; otherwise APUIO poll loops occasionally gain or
+      // lose an iteration even though the following handshake catches up.
+      const currentLineLength = this.refreshScanline === 240 && this.refreshField === 1 ? 1360 : 1364;
+      let nextScanline = this.refreshScanline + 1;
+      let nextField = this.refreshField;
+      if (nextScanline === 262) { nextScanline = 0; nextField ^= 1; }
+      let nextPosition = this.refreshPosition;
+      if (nextScanline !== 240 || nextField !== 1)
+        nextPosition = this.refreshPosition === 534 ? 538 : 534;
+      this.nextWramRefresh += currentLineLength - this.refreshPosition + nextPosition;
+      this.refreshPosition = nextPosition;
+      this.refreshScanline = nextScanline;
+      this.refreshField = nextField;
     }
     this.masterCycle = target;
   }

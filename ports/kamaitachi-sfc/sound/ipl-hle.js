@@ -82,8 +82,8 @@ IplHle.PROGRAM = {
     [0xdd, 2, (c) => { c.a = c.nz(c.y); }],
     [0x5d, 2, (c) => { c.x = c.nz(c.a); }],
     [0xd0, 2, bne('waitZero')],
-    // JMP [!$0000+X]: base 6 clocks plus the measured four-clock IPL hand-off delay.
-    [0x1f, 10, (c, h) => { c.pc = c.read(c.x) | (c.read((c.x + 1) & 0xffff) << 8); h.done = true; return 0; }],
+    // JMP [!$0000+X]: 6 clocks plus the one the boot ROM's jump measures longer.
+    [0x1f, 7, (c, h) => { c.pc = c.read(c.x) | (c.read((c.x + 1) & 0xffff) << 8); h.done = true; return 0; }],
   ],
 };
 IplHle.NEXT = { reset: 'clear', clear: 'ready', ready: 'waitCC', waitZero: 'byte', byte: 'check', check: 'block' };

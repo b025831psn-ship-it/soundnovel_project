@@ -126,6 +126,18 @@ test('charges memory-speed and internal master cycles per CPU bus transaction', 
   assert.equal(cpu.masterCycle, 166 + 8 + 8 + 8 + 6);
 });
 
+test('alternates 5A22-v2 WRAM refresh between H=538 and H=534', () => {
+  const cpu = new Cpu65816(new SfcBus(fixture()));
+  cpu.advanceMaster(372); // 166 -> 538, including the 40-master refresh stall
+  assert.equal(cpu.masterCycle, 578);
+  assert.equal(cpu.nextWramRefresh, 1898);
+  assert.equal(cpu.refreshPosition, 534);
+  cpu.advanceMaster(1320); // reaches the H=534 refresh on the following line
+  assert.equal(cpu.masterCycle, 1938);
+  assert.equal(cpu.nextWramRefresh, 3266);
+  assert.equal(cpu.refreshPosition, 538);
+});
+
 test('8-bit LSR A does not shift the hidden B accumulator into A', () => {
   const rom = fixture();
   rom.set([0x4a, 0x4a, 0x4a, 0xa8], 0); // LSR A x3; TAY

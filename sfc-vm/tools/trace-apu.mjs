@@ -19,7 +19,10 @@ const { APU } = await import(pathToFileURL(apuModulePath));
 const spcPortTrace = [], dspTrace = [];
 const apu = new APU({
   onPortWrite: (clock, port, value) => spcPortTrace.push([clock, port, value]),
-  onDspWrite: (clock, reg, value) => dspTrace.push([clock, reg, value]),
+  // DSP reference traces use the external SPC clock origin.  The core starts
+  // CORE_DELAY clocks later, so callbacks from the core need that delay added
+  // (the same contract used by replay-link.mjs).
+  onDspWrite: (clock, reg, value) => dspTrace.push([clock + (APU.CORE_DELAY ?? 0), reg, value]),
 });
 apu.powerOn(iplPath ? fs.readFileSync(iplPath) : null);
 const joypad = new Map();
