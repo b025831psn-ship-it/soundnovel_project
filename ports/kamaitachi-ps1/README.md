@@ -89,3 +89,14 @@ an ending. The sole currently identified ending/title transition is opcode
 and state transition before the common `27:0` path. It emits an explicit
 `{kind:"ending", id:"title-return"}` event. Coverage is reported only from
 the actual sweep output and is not promoted to a completion claim.
+
+## Touch shell
+
+`src/touch-shell.js` is the input shell for the ported VM/VRAM runtime. It maps
+the canvas to native 320×240 pixels and asks the retail renderer for
+`touchRows()`; it never infers hit targets from HTML overlays. A tap outside a
+retail row emits one `confirm` trigger, a tap on another row calls the retail
+cursor movement routine, and a second tap on the current row confirms. The
+one-frame `RetailInputLatch` prevents a quick pointer release from disappearing
+before VSync. Optional cancel/menu controls live outside the canvas. Keyboard
+input remains a desktop convenience; no virtual pad is drawn over VRAM.
