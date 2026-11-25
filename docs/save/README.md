@@ -123,8 +123,8 @@ IndexedDB 데이터베이스 `soundnovel` 하나.
 | 작품 | 슬롯 | 비고 |
 |---|---|---|
 | 카마이타치의 밤 GBA | `manual-0`..`manual-2`, `suspend` | 책 3권(저장·읽기·지우기·복사). `payload`는 페이지 시작 시점 VM 상태. 완·종 횟수는 `payload`에 포함. |
-| SFC (카마이타치·석류의 맛 등) | `manual-N`, `system`?, `suspend` | 슬롯 수와 SRAM의 전역 진행도 유무는 작품별 ROM에서 확인한 뒤 채운다. |
-| PS1·PS2 | `manual-N`, `system`?, `suspend` | 작품별 가상 카드. 카드 id·원작 파일명·블록 수는 `original` 메타데이터. |
+| SFC (카마이타치·석류의 맛 등) | `manual-N`, `system`?, `suspend` | 석류의 맛은 SRAM에 회차를 넘는 전역 진행도가 있어 `system` 필요(근거: zakuro-sfc-kor docs/autoplay.md). `manual-N`의 N과 다른 SFC 작품은 미확인이며 ROM에서 확인한 뒤 채운다. |
+| PS1·PS2 | `manual-N`, `system`?, `suspend` | 작품별 가상 카드. 카드 id·원작 파일명·블록 수는 `original` 메타데이터이며 아직 모두 미확인(예시 파일의 값은 자리표시자). PS2는 원작 UI가 자동 저장 여부 → 카드 선택(2개) → 파일 선택·생성 순서로 흐르는 것까지만 확인됨. |
 
 PS 카드를 작품 간에 공유하거나 전작 데이터를 이어받는 일이 실제로 필요해지면, 파일 하나를 개별 슬롯처럼 동기화하면 여러 파일로 이루어진 저장이 부분 갱신될 수 있다. 그 경우에는 `카드 → 저장 항목들` 두 단계 모델과 카드 단위 원자적 쓰기를 따로 설계한다(지금은 하지 않음).
 
