@@ -144,13 +144,13 @@ async function pairKey(code, usage) {
 }
 
 // `authToken` ties the code to the vault so only its owner can revoke it ("make a new code").
-export async function startPairing(secret, { baseUrl, authToken, fetchImpl = globalThis.fetch.bind(globalThis), attempts = 5 } = {}) {
+export async function startPairing(secret, { baseUrl, authToken, vaultId, fetchImpl = globalThis.fetch.bind(globalThis), attempts = 5 } = {}) {
   for (let i = 0; i < attempts; i++) {
     const code = newPairCode();
     const iv = crypto.getRandomValues(new Uint8Array(12));
     const ct = new Uint8Array(await crypto.subtle.encrypt({ name: "AES-GCM", iv }, await pairKey(code, "encrypt"), secret));
     const r = await fetchImpl(`${baseUrl.replace(/\/$/, "")}/v1/pair/${code}`, {
-      method: "PUT", headers: { "content-type": "application/json", authorization: `Bearer ${authToken}` }, body: JSON.stringify({ blob: { iv: b64(iv), ct: b64(ct) } }),
+      method: "PUT", headers: { "content-type": "application/json", authorization: `Bearer ${authToken}`, "x-vault-id": vaultId }, body: JSON.stringify({ blob: { iv: b64(iv), ct: b64(ct) } }),
     });
     if (r.status === 409) continue; // code already in use: pick another
     if (!r.ok) throw new Error(`pairing failed: ${r.status}`);
