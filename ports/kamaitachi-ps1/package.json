@@ -1,0 +1,9 @@
+{
+  "type": "module",
+  "scripts": {
+    "test": "node --test tests/*.test.mjs",
+    "run": "node tools/run-headless.mjs",
+    "run-all": "node tools/run-all.mjs",
+    "opcodes": "node tools/opcode-report.mjs"
+  }
+}
