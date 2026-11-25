@@ -33,11 +33,14 @@ const routes = new Map([
 
 // The native-bytecode port (ports/kamaitachi-gba) and its extracted cartridge data (port-data).
 const portTypes = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8',
-  '.css': 'text/css; charset=utf-8', '.json': 'application/json; charset=utf-8', '.bin': 'application/octet-stream' };
+  '.css': 'text/css; charset=utf-8', '.json': 'application/json; charset=utf-8', '.bin': 'application/octet-stream', '.tsv': 'text/tab-separated-values; charset=utf-8' };
 function portRoute(url) {
   for (const [prefix, dir, exts] of [
     ['/ports/kamaitachi-gba/', path.join(__dirname, 'ports', 'kamaitachi-gba'), ['.html', '.js', '.css']],
     ['/kamaitachi-gba-kor/port-data/', path.join(__dirname, 'kamaitachi-gba-kor', 'port-data'), ['.json', '.bin']],
+    // SFC port (sound only so far): its page and the cartridge sound data and trace it plays back.
+    ['/ports/kamaitachi-sfc/', path.join(__dirname, 'ports', 'kamaitachi-sfc'), ['.html', '.js']],
+    ['/kamaitachi-sfc-kor/port-data/', path.join(__dirname, 'kamaitachi-sfc-kor', 'port-data'), ['.bin', '.tsv']],
   ]) {
     if (!url.startsWith(prefix)) continue;
     const file = path.join(dir, decodeURIComponent(url.slice(prefix.length)) || 'index.html');

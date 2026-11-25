@@ -55,9 +55,9 @@
     <nav class="library" aria-label="작품 선택">
       <h2 class="label">작품 <span>9</span></h2>
       <details class="series" name="series" data-has="kamaitachi">
-        <summary class="entry"><span class="cover" style="--tint:#1c2538"><img src="/art/kamaitachi-still.png" alt="" onerror="this.remove()"><span class="cover-text" lang="ja">かまいたちの夜</span></span><span class="info"><span class="title">카마이타치의 밤</span><span class="sub">판본 6 · 1994–2006</span><span class="status ready">GBA판 플레이 가능</span></span><svg class="chev" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg></summary>
+        <summary class="entry"><span class="cover" style="--tint:#1c2538"><img src="/art/kamaitachi-still.png" alt="" onerror="this.remove()"><span class="cover-text" lang="ja">かまいたちの夜</span></span><span class="info"><span class="title">카마이타치의 밤</span><span class="sub">판본 6 · 1994–2006</span><span class="status ready">GBA판 플레이 · SFC판 사운드</span></span><svg class="chev" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg></summary>
         <ul class="editions">
-            <li><span class="edition"><span class="title">카마이타치의 밤</span><span class="sub">SFC · 1994 · 춘소프트</span></span></li>
+            <li><a class="work edition" href="#kamaitachi-sfc" data-src="/ports/kamaitachi-sfc/sound/demo.html?data=/kamaitachi-sfc-kor/port-data/" aria-label="카마이타치의 밤 SFC판 사운드 확인" data-title="카마이타치의 밤 · SFC 사운드"><span class="title">카마이타치의 밤</span><span class="sub">SFC · 1994 · 춘소프트</span><span class="status partial">사운드만 이식됨</span></a></li>
             <li><span class="edition"><span class="title">카마이타치의 밤 특별편</span><span class="sub">PS · 1998 · 춘소프트</span></span></li>
             <li><a class="work edition" href="#kamaitachi" aria-label="카마이타치의 밤 어드밴스 실행" data-title="카마이타치의 밤 어드밴스"><span class="title">카마이타치의 밤 어드밴스</span><span class="sub">GBA · 2002 · 춘소프트</span><span class="status ready">플레이 가능</span></a></li>
             <li><span class="edition"><span class="title">카마이타치의 밤 2</span><span class="sub">PS2 · 2002 · 춘소프트</span></span></li>
@@ -135,9 +135,9 @@
       if (series) series.open = true;
       document.querySelector('#now-title').textContent = selected.dataset.title;
       frame.title = selected.getAttribute('aria-label');
-      const src = selected.hash === '#kamaitachi'
+      const src = selected.dataset.src ?? (selected.hash === '#kamaitachi'
         ? '/ports/kamaitachi-gba/index.html'
-        : '/play/' + selected.hash.slice(1) + '/';
+        : '/play/' + selected.hash.slice(1) + '/');
       if (frame.getAttribute('src') !== src) frame.src = src;
       frame.focus();
     } else {
