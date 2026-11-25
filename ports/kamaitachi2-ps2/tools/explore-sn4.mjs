@@ -118,7 +118,8 @@ function music(vm, name) {
 }
 
 function checkText(vm, text) {
-  for (const ch of text) if (ch !== '\n' && !glyphs.has(ch) && !NAMES.join('').includes(ch)) report('unsupported-char', ch, where(vm));
+  for (const ch of text) if (ch !== '\n' && !glyphs.has(ch) && !NAMES.join('').includes(ch))
+    report(glyphs.has('�') ? 'fallback-char' : 'unsupported-char', ch, where(vm));
 }
 
 // An unsupported opcode is reported and skipped so one gap does not hide the
@@ -160,7 +161,7 @@ function runPath(start) {
       } else if (event.type === 'choice') {
         for (const t of event.targets) queue.push({label: t, names: [...vm.names], bgm: current, unknownBgm: current === undefined, from: where(vm)});
         return;
-      } else if (event.type === 'end') {
+      } else if (event.type === 'end' || event.type === 'break') {
         endings.set(event.label, (endings.get(event.label) ?? 0) + 1);
         return;
       } else {

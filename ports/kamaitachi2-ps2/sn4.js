@@ -207,7 +207,7 @@ export class Sn4Vm {
         }
         case 0x1a:
           invoke('Break');
-          return {type:'pause', reason:'break', label:this.label, offset:command.offset, text:this.text};
+          return {type:'break', label:this.label, offset:command.offset, text:this.text};
         case 0x1b: invoke('ManualJump'); break;
         case 0x1f: invoke('Cipher'); break;
         case 0x23: invoke('MiniGame'); break;

@@ -231,7 +231,12 @@ function storyText() {
 
 function showSn4(event) {
   sn4Event = event;
-  if (event.type === 'name') {
+  if (event.type === 'break') {
+    // CommandBreak tears down the active scenario state and yields the EE
+    // frame. end05_0000 contains no following command, so return to title.
+    sn4Mode = false;
+    title(false);
+  } else if (event.type === 'name') {
     role = event.role;
     editor = new NameEditor(groups, names[role]);
     enter('name');

@@ -34,7 +34,7 @@ export class Screen {
   }
 
   width(str, scale = 1) {
-    return Array.from(str).reduce((w, ch) => w + ((this.data.font[ch]?.[2] ?? 16) + 1) * scale, 0);
+    return Array.from(str).reduce((w, ch) => w + ((this.data.font[ch] ?? this.data.font['�'])[2] + 1) * scale, 0);
   }
 
   tintedGlyph(ch, rgb, gx, gy, w, h) {
@@ -59,8 +59,8 @@ export class Screen {
     for (const ch of str) {
       const rgb = colors?.get(offset);
       if (rgb) tint = rgb.every(channel => channel === 128) ? undefined : rgb;
-      const glyph = this.data.font[ch];
-      const advance = ((glyph?.[2] ?? 16) + spacing) * widthScale;
+      const glyph = this.data.font[ch] ?? this.data.font['�'];
+      const advance = (glyph[2] + spacing) * widthScale;
       if (ch === '\n' || px + advance > x + max) { px = x; py += leading; }
       const reading = readings?.get(offset);
       offset += ch.length;

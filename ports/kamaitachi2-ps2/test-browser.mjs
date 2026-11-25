@@ -22,8 +22,9 @@ try {
   await page.waitForFunction(() => document.querySelector('canvas')?.dataset.scene === 'ready');
 
   const result = await page.evaluate(async () => {
-    const [{Sn4Vm}, program] = await Promise.all([
+    const [{Sn4Vm}, program, opening] = await Promise.all([
       import('./sn4.js'), fetch('./assets/sn4.json').then(response => response.json()),
+      fetch('./assets/opening.json').then(response => response.json()),
     ]);
     const commands = [];
     const vm = new Sn4Vm(program, {
@@ -49,7 +50,8 @@ try {
     event = vm.resume('真理');
     const choice = reach('choice');
     const labels = choice.targets.map(target => vm.choiceText(target));
-    return {entry:program.entry, hero, partner, choice, labels, commands};
+    return {entry:program.entry, hero, partner, choice, labels, commands,
+      fallback:opening.font['�'], fullSpace:opening.font['　']};
   });
 
   assert.equal(result.entry, 'my01_0000');
@@ -58,6 +60,8 @@ try {
   assert.ok(result.choice.targets.length >= 2);
   assert.ok(result.labels.every(label => label && !/^my/.test(label)));
   assert.ok(result.commands.some(command => command.name === 'Default'));
+  assert.deepEqual(result.fallback.slice(2), [24, 24, 0]);
+  assert.deepEqual(result.fullSpace.slice(2), [33, 0, 0]);
   assert.deepEqual(errors, []);
   console.log(`PASS browser VM: names -> ${result.choice.label}, ${result.commands.length} subsystem commands`);
 } finally {

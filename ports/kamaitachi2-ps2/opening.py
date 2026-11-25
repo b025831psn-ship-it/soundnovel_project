@@ -73,6 +73,18 @@ def font_atlas(data, out):
         x, y = (i % columns) * cell, (i // columns) * cell
         atlas.paste(Image.frombytes("RGBA", (width, height), bytes(pixels)), (x, y))
         metrics[code.to_bytes(2, "big").decode("cp932")] = [x, y, width, height, top]
+    # Font lookup 0x001702B0 returns the executable's built-in 24x24 fallback
+    # record at 0x00202D58 when a CP932 code is absent. Its RLE bitmap is a
+    # one-pixel transparent border around a solid 22x24 replacement block.
+    fallback = count
+    fx, fy = (fallback % columns) * cell, (fallback // columns) * cell
+    for y in range(24):
+        for x in range(1, 23):
+            atlas.putpixel((fx + x, fy + y), (255, 255, 255, 255))
+    metrics["�"] = [fx, fy, 24, 24, 0]
+    # 0x0016DCD0 treats CP932 0x8140 as spacing only and returns the current
+    # font width; SN4's default width is 33 pixels.
+    metrics["　"] = [0, 0, 33, 0, 0]
     atlas.save(out / "font.png")
     return metrics
 
