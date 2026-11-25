@@ -428,6 +428,7 @@ function currentChoices(game) {
   return vm.choiceState?.opcode === 0x13 ? page.menu?.choices : screen.choiceOverlay?.choices;
 }
 
+const READER_PITCH = 20;
 const pageCanvas = document.createElement("canvas");
 pageCanvas.className = "type";
 words.replaceChildren(pageCanvas);
@@ -441,7 +442,9 @@ function drawText(game) {
   const big = page.large?.enabled && page.largeLayout && page.largeSource === page.layout ? page.large.geometry : null;
   const unit = big ? big.scale : 1;
   const source = big ? page.largeLayout : page.layout ?? [];
-  const glyphs = source.slice(0, page.shown ?? 0).map((g) => (big ? { ...g, x: Math.round(g.x / unit), y: Math.round(g.y / unit) } : g));
+  // Rows are spread a little wider than the overlay's (READER_PITCH glyph pixels apart, 태우 2026-11-25).
+  const row = (y) => Math.round((11 * big.k) / unit) + Math.round((y - 11 * big.k) / big.pitch) * READER_PITCH;
+  const glyphs = source.slice(0, page.shown ?? 0).map((g) => (big ? { ...g, x: Math.round(g.x / unit), y: row(g.y) } : g));
   const bandLeft = big ? Math.round((8 * big.k) / unit) - 1 : TEXT_LEFT;
   const bandWidth = big ? Math.round((big.right + 6 * big.k) / unit) - bandLeft : TEXT_WIDTH;
   const bandTop = big ? Math.round((11 * big.k) / unit) - 2 : 9;
