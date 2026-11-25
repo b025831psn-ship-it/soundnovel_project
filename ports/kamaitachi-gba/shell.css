@@ -337,6 +337,7 @@ html.filled, html.filled body { overflow: hidden; }
   filter: brightness(.58) saturate(1.05) blur(.4px);
   will-change: transform;
 }
+#picture.sharp { filter: brightness(.58) saturate(1.05); }
 #picture.pan { transition: transform .9s cubic-bezier(.4, 0, .2, 1); }
 .veil {
   position: absolute; inset: 0; pointer-events: none;

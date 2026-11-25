@@ -168,6 +168,8 @@ http.createServer((request, response) => {
   }
   const extended = /^\/art\/outpaint\/(\d{3}\.png)$/.exec(url);
   if (extended) routes.set(url, [path.join(OUTPAINT, extended[1]), 'image/png']);
+  const sharp = /^\/art\/outpaint\/hd\/(\d{3}\.webp)$/.exec(url);
+  if (sharp) routes.set(url, [path.join(OUTPAINT + '-hd', sharp[1]), 'image/webp']);
   const bg = /^\/kamaitachi-gba-kor\/assets\/bg\/(\d{3}(?:-[1-3])?\.png)$/.exec(url);
   const route = bg ? [path.join(__dirname, 'kamaitachi-gba-kor', 'assets', 'bg', bg[1]), 'image/png'] : routes.get(url) ?? portRoute(url);
   if (!route || !['HEAD', 'GET'].includes(request.method)) {

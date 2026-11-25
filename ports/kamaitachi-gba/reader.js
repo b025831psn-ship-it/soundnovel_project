@@ -73,7 +73,11 @@ async function loadExtended(game) {
       const canvas = Object.assign(document.createElement("canvas"), { width: 240, height: EXTENDED_HEIGHT });
       const ctx = canvas.getContext("2d");
       ctx.drawImage(image, 0, 0);
-      extended.set(signature(tiles), { pixels: ctx.getImageData(0, 0, 240, EXTENDED_HEIGHT).data, raw: untoned(tiles, palette) });
+      // The model's full-resolution picture for the margins, when served (portrait-hd, 720x1080).
+      const hd = new Image();
+      hd.src = `/art/outpaint/hd/${name}.webp`;
+      const sharp = await hd.decode().then(() => hd, () => null);
+      extended.set(signature(tiles), { pixels: ctx.getImageData(0, 0, 240, EXTENDED_HEIGHT).data, raw: untoned(tiles, palette), hd: sharp });
     } catch { /* not served: the picture is cut from the original only */ }
   }
 }
@@ -83,10 +87,50 @@ let extendedLoading = null;
 const extendedFor = (screen) => screen.background?.tiles && extended.get(signature(screen.background.tiles));
 function compose(screen, base) {
   const entry = extendedFor(screen);
-  if (!entry) { sizeTo(160); sourceCtx.putImageData(new ImageData(new Uint8ClampedArray(base), 240, 160), 0, 0); return 0; }
-  sizeTo(EXTENDED_HEIGHT);
-  sourceCtx.putImageData(new ImageData(extendedPixels(entry, base), 240, EXTENDED_HEIGHT), 0, 0);
-  return EXTENDED_TOP;
+  if (!entry) { sizeTo(160); sourceCtx.putImageData(new ImageData(new Uint8ClampedArray(base), 240, 160), 0, 0); }
+  else {
+    sizeTo(EXTENDED_HEIGHT);
+    if (entry.hd) { paintSharp(pictureCtx, entry, base, picture.width, picture.height); return EXTENDED_TOP; }
+    sourceCtx.putImageData(new ImageData(extendedPixels(entry, base), 240, EXTENDED_HEIGHT), 0, 0);
+  }
+  pictureCtx.drawImage(source, 0, 0, picture.width, picture.height);
+  return entry ? EXTENDED_TOP : 0;
+}
+// Sharp margins: the model's own full-resolution picture, toned like the live screen (per-channel gain),
+// with the cartridge's pixels in the middle as they are (whole-pixel scaling), their outer 14 rows
+// fading into the picture.
+const middle = Object.assign(document.createElement("canvas"), { width: 240, height: 160 });
+const middleCtx = middle.getContext("2d");
+function paintSharp(ctx, entry, base, width, height) {
+  const live = [0, 0, 0];
+  for (let i = 0; i < base.length; i += 4) { live[0] += base[i]; live[1] += base[i + 1]; live[2] += base[i + 2]; }
+  const gain = [0, 1, 2].map((c) => (entry.raw.sums[c] ? live[c] / entry.raw.sums[c] : 1));
+  ctx.save();
+  ctx.globalCompositeOperation = "source-over";
+  ctx.globalAlpha = 1;
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = "high";
+  ctx.drawImage(entry.hd, 0, 0, width, height);
+  ctx.globalCompositeOperation = "multiply";
+  ctx.fillStyle = `rgb(${gain.map((g) => Math.round(Math.min(1, g) * 255))})`;
+  ctx.fillRect(0, 0, width, height);
+  const over = Math.max(...gain) - 1;
+  if (over > 0.01) { ctx.globalCompositeOperation = "lighter"; ctx.globalAlpha = Math.min(1, over); ctx.drawImage(entry.hd, 0, 0, width, height); }
+  ctx.restore();
+  const FEATHER = 14;
+  const rows = new Uint8ClampedArray(base);
+  for (let y = 0; y < 160; y++) {
+    const d = Math.min(y, 159 - y);
+    if (d >= FEATHER) continue;
+    let t = (d + 0.5) / FEATHER; t = t * t * (3 - 2 * t);
+    for (let x = 0; x < 240; x++) rows[4 * (y * 240 + x) + 3] = Math.round(255 * t);
+  }
+  middleCtx.putImageData(new ImageData(rows, 240, 160), 0, 0);
+  const scale = width / 240;
+  ctx.save();
+  ctx.imageSmoothingEnabled = false;
+  ctx.drawImage(middle, 0, EXTENDED_TOP * scale, width, 160 * scale);
+  ctx.restore();
 }
 function extendedPixels(entry, base) {
   const live = new Float64Array(3);
@@ -134,7 +178,7 @@ function extendedPixels(entry, base) {
 // below; the screen's top and bottom rows fade into them (CSS mask).
 const extend = $("extend");
 const extendCtx = extend.getContext("2d");
-extend.width = 240; extend.height = EXTENDED_HEIGHT;
+extend.width = 240 * UP; extend.height = EXTENDED_HEIGHT * UP;
 let extendBase = null;
 // A row's mean color when it is flat or nearly black (the logo and copyright screens sit on black or a
 // very dark glow), else null.
@@ -169,8 +213,8 @@ function drawExtend(game) {
     const key = `${top}|${bottom}`;
     if (key !== flatKey) {
       flatKey = key;
-      extendCtx.fillStyle = `rgb(${top})`; extendCtx.fillRect(0, 0, 240, EXTENDED_HEIGHT / 2);
-      extendCtx.fillStyle = `rgb(${bottom})`; extendCtx.fillRect(0, EXTENDED_HEIGHT / 2, 240, EXTENDED_HEIGHT / 2);
+      extendCtx.fillStyle = `rgb(${top})`; extendCtx.fillRect(0, 0, extend.width, extend.height / 2);
+      extendCtx.fillStyle = `rgb(${bottom})`; extendCtx.fillRect(0, extend.height / 2, extend.width, extend.height / 2);
       stage.style.setProperty("--edge-top", `rgb(${top})`);
       stage.style.setProperty("--edge-bottom", `rgb(${bottom})`);
     }
@@ -181,7 +225,13 @@ function drawExtend(game) {
   if (screen.base === extendBase) return;
   extendBase = screen.base;
   const pixels = extendedPixels(entry, screen.base);
-  extendCtx.putImageData(new ImageData(pixels, 240, EXTENDED_HEIGHT), 0, 0);
+  if (entry.hd) paintSharp(extendCtx, entry, screen.base, extend.width, extend.height);
+  else {
+    const flatSource = Object.assign(document.createElement("canvas"), { width: 240, height: EXTENDED_HEIGHT });
+    flatSource.getContext("2d").putImageData(new ImageData(pixels, 240, EXTENDED_HEIGHT), 0, 0);
+    extendCtx.imageSmoothingEnabled = false;
+    extendCtx.drawImage(flatSource, 0, 0, extend.width, extend.height);
+  }
   const last = (EXTENDED_HEIGHT - 1) * 240 * 4;
   const mean = (from) => { const c = [0, 0, 0]; for (let x = 0; x < 240; x++) for (let k = 0; k < 3; k++) c[k] += pixels[from + x * 4 + k] / 240; return c.map(Math.round); };
   stage.style.setProperty("--edge-top", `rgb(${mean(0)})`);
@@ -248,7 +298,7 @@ function drawPicture(game) {
   extendedLoading ??= loadExtended(game).then(() => { shownBase = null; });
   if (base !== shownBase) {
     compose(screen, base);
-    pictureCtx.drawImage(source, 0, 0, 240 * UP, source.height * UP);
+    picture.classList.toggle("sharp", Boolean(extendedFor(screen)?.hd));
     const width = Math.min(240, (source.height * size.width) / size.height);
     // A new picture cuts straight to its place; a silhouette coming or going on the same one pans.
     const same = screen.background === shownBackground;
