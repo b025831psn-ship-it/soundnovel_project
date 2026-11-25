@@ -358,7 +358,10 @@ function frame() {
     parent.postMessage({ type: "reader", on: wanted }, location.origin); // the hub makes its frame tall
     wantedPosted = wanted;
   }
-  shell.classList.toggle("reader-on", wanted);
+  if (shell.classList.contains("reader-on") !== wanted) {
+    shell.classList.toggle("reader-on", wanted);
+    dispatchEvent(new Event("resize")); // the shell refits the screen (full width when upright)
+  }
   const story = Boolean(game) && game.vm.waiting !== "boot" && !game.boot.active;
   const reading = wanted && story;
   shell.classList.toggle("reading", reading);

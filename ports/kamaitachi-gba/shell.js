@@ -15,7 +15,10 @@ function fit() {
   // Layout size, not the on-screen box: the stage may be drawn turned a quarter (sideways full screen).
   const box = { width: stage.clientWidth, height: stage.clientHeight };
   const steps = Math.floor(Math.min((box.width * ratio) / 240, (box.height * ratio) / 160));
-  const scale = steps >= 1 ? steps / ratio : Math.min(box.width / 240, box.height / 160);
+  // Upright phone (portrait reading on): the game's own screens take the full width instead of the
+  // largest whole-number scale, which leaves a third of a phone's width empty.
+  const wide = shell.classList.contains("reader-on");
+  const scale = steps >= 1 && !wide ? steps / ratio : Math.min(box.width / 240, box.height / 160);
   canvas.style.width = `${240 * scale}px`;
   canvas.style.height = `${160 * scale}px`;
   $("scale").textContent = steps >= 1 ? `×${steps}` : "축소";
@@ -32,6 +35,11 @@ function whenReady(callback) {
 whenReady(({ input, sound }) => {
   $("loading").hidden = true;
   stage.classList.add("ready");
+  // iPhone Safari lets audio start only inside the end of a touch (touchend / click), not on the
+  // touch's start where the game's own listener calls resume: wake it on those too, every time
+  // until it runs (a first tap on the sound button used to be spent unlocking it).
+  const unlock = () => sound.resume?.();
+  for (const type of ["touchend", "click", "keydown"]) addEventListener(type, unlock, { capture: true, passive: true });
 
   // The blurred scene behind the screen (the sides of a wide window) follows it a few times a second.
   const glow = $("glow").getContext("2d");
