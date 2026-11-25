@@ -23,7 +23,7 @@ function sample() {
 }
 
 function ram() {
-  return { node: 43, bits: new Uint8Array(256), seenNodes: new Uint8Array(0x12c), seenEdges: new Uint8Array(0x200) };
+  return { node: 43, flags: new Uint8Array(256), seenNodes: new Uint8Array(0x12c), seenEdges: new Uint8Array(0x200) };
 }
 
 test("flowchart entries and link groups (bit 15 marks the last id)", () => {

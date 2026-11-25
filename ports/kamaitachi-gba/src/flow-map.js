@@ -80,7 +80,7 @@ export class FlowMap {
     let flag = 0x34;
     if (id - 2 <= 1 || id === 6 || id === 0x11 || id === 0x15 || id === 0x19) flag = 0x33;
     else if (id === 0xcd) flag = 0x35;
-    return !ram.bits[flag] && kind > 6 && kind <= 10;
+    return !ram.flags[flag] && kind > 6 && kind <= 10; // 020024EC
   }
 
   // 0800D9C6: each page's mark on the page map: 7 if it holds something seen this play, 6 if

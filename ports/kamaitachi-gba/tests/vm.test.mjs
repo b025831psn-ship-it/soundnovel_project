@@ -21,14 +21,15 @@ test("required opcode table retains native handler evidence", () => {
   const required = [
     0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x0d, 0x0e, 0x0f, 0x12, 0x13, 0x19, 0x1a, 0x21, 0x22,
     0x14, 0x15, 0x16, 0x18, 0x1e, 0x23, 0x25, 0x26, 0x27, 0x28,
-    0x40, 0x41, 0x43, 0x44, 0x46, 0x47, 0x48, 0x4b, 0x4c, 0x56, 0x57, 0x5e, 0x61, 0x62,
-    0x33, 0x36, 0x39, 0x3a, 0x3b, 0x3c, 0x3d, 0x4e, 0x4f, 0x51, 0x52, 0x59, 0x5b, 0x63,
+    0x40, 0x41, 0x43, 0x44, 0x46, 0x47, 0x48, 0x4b, 0x4c, 0x54, 0x55, 0x56, 0x57, 0x5e, 0x61, 0x62,
+    0x33, 0x36, 0x39, 0x3a, 0x3b, 0x3c, 0x3d, 0x4e, 0x4f, 0x51, 0x52, 0x59, 0x5a, 0x5b, 0x5c,
+    0x5d, 0x60, 0x63,
   ];
   assert.ok(required.every((opcode) => HANDLERS[opcode]));
 });
 
-test("choice suppression table covers all 42 reviewed handlers and consumes arguments", () => {
-  assert.equal(Object.keys(SUPPRESSION).length, 42);
+test("choice suppression table covers all 48 reviewed handlers and consumes arguments", () => {
+  assert.equal(Object.keys(SUPPRESSION).length, 48);
   const calls = [];
   for (const [opcodeText, [gate, shape]] of Object.entries(SUPPRESSION)) {
     if (gate === "sets-77e" || gate === "78e-or-choice-return") continue;
@@ -98,7 +99,7 @@ test("shared flags and branch directions match native meanings", () => {
   assert.equal(vm.ram.vars[1], 9);
 });
 
-test("bit and variable comparisons jump when set/equal", () => {
+test("flow-mask and variable comparisons jump when set/equal", () => {
   const banks = {
     27: bank([
       [0x21, 3, 0x25, 3, 0x7a, 0x69],
@@ -110,7 +111,7 @@ test("bit and variable comparisons jump when set/equal", () => {
   };
   const vm = new VM({ banks });
   while (vm.step());
-  assert.equal(vm.ram.bits[3], 0);
+  assert.equal(vm.ram.flowMask, 0);
   assert.equal(vm.ram.vars[5], 6);
 });
 
@@ -431,6 +432,42 @@ test("12 and 43 emit native system cues, then 44 enters flowchart row 39000", ()
   assert.equal(vm.offset, vm.rows[39][0]);
   vm.step();
   assert.equal(vm.ram.vars[3], 9);
+});
+
+test("54/55 use scenario byte flags while 5D/5E use the saved 16-bit flow mask", () => {
+  const run = (opcode, { bit = 0, mask = 0 } = {}) => {
+    const vm = new VM({
+      banks: { 27: bank([
+        [opcode, 3, 0x79, 0x69, 4, 0, 0x03],
+        [0x41, 7, 9],
+      ]) },
+    });
+    vm.ram.flags[3] = bit;
+    vm.ram.flowMask = mask;
+    vm.step();
+    return vm;
+  };
+
+  for (const [opcode, state] of [
+    [0x54, { bit: 0 }], [0x55, { bit: 1 }],
+    [0x5d, { mask: 0 }], [0x5e, { mask: 1 << 2 }],
+  ]) {
+    const vm = run(opcode, state);
+    assert.equal(vm.offset, vm.rows[27][1], `opcode ${opcode.toString(16)} did not branch`);
+    assert.equal(vm.ram.edges[4], 3);
+  }
+  assert.notEqual(run(0x54, { bit: 1 }).offset, run(0x54, { bit: 1 }).rows[27][1]);
+  assert.notEqual(run(0x5e, { mask: 0 }).offset, run(0x5e, { mask: 0 }).rows[27][1]);
+});
+
+test("5A, 5C and 60 retain native widths and frame-flag write", () => {
+  const vm = new VM({
+    banks: { 27: bank([[0x5a, 7, 0x5c, 8, 9, 0x60, 0x34, 0x41, 2, 6, 0x03]]) },
+  });
+  while (vm.step());
+  assert.equal(vm.ram.frameFlag, 0x34);
+  assert.equal(vm.ram.vars[2], 6);
+  assert.equal(vm.unimplemented.size, 0);
 });
 
 test("19, 46, 47, 48, 61 and 62 preserve native operand widths and system state", () => {

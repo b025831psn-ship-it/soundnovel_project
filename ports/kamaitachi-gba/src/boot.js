@@ -896,7 +896,7 @@ export class Boot {
     this.sound.stop?.(0); // 0800A1DC / 0800A384
     for (const table of [ram.visited, ram.seenNodes, ram.edges, ram.seenEdges, ram.tried, ram.seenTried])
       if (table) for (let i = 0; i < table.length; i++) table[i] &= 1;
-    ram.endingsSeen = 0;
+    ram.flowMask = 0; // 0800DBE4: 02004640 = 0
     this.layer = null;
     this.screen.background = null;
     this.vm.text?.resumed?.();
