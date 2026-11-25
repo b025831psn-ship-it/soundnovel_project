@@ -141,7 +141,10 @@
     const { ZakuroVM, createApuLink } = await import('../vm/browser.js');
     const { rows } = data;
     const { apu, link } = createApuLink({ ipl: data.ipl, gauss: data.gauss, powerOnDsp: data.dsp });
-    apu.dsp.onSample = out.sample;
+    // Paced by the audio buffer, not the wall clock: run the VM until ~0.12 s of S-DSP output
+    // is queued ahead of playback (32 kHz), with at most 30 ms of work per video frame.
+    let produced = 0;
+    apu.dsp.onSample = (l, r) => { produced++; out.sample(l, r); };
     // Live comparison with the recording: rows in order (strict) and CPU writes in order.
     const refW = rows.filter((r) => r[1]);
     let strict = 0, strictDone = false, wi = 0, wOk = 0, writes = 0;
@@ -156,17 +159,22 @@
     const vm = new ZakuroVM({ ...(program ? { program } : { rom }), masterLink: link, trace, inputFrames: data.input });
     vm.reset();
     const end = rows.at(-1)[0] + MASTER_HZ;
-    let t0 = null;
-    const step = (now) => {
-      t0 ??= now - 80;
-      const master = Math.min(end, Math.floor(((now - t0) / 1000) * MASTER_HZ));
-      const started = performance.now();
-      while (vm.bus.clock.master < master && !vm.cpu.stopped && performance.now() - started < 40) vm.step();
-      link.sync(vm.bus.clock.master); out.flush();
+    const startTime = out.context.currentTime;
+    let slow = false;
+    const step = () => {
+      const started = performance.now(), played = out.context.currentTime - startTime;
+      while (produced / 32000 - played < 0.12 && vm.bus.clock.master < end && !vm.cpu.stopped) {
+        if (performance.now() - started > 30) break;
+        const goal = vm.bus.clock.master + 35791; // ~1/600 s of master clock per slice
+        while (vm.bus.clock.master < goal && !vm.cpu.stopped) vm.step();
+        link.sync(vm.bus.clock.master);
+      }
+      out.flush();
+      slow = produced / 32000 - played < 0;
       const at = vm.bus.clock.master;
       $('prog').value = at / end;
       const s = out.stats();
-      $('stat').textContent = `${(at / MASTER_HZ).toFixed(1)}초 · VM frame ${Math.floor(at / 357366)}` + (at + MASTER_HZ / 10 < master ? ' · 실시간보다 느림' : '') + '\n'
+      $('stat').textContent = `${(at / MASTER_HZ).toFixed(1)}초 · VM frame ${Math.floor(at / 357366)}` + (slow ? ' · 실시간보다 느림' : '') + '\n'
         + `기록과 순서·값이 같은 포트 접근 ${strict.toLocaleString()} / ${rows.length.toLocaleString()}행\n`
         + `CPU 쓰기 ${writes.toLocaleString()}건 · 기록 쓰기 순서와 맞음 ${wOk.toLocaleString()} / ${refW.length.toLocaleString()}\n`
         + `출력 ${out.context.sampleRate} Hz` + (s ? ` · 버퍼 ${s.fill} · 부족 ${s.underruns}` : '');
