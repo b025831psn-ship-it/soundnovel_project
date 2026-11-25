@@ -64,7 +64,7 @@ for (const [op, name] of classes) {
   assert.equal(called[0].actual, name, `0x${op.toString(16)} dispatches ${name}`);
   assert.deepEqual(called[0].args, [7]);
   assert.equal(called[0].context.offset, 0x123);
-  assert.ok(['end','pause'].includes(event.type));
+  assert.equal(event.type, op === 0x1a ? 'break' : 'end', `0x${op.toString(16)} event`);
 }
 const cancelable = run([{op:0x51, offset:3, args:[45]}]).event;
 assert.deepEqual(cancelable, {type:'wait', reason:'cancelable', label:'a', offset:3, ticks:45, text:''});
