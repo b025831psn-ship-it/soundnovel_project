@@ -10,15 +10,19 @@ const M = 0x20;
 const IMPLIED_INTERNAL = new Set([
   0x0a, 0x18, 0x1a, 0x1b, 0x2a, 0x38, 0x3a, 0x3b, 0x4a, 0x58, 0x5b,
   0x6a, 0x78, 0x7b, 0x88, 0x8a, 0x98, 0x9a, 0x9b, 0xa8, 0xaa,
-  0xba, 0xbb, 0xc2, 0xc8, 0xca, 0xe2, 0xe8, 0xea, 0xeb, 0xfb,
+  0xb8, 0xba, 0xbb, 0xc2, 0xc8, 0xca, 0xd8, 0xe2, 0xe8, 0xea, 0xeb, 0xf8, 0xfb,
 ]);
 const PUSH_OPS = new Set([0x08, 0x48, 0x4b, 0x5a, 0x8b, 0x0b, 0xda]);
 const PULL_OPS = new Set([0x28, 0x68, 0x7a, 0xab, 0x2b, 0xfa]);
 const BRANCH_OPS = new Set([0x10, 0x30, 0x50, 0x70, 0x80, 0x90, 0xb0, 0xd0, 0xf0]);
+const DP_INDEXED_INDIRECT_OPS = new Set([0x01, 0x21, 0x41, 0x61, 0x81, 0xa1, 0xc1, 0xe1]);
+const STACK_INDIRECT_Y_OPS = new Set([0x13, 0x33, 0x53, 0x73, 0x93, 0xb3, 0xd3, 0xf3]);
+const DP_INDIRECT_Y_READ_OPS = new Set([0x11, 0x31, 0x51, 0x71, 0xb1, 0xd1, 0xf1]);
+const ABSOLUTE_INDEXED_RMW_OPS = new Set([0x1e, 0x3e, 0x5e, 0x7e, 0xde, 0xfe]);
 const INDEXED_DP_OPS = new Set([
   0x15, 0x35, 0x55, 0x75, 0x95, 0xb5, 0xd5, 0xf5,
   0x16, 0x36, 0x56, 0x76, 0x96, 0xb6, 0xd6, 0xf6,
-  0x74,
+  0x34, 0x74, 0x94, 0xb4,
   0x03, 0x23, 0x43, 0x63, 0x83, 0xa3, 0xc3, 0xe3,
 ]);
 const DIRECT_PAGE_OPS = new Set([
@@ -34,17 +38,18 @@ const DIRECT_PAGE_OPS = new Set([
 // Absolute indexed stores pay a dummy cycle. Long indexed ($9F) already has
 // the extra address byte as its fifth CPU cycle and has no additional penalty.
 const INDEXED_STORE_OPS = new Set([0x99, 0x9d, 0x9e]);
-const ABSOLUTE_X_READ_OPS = new Set([0x1d, 0x3d, 0x5d, 0x7d, 0xbc, 0xbd, 0xdd, 0xfd]);
+const ABSOLUTE_X_READ_OPS = new Set([0x1d, 0x3c, 0x3d, 0x5d, 0x7d, 0xbc, 0xbd, 0xbe, 0xdd, 0xfd]);
 const ABSOLUTE_Y_READ_OPS = new Set([0x19, 0x39, 0x59, 0x79, 0xb9, 0xbb, 0xd9, 0xf9]);
 const RMW_OPS = new Set([
-  0x04, 0x06, 0x0c, 0x14, 0x16, 0x1c, 0x26, 0x2e, 0x46, 0x66,
-  0xc6, 0xce, 0xd6, 0xe6, 0xee, 0xf6,
+  0x04, 0x06, 0x0c, 0x0e, 0x14, 0x16, 0x1c, 0x1e, 0x26, 0x2e, 0x36, 0x3e,
+  0x46, 0x4e, 0x56, 0x5e, 0x66, 0x6e, 0x76, 0x7e, 0xc6, 0xce, 0xd6, 0xde,
+  0xe6, 0xee, 0xf6, 0xfe,
 ]);
 
 const hex = (n, width) => n.toString(16).toUpperCase().padStart(width, '0');
 
 export class Cpu65816 {
-  constructor(bus, { traceLimit = Infinity } = {}) {
+  constructor(bus, { traceLimit = Infinity, onBusAccess = null } = {}) {
     this.rawBus = bus;
     const cpu = this;
     this.bus = new Proxy(bus, {
@@ -59,6 +64,7 @@ export class Cpu65816 {
     });
     this.trace = [];
     this.traceLimit = traceLimit;
+    this.onBusAccess = onBusAccess;
     this.executed = 0;
     this.reset();
   }
@@ -107,7 +113,9 @@ export class Cpu65816 {
       if (!this.x8() || (base & 0xff) + (index & 0xff) > 0xff) this.internalCycle();
       this.indexedReadPenaltyApplied = true;
     }
-    const value = this.rawBus.read8(address, this.masterCycle);
+    const at = this.masterCycle;
+    const value = this.rawBus.read8(address, at);
+    this.onBusAccess?.({ master: at, direction: 'r', address, value });
     this.advanceMaster(this.memorySpeed(address));
     this.busTransactions++;
     return value;
@@ -120,7 +128,9 @@ export class Cpu65816 {
 
   write8(address, value) {
     address &= 0xffffff;
-    this.rawBus.write8(address, value, this.masterCycle);
+    const at = this.masterCycle;
+    this.rawBus.write8(address, value, at);
+    this.onBusAccess?.({ master: at, direction: 'w', address, value: value & 0xff });
     this.advanceMaster(this.rawBus.takeDmaMasterCycles?.() ?? 0);
     this.advanceMaster(this.memorySpeed(address));
     this.busTransactions++;
@@ -168,19 +178,26 @@ export class Cpu65816 {
     if (opcode === 0x6b) this.internalCycle(2);
     if (opcode === 0x40) this.internalCycle(2);
 
-    if (BRANCH_OPS.has(opcode)) {
+    if (BRANCH_OPS.has(opcode) && this.branchTaken) {
       const fallthrough = (at & 0xff0000) | ((at + 2) & 0xffff);
-      if (this.address() !== fallthrough) this.internalCycle();
+      this.internalCycle();
+      if (this.e && (fallthrough & 0xff00) !== (this.address() & 0xff00)) this.internalCycle();
     }
     if (opcode === 0x82) this.internalCycle();
     if (opcode === 0xeb) this.internalCycle();
     if (opcode === 0x44 || opcode === 0x54) this.internalCycle(2);
+    if (opcode === 0xcb || opcode === 0xdb) this.internalCycle(2);
+    if (opcode === 0x42) this.advanceMaster(this.memorySpeed(at));
 
     if (INDEXED_DP_OPS.has(opcode)) this.internalCycle();
+    if (DP_INDEXED_INDIRECT_OPS.has(opcode)) this.internalCycle();
+    if (STACK_INDIRECT_Y_OPS.has(opcode)) this.internalCycle();
+    if (ABSOLUTE_INDEXED_RMW_OPS.has(opcode)) this.internalCycle();
+    if (opcode === 0x91) this.internalCycle();
     if (DIRECT_PAGE_OPS.has(opcode) && (this.d & 0xff)) this.internalCycle();
 
     if (INDEXED_STORE_OPS.has(opcode)) this.internalCycle();
-    if (opcode === 0xb1 && !this.x8()) this.internalCycle();
+    if (DP_INDIRECT_Y_READ_OPS.has(opcode) && !this.x8()) this.internalCycle();
     if (RMW_OPS.has(opcode)) this.internalCycle();
 
     this.lastInstructionTransactions = this.busTransactions - startTransactions;
@@ -225,6 +242,46 @@ export class Cpu65816 {
   push8(v) { this.bus.write8(this.s, v); this.s = this.e ? 0x0100 | ((this.s - 1) & 0xff) : (this.s - 1) & 0xffff; }
   pull8() { this.s = this.e ? 0x0100 | ((this.s + 1) & 0xff) : (this.s + 1) & 0xffff; return this.bus.read8(this.s); }
   pull16() { const lo = this.pull8(); return lo | (this.pull8() << 8); }
+  push16(value) { this.push8(value >>> 8); this.push8(value); }
+  indirect24(pointer) {
+    return this.bus.read16(pointer) | (this.bus.read8((pointer + 2) & 0xffff) << 16);
+  }
+  accumulatorMemory(address, operation) {
+    const eight = this.a8();
+    const value = eight ? this.bus.read8(address) : this.bus.read16(address);
+    const result = this.setNZ(operation(this.a, value), eight);
+    this.a = eight ? (this.a & 0xff00) | result : result;
+  }
+  compareMemory(address) {
+    const eight = this.a8(), mask = eight ? 0xff : 0xffff;
+    const value = eight ? this.bus.read8(address) : this.bus.read16(address);
+    const left = this.a & mask;
+    this.p = left >= value ? this.p | C : this.p & ~C;
+    this.setNZ(left - value, eight);
+  }
+  addMemory(address, subtract = false) {
+    const eight = this.a8(), mask = eight ? 0xff : 0xffff, sign = eight ? 0x80 : 0x8000;
+    const left = this.a & mask;
+    const right = eight ? this.bus.read8(address) : this.bus.read16(address);
+    const result = subtract
+      ? left - right - (this.p & C ? 0 : 1)
+      : left + right + (this.p & C ? 1 : 0);
+    this.p = subtract ? (result >= 0 ? this.p | C : this.p & ~C)
+      : (result > mask ? this.p | C : this.p & ~C);
+    this.p = (subtract ? (left ^ right) : ~(left ^ right)) & (left ^ result) & sign
+      ? this.p | V : this.p & ~V;
+    const value = this.setNZ(result, eight);
+    this.a = eight ? (this.a & 0xff00) | value : value;
+  }
+  rotateMemory(address, left) {
+    const eight = this.a8(), mask = eight ? 0xff : 0xffff, sign = eight ? 0x80 : 0x8000;
+    const memory = eight ? this.bus.read8(address) : this.bus.read16(address);
+    const carry = this.p & C ? 1 : 0;
+    const value = left ? ((memory << 1) | carry) & mask : (memory >>> 1) | (carry ? sign : 0);
+    this.p = (left ? memory & sign : memory & 1) ? this.p | C : this.p & ~C;
+    const result = this.setNZ(value, eight);
+    eight ? this.bus.write8(address, result) : this.bus.write16(address, result);
+  }
 
   step() {
     const at = this.address();
@@ -233,6 +290,7 @@ export class Cpu65816 {
     this.indexedReadPenaltyApplied = false;
     const op = this.fetch8();
     this.currentInstruction = { address: at, opcode: op };
+    this.branchTaken = false;
     let name;
     switch (op) {
       case 0x00: {
@@ -1113,25 +1171,27 @@ export class Cpu65816 {
       case 0xd0: {
         name = 'BNE';
         const displacement = (this.fetch8() << 24) >> 24;
-        if (!(this.p & Z)) this.pc = (this.pc + displacement) & 0xffff;
+        if (!(this.p & Z)) { this.pc = (this.pc + displacement) & 0xffff; this.branchTaken = true; }
         break;
       }
       case 0xf0: {
         name = 'BEQ';
         const displacement = (this.fetch8() << 24) >> 24;
-        if (this.p & Z) this.pc = (this.pc + displacement) & 0xffff;
+        if (this.p & Z) { this.pc = (this.pc + displacement) & 0xffff; this.branchTaken = true; }
         break;
       }
       case 0x82: {
         name = 'BRL';
         const displacement = (this.fetch16() << 16) >> 16;
         this.pc = (this.pc + displacement) & 0xffff;
+        this.branchTaken = true;
         break;
       }
       case 0x80: {
         name = 'BRA';
         const displacement = (this.fetch8() << 24) >> 24;
         this.pc = (this.pc + displacement) & 0xffff;
+        this.branchTaken = true;
         break;
       }
       case 0x5c: {
@@ -1193,37 +1253,37 @@ export class Cpu65816 {
       case 0x10: {
         name = 'BPL';
         const displacement = (this.fetch8() << 24) >> 24;
-        if (!(this.p & N)) this.pc = (this.pc + displacement) & 0xffff;
+        if (!(this.p & N)) { this.pc = (this.pc + displacement) & 0xffff; this.branchTaken = true; }
         break;
       }
       case 0x30: {
         name = 'BMI';
         const displacement = (this.fetch8() << 24) >> 24;
-        if (this.p & N) this.pc = (this.pc + displacement) & 0xffff;
+        if (this.p & N) { this.pc = (this.pc + displacement) & 0xffff; this.branchTaken = true; }
         break;
       }
       case 0xb0: {
         name = 'BCS';
         const displacement = (this.fetch8() << 24) >> 24;
-        if (this.p & C) this.pc = (this.pc + displacement) & 0xffff;
+        if (this.p & C) { this.pc = (this.pc + displacement) & 0xffff; this.branchTaken = true; }
         break;
       }
       case 0x90: {
         name = 'BCC';
         const displacement = (this.fetch8() << 24) >> 24;
-        if (!(this.p & C)) this.pc = (this.pc + displacement) & 0xffff;
+        if (!(this.p & C)) { this.pc = (this.pc + displacement) & 0xffff; this.branchTaken = true; }
         break;
       }
       case 0x70: {
         name = 'BVS';
         const displacement = (this.fetch8() << 24) >> 24;
-        if (this.p & V) this.pc = (this.pc + displacement) & 0xffff;
+        if (this.p & V) { this.pc = (this.pc + displacement) & 0xffff; this.branchTaken = true; }
         break;
       }
       case 0x50: {
         name = 'BVC';
         const displacement = (this.fetch8() << 24) >> 24;
-        if (!(this.p & V)) this.pc = (this.pc + displacement) & 0xffff;
+        if (!(this.p & V)) { this.pc = (this.pc + displacement) & 0xffff; this.branchTaken = true; }
         break;
       }
       case 0x69: {
@@ -1688,6 +1748,90 @@ export class Cpu65816 {
         if (this.a !== 0xffff) this.pc = (this.pc - 3) & 0xffff;
         break;
       }
+      case 0x07: { name = 'ORA [dp]'; const p = (this.d + this.fetch8()) & 0xffff; this.accumulatorMemory(this.indirect24(p), (a, b) => a | b); break; }
+      case 0x12: { name = 'ORA (dp)'; const p = (this.d + this.fetch8()) & 0xffff; this.accumulatorMemory((this.dbr << 16) | this.bus.read16(p), (a, b) => a | b); break; }
+      case 0x13: { name = 'ORA (sr,S),Y'; const p = (this.s + this.fetch8()) & 0xffff; this.accumulatorMemory((this.dbr << 16) | ((this.bus.read16(p) + this.y) & 0xffff), (a, b) => a | b); break; }
+      case 0x17: { name = 'ORA [dp],Y'; const p = (this.d + this.fetch8()) & 0xffff; this.accumulatorMemory((this.indirect24(p) + this.y) & 0xffffff, (a, b) => a | b); break; }
+      case 0x21: { name = 'AND (dp,X)'; const p = (this.d + this.fetch8() + this.x) & 0xffff; this.accumulatorMemory((this.dbr << 16) | this.bus.read16(p), (a, b) => a & b); break; }
+      case 0x27: { name = 'AND [dp]'; const p = (this.d + this.fetch8()) & 0xffff; this.accumulatorMemory(this.indirect24(p), (a, b) => a & b); break; }
+      case 0x2f: name = 'AND long'; this.accumulatorMemory(this.fetch24(), (a, b) => a & b); break;
+      case 0x31: { name = 'AND (dp),Y'; const p = (this.d + this.fetch8()) & 0xffff; this.accumulatorMemory((this.dbr << 16) | ((this.bus.read16(p) + this.y) & 0xffff), (a, b) => a & b); break; }
+      case 0x39: name = 'AND abs,Y'; this.accumulatorMemory((this.dbr << 16) | ((this.fetch16() + this.y) & 0xffff), (a, b) => a & b); break;
+      case 0x32: { name = 'AND (dp)'; const p = (this.d + this.fetch8()) & 0xffff; this.accumulatorMemory((this.dbr << 16) | this.bus.read16(p), (a, b) => a & b); break; }
+      case 0x33: { name = 'AND (sr,S),Y'; const p = (this.s + this.fetch8()) & 0xffff; this.accumulatorMemory((this.dbr << 16) | ((this.bus.read16(p) + this.y) & 0xffff), (a, b) => a & b); break; }
+      case 0x41: { name = 'EOR (dp,X)'; const p = (this.d + this.fetch8() + this.x) & 0xffff; this.accumulatorMemory((this.dbr << 16) | this.bus.read16(p), (a, b) => a ^ b); break; }
+      case 0x43: name = 'EOR sr,S'; this.accumulatorMemory((this.s + this.fetch8()) & 0xffff, (a, b) => a ^ b); break;
+      case 0x45: name = 'EOR dp'; this.accumulatorMemory((this.d + this.fetch8()) & 0xffff, (a, b) => a ^ b); break;
+      case 0x47: { name = 'EOR [dp]'; const p = (this.d + this.fetch8()) & 0xffff; this.accumulatorMemory(this.indirect24(p), (a, b) => a ^ b); break; }
+      case 0x51: { name = 'EOR (dp),Y'; const p = (this.d + this.fetch8()) & 0xffff; this.accumulatorMemory((this.dbr << 16) | ((this.bus.read16(p) + this.y) & 0xffff), (a, b) => a ^ b); break; }
+      case 0x52: { name = 'EOR (dp)'; const p = (this.d + this.fetch8()) & 0xffff; this.accumulatorMemory((this.dbr << 16) | this.bus.read16(p), (a, b) => a ^ b); break; }
+      case 0x53: { name = 'EOR (sr,S),Y'; const p = (this.s + this.fetch8()) & 0xffff; this.accumulatorMemory((this.dbr << 16) | ((this.bus.read16(p) + this.y) & 0xffff), (a, b) => a ^ b); break; }
+      case 0x57: { name = 'EOR [dp],Y'; const p = (this.d + this.fetch8()) & 0xffff; this.accumulatorMemory((this.indirect24(p) + this.y) & 0xffffff, (a, b) => a ^ b); break; }
+      case 0x59: name = 'EOR abs,Y'; this.accumulatorMemory((this.dbr << 16) | ((this.fetch16() + this.y) & 0xffff), (a, b) => a ^ b); break;
+      case 0x5f: name = 'EOR long,X'; this.accumulatorMemory((this.fetch24() + this.x) & 0xffffff, (a, b) => a ^ b); break;
+      case 0x61: { name = 'ADC (dp,X)'; const p = (this.d + this.fetch8() + this.x) & 0xffff; this.addMemory((this.dbr << 16) | this.bus.read16(p)); break; }
+      case 0x67: { name = 'ADC [dp]'; const p = (this.d + this.fetch8()) & 0xffff; this.addMemory(this.indirect24(p)); break; }
+      case 0x6f: name = 'ADC long'; this.addMemory(this.fetch24()); break;
+      case 0x71: { name = 'ADC (dp),Y'; const p = (this.d + this.fetch8()) & 0xffff; this.addMemory((this.dbr << 16) | ((this.bus.read16(p) + this.y) & 0xffff)); break; }
+      case 0x72: { name = 'ADC (dp)'; const p = (this.d + this.fetch8()) & 0xffff; this.addMemory((this.dbr << 16) | this.bus.read16(p)); break; }
+      case 0x73: { name = 'ADC (sr,S),Y'; const p = (this.s + this.fetch8()) & 0xffff; this.addMemory((this.dbr << 16) | ((this.bus.read16(p) + this.y) & 0xffff)); break; }
+      case 0x77: { name = 'ADC [dp],Y'; const p = (this.d + this.fetch8()) & 0xffff; this.addMemory((this.indirect24(p) + this.y) & 0xffffff); break; }
+      case 0x87: { name = 'STA [dp]'; const p = (this.d + this.fetch8()) & 0xffff, a = this.indirect24(p); this.a8() ? this.bus.write8(a, this.a) : this.bus.write16(a, this.a); break; }
+      case 0x92: { name = 'STA (dp)'; const p = (this.d + this.fetch8()) & 0xffff, a = (this.dbr << 16) | this.bus.read16(p); this.a8() ? this.bus.write8(a, this.a) : this.bus.write16(a, this.a); break; }
+      case 0x93: { name = 'STA (sr,S),Y'; const p = (this.s + this.fetch8()) & 0xffff, a = (this.dbr << 16) | ((this.bus.read16(p) + this.y) & 0xffff); this.a8() ? this.bus.write8(a, this.a) : this.bus.write16(a, this.a); break; }
+      case 0xa1: { name = 'LDA (dp,X)'; const p = (this.d + this.fetch8() + this.x) & 0xffff, a = (this.dbr << 16) | this.bus.read16(p); const v = this.a8() ? this.bus.read8(a) : this.bus.read16(a); this.a = this.a8() ? (this.a & 0xff00) | this.setNZ(v, true) : this.setNZ(v, false); break; }
+      case 0xc7: { name = 'CMP [dp]'; const p = (this.d + this.fetch8()) & 0xffff; this.compareMemory(this.indirect24(p)); break; }
+      case 0xd1: { name = 'CMP (dp),Y'; const p = (this.d + this.fetch8()) & 0xffff; this.compareMemory((this.dbr << 16) | ((this.bus.read16(p) + this.y) & 0xffff)); break; }
+      case 0xd3: { name = 'CMP (sr,S),Y'; const p = (this.s + this.fetch8()) & 0xffff; this.compareMemory((this.dbr << 16) | ((this.bus.read16(p) + this.y) & 0xffff)); break; }
+      case 0xd7: { name = 'CMP [dp],Y'; const p = (this.d + this.fetch8()) & 0xffff; this.compareMemory((this.indirect24(p) + this.y) & 0xffffff); break; }
+      case 0xe1: { name = 'SBC (dp,X)'; const p = (this.d + this.fetch8() + this.x) & 0xffff; this.addMemory((this.dbr << 16) | this.bus.read16(p), true); break; }
+      case 0xef: name = 'SBC long'; this.addMemory(this.fetch24(), true); break;
+      case 0xf1: { name = 'SBC (dp),Y'; const p = (this.d + this.fetch8()) & 0xffff; this.addMemory((this.dbr << 16) | ((this.bus.read16(p) + this.y) & 0xffff), true); break; }
+      case 0xf2: { name = 'SBC (dp)'; const p = (this.d + this.fetch8()) & 0xffff; this.addMemory((this.dbr << 16) | this.bus.read16(p), true); break; }
+      case 0xf3: { name = 'SBC (sr,S),Y'; const p = (this.s + this.fetch8()) & 0xffff; this.addMemory((this.dbr << 16) | ((this.bus.read16(p) + this.y) & 0xffff), true); break; }
+      case 0xf7: { name = 'SBC [dp],Y'; const p = (this.d + this.fetch8()) & 0xffff; this.addMemory((this.indirect24(p) + this.y) & 0xffffff, true); break; }
+      case 0x0e:
+      case 0x1e: {
+        name = op === 0x0e ? 'ASL abs' : 'ASL abs,X';
+        const a = (this.dbr << 16) | ((this.fetch16() + (op === 0x1e ? this.x : 0)) & 0xffff);
+        const eight = this.a8(), sign = eight ? 0x80 : 0x8000;
+        const memory = eight ? this.bus.read8(a) : this.bus.read16(a);
+        this.p = memory & sign ? this.p | C : this.p & ~C;
+        const value = this.setNZ(memory << 1, eight);
+        eight ? this.bus.write8(a, value) : this.bus.write16(a, value); break;
+      }
+      case 0x36: this.rotateMemory((this.d + this.fetch8() + this.x) & 0xffff, true); name = 'ROL dp,X'; break;
+      case 0x3e: this.rotateMemory((this.dbr << 16) | ((this.fetch16() + this.x) & 0xffff), true); name = 'ROL abs,X'; break;
+      case 0x56: this.rotateMemory((this.d + this.fetch8() + this.x) & 0xffff, false); name = 'LSR dp,X'; break;
+      case 0x5e: this.rotateMemory((this.dbr << 16) | ((this.fetch16() + this.x) & 0xffff), false); name = 'LSR abs,X'; break;
+      case 0x6e: this.rotateMemory((this.dbr << 16) | this.fetch16(), false); name = 'ROR abs'; break;
+      case 0x7e: this.rotateMemory((this.dbr << 16) | ((this.fetch16() + this.x) & 0xffff), false); name = 'ROR abs,X'; break;
+      case 0xde:
+      case 0xfe: {
+        name = op === 0xde ? 'DEC abs,X' : 'INC abs,X';
+        const a = (this.dbr << 16) | ((this.fetch16() + this.x) & 0xffff), eight = this.a8();
+        const value = this.setNZ((eight ? this.bus.read8(a) : this.bus.read16(a)) + (op === 0xde ? -1 : 1), eight);
+        eight ? this.bus.write8(a, value) : this.bus.write16(a, value); break;
+      }
+      case 0x34:
+      case 0x3c: {
+        name = op === 0x34 ? 'BIT dp,X' : 'BIT abs,X';
+        const a = op === 0x34 ? (this.d + this.fetch8() + this.x) & 0xffff : (this.dbr << 16) | ((this.fetch16() + this.x) & 0xffff);
+        const eight = this.a8(), value = eight ? this.bus.read8(a) : this.bus.read16(a), sign = eight ? 0x80 : 0x8000;
+        this.p = (this.a & value & (eight ? 0xff : 0xffff)) === 0 ? this.p | Z : this.p & ~Z;
+        this.p = value & sign ? this.p | N : this.p & ~N;
+        this.p = value & (sign >>> 1) ? this.p | V : this.p & ~V; break;
+      }
+      case 0x42: name = 'WDM'; this.fetch8(); break;
+      case 0x9a: name = 'TXS'; this.s = this.e ? 0x0100 | (this.x & 0xff) : this.x; break;
+      case 0xb8: name = 'CLV'; this.p &= ~V; break;
+      case 0xba: name = 'TSX'; this.x = this.setNZ(this.s, this.x8()); break;
+      case 0xcb: name = 'WAI'; break;
+      case 0xd4: { name = 'PEI'; const p = (this.d + this.fetch8()) & 0xffff; this.push16(this.bus.read16(p)); break; }
+      case 0xd8: name = 'CLD'; this.p &= ~D; break;
+      case 0xdb: name = 'STP'; break;
+      case 0xdc: { name = 'JMP [abs]'; const p = this.fetch16(); this.pc = this.bus.read16(p); this.pbr = this.bus.read8((p + 2) & 0xffff); break; }
+      case 0xf8: name = 'SED'; this.p |= D; break;
       case 0xca: name = 'DEX'; this.x = this.setNZ(this.x - 1, this.x8()); break;
       case 0xc8: name = 'INY'; this.y = this.setNZ(this.y + 1, this.x8()); break;
       case 0xe8: name = 'INX'; this.x = this.setNZ(this.x + 1, this.x8()); break;

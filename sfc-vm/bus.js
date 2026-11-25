@@ -36,6 +36,7 @@ export class SfcBus {
     this.apuAccessCount = 0;
     this.dmaStats = {};
     this.pendingDmaMasterCycles = 0;
+    this.pendingMath = null;
     this.readStats = {};
   }
 
@@ -77,6 +78,7 @@ export class SfcBus {
       return value;
     }
     if ((bank & 0x40) === 0 && word >= 0x2000 && word < 0x8000) {
+      this.finishMath(masterCycle);
       const value = word === 0x4210
         ? (this.io[word - 0x2000] & 0x80) | 0x42
         : this.io[word - 0x2000];
@@ -180,7 +182,34 @@ export class SfcBus {
       case 0x2182: this.wramAddress = (this.wramAddress & 0x100ff) | (value << 8); break;
       case 0x2183: this.wramAddress = (this.wramAddress & 0xffff) | ((value & 1) << 16); break;
       case 0x420b: this.runDma(value, this.currentMasterCycle ?? 0); break;
+      case 0x4203: {
+        const product = this.io[0x4202 - 0x2000] * value;
+        this.pendingMath = { ready: (this.currentMasterCycle ?? 0) + 48, product };
+        break;
+      }
+      case 0x4206: {
+        const dividend = this.io[0x4204 - 0x2000] | (this.io[0x4205 - 0x2000] << 8);
+        this.pendingMath = { ready: (this.currentMasterCycle ?? 0) + 96,
+          quotient: value ? Math.floor(dividend / value) : 0xffff,
+          remainder: value ? dividend % value : dividend };
+        break;
+      }
     }
+  }
+
+  finishMath(masterCycle) {
+    if (!this.pendingMath || masterCycle < this.pendingMath.ready) return;
+    if (this.pendingMath.product !== undefined) {
+      this.io[0x4216 - 0x2000] = this.pendingMath.product & 0xff;
+      this.io[0x4217 - 0x2000] = this.pendingMath.product >>> 8;
+    } else {
+      const { quotient, remainder } = this.pendingMath;
+      this.io[0x4214 - 0x2000] = quotient & 0xff;
+      this.io[0x4215 - 0x2000] = quotient >>> 8;
+      this.io[0x4216 - 0x2000] = remainder & 0xff;
+      this.io[0x4217 - 0x2000] = remainder >>> 8;
+    }
+    this.pendingMath = null;
   }
 
   incrementVram() {

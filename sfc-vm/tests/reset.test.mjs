@@ -88,6 +88,23 @@ test('absolute stores use the data bank register', () => {
   }
 });
 
+test('implements every opcode in all architected width modes', () => {
+  const modes = [
+    { e: true, p: 0x34 },
+    { e: false, p: 0x00 }, { e: false, p: 0x10 },
+    { e: false, p: 0x20 }, { e: false, p: 0x30 },
+  ];
+  for (let opcode = 0; opcode < 0x100; opcode++) for (const mode of modes) {
+    const rom = fixture();
+    rom.set([opcode, 0x00, 0x00, 0x00]);
+    const bus = new SfcBus(rom);
+    const cpu = new Cpu65816(bus, { traceLimit: 0 });
+    cpu.e = mode.e; cpu.p = mode.p; cpu.s = 0x01f0;
+    assert.doesNotThrow(() => cpu.step(),
+      `opcode $${opcode.toString(16).padStart(2, '0')} E=${Number(mode.e)} P=$${mode.p.toString(16)}`);
+  }
+});
+
 test('exposes the SPC700 IPL ready word and echoes transfer tokens', () => {
   const bus = new SfcBus(fixture());
   assert.equal(bus.read16(0x2140), 0xbbaa);
@@ -122,7 +139,9 @@ test('timestamps APUIO at the bus transaction and routes it through MasterLink',
   bus.write8(0x2141, 0x7f, 656250);
   assert.deepEqual(calls, [['read', 15663, 2]], 'read observes only completed SPC instructions; write is queued');
   link.sync(656400);
-  assert.deepEqual(calls, [['read', 15663, 2], ['write', 31335, 1, 0x7f]]);
+  assert.deepEqual(calls, [['read', 15663, 2]], 'sync does not deliver a write before the SPC reads its port');
+  apu.cpu.onPortRead(31336, 0);
+  assert.deepEqual(calls, [['read', 15663, 2], ['write', 31333, 1, 0x7f]]);
   assert.deepEqual(bus.apuTrace, [
     { masterCycle: 328125, direction: 'r', port: 2, value: 0x52 },
     { masterCycle: 656250, direction: 'w', port: 1, value: 0x7f },
@@ -345,6 +364,21 @@ test('DMA mode 1 writes source bytes through the VRAM data ports', () => {
     last: { channel: 0, dmap: 1, source: 0x7e0100, bytes: 4 },
   });
   assert.equal(bus.takeDmaMasterCycles(), 18 + 8 + 4 * 8);
+});
+
+test('publishes multiplication and division results only after their hardware delay', () => {
+  const bus = new SfcBus(fixture());
+  bus.write8(0x4202, 7, 100);
+  bus.write8(0x4203, 9, 112);
+  assert.equal(bus.read8(0x4216, 159) | (bus.read8(0x4217, 159) << 8), 0);
+  assert.equal(bus.read8(0x4216, 160) | (bus.read8(0x4217, 160) << 8), 63);
+
+  bus.write8(0x4204, 0x34, 200);
+  bus.write8(0x4205, 0x12, 212);
+  bus.write8(0x4206, 0x10, 224);
+  assert.equal(bus.read8(0x4214, 319) | (bus.read8(0x4215, 319) << 8), 0);
+  assert.equal(bus.read8(0x4214, 320) | (bus.read8(0x4215, 320) << 8), 0x0123);
+  assert.equal(bus.read8(0x4216, 320) | (bus.read8(0x4217, 320) << 8), 4);
 });
 
 test('reports an NMI-enable rising edge at its bus transaction', () => {
