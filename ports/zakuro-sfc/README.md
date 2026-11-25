@@ -71,6 +71,7 @@
 - 시각 상수는 브라우저에서도 읽도록 `sound/zakuro-timing.js`로 옮겼다(`tools/rom.mjs`가 다시 내보낸다).
 - 헤드리스 Chromium에서 25초 재생: 포트 읽기 714,198건 중 불일치 0, 실시간 유지.
 - `?mode=vm`(VM 입력): Codex의 65c816 VM(`../vm/`, codex/27-zakuro-65c816-vm)이 게임을 실행하고 그 포트 접근이 같은 `MasterLink`로 소리를 낸다. 비공개 `sound/ipl.bin`·`trace/input.tsv`를 쓰고, ROM은 사용자가 고른 로컬 파일을 SHA-256으로 확인해 브라우저 안에서만 읽는다. 화면에 기록과 순서·값이 같은 접근 수와 CPU 쓰기 대조를 표시한다. VM 241cb05로 헤드리스 Chromium 60초 실시간 재생(frame 3610), 엄격 일치 66,427행, 쓰기 252,612건 순서 일치(엄격 비교라 frame 422 등 extra idle-clear 뒤에서 조금 덜 센다). 출력 부족 약 0.5초 분(초기·VM 무거운 구간).
+- VM 입력 모드는 기본으로 비공개 `program/manifest.json`의 추출 범위(Codex 3592d5d, 153개 243,018 bytes, 범위별 SHA-256 확인)와 `vm/browser.js`로 실행한다. VM 540ed03 기준 ROM 없이 헤드리스 Chromium에서 frame 2358까지 같은 대조 결과(엄격 66,427행). 다만 일부 구간에서 실시간보다 느리다(40초에 약 1초 부족). `&rom=pick`은 로컬 ROM으로 같은 화면을 띄우는 대조용이다.
 - VM 입력 모드의 ROM 선택은 개발·대조용이다. 실제 플레이어는 ROM 없이 실행한다(2026-11-24 태우 결정). VM이 읽는 프로그램·자료는 Codex가 소유 ROM에서 비공개 `zakuro-sfc-kor/port-data/`로 추출하고, VM은 그 자료로 버스를 채운다.
 - `APU`는 `ipl` 인수를 받는다(Codex 241cb05와 같은 변경).
 
