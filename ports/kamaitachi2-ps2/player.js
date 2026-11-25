@@ -8,6 +8,9 @@ const movie = document.querySelector('#movie');
 const cover = document.querySelector('#cover');
 const start = document.querySelector('#start');
 const status = document.querySelector('#status');
+const shell = document.querySelector('main');
+const menuButton = document.querySelector('#menu-button');
+const gameMenu = document.querySelector('#game-menu');
 const asset = name => new URL('assets/' + name, import.meta.url).href;
 // L= comments in the Special Box Vorbis tracks, in 48 kHz PCM frames.
 const loopFrames = {
@@ -28,6 +31,7 @@ const sn4Style = {speed:1, spacing:0, position:null, marginLeft:null, marginTop:
 let scene = 'loading', index = 0, role = 0, page = 0, revealed = 0;
 let names = [], autosave = false, slot = 0, entered = 0, lastFrame, userNotice = '';
 let idleMovie = 'opening';
+let menuOpen = false, filled = false;
 let textWaits = [];
 let textSpeeds = [];
 let textColors;
@@ -72,7 +76,41 @@ function enter(next, selected = 0) {
   entered = performance.now();
   canvas.dataset.scene = next;
   userNotice = '';
+  closeMenu();
+  menuButton.hidden = !['story','complete','choice','choice-wait','autosave','slot',
+    'file-select','created','save-note','name','confirm'].includes(next);
   announce();
+}
+
+function closeMenu() {
+  menuOpen = false;
+  gameMenu.hidden = true;
+  menuButton.classList.remove('is-back');
+}
+
+function openMenu() {
+  if (!['story','complete','choice','choice-wait'].includes(scene)) return;
+  menuOpen = true;
+  gameMenu.hidden = false;
+  menuButton.classList.add('is-back');
+}
+
+async function toggleFullscreen() {
+  if (filled) {
+    filled = false;
+    document.documentElement.classList.remove('filled');
+    return;
+  }
+  if (document.fullscreenElement) return document.exitFullscreen();
+  if (document.fullscreenEnabled && shell.requestFullscreen) {
+    try {
+      await shell.requestFullscreen({navigationUI:'hide'});
+      await globalThis.screen.orientation?.lock?.('landscape').catch(() => {});
+      return;
+    } catch { /* iPhone and embedded browsers use the rotated fill fallback. */ }
+  }
+  filled = true;
+  document.documentElement.classList.add('filled');
 }
 
 function announce() {
@@ -785,10 +823,84 @@ window.addEventListener('blur', () => {
   heldArrows.clear();
   keyboardRepeat.advance('', performance.now());
 });
-document.querySelector('nav').addEventListener('click', e => {
-  if (e.target.dataset.key) { step(e.target.dataset.key); canvas.focus(); }
+function canvasPoint(event) {
+  const box = canvas.getBoundingClientRect();
+  return {x:(event.clientX - box.left) * 640 / box.width,
+    y:(event.clientY - box.top) * 448 / box.height};
+}
+
+function touchGame(event) {
+  if (menuOpen) return;
+  const {x, y} = canvasPoint(event);
+  if (scene === 'title') {
+    if (y >= 360) { index = Math.max(0, Math.min(2, Math.floor((x - 79) / 152))); step('circle'); }
+    return;
+  }
+  if (scene === 'choice') {
+    const choices = sn4Mode ? sn4Event.targets : pages[page].choice;
+    const picked = Math.floor((y - 48) / 64);
+    if (picked >= 0 && picked < choices.length) { index = picked; step('circle'); }
+    return;
+  }
+  if (scene === 'autosave') {
+    if (x >= 235 && x <= 405 && y >= 140 && y <= 225) {
+      index = y < 183 ? 0 : 1; step('circle');
+    }
+    return;
+  }
+  if (scene === 'slot') {
+    if (y >= 245 && y <= 385) { index = x < 320 ? 0 : 1; step('circle'); }
+    return;
+  }
+  if (['file-select','created','save-note'].includes(scene)) { step('circle'); return; }
+  if (scene === 'confirm') {
+    if (x >= 220 && x <= 390 && y >= 240 && y <= 335) {
+      index = y < 287 ? 0 : 1; step('circle');
+    }
+    return;
+  }
+  if (scene === 'name') {
+    if (y >= 68 && y < 110 && x >= 128 && x < 512) {
+      const group = Math.max(0, Math.min(editor.groups.length - 1, Math.floor((x - 128) / 32)));
+      editor.groupBy(group - editor.group); announce(); return;
+    }
+    if (y >= 112 && y < 384 && x >= 72 && x < 568) {
+      const row = editor.scroll + Math.floor((y - 119) / 32);
+      const column = Math.floor((x - 80) / 32);
+      if (editor.rows[row]?.[column]) {
+        editor.row = row; editor.column = editor.preferredColumn = column;
+        step('circle');
+      }
+      return;
+    }
+    if (y >= 384) {
+      if (x < 135) step('circle');
+      else if (x < 240) step('cross');
+      else if (x < 360) step('triangle');
+      else if (x < 500) step('l1');
+      else step('r1');
+    }
+    return;
+  }
+  step('circle');
+}
+canvas.addEventListener('click', touchGame);
+menuButton.addEventListener('click', event => {
+  event.stopPropagation();
+  if (menuOpen) closeMenu();
+  else if (['story','complete','choice','choice-wait'].includes(scene)) openMenu();
+  else step('cross');
+  canvas.focus();
 });
-canvas.addEventListener('click', () => step('circle'));
+gameMenu.addEventListener('click', event => {
+  const action = event.target.dataset.menu;
+  if (action === 'resume') closeMenu();
+  else if (action === 'fullscreen') { closeMenu(); toggleFullscreen(); }
+  else if (action === 'title') { closeMenu(); title(false); }
+});
+document.addEventListener('fullscreenchange', () => {
+  if (!document.fullscreenElement) globalThis.screen.orientation?.unlock?.();
+});
 start.addEventListener('click', () => {
   if (scene === 'error') location.reload();
   else intro();

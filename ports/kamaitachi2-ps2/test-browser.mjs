@@ -62,8 +62,65 @@ try {
   assert.ok(result.commands.some(command => command.name === 'Default'));
   assert.deepEqual(result.fallback.slice(2), [24, 24, 0]);
   assert.deepEqual(result.fullSpace.slice(2), [33, 0, 0]);
+
+  // The actual shell must reach the same checkpoint using clicks alone.
+  const canvas = page.locator('canvas');
+  const at = async scene => {
+    await page.waitForFunction(value => document.querySelector('canvas').dataset.scene === value,
+      scene, {timeout:10000});
+  };
+  const tap = async (x = 320, y = 224) => {
+    const box = await canvas.boundingBox();
+    await page.mouse.click(box.x + x * box.width / 640, box.y + y * box.height / 448);
+  };
+  const advanceTo = async target => {
+    for (let count = 0; count < 1500; count++) {
+      const current = await canvas.getAttribute('data-scene');
+      if (current === target) return;
+      if (count && count % 500 === 0) console.log(`click flow: ${current} -> ${target} (${count})`);
+      assert.ok(['story','complete'].includes(current), `${current} before ${target}`);
+      await tap();
+      await page.waitForTimeout(15);
+    }
+    throw new Error(`click-only flow did not reach ${target}`);
+  };
+  await page.getByRole('button', {name:'게임 시작'}).click();
+  await at('logo');
+  console.log('click flow: logo');
+  await tap();
+  await at('title');
+  console.log('click flow: title');
+  await tap(165, 400);
+  await at('autosave');
+  console.log('click flow: autosave');
+  await tap(320, 205);
+  await at('story');
+  assert.equal(await page.locator('nav').count(), 0, 'virtual pad is absent');
+  const menuButton = page.getByRole('button', {name:'게임 메뉴'});
+  await menuButton.click();
+  await page.locator('#game-menu').waitFor({state:'visible'});
+  await menuButton.click();
+  await page.locator('#game-menu').waitFor({state:'hidden'});
+  await advanceTo('name');
+  console.log('click flow: hero name');
+  await tap(120, 130); // 이름판 첫 글자를 직접 선택
+  await tap(300, 410);
+  await at('confirm');
+  await tap(300, 270);
+  await at('story');
+  await advanceTo('name');
+  console.log('click flow: partner name');
+  await tap(120, 130);
+  await tap(300, 410);
+  await at('confirm');
+  await tap(300, 270);
+  await at('story');
+  await advanceTo('choice');
+  console.log('click flow: choice');
+  await tap(200, 76);
+  await at('story');
   assert.deepEqual(errors, []);
-  console.log(`PASS browser VM: names -> ${result.choice.label}, ${result.commands.length} subsystem commands`);
+  console.log(`PASS browser VM + click-only shell: names -> ${result.choice.label}, ${result.commands.length} subsystem commands`);
 } finally {
   await browser.close();
 }
