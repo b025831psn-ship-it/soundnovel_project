@@ -138,6 +138,22 @@ test('alternates 5A22-v2 WRAM refresh between H=538 and H=534', () => {
   assert.equal(cpu.refreshPosition, 538);
 });
 
+test('places the 16-bit absolute-index penalty before the data bus read', () => {
+  const rom = fixture();
+  rom.set([0xbd, 0x40, 0x21], 0); // LDA $2140,X
+  const bus = new SfcBus(rom);
+  const cpu = new Cpu65816(bus);
+  cpu.e = false;
+  cpu.p = (cpu.p | 0x20) & ~0x10; // 8-bit A, 16-bit index
+  cpu.x = 3;
+  cpu.step();
+  assert.deepEqual(bus.apuTrace[0], {
+    masterCycle: 166 + 8 + 8 + 8 + 6,
+    direction: 'r', port: 3, value: 0,
+  });
+  assert.equal(cpu.masterCycle, 166 + 8 + 8 + 8 + 6 + 6);
+});
+
 test('8-bit LSR A does not shift the hidden B accumulator into A', () => {
   const rom = fixture();
   rom.set([0x4a, 0x4a, 0x4a, 0xa8], 0); // LSR A x3; TAY
@@ -242,6 +258,7 @@ test('native timing includes direct-page, PHP, TSC and 16-bit indexed penalties'
     { bytes: [0x08], cycles: 22 },
     { bytes: [0x28], cycles: 28 },
     { bytes: [0x3b], cycles: 14 },
+    { bytes: [0xbb], cycles: 14 },
     { bytes: [0xbd, 0x00, 0x01], setup: (cpu) => { cpu.p &= ~0x10; }, cycles: 38 },
   ];
   for (const entry of cases) {
@@ -278,17 +295,17 @@ test('enters the native NMI vector with a restorable interrupt frame', () => {
   const cpu = new Cpu65816(bus);
   cpu.e = false;
   cpu.pbr = 2;
-  cpu.pc = 0x4567;
+  cpu.pc = 0xc567;
   const stack = cpu.s;
   const master = cpu.masterCycle;
   cpu.nmi();
   assert.equal(cpu.address(), 0x001234);
   assert.equal(cpu.s, stack - 4);
-  assert.equal(cpu.masterCycle - master, 60, 'native NMI uses six bus and two internal cycles');
+  assert.equal(cpu.masterCycle - master, 62, 'native NMI starts with an 8-master fetch plus one internal cycle');
   cpu.pc = 0x8000;
   rom[0] = 0x40; // RTI
   cpu.step();
-  assert.equal(cpu.address(), 0x024567);
+  assert.equal(cpu.address(), 0x02c567);
 });
 
 test('DMA mode 1 writes source bytes through the VRAM data ports', () => {

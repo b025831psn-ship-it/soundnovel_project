@@ -10,7 +10,7 @@ const M = 0x20;
 const IMPLIED_INTERNAL = new Set([
   0x0a, 0x18, 0x1a, 0x1b, 0x2a, 0x38, 0x3a, 0x3b, 0x4a, 0x58, 0x5b,
   0x6a, 0x78, 0x7b, 0x88, 0x8a, 0x98, 0x9a, 0x9b, 0xa8, 0xaa,
-  0xba, 0xc2, 0xc8, 0xca, 0xe2, 0xe8, 0xea, 0xeb, 0xfb,
+  0xba, 0xbb, 0xc2, 0xc8, 0xca, 0xe2, 0xe8, 0xea, 0xeb, 0xfb,
 ]);
 const PUSH_OPS = new Set([0x08, 0x48, 0x4b, 0x5a, 0x8b, 0x0b, 0xda]);
 const PULL_OPS = new Set([0x28, 0x68, 0x7a, 0xab, 0x2b, 0xfa]);
@@ -95,6 +95,17 @@ export class Cpu65816 {
 
   read8(address) {
     address &= 0xffffff;
+    const instruction = this.currentInstruction;
+    if (!this.indexedReadPenaltyApplied && instruction
+      && (ABSOLUTE_X_READ_OPS.has(instruction.opcode) || ABSOLUTE_Y_READ_OPS.has(instruction.opcode))
+      && this.busTransactions - this.instructionStartTransactions === 3) {
+      const low = this.rawBus.read8((instruction.address + 1) & 0xffffff);
+      const high = this.rawBus.read8((instruction.address + 2) & 0xffffff);
+      const base = low | (high << 8);
+      const index = ABSOLUTE_X_READ_OPS.has(instruction.opcode) ? this.x : this.y;
+      if (!this.x8() || (base & 0xff) + (index & 0xff) > 0xff) this.internalCycle();
+      this.indexedReadPenaltyApplied = true;
+    }
     const value = this.rawBus.read8(address, this.masterCycle);
     this.advanceMaster(this.memorySpeed(address));
     this.busTransactions++;
@@ -168,13 +179,6 @@ export class Cpu65816 {
 
     if (INDEXED_STORE_OPS.has(opcode)) this.internalCycle();
     if (opcode === 0xb1 && !this.x8()) this.internalCycle();
-    if (ABSOLUTE_X_READ_OPS.has(opcode) || ABSOLUTE_Y_READ_OPS.has(opcode)) {
-      const low = this.rawBus.read8((at + 1) & 0xffffff);
-      const high = this.rawBus.read8((at + 2) & 0xffffff);
-      const base = low | (high << 8);
-      const index = ABSOLUTE_X_READ_OPS.has(opcode) ? this.x : this.y;
-      if (!this.x8() || (base & 0xff) + (index & 0xff) > 0xff) this.internalCycle();
-    }
     if (RMW_OPS.has(opcode)) this.internalCycle();
 
     this.lastInstructionTransactions = this.busTransactions - startTransactions;
@@ -194,8 +198,12 @@ export class Cpu65816 {
   nmi() {
     this.bus.latchControllers?.();
     this.bus.latchNmi?.();
+    // IRQ/NMI begin with an opcode-fetch I/O cycle followed by one internal
+    // cycle.  The fetch uses the interrupted PC's memory speed (8 master
+    // clocks here), not a fixed 6-master internal cycle.
+    this.advanceMaster(this.memorySpeed(this.address()));
+    this.internalCycle();
     this.interrupt(this.e ? 0x00fffa : 0x00ffea);
-    this.internalCycle(2);
   }
 
   address() { return (this.pbr << 16) | this.pc; }
@@ -219,6 +227,8 @@ export class Cpu65816 {
   step() {
     const at = this.address();
     const startTransactions = this.busTransactions;
+    this.instructionStartTransactions = startTransactions;
+    this.indexedReadPenaltyApplied = false;
     const op = this.fetch8();
     this.currentInstruction = { address: at, opcode: op };
     let name;

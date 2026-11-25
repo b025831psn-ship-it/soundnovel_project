@@ -76,7 +76,7 @@ cpu = new Cpu65816(bus, { traceLimit: 0 });
 const targetFrame = Number(targetArg);
 const instructionLimit = Number(limitArg);
 let nextFrame = 1_368;
-let nextNmi = 307_076;
+let nextNmi = 306_904;
 let frameLength = 357_368;
 let e1xxInstructions = 0;
 const frameStats = {};
@@ -117,7 +117,7 @@ try {
       }
       inVblank = false;
       nextFrame += frameLength;
-      frameLength = frameLength === 357_368 ? 357_360 : 357_368;
+      frameLength = frameLength === 357_368 ? 357_364 : 357_368;
     }
     while (cpu.masterCycle >= nextNmi) {
       inVblank = true;
