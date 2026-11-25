@@ -63,6 +63,18 @@ whenReady(({ input, sound }) => {
     addEventListener("pointerup", up);
   });
 
+  // Game menu button: the port's own API when present (main.js), else a short R press.
+  const menuButton = $("menu");
+  const showMenuState = (available) => menuButton.classList.toggle("unavailable", !available);
+  addEventListener("kamaitachi:menu", (event) => showMenuState(event.detail.available));
+  showMenuState(window.kamaitachi?.menuAvailable ?? false);
+  menuButton.addEventListener("click", () => {
+    navigator.vibrate?.(8);
+    if (window.kamaitachi?.openMenu) { window.kamaitachi.openMenu(); return; }
+    input.buttons.add("R");
+    setTimeout(() => input.buttons.delete("R"), 100);
+  });
+
   const mute = $("mute");
   const volume = $("volume");
   let muted = store.get("kamaitachi.muted", "0") === "1";

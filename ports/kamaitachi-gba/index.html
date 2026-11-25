@@ -34,9 +34,6 @@
       </p>
     </div>
     <div class="controls">
-      <!-- The GBA R button: opens the in-game menu (bookmarks, 移動, options). Same as S on the keyboard. -->
-      <button type="button" class="menu-key" data-key="R" title="게임 메뉴 (S · GBA R 버튼)">메뉴 <kbd>S</kbd></button>
-      <span class="sep" aria-hidden="true"></span>
       <button type="button" class="icon" id="mute" aria-pressed="false" aria-label="소리 끄기">
         <svg viewBox="0 0 24 24" aria-hidden="true" class="on"><path d="M4 9v6h4l5 4V5L8 9z"/><path d="M16.5 8.5a5 5 0 0 1 0 7M19 6a8.5 8.5 0 0 1 0 12"/></svg>
         <svg viewBox="0 0 24 24" aria-hidden="true" class="off"><path d="M4 9v6h4l5 4V5L8 9z"/><path d="M17 9l5 6M22 9l-5 6"/></svg>
@@ -49,6 +46,11 @@
       <button type="button" class="icon" id="fullscreen" aria-label="전체 화면 (F)" title="전체 화면 (F)">
         <svg viewBox="0 0 24 24" aria-hidden="true" class="on"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg>
         <svg viewBox="0 0 24 24" aria-hidden="true" class="off"><path d="M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5"/></svg>
+      </button>
+      <!-- The game menu (GBA R: bookmarks, 移動 flowchart, options), bottom right so phones reach it too. -->
+      <button type="button" class="icon menu-button" id="menu" aria-label="게임 메뉴 (S)" title="게임 메뉴 · 책갈피 · 이동 (S)">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3.5" width="7" height="5" rx="1"/><rect x="14" y="9.5" width="7" height="5" rx="1"/><rect x="3" y="15.5" width="7" height="5" rx="1"/><path d="M10 6h2v12h-2M12 12h2"/></svg>
+        <span class="menu-label">메뉴</span>
       </button>
     </div>
   </footer>

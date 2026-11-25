@@ -124,15 +124,10 @@ kbd {
 /* Inside the hub the side column already explains the keys. */
 .embedded .keys { display: none; }
 .controls { display: flex; align-items: center; gap: 2px; flex: none; }
-.menu-key {
-  display: inline-flex; align-items: center; gap: 8px; height: 36px; padding: 0 8px 0 12px;
-  border: 1px solid var(--line-strong); border-radius: 8px; background: transparent;
-  color: var(--text); font-size: 13px; font-weight: 500;
-  transition: background .15s ease, border-color .15s ease;
-}
-.menu-key:hover { background: var(--raised); }
-.menu-key.down { background: var(--raised); border-color: var(--accent); }
-.menu-key kbd { min-width: 20px; height: 20px; }
+/* Game menu: icon and label at the bottom right; dimmed while the game can't open it. */
+.icon.menu-button { display: inline-flex; flex: none; white-space: nowrap; align-items: center; width: auto; gap: 8px; padding: 0 12px 0 10px; margin-left: 4px; border: 1px solid var(--line-strong); color: var(--text); }
+.menu-label { font-size: 13px; font-weight: 500; }
+.icon.menu-button.unavailable { opacity: .4; }
 .sep { width: 1px; height: 20px; margin: 0 6px; background: var(--line); }
 .icon {
   display: inline-grid;
@@ -177,7 +172,7 @@ kbd {
 /* Touch buttons: only on touch screens. */
 .pad { display: none; }
 @media (pointer: coarse) {
-  .keys, .scale, .menu-key, .menu-key + .sep { display: none; }
+  .keys, .scale { display: none; }
   .bar { min-height: 48px; justify-content: flex-end; border-top: 0; border-bottom: 1px solid var(--line); background: var(--stage); }
   .pad {
     flex: none;
