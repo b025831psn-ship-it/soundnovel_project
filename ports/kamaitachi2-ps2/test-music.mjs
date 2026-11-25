@@ -54,10 +54,11 @@ try {
   assert.equal(seams.started.loop, true);
   assert.ok(Math.abs(seams.started.loopStart - 1017889 / 48000) < 1e-9);
   assert.equal(seams.started.initial, 0);
-  assert.ok(Math.abs(seams.started.after - .5) < 1e-6, 'fade-in reaches volume 50');
-  assert.ok(seams.fading > 0 && seams.fading < .5, 'fade-out in progress');
+  const volume50 = 63 / 127;
+  assert.ok(Math.abs(seams.started.after - volume50) < 1e-6, 'fade-in reaches quantized volume 50');
+  assert.ok(seams.fading > 0 && seams.fading < volume50, 'fade-out in progress');
   assert.equal(seams.playing, false);
-  console.log('PASS music: 6 loop seams sample-exact at L=, ScenePack volume/fade-in/fade-out');
+  console.log('PASS music: 6 loop seams sample-exact at L=, EE volume quantization, fade-in/fade-out');
 } finally {
   await browser.close();
 }

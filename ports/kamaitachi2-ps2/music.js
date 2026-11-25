@@ -7,8 +7,10 @@
 // playback runs from 0 to the end once and then repeats [L, end) without a gap.
 //
 // ScenePack music commands (0x14 start, 0x15 stop) give a volume and a fade
-// length in 59.94 Hz frames. Volume is applied as volume/100 linear gain and
-// fades as linear ramps; both mappings are still unverified against the EE.
+// length in 59.94 Hz frames. EE 0x001BE2E8 converts volume with integer
+// truncation: (value * 127) / 100. The normalized Web Audio gain preserves
+// that 0..127 linear scale. EE 0x001BF110 waits fadeFrames + 1 updates when
+// the command's 0x2E completion-wait flag is set.
 //
 // Web Audio gives a sample-accurate seam. If the browser cannot decode the
 // file, an HTML audio element seeks back to L on `ended` instead.
@@ -35,7 +37,7 @@ export class LoopingMusic {
 
   // volume: 0-100 as in the ScenePack command; fadeFrames: 59.94 Hz frames.
   play(file, { volume = 100, fadeFrames = 0 } = {}) {
-    const level = Math.max(0, volume) / 100;
+    const level = Math.floor(Math.min(100, Math.max(0, volume)) * 127 / 100) / 127;
     if (this.file === file && this.voice) return this.ramp(this.voice, level, fadeFrames);
     this.stop();
     this.file = file;

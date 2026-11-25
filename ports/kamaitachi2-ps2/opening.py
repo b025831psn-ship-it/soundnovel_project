@@ -578,8 +578,8 @@ def opening_assets(disc, out, encode):
             "music": {"operation": 0x14, "command": 0x07,
                       "file": music[1].decode("ascii"),
                       "volume": int.from_bytes(music[2], "little"),
-                      "fadeFrames": int.from_bytes(music[3], "little"),
-                      "channel": int.from_bytes(music[4], "little")},
+                      "wait": int.from_bytes(music[3], "little"),
+                      "fadeFrames": int.from_bytes(music[4], "little")},
         }
     config = {
         "font": font_atlas(asset("SCENARIO/sn4.fnt"), out),

@@ -32,10 +32,15 @@ public class OpeningChecks extends GhidraScript {
         DecompInterface decompiler = new DecompInterface();
         if (!decompiler.openProgram(currentProgram)) throw new Exception("Could not open decompiler");
         long[] entries = {0x100008, 0x1000c8, 0x107c68, 0x1083b8, 0x131a78,
-                          0x11b4d0, 0x11c490, 0x11bea0, 0x11bf58, 0x11c190};
+                          0x11b4d0, 0x11c490, 0x11bea0, 0x11bf58, 0x11c190,
+                          0x13d140, 0x144338, 0x144420, 0x1444c0, 0x142e50,
+                          0x1bd870, 0x1bd960, 0x1bd9c8, 0x1be2e8, 0x1bf110};
         String[] names = {"ee_startup", "game_entry_loop", "show_system_media", "game_title",
                           "dispatch_name_input", "begin_name_input", "normal_name_buttons",
-                          "append_name_glyph", "erase_name_glyph", "confirm_name"};
+                          "append_name_glyph", "erase_name_glyph", "confirm_name",
+                          "dispatch_scene_audio", "queue_bgm_play", "queue_bgm_stop",
+                          "queue_bgm_volume", "run_audio_queue", "bgm_play", "bgm_stop",
+                          "bgm_volume", "scale_bgm_volume", "wait_bgm_fade"};
         try {
             for (int i = 0; i < entries.length; i++) {
                 Address entry = va(entries[i]);
