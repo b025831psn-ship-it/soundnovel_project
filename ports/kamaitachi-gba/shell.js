@@ -222,13 +222,20 @@ addEventListener("pointerdown", wake);
 wake();
 fit();
 
-// Text language: the button shows the language in use and switches to the other one (the page reloads).
+// Text language: the button shows the language in use and switches to the other one in place.
 {
   const button = document.getElementById("language");
-  let current = "ja";
-  try { current = new URLSearchParams(location.search).get("lang") ?? localStorage.getItem("kamaitachi-gba.lang") ?? "ja"; } catch {}
-  if (current !== "ko") current = "ja";
-  button.textContent = current === "ko" ? "한" : "日";
-  button.setAttribute("aria-label", current === "ko" ? "글자 언어: 한국어 (日本語로 바꾸기)" : "글자 언어: 日本語 (한국어로 바꾸기)");
-  button.addEventListener("click", () => window.kamaitachi?.setLanguage?.(current === "ko" ? "ja" : "ko"));
+  const stored = () => { try { return new URLSearchParams(location.search).get("lang") ?? localStorage.getItem("kamaitachi-gba.lang"); } catch { return null; } };
+  const current = () => (window.kamaitachi?.language ?? stored()) === "ko" ? "ko" : "ja";
+  const show = () => {
+    const ko = current() === "ko";
+    button.textContent = ko ? "한" : "日";
+    button.setAttribute("aria-label", ko ? "글자 언어: 한국어 (日本語로 바꾸기)" : "글자 언어: 日本語 (한국어로 바꾸기)");
+  };
+  show();
+  addEventListener("kamaitachi:language", show);
+  button.addEventListener("click", async () => {
+    button.disabled = true;
+    try { await window.kamaitachi?.setLanguage?.(current() === "ko" ? "ja" : "ko"); } finally { button.disabled = false; show(); }
+  });
 }
