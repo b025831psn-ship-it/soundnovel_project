@@ -4,8 +4,7 @@ import { ScenarioFault, ScenarioVM } from "./vm.js";
 const locationKey = ({ resourceId, recordId, offset = 0 }) => `${resourceId}:${recordId}+${offset}`;
 
 export async function sweep(portDataRoot, {
-  resourceId = 25, recordId = 7, maxStates = 200000, includeResourceEntries = true,
-  includeLabelEntries = true,
+  resourceId = 25, recordId = 7, maxStates = 200000, includeResourceEntries = false,
 } = {}) {
   const data = await loadPortData(portDataRoot);
   const primary = data.manifest.opcodeTables.primary;
@@ -20,26 +19,7 @@ export async function sweep(portDataRoot, {
     if (entry && (resource.id !== resourceId || entry.id !== recordId))
       queue.push({ resourceId: resource.id, recordId: entry.id, offset: 0, stack: [], nextResource: null });
   }
-  if (includeLabelEntries) {
-    const valid = new Set();
-    for (const resource of data.resources.values()) for (const record of resource.records || [])
-      valid.add(`${resource.id}:${record.id}`);
-    const labels = new Set();
-    for (const resource of data.resources.values()) for (const record of resource.records || []) {
-      const loaded = await data.record(resource.id, record.id);
-      for (let index = 0; index + 1 < loaded.bytes.length; index++) {
-        const label = (loaded.bytes[index + 1] << 8) | loaded.bytes[index];
-        const target = `${Math.floor(label / 1000)}:${label % 1000}`;
-        if (valid.has(target)) labels.add(target);
-      }
-    }
-    for (const label of labels) {
-      const [entryResource, entryRecord] = label.split(":").map(Number);
-      queue.push({ resourceId: entryResource, recordId: entryRecord, offset: 0,
-        stack: [], nextResource: null });
-    }
-  }
-  const states = new Set(), records = new Set(), endings = [], failures = [];
+  const states = new Set(), records = new Set(), endings = [], stops = [], failures = [];
   const counts = { choice: 0, jump: 0, call: 0, return: 0, branch: 0, flagStore: 0 };
 
   const enqueue = (location, stack, nextResource = null) => {
@@ -47,6 +27,19 @@ export async function sweep(portDataRoot, {
     if (location.kind === "next-resource") {
       if (nextResource == null) { failures.push({ location: "dynamic", reason: "missing-next-resource" }); return; }
       location = { resourceId: nextResource, recordId: location.recordId || 0, offset: 0 };
+    }
+    if (location.kind === "resource-offset") {
+      const resource = data.resources.get(Number(location.resourceId));
+      const absoluteOffset = location.resourceOffset;
+      const record = resource?.records?.find((candidate, index) => {
+        const next = resource.records[index + 1];
+        return absoluteOffset >= candidate.memberOffset
+          && (!next || absoluteOffset < next.memberOffset);
+      });
+      if (!record) { failures.push({ location: locationKey(location), reason: "missing-resource-offset",
+        resourceId: location.resourceId, resourceOffset: location.resourceOffset }); return; }
+      location = { resourceId: location.resourceId, recordId: record.id,
+        offset: absoluteOffset - record.memberOffset };
     }
     const resource = data.resources.get(Number(location.resourceId));
     if (!resource?.records?.some((record) => record.id === Number(location.recordId))) {
@@ -83,16 +76,18 @@ export async function sweep(portDataRoot, {
     const resourceStore = [...events].reverse().find((event) => event.kind === "flag-store" && event.flag === "next-resource");
     const nextResource = resourceStore?.value ?? state.nextResource;
     const transfer = [...events].reverse().find((event) =>
-      ["choice", "choice-table", "jump", "call", "return", "branch"].includes(event.kind));
+      ["choice", "choice-table", "jump", "call", "return", "branch", "ending"].includes(event.kind));
     if (!transfer) {
       const next = fallthroughRecord(state);
       if (next) enqueue(next, state.stack, nextResource);
       else if (nextResource != null && nextResource !== state.resourceId)
         enqueue({ resourceId: nextResource, recordId: 0, offset: 0 }, state.stack, null);
-      else endings.push({ kind: "ending", id: `resource-end:${state.resourceId}`, at: locationKey(state) });
+      else stops.push({ kind: "stop", reason: "resource-end", at: locationKey(state) });
       continue;
     }
-    if (transfer.kind === "choice" || transfer.kind === "choice-table") {
+    if (transfer.kind === "ending") {
+      endings.push({ kind: "ending", id: transfer.id, at: locationKey(state) });
+    } else if (transfer.kind === "choice" || transfer.kind === "choice-table") {
       counts.choice++;
       for (const option of transfer.options) enqueue(option.target, state.stack, nextResource);
       if (transfer.fallthrough) enqueue(transfer.fallthrough, state.stack, nextResource);
@@ -110,7 +105,7 @@ export async function sweep(portDataRoot, {
         if (next) enqueue(next, state.stack, nextResource);
         else if (nextResource != null && nextResource !== state.resourceId)
           enqueue({ resourceId: nextResource, recordId: 0, offset: 0 }, state.stack, null);
-        else endings.push({ kind: "ending", id: `resource-end:${state.resourceId}`, at: locationKey(state) });
+        else stops.push({ kind: "stop", reason: "resource-end", at: locationKey(state) });
       }
     } else {
       counts.branch++;
@@ -121,9 +116,9 @@ export async function sweep(portDataRoot, {
   const totalRecords = [...data.resources.values()].reduce((sum, resource) => sum + (resource.records?.length || 0), 0);
   return {
     start: { resourceId, recordId }, states: states.size, records: records.size, totalRecords,
-    roots: { resourceEntries: includeResourceEntries, labelEntries: includeLabelEntries },
+    roots: { freshPlay: true, resourceEntries: includeResourceEntries },
     coverage: totalRecords ? records.size / totalRecords : 0, counts,
-    endings: [...new Map(endings.map((ending) => [ending.id, ending])).values()],
+    endings: [...new Map(endings.map((ending) => [ending.id, ending])).values()], stops,
     failures, truncated: queue.length > 0,
   };
 }

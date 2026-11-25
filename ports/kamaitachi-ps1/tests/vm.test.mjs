@@ -55,3 +55,24 @@ test("control transfers expose resolved labels and return locations", () => {
   assert.equal(vm.run(Uint8Array.of(0x15), { resourceId: 25, recordId: 9 }).at(-1).kind, "return");
   assert.equal(vm.run(Uint8Array.of(0x1e, 0xb2, 0x61), { resourceId: 25, recordId: 8 }).at(-1).kind, "branch");
 });
+
+test("conditional families keep their distinct target encodings", () => {
+  const lengths = Array(256);
+  lengths[0x45] = { classification: "fixed", operandLength: 4 };
+  lengths[0x56] = { classification: "fixed", operandLength: 4 };
+  lengths[0x57] = { classification: "variable", lengthRule: "6+4*u8(0)" };
+  lengths[0x5e] = { classification: "fixed", operandLength: 5 };
+  const vm = new ScenarioVM({ primaryHandlers: primary, sub1dHandlers: sub1d, primaryLengths: lengths });
+  assert.deepEqual(vm.run(Uint8Array.of(0x45, 0x0f, 0, 0xee, 5),
+    { resourceId: 25, recordId: 24 }).at(-1).target,
+  { kind: "resource-offset", resourceId: 25, resourceOffset: 1518 });
+  assert.deepEqual(vm.run(Uint8Array.of(0x56, 0xb9, 0x69, 0x8f, 0),
+    { resourceId: 27, recordId: 63 }).at(-1).target,
+  { label: 27065, resourceId: 27, recordId: 65 });
+  assert.deepEqual(vm.run(Uint8Array.of(0x5e, 5, 0x42, 0x4a, 0x96, 0),
+    { resourceId: 27, recordId: 76 }).at(-1).target,
+  { resourceId: 27, recordId: 150, offset: 0 });
+  const table = vm.run(Uint8Array.of(0x57, 1, 0x3e, 0x11, 0, 0xed, 0, 0x1c, 0, 0xee, 0),
+    { resourceId: 0, recordId: 16 }).at(-1);
+  assert.deepEqual(table.options.map((option) => option.target.recordId), [237, 238]);
+});

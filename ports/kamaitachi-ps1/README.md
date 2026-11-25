@@ -68,9 +68,11 @@ reduce that count to zero without inventing terminators.
 The VM emits executable `jump`, `call`, `return`, `branch`, `flag-store`,
 `choice`, and `ending` records. Opcodes `01`, `02`, and `15` model the retail
 jump/call-stack/conditional-return path; the cursor-writing conditional family
-(`0e`, `0f`, `1e`, `24`, `25`, `40`, `45`, `54`–`56`, `5d`, `5e`) exposes both
-the label target and fallthrough. Opcodes `13`, `57`, `78`, and `bc` expose
-their branch tables. Wrapper commands `30`/`32` may place their nested opcode
+is not encoded uniformly: `1e`, `45`, and `5e` use current-resource offsets,
+`56` carries a decimal cross-resource label, and `57` carries current-resource
+record rows. Each exposes its target and fallthrough without treating arbitrary
+operand pairs as labels. Opcode `13` exposes the verified choice label table.
+Wrapper commands `30`/`32` may place their nested opcode
 in the following record, which is a valid zero-extra-byte boundary rather than
 an unknown width.
 
@@ -78,11 +80,12 @@ an unknown width.
 npm run sweep -- /private/port-data
 ```
 
-The exhaustive analysis mode starts at fresh play and also includes every SCE
-resource entry and every byte-swapped label that resolves to an existing
-`resource:record`. This represents load/save/unlock entry states without
-starting arbitrary non-label records. On the verified extraction it executes
-3,718 of 3,912 records (95.04%), emits 19 terminal ending markers, and does not
-truncate the work queue. Fresh-play-only coverage remains separately
-distinguishable through the sweep options; the 95% figure must not be reported
-as a single clean-card playthrough.
+The default sweep has exactly one root: fresh play `25:7`. Optional resource
+entries can be reported separately, but byte-pattern label seeding is not
+performed. An earlier 95.04% figure was invalid because it scanned arbitrary
+byte pairs as labels; it has been removed. Resource fall-off is likewise not
+an ending. The sole currently identified ending/title transition is opcode
+`44` at `31:11+9`, whose unique handler `0x8002188c` performs the full display
+and state transition before the common `27:0` path. It emits an explicit
+`{kind:"ending", id:"title-return"}` event. Coverage is reported only from
+the actual sweep output and is not promoted to a completion claim.

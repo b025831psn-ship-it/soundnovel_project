@@ -1,11 +1,15 @@
 const hex = (value, width = 2) => `0x${value.toString(16).padStart(width, "0")}`;
 
 const TOP_COMMANDS = new Set([0x0c, 0x08, 0x15, 0x31, 0x53, 0x1c, 0x2f, 0x2d, 0x17]);
-const CONDITIONAL_TRANSFERS = new Set([0x0e, 0x0f, 0x24, 0x25, 0x40, 0x45, 0x54, 0x55, 0x56, 0x5d, 0x5e]);
+const OFFSET_BRANCHES = new Set([0x45]);
 const labelTarget = (operands) => {
   const label = (operands[1] << 8) | operands[0];
   return { label, resourceId: Math.floor(label / 1000), recordId: label % 1000 };
 };
+const resourceOffsetTarget = (resourceId, operands) => ({
+  kind: "resource-offset", resourceId,
+  resourceOffset: (operands.at(-1) << 8) | operands.at(-2),
+});
 
 export class ScenarioFault extends Error {
   constructor(reason, event, events = []) {
@@ -123,16 +127,33 @@ export class ScenarioVM {
         return events;
       }
       if (opcode === 0x1e) {
-        const target = labelTarget(operands);
+        const target = resourceOffsetTarget(resourceId, operands);
         events.push({ ...event, status: "implemented", kind: "branch", target,
           fallthrough: { resourceId, recordId, offset: pc },
           condition: { kind: "retail-condition-latch-equals", address: "0x80079296" },
           operandLength: length, operands });
         return events;
       }
-      if (CONDITIONAL_TRANSFERS.has(opcode)) {
-        const target = labelTarget(operands.slice(-2));
+      if (OFFSET_BRANCHES.has(opcode)) {
+        const target = resourceOffsetTarget(resourceId, operands);
         events.push({ ...event, status: "implemented", kind: "branch", target,
+          fallthrough: { resourceId, recordId, offset: pc },
+          condition: { kind: "retail-flag-expression", opcode: hex(opcode),
+            operands: operands.slice(0, -2) }, operandLength: length, operands });
+        return events;
+      }
+      if (opcode === 0x56) {
+        const target = labelTarget(operands.slice(0, 2));
+        events.push({ ...event, status: "implemented", kind: "branch", target,
+          fallthrough: { resourceId, recordId, offset: pc },
+          condition: { kind: "retail-flag-expression", opcode: hex(opcode),
+            operands: operands.slice(2) }, operandLength: length, operands });
+        return events;
+      }
+      if (opcode === 0x5e) {
+        const targetRecord = (operands.at(-1) << 8) | operands.at(-2);
+        events.push({ ...event, status: "implemented", kind: "branch",
+          target: { resourceId, recordId: targetRecord, offset: 0 },
           fallthrough: { resourceId, recordId, offset: pc },
           condition: { kind: "retail-flag-expression", opcode: hex(opcode),
             operands: operands.slice(0, -2) }, operandLength: length, operands });
@@ -150,6 +171,12 @@ export class ScenarioVM {
           operandLength: length, operands });
         continue;
       }
+      if (opcode === 0x44) {
+        events.push({ ...event, status: "implemented", kind: "ending",
+          id: "title-return", evidence: "unique handler 0x8002188c transition",
+          operandLength: length, operands });
+        return events;
+      }
       if (opcode === 0x13) {
         const options = [];
         for (let index = 2; index + 1 < operands.length; index += 2) {
@@ -161,13 +188,12 @@ export class ScenarioVM {
           mode: operands[0], flags: operands[1], options, target: null, operandLength: length, operands });
         return events;
       }
-      if (opcode === 0x57 || opcode === 0x78 || opcode === 0xbc) {
+      if (opcode === 0x57) {
         const options = [];
-        const start = opcode === 0x78 ? 2 : 4;
-        for (let index = start; index + 1 < operands.length; index += 2) {
-          const target = labelTarget(operands.slice(index, index + 2));
-          options.push({ index: options.length, label: target.label,
-            target: { resourceId: target.resourceId, recordId: target.recordId } });
+        for (let index = 4; index + 1 < operands.length; index += 4) {
+          const targetRecord = (operands[index + 1] << 8) | operands[index];
+          options.push({ index: options.length,
+            target: { resourceId, recordId: targetRecord, offset: 0 } });
         }
         events.push({ ...event, status: "implemented", kind: "choice-table", options,
           fallthrough: { resourceId, recordId, offset: pc }, operandLength: length, operands });
