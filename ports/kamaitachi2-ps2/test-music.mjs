@@ -5,7 +5,8 @@ import { createRequire } from 'node:module';
 const require = createRequire(new URL('../../web-player/tests/e2e.mjs', import.meta.url));
 const { chromium } = require('playwright');
 const base = process.argv[2] || 'http://127.0.0.1:8772/';
-const browser = await chromium.launch({args:['--autoplay-policy=no-user-gesture-required']});
+const executablePath = process.env.PLAYWRIGHT_EXECUTABLE_PATH;
+const browser = await chromium.launch({executablePath, args:['--no-sandbox', '--autoplay-policy=no-user-gesture-required']});
 try {
   const page = await browser.newPage();
   await page.goto(base);

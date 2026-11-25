@@ -23,7 +23,8 @@ let saved = readSave();
 let data, screen, groups, editor, pages, sn4;
 let sn4Mode = false, sn4Event, sn4WaitUntil = 0;
 const sn4Style = {speed:1, spacing:0, position:null, marginLeft:null, marginTop:null,
-  positions:[], rubies:[], scene:null, scenePack:null, caption:null, retainMovie:false};
+  positions:[], rubies:[], scene:null, scenePack:null, caption:null, retainMovie:false,
+  sceneCommands:[], unknown:[]};
 let scene = 'loading', index = 0, role = 0, page = 0, revealed = 0;
 let names = [], autosave = false, slot = 0, entered = 0, lastFrame, userNotice = '';
 let idleMovie = 'opening';
@@ -86,8 +87,7 @@ function announce() {
 }
 
 function choiceRoute(target) {
-  return [data.prologueChoice, data.summerChoice, data.followupChoice,
-    data.culpritChoice, data.captainChoice].flat().find(route => route.target === target);
+  return {target, text:sn4.choiceText(target)};
 }
 
 function playMusic(file, options) {
@@ -95,7 +95,7 @@ function playMusic(file, options) {
 }
 
 function applyScenePack(name) {
-  const command = data.scenePack?.[name];
+  const entry = data.scenePack?.[name];
   if (name === 'my0003_00') {
     sn4Style.retainMovie = true;
     playMovie('my0003-1', () => playMovie('my0003-2', null, true));
@@ -106,16 +106,49 @@ function applyScenePack(name) {
     sn4Style.retainMovie = true;
     playMovie('my0006', null, true);
   }
-  if (!command) return 0;
-  if (command.image) sn4Style.scene = command.image;
-  if (command.music?.operation === 0x14) {
-    const { file, volume, fadeFrames } = command.music;
-    playMusic(file, {volume, fadeFrames});
-  } else if (command.music?.operation === 0x15) stopMusic({fadeFrames:command.music.fadeFrames});
-  else if (command.music?.operation === 0x17) {
-    music.volume(command.music.volume, {fadeFrames:command.music.fadeFrames});
+  if (!entry) return 0;
+  let wait = 0;
+  const commands = entry.commands ?? (entry.music ? [entry.music] : []);
+  for (const command of commands) {
+    sn4Style.sceneCommands.push({name, ...command});
+    switch (command.op ?? command.operation) {
+      case 0x01: break;
+      case 0x07:
+      case 0x04: {
+        const file = command.file;
+        if (typeof file !== 'string') break;
+        const leaf = file.replaceAll('\\', '/').split('/').at(-1);
+        if (leaf.endsWith('.ipu')) sn4Style.scene = leaf.slice(0, -4);
+        else if (leaf.endsWith('.m2v')) {
+          sn4Style.retainMovie = true;
+          playMovie(leaf.slice(0, -4), null, true);
+        } else if (!leaf.endsWith('.sab')) sn4Style.unknown.push({name, command});
+        break;
+      }
+      case 0x14:
+        playMusic(command.file, {volume:command.volume ?? 100,
+          fadeFrames:command.fadeFrames ?? 0});
+        break;
+      case 0x15: stopMusic({fadeFrames:command.fadeFrames ?? 0}); break;
+      case 0x17:
+        music.volume(command.volume ?? 100, {fadeFrames:command.fadeFrames ?? 0});
+        break;
+      // Sound effects remain records until their SE bank IDs are mapped.
+      case 0x0c: case 0x0d: case 0x0f: case 0x10: case 0x11:
+        sn4Style.unknown.push({name, command, kind:'sound'}); break;
+      // Preserve all non-audio effects in source order and continue. Renderer
+      // hooks can consume these records as their EE semantics are confirmed.
+      case 0x05: case 0x08: case 0x09: case 0x0a: case 0x0b:
+      case 0x0e: case 0x12: case 0x13: case 0x16: case 0x19:
+      case 0x1a: case 0x1b: case 0x1c: case 0x1f: case 0x23: case 0x24:
+        sn4Style.unknown.push({name, command}); break;
+      default:
+        sn4Style.unknown.push({name, command, kind:'unknown-op'}); break;
+    }
+    if (command.wait) wait = Math.max(wait, (command.fadeFrames ?? 0) + 1);
   }
-  return command.music?.wait ? command.music.fadeFrames + 1 : 0;
+  if (entry.image) sn4Style.scene = entry.image;
+  return wait;
 }
 
 function stopMusic(options) {
@@ -188,9 +221,7 @@ function newGame() {
 }
 
 function beginStory() {
-  sn4Mode = false;
-  page = 0;
-  printPage();
+  startSn4('my01_0000');
 }
 
 function storyText() {
@@ -495,12 +526,7 @@ function step(key) {
     } else if (key === 'circle') {
       if (sn4Mode) {
         cue('confirm');
-        const target = sn4Event.targets[index];
-        if (!sn4.hasLabel(target)) {
-          sn4Mode = false;
-          page = pages.findIndex(block => block.target === target);
-          printPage();
-        } else showSn4(sn4.choose(index));
+        showSn4(sn4.choose(index));
         return;
       }
       const target = pages[page].choice[index].target;
@@ -519,9 +545,7 @@ function step(key) {
       else if (textWaits.length) return;
       else if (sn4Mode) {
         if (sn4Event.type === 'end') {
-          sn4Mode = false;
-          page = pages.findIndex(block => block.target === `${sn4Event.label}-cont`);
-          printPage();
+          enter('complete');
         } else showSn4(sn4.run());
       }
       else if (scene === 'story' && pages[page].choice) enter(pages[page].choiceWait ? 'choice-wait' : 'choice');
@@ -651,7 +675,8 @@ function frame(now) {
     drawStory(time);
     if (now - entered >= pages[page].choiceWait * 1000 / 59.94) enter('choice');
   } else if (scene === 'choice') {
-    if (!pages[page].retainMovie) screen.background('my0645', true, time);
+    if (!sn4Mode && !pages[page].retainMovie) screen.background('my0645', true, time);
+    else if (sn4Mode && !sn4Style.retainMovie) screen.background(sn4Style.scene ?? 'my0645', true, time);
     const choices = sn4Mode ? sn4Event.targets.map(choiceRoute) : pages[page].choice;
     choices.forEach((route, i) => {
       const y = 60 + 64 * i;
@@ -670,7 +695,7 @@ function frame(now) {
       revealed = speed === 0 ? limit : Math.min(limit, revealed + dt / (35 * speed));
     }
     drawStory(time);
-    if (pages[page].autoAdvance && !textWaits.length && revealed >= storyText().length) { page++; printPage(); }
+    if (!sn4Mode && pages[page].autoAdvance && !textWaits.length && revealed >= storyText().length) { page++; printPage(); }
   } else if (scene === 'name' || scene === 'confirm') {
     screen.background('my0645', true, time);
     if (scene === 'name') screen.editor(editor, role);
@@ -787,7 +812,9 @@ try {
     scene:value => { sn4Style.scenePack = value; },
     caption:value => { sn4Style.caption = value; return applyScenePack(value); },
   });
-  pages = makePages(data.story);
+  // The complete SN4 program is authoritative. Legacy page construction is
+  // retained only for old save compatibility and is never used for new play.
+  pages = [];
   screen = new Screen(canvas, images, data);
   enter('ready'); start.disabled = false; start.textContent = '게임 시작';
   requestAnimationFrame(frame);

@@ -8,6 +8,7 @@ from pathlib import Path
 import shutil
 import struct
 import subprocess
+import sys
 from tempfile import TemporaryDirectory
 import wave
 
@@ -164,9 +165,29 @@ def prepare(image, output):
         video(recollection, stage / "mo0001.mp4")
         summer_movies(disc, stage)
         opening_assets(disc, stage, encode)
+        # Replace the opening-only extracts with the complete 24-block SN4
+        # program and all ScenePack entries.  Keep opening.json's UI/font data,
+        # but source its scenePack member exclusively from the full decoder.
+        scenario = stage / "scenario.sn4"
+        scene_pack = stage / "scene_pk.spk"
+        full_pack = stage / "scenepack.json"
+        opcode_table = stage / "sn4-opcodes.md"
+        scenario.write_bytes(asset("SCENARIO/scenario.sn4"))
+        scene_pack.write_bytes(asset("SCENARIO/scene_pk.spk"))
+        tools = Path(__file__).with_name("tools")
+        subprocess.run([sys.executable, str(tools / "sn4dump.py"), str(scenario),
+                        str(stage / "sn4.json"), str(opcode_table)], check=True)
+        subprocess.run([sys.executable, str(tools / "spkdump.py"), str(scene_pack),
+                        str(full_pack)], check=True)
+        opening = json.loads((stage / "opening.json").read_text(encoding="utf-8"))
+        opening["scenePack"] = json.loads(full_pack.read_text(encoding="utf-8"))
+        (stage / "opening.json").write_text(
+            json.dumps(opening, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
         for file in stage.iterdir():
             if file.suffix in {".mp4", ".png", ".ogg", ".json"} or file.name in {"move.wav", "confirm.wav", "cancel.wav"}:
                 os.replace(file, assets / file.name)
+            elif file.name == "sn4-opcodes.md":
+                os.replace(file, output / file.name)
     for filename in ("index.html", "player.css", "player.js", "render.js", "names.js", "sn4.js", "music.js"):
         shutil.copyfile(Path(__file__).with_name(filename), output / filename)
 

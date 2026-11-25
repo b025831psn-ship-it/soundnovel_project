@@ -15,6 +15,7 @@ export class Sn4Vm {
     this.text = '';
     this.pending = null;
     this.clearBeforeRun = false;
+    this.variables = new Map();
   }
 
   setNames(names) {
@@ -24,6 +25,20 @@ export class Sn4Vm {
 
   hasLabel(label) {
     return this.labels.has(label);
+  }
+
+  choiceText(label) {
+    const block = this.labels.get(label);
+    if (!block) return label;
+    let text = '';
+    for (const command of block.ops) {
+      if (command.op === 0x02) text += command.args?.[0] ?? '';
+      else if (command.op === 0x04) text += '\n';
+      else if (command.op === 0x0d) text += this.names[0];
+      else if (command.op === 0x0e) text += this.names[1];
+      else if ([0x09, 0x0b, 0x16].includes(command.op)) break;
+    }
+    return text.trim() || label;
   }
 
   jump(label) {
@@ -65,6 +80,9 @@ export class Sn4Vm {
       }
       const command = block.ops[this.pc++];
       const args = command.args ?? [];
+      const unknown = () => this.hooks.unknown?.(command.op, args, {
+        label:this.label, offset:command.offset, variables:this.variables,
+      });
       switch (command.op) {
         case 0x02: this.text += args[0]; break;
         case 0x04: this.text += '\n'; break;
@@ -85,6 +103,25 @@ export class Sn4Vm {
         case 0x0c:
         case 0x15:
         case 0x32: break;
+        case 0x68:
+        case 0x69: {
+          const spec = args[0] ?? {};
+          const left = this.variables.get(spec.var) ?? 0;
+          const right = command.op === 0x68 ? spec.value : (this.variables.get(spec.source) ?? 0);
+          let value;
+          // Operation 6 is the assignment form verified in the executable.
+          // Preserve the common arithmetic forms; unknown forms are reported
+          // and leave the previous value intact.
+          if (spec.op === 6) value = right;
+          else if (spec.op === 0) value = left + right;
+          else if (spec.op === 1) value = left - right;
+          else if (spec.op === 2) value = left * right;
+          else if (spec.op === 3) value = right ? Math.trunc(left / right) : left;
+          else { unknown(); break; }
+          this.variables.set(spec.var, (value << 16) >> 16);
+          this.hooks.variable?.(spec, this.variables.get(spec.var));
+          break;
+        }
         case 0x12:
         case 0x13:
           this.pending = {type:'name', role:command.op - 0x12};
@@ -106,9 +143,20 @@ export class Sn4Vm {
           this.pending = {type:'choice', targets:args[0]};
           return {...this.pending, label:this.label, offset:command.offset, text:this.text};
         case 0x6f: this.hooks.wipe?.(...args); break;
-        case 0x70: {
-          const target = this.hooks.condition?.(args[0]);
-          if (target) this.jump(target);
+        case 0x70:
+        case 0x71: {
+          const spec = args[0] ?? {};
+          const left = this.variables.get(spec.var) ?? 0;
+          const right = command.op === 0x70 ? spec.value : (this.variables.get(spec.other) ?? 0);
+          const forced = this.hooks.condition?.(spec, left, right);
+          if (typeof forced === 'string') { this.jump(forced); break; }
+          let passes = typeof forced === 'boolean' ? forced : ({
+            0:left < right, 1:left <= right, 2:left > right, 3:left >= right,
+            7:left === right, 12:left !== right,
+          })[spec.cmp];
+          if (passes === undefined) { unknown(); passes = true; }
+          // CommandIf skips to target when the comparison is false.
+          if (!passes && spec.target) this.jump(spec.target);
           break;
         }
         case 0x72: this.hooks.prepareScene?.(args[0]); break;
@@ -128,6 +176,19 @@ export class Sn4Vm {
         case 0x75: this.hooks.color?.(...args); break;
         case 0x7b: this.hooks.command7b?.(args[0]); break;
         case 0x106: this.hooks.ruby?.(...args); break;
+        // The complete extractor preserves these commands and their decoded
+        // operands. Their EE-side presentation/system meanings are not all
+        // confirmed yet; report them with location and continue instead of
+        // aborting the scenario traversal.
+        case 0x10: case 0x11: case 0x17: case 0x1a: case 0x1b: case 0x1f:
+        case 0x23: case 0x27: case 0x28: case 0x29: case 0x2d: case 0x2e:
+        case 0x2f: case 0x31: case 0x34: case 0x35: case 0x3a: case 0x3b:
+        case 0x3c: case 0x3d: case 0x3e: case 0x41: case 0x45: case 0x47:
+        case 0x48: case 0x4d: case 0x51: case 0x53: case 0x54: case 0x56:
+        case 0x57: case 0x59: case 0x5b: case 0x5e: case 0x60: case 0x62:
+        case 0x64: case 0x76: case 0x79: case 0x7a: case 0x7c: case 0x7e:
+        case 0x7f: case 0x81: case 0x82: case 0x83: case 0x84:
+          unknown(); break;
         default:
           throw new Error(`Unsupported SN4 opcode 0x${command.op.toString(16).padStart(2, '0')} at ${this.label}+0x${command.offset.toString(16)}`);
       }

@@ -106,7 +106,7 @@ def main(src, dst):
             if image: entry["image"] = image.removesuffix(".ipu")
             if m := music(cmds): entry["music"] = m
             pack[name] = entry
-    json.dump(dict(sorted(pack.items())), open(dst, "w"), ensure_ascii=False, separators=(",", ":"))
+    json.dump(dict(sorted(pack.items())), open(dst, "w", encoding="utf-8"), ensure_ascii=False, separators=(",", ":"))
     print(f"{len(pack)} ScenePack entries")
 
 if __name__ == "__main__":

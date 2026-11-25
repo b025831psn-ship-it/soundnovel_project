@@ -131,8 +131,8 @@ def main():
         got, miss, nl = decode_block(data[b:b + s], b, bi, stats)
         labels += got; missing += miss; linked += nl
     names = collections.Counter(l["label"] for l in labels)
-    program = {"entry": "my01_0047", "source": "SCENARIO/scenario.sn4", "labels": labels}
-    json.dump(program, open(sys.argv[2], "w"), ensure_ascii=False, separators=(",", ":"))
+    program = {"entry": "my01_0000", "source": "SCENARIO/scenario.sn4", "labels": labels}
+    json.dump(program, open(sys.argv[2], "w", encoding="utf-8"), ensure_ascii=False, separators=(",", ":"))
     print(f"blocks {n} link entries {linked} VM labels {len(labels)} ops {sum(len(l['ops']) for l in labels)}")
     print("labels not on an op boundary:", missing[:20], len(missing))
     print("bad", len(BAD)); [print(x) for x in BAD[:30]]
@@ -150,6 +150,6 @@ def main():
             key = 0x65 if op == 0x66 else op
             lab, off = first.get(0x106 if op == 6 else key, ("", 0))
             rows.append(f"| `{op:#04x}` | {stats[op]} | `{lab}` @ `{off:#x}` | {kind(op)} |")
-        open(sys.argv[3], "w").write("\n".join(rows) + "\n")
+        open(sys.argv[3], "w", encoding="utf-8").write("\n".join(rows) + "\n")
 
 main()
