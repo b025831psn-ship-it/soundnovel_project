@@ -30,8 +30,9 @@ test("fixed and handler-proven variable lengths let stubs continue", () => {
       { resourceId: 1, recordId: 2 });
   assert.deepEqual(events.filter((event) => ["command", "choice"].includes(event.kind)).map((event) => event.operandLength), [2, 6]);
   assert.deepEqual(events.find((event) => event.kind === "choice").options,
-    [{ index: 0, target: 0x0807 }, { index: 1, target: 0x0605 }]);
-  assert.equal(events.at(-1).reason, "record-end");
+    [{ index: 0, label: 0x0708, target: { resourceId: 1, recordId: 800 } },
+      { index: 1, label: 0x0506, target: { resourceId: 1, recordId: 286 } }]);
+  assert.equal(events.at(-1).kind, "choice");
 });
 
 test("opcode report covers every primary and 1d sub-dispatch slot", () => {

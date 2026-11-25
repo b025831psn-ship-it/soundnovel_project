@@ -45,6 +45,20 @@ stops when it emits a choice. Opcode `13` is decoded from handler `0x8001e3c0`
 as a choice header plus `(count + 1)` byte-swapped branch labels. Fresh play
 `run(25, 7, "enumerate")` therefore reaches the first two-option choice in
 record 8. These labels belong to the retail global SCE address space; they are
-not presented as record IDs until loader-base reverse mapping proves that
-relationship. `run-all` uses isolated-record mode so every one of the 3,912
-records is still scanned exactly once.
+decimal labels resolved by `0x8001bfb8`: `resource = floor(label / 1000)` and
+`record = label % 1000`. Thus the first choice labels 25010 and 25009 branch
+to `25:10` and `25:9`. `enumerate` runs both targets independently and each
+reaches the next choice at `25:13`; it no longer executes both option bodies
+linearly. `run-all` uses isolated-record mode so every one of the 3,912 records
+is still scanned exactly once.
+
+Text opcodes `00` and `17` carry Shift-JIS plus inline renderer escapes rather
+than plain Shift-JIS alone. Observed pairs include `n1`/`n2` name insertion,
+`C4`/`C0` style or name-slot selection, `v0`/`v1` and `c0`/`c1` choice-body
+markers, and `rP`/`pg` page or line controls; `L` is an inline layout control.
+They remain structured text bytes until the renderer routines assign their
+complete visual semantics. The former 75 `unterminated-text` reports had two
+parser causes: opcodes `30`/`32` execute a nested command (not merely an
+optional byte), and a resource-terminal zero is a boundary rather than a new
+empty text command. Handler-aware nested lengths and terminal text handling
+reduce that count to zero without inventing terminators.
