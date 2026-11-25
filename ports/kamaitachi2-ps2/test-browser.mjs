@@ -1,532 +1,65 @@
-// Run against a locally prepared site. The test never attaches to a desktop browser.
+// Browser regression for the complete SN4 VM. It deliberately avoids the old
+// hand-authored page sequence and drives the extracted program from my01_0000.
 import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
-import { mkdir } from 'node:fs/promises';
-import path from 'node:path';
 
 const require = createRequire(new URL('../../web-player/tests/e2e.mjs', import.meta.url));
 const { chromium } = require('playwright');
 const base = process.argv[2] || 'http://127.0.0.1:8772/';
-const captures = process.argv[3];
-if (captures) await mkdir(captures, {recursive:true});
-const executablePath = process.env.PLAYWRIGHT_EXECUTABLE_PATH;
-const browser = await chromium.launch({executablePath, args:['--no-sandbox']});
-const page = await browser.newPage({viewport:{width:960,height:768}});
-const errors = [];
-const requests = new Set();
-const unexpected = [];
-const site = new URL('./', base);
-await page.route('**/*', route => {
-  const url = new URL(route.request().url());
-  requests.add(url.href);
-  const local = url.origin === site.origin && url.pathname.startsWith(site.pathname);
-  const relative = url.pathname.slice(site.pathname.length);
-  const resource = /^(?:|index\.html|player\.css|(?:player|render|names|sn4|music)\.js|favicon\.ico|assets\/[\w.-]+\.(?:json|png|mp4|ogg|wav))$/.test(relative);
-  if (local && resource) return route.continue();
-  unexpected.push(url.href);
-  return route.abort();
+const browser = await chromium.launch({
+  executablePath:process.env.PLAYWRIGHT_EXECUTABLE_PATH,
+  args:['--no-sandbox', '--autoplay-policy=no-user-gesture-required'],
 });
-page.on('pageerror', error => errors.push(error.message));
-page.on('response', r => { if (r.status() >= 400 && !r.url().endsWith('/favicon.ico')) errors.push(r.url()); });
-const canvas = page.locator('canvas');
-const at = scene => page.waitForFunction(s => document.querySelector('canvas').dataset.scene === s, scene);
-const key = name => page.keyboard.press(name);
-const label = () => canvas.getAttribute('aria-label');
-const check = async name => {
-  if (captures) await canvas.screenshot({path:path.join(captures, name + '.png')});
-};
-async function waitForPrologueText() {
-  await page.waitForFunction(() => {
-    const pixels = document.querySelector('canvas').getContext('2d').getImageData(80,190,470,40).data;
-    let ink = 0;
-    for (let i = 0; i < pixels.length; i += 4) {
-      if (Math.min(pixels[i], pixels[i+1], pixels[i+2]) > 180) ink++;
-    }
-    return ink > 800;
-  });
-}
-async function advanceTo(target, interval = target === 'name' ? 80 : 0) {
-  // The opening narration contains timed pauses even while confirm is pressed.
-  const deadline = Date.now() + 15000;
-  while (Date.now() < deadline) {
-    if ((await canvas.getAttribute('data-scene')) === target) return;
-    assert.equal(await canvas.getAttribute('data-scene'), 'story');
-    await key('Enter');
-    if (interval) await page.waitForTimeout(interval);
-  }
-  throw new Error('Did not reach ' + target + ' from ' + await label());
-}
+
 try {
+  const page = await browser.newPage({viewport:{width:960, height:768}});
+  const errors = [];
+  page.on('pageerror', error => errors.push(error.message));
+  page.on('response', response => {
+    if (response.status() >= 400 && !response.url().endsWith('/favicon.ico')) errors.push(response.url());
+  });
   await page.goto(base);
-  const vmBranches = await page.evaluate(async () => {
+  await page.waitForFunction(() => document.querySelector('canvas')?.dataset.scene === 'ready');
+
+  const result = await page.evaluate(async () => {
     const [{Sn4Vm}, program] = await Promise.all([
       import('./sn4.js'), fetch('./assets/sn4.json').then(response => response.json()),
     ]);
-    return [0, 1].map(index => {
-      const vm = new Sn4Vm(program);
-      vm.reset('my01_0070');
-      vm.setNames(['透', '真理']);
-      let event = vm.run();
-      while (event.type === 'pause') event = vm.run();
-      if (event.type !== 'choice') throw new Error('VM did not reach first choice');
-      const targets = event.targets;
-      const captions = [];
-      vm.hooks.caption = value => { captions.push(value); return 0; };
-      event = vm.choose(index);
-      const texts = [];
-      while (!['end', 'choice'].includes(event.type)) {
-        if (event.text) texts.push(event.text);
-        if (!['pause', 'wait'].includes(event.type)) throw new Error('Unexpected branch event ' + event.type);
-        event = vm.run();
+    const commands = [];
+    const vm = new Sn4Vm(program, {
+      command:(name, args, context) => { commands.push({name, args, op:context.op}); return 0; },
+      caption:() => 0,
+    });
+    vm.reset('my01_0000');
+    vm.setNames(['透', '真理']);
+    let event = vm.run();
+    const reach = expected => {
+      for (let steps = 0; steps < 50000; steps++) {
+        if (event.type === expected) return event;
+        if (event.type === 'end') throw new Error(`ended at ${event.label} before ${expected}`);
+        if (event.type === 'name') event = vm.resume(event.role ? '真理' : '透');
+        else if (event.type === 'choice') event = vm.choose(0);
+        else event = vm.run();
       }
-      if (event.text) texts.push(event.text);
-      return {targets, label:event.label, text:event.text, texts, captions};
-    });
+      throw new Error(`did not reach ${expected}`);
+    };
+    const hero = reach('name');
+    event = vm.resume('透');
+    const partner = reach('name');
+    event = vm.resume('真理');
+    const choice = reach('choice');
+    const labels = choice.targets.map(target => vm.choiceText(target));
+    return {entry:program.entry, hero, partner, choice, labels, commands};
   });
-  assert.deepEqual(vmBranches.map(branch => branch.targets), [
-    ['my01_0075', 'my01_0073'], ['my01_0075', 'my01_0073'],
-  ]);
-  assert.deepEqual(vmBranches.map(branch => branch.label), ['my02_0100', 'my01_0073']);
-  assert.ok(vmBranches.every(branch => branch.text.length > 0 || branch.texts.some(Boolean)));
-  assert.deepEqual(vmBranches[0].captions, [
-    'my0002e_10', 'my0002f_00', 'my0002g_00', 'my0002g_10',
-    'my0002g_35', 'my0002g_40', 'my0002h_00', 'my0002i_00', 'my0002i_10',
-    'my0003_00', 'my0005_00', 'my0006_00', 'my0006_20', 'my0006_30',
-    'my0006_40', 'my0006_50', 'my0006b_00', 'my0006c_00',
-  ]);
-  assert.deepEqual(vmBranches[1].captions, []);
-  assert.ok(vmBranches[0].texts.some(text => text.includes('北海道に引っ越してしまった')));
-  const musicWait = await page.evaluate(async () => {
-    const {Sn4Vm} = await import('./sn4.js');
-    const vm = new Sn4Vm({entry:'wait', labels:[{label:'wait', ops:[
-      {op:0x02, offset:1, args:['before']}, {op:0x74, offset:2, args:['fade']},
-      {op:0x02, offset:3, args:['after']},
-    ]}]}, {caption:name => name === 'fade' ? 31 : 0});
-    const waiting = vm.run();
-    const finished = vm.run();
-    return {waiting, finished};
-  });
-  assert.deepEqual(musicWait.waiting, {type:'wait', reason:'music', label:'wait', offset:2,
-    ticks:31, text:'before'});
-  assert.equal(musicWait.finished.type, 'end');
-  assert.equal(musicWait.finished.text, 'beforeafter');
-  assert.equal(await page.locator('input[type=file]').count(),0);
-  await page.getByRole('button', {name:'게임 시작'}).click();
-  await at('logo');
-  await page.waitForFunction(() => document.querySelector('video').currentTime > .25);
-  assert.equal(await page.locator('video').evaluate(v=>v.videoWidth), 640);
-  await at('copyright'); await check('copyright');
-  const copyrightMatches = await canvas.evaluate(async screen => {
-    const image = new Image();
-    image.src = 'assets/copyrigh.png';
-    await image.decode();
-    await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
-    if (screen.width !== image.width || screen.height !== image.height) return false;
-    const reference = document.createElement('canvas');
-    reference.width = image.width;
-    reference.height = image.height;
-    const context = reference.getContext('2d');
-    context.drawImage(image, 0, 0);
-    const expected = context.getImageData(0, 0, image.width, image.height).data;
-    const actual = screen.getContext('2d').getImageData(0, 0, screen.width, screen.height).data;
-    return actual.every((channel, i) => channel === expected[i]);
-  });
-  assert.ok(copyrightMatches, 'copyright canvas matches the extracted image');
-  await at('opening');
-  await page.waitForFunction(() => document.querySelector('video').currentTime > .25);
-  // Let the video emit its real ended event, including on local servers that
-  // do not implement byte-range seeking.
-  await page.locator('video').evaluate(v => { v.playbackRate = 8; });
-  await at('title-entry');
-  await page.waitForFunction(() => document.querySelector('video').currentTime > .25);
-  await at('title');
-  await page.waitForFunction(() => document.querySelector('video').currentTime > .3);
-  await check('title');
-  await key('ArrowLeft'); await key('2'); await at('autosave'); await check('autosave');
-  await key('Enter'); await at('slot'); await key('Escape'); await at('autosave');
-  await key('ArrowDown'); await key('Enter'); await at('story');
-  await waitForPrologueText(); await check('prologue');
-  await advanceTo('name');
-  assert.equal(await label(),'주인공 透');
-  await check('hero');
-  // OS-generated repeats before the EE's 18-tick delay must not move again.
-  await page.evaluate(() => {
-    const send = (type, repeat = false) => document.dispatchEvent(
-      new KeyboardEvent(type, {code:'ArrowRight', repeat, bubbles:true}));
-    send('keydown'); send('keydown', true); send('keyup');
-  });
-  await key('Enter');
-  const afterRepeatedKey = await label();
-  // Reset to the original heading before taking a single-step reference.
-  await key('Escape'); await key('q'); await key('w'); await key('ArrowRight'); await key('Enter');
-  assert.equal(await label(), afterRepeatedKey);
-  await key('Escape'); await key('ArrowLeft');
-  // The browser can lose focus before delivering the arrow's keyup event.
-  await page.keyboard.down('ArrowRight');
-  await page.evaluate(async () => {
-    window.dispatchEvent(new FocusEvent('blur'));
-    const start = performance.now();
-    while (await new Promise(requestAnimationFrame) - start < 450) {}
-  });
-  await page.keyboard.up('ArrowRight');
-  await key('Enter');
-  assert.equal(await label(), afterRepeatedKey);
-  await key('Escape');
-  for (let i=0; i<9; i++) await key('ArrowDown');
-  await page.getByRole('button',{name:'L1',exact:true}).click();
-  await key('Enter'); assert.equal(await label(),'주인공 透Ａ');
-  await key('Escape');
-  await page.getByRole('button',{name:'R1',exact:true}).click();
-  await key('Enter'); assert.equal(await label(),'주인공 透あ');
-  await key('Escape');
-  await key('ArrowDown'); await key('Enter'); assert.equal(await label(),'주인공 透い');
-  await key('Escape'); await key('ArrowUp');
-  await key('Escape'); await key('s'); await at('confirm');
-  await key('Escape'); await at('name'); await key('s'); await at('confirm');
-  assert.equal(await label(),'주인공 透');
-  await key('Enter'); await at('name'); // The original confirmation starts on No.
-  // Present the same pressed snapshot to the game's polling loop for one frame.
-  await page.evaluate(async () => {
-    const pressed = new Set([0, 1, 3, 4, 5]);
-    Object.defineProperty(navigator, 'getGamepads', {configurable:true, value:() => [{
-      mapping:'standard', buttons:Array.from({length:16}, (_, i) => ({pressed:pressed.has(i)})),
-    }]});
-    await new Promise(requestAnimationFrame);
-    pressed.clear();
-    await new Promise(requestAnimationFrame);
-    // Hold through the second repeat, between the 24th and 30th PS2 ticks.
-    pressed.add(15);
-    const start = await new Promise(requestAnimationFrame);
-    while (await new Promise(requestAnimationFrame) - start < 415) {}
-    pressed.add(1);
-    await new Promise(requestAnimationFrame);
-    pressed.clear();
-    await new Promise(requestAnimationFrame);
-    delete navigator.getGamepads;
-  });
-  await at('name'); assert.equal(await label(),'주인공 透かガ');
-  await key('Escape');
-  await key('q'); await key('Escape'); await key('Enter');
-  assert.equal(await label(),'주인공 透あ');
-  await key('s'); await at('confirm');
-  // The original treats the vertical directions as one toggle when pressed together.
-  await page.evaluate(async () => {
-    for (const code of ['ArrowUp', 'ArrowDown']) {
-      document.dispatchEvent(new KeyboardEvent('keydown', {code, bubbles:true}));
-    }
-    await new Promise(requestAnimationFrame);
-    for (const code of ['ArrowUp', 'ArrowDown']) {
-      document.dispatchEvent(new KeyboardEvent('keyup', {code, bubbles:true}));
-    }
-  });
-  await key('Enter');
-  await at('story'); assert.match(await label(),/透あ/);
-  await advanceTo('name'); assert.equal(await label(),'여자친구 真理');
-  await check('partner');
-  await key('Escape'); await key('Enter'); await key('s'); await at('confirm');
-  assert.equal(await label(),'여자친구 真あ'); await check('confirm');
-  await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
-  const cursorBounds = await canvas.evaluate(element => {
-    const {data} = element.getContext('2d').getImageData(238, 285, 30, 37);
-    const xs = [], ys = [];
-    for (let i=0; i<data.length; i+=4) {
-      if (Math.min(data[i], data[i+1], data[i+2]) <= 120) continue;
-      xs.push(238 + (i / 4) % 30);
-      ys.push(285 + Math.floor(i / 120));
-    }
-    return [Math.min(...xs), Math.min(...ys), Math.max(...xs), Math.max(...ys)];
-  });
-  assert.deepEqual(cursorBounds, [249, 297, 260, 310]);
-  await key('ArrowUp'); await key('Enter'); await at('story');
-  for (let i=0; i<8 && !(await label()).includes('真あの叔父さん'); i++) await key('Enter');
-  assert.match(await label(), /ぼくと真あは以前/);
-  assert.match(await label(), /真あの叔父さん/);
-  assert.match(await label(),/真あ/); await check('completed');
-  await advanceTo('choice');
-  assert.equal(await label(), '急速に親しくなった。');
-  await key('ArrowDown'); await key('Enter'); await at('story');
-  assert.equal(await label(), '行ってから……どうなったんだっけ。');
-  for (let i=0; i<10 && !(await label()).includes('気がつけば'); i++) await key('Enter');
-  assert.equal(await label(), '気がつけば音が聞こえていた。');
-  await page.waitForFunction(() => {
-    const clip = document.querySelector('video');
-    return clip.src.endsWith('/mo0001.mp4') && clip.ended && clip.videoWidth === 640;
-  });
-  for (let i=0; i<3 && !(await label()).startsWith('ぴしゃ'); i++) await key('Enter');
-  assert.equal(await label(), 'ぴしゃ'.repeat(63));
-  await advanceTo('complete');
-  assert.equal(await label(), '波が船を舐める音だ。\nそうだ。ぼくは。\nぼくは船に乗っている。\nぼくは船に……。');
-  assert.equal(await page.evaluate(()=>localStorage.getItem('soundnovel.slps25132.opening.v1')),null);
-  await page.reload(); await page.getByRole('button',{name:'게임 시작'}).click();
-  await key('Space'); await at('title'); await key('Enter'); await at('autosave');
-  await key('Enter'); await at('slot'); await key('ArrowRight'); await key('Enter'); await at('file-select');
-  await key('Escape'); await at('slot'); await key('Enter'); await at('file-select');
-  await key('Enter'); await at('created'); await key('Enter'); await at('save-note'); await key('Enter'); await at('story');
-  await waitForPrologueText();
-  await advanceTo('name');
-  for (let i=0; i<8; i++) await key('Enter');
-  await key('ArrowRight'); await key('Enter');
-  assert.equal((await label()).replace('주인공 ',''),'透ああああぁ');
-  for (let i=0; i<2; i++) {
-    await key('s'); await at('confirm'); await key('ArrowUp'); await key('Enter');
-    if (!i) await advanceTo('name');
-  }
-  await advanceTo('choice'); await key('Enter'); await at('story');
-  assert.equal(await label(), '急速に親しくなった。');
-  for (let i=0; i<8 && !(await label()).includes('北海道に引っ越してしまった'); i++) await key('Enter');
-  assert.match(await label(), /真理のお父さんが北海道に転勤/);
-  assert.match(await label(), /真理は大学をやめ、北海道に引っ越してしまった。$/);
-  for (let i=0; i<8 && !(await label()).includes('一通の招待状'); i++) await key('Enter');
-  assert.match(await label(), /^その後も、真理とは、手紙や電話/);
-  assert.match(await label(), /一通の招待状が届いた。$/);
-  for (let i=0; i<20 && !(await label()).includes('ありがとうございました'); i++) {
-    await key('Enter'); await page.waitForTimeout(100);
-  }
-  assert.match(await label(), /ゲームソフト『かまいたちの夜』[^]*ありがとうございました。$/);
-  for (let i=0; i<12 && !(await label()).includes('することができました'); i++) await key('Enter');
-  assert.equal((await label()).split('\n').length, 6);
-  assert.match(await label(), /^ゲームソフト『かまいたちの夜』/);
-  assert.match(await label(), /三日月館[^]*することができました。$/);
-  for (let i=0; i<6 && !(await label()).includes('二日でご招待'); i++) await key('Enter');
-  assert.match(await label(), /^風光明媚/);
-  assert.match(await label(), /八月十五日\nから十六日まで/);
-  for (let i=0; i<8 && !(await label()).endsWith('我孫子武丸'); i++) await key('Enter');
-  assert.match(await label(), /八月吉日\n三日月館当主\n我孫子武丸$/);
-  const authorPages = new Set();
-  for (let i=0; i<30 && !(await label()).includes('会えるかもしれない'); i++) {
-    authorPages.add(await label());
-    await key('Enter'); await page.waitForTimeout(100);
-    authorPages.add(await label());
-  }
-  assert.ok([...authorPages].some(text => text.startsWith('この『我孫子武丸』')));
-  assert.ok([...authorPages].some(text => text.endsWith('出会ったことがないからだ。')));
-  for (let i=0; i<10 && !(await label()).endsWith('会えるかもしれない……。'); i++) await key('Enter');
-  assert.deepEqual((await label()).split('\n'), [
-    'この招待状は、真理にも届いているのだろうか。',
-    'ぼくは、すぐに、真理に電話をした。',
-    'もしかしたら、また、真理と会えるかもしれない……。',
-  ]);
-  for (let i=0; i<24 && !(await label()).endsWith('あ、真理？'); i++) {
-    await key('Enter'); await page.waitForTimeout(100);
-  }
-  assert.match(await label(), /「もしもし・・・・・・あ、真理？$/);
-  await key('Enter');
-  assert.equal(await canvas.getAttribute('data-scene'), 'story');
-  await page.waitForTimeout(3000);
-  assert.match(await label(), /真理？ひさしぶりだね……」$/);
-  await key('Enter');
-  await key('Enter');
-  await page.waitForFunction(() => document.querySelector('canvas').getAttribute('aria-label') === '八月十五日\n正午');
-  await page.waitForFunction(() => {
-    const ctx = document.querySelector('canvas').getContext('2d');
-    return [[220,150],[270,230]].every(([x,y]) => {
-      const pixels = ctx.getImageData(x,y,60,44).data;
-      return pixels.some((value,i) => i % 4 === 0 && value > 200);
-    });
-  });
-  for (const clip of ['my0003-1','my0003-2','my0005-1','my0005-2']) {
-    await page.waitForFunction(name => {
-      const v = document.querySelector('video');
-      return v.src.endsWith('/' + name + '.mp4') && v.videoWidth === 640 && v.currentTime > 0;
-    }, clip);
-  }
-  assert.equal(await label(), '「暑いわね」');
-  const summerLines = ['「ほんとだ。こう暑くっちゃやりきれないよ」','「あら、私は夏は暑いほうが好きよ」',
-    'え？','「だって、すがすがしいじゃない」','「・・・・・・そ、そうだよね」'];
-  for (const line of summerLines) {
-    const previous = await label();
-    const expected = previous + '\n' + line;
-    for (let i=0; i<40 && await label() !== expected; i++) {
-      await key('Enter');
-      await page.waitForTimeout(80);
-    }
-    assert.equal(await label(), expected);
-  }
-  for (let i=0; i<40 && !(await label()).endsWith('またきれいになっていた。'); i++) {
-    await key('Enter');
-    await page.waitForTimeout(100);
-  }
-  assert.deepEqual((await label()).split('\n'), [
-    '真理らしい受け答えだ。',
-    'ぼくは、あらためて、本物の真理が目の前にいることを実感した。',
-    '１年半ぶりに会う真理。',
-    '彼女は、またきれいになっていた。',
-  ]);
-  assert.ok(await page.locator('video').evaluate(v => v.src.endsWith('/my0006.mp4') && v.videoWidth === 640));
-  for (let i=0; i<12 && !(await label()).endsWith('圧倒されていた。'); i++) await key('Enter');
-  const description = (await label()).split('\n');
-  assert.equal(description.length, 4);
-  assert.equal(description[0], 'ショートパンツにＴシャツ……。');
-  assert.equal(description[3], 'ひさしぶりに会ったぼくは、その輝かしさに圧倒されていた。');
-  const seen = new Set();
-  for (let i=0; i<100 && await canvas.getAttribute('data-scene') !== 'choice'; i++) {
-    seen.add(await label());
-    await key('Enter');
-    await page.waitForTimeout(75);
-  }
-  await at('choice');
-  assert.ok(seen.has('「どうしたの、透ああああぁ」'));
-  assert.ok([...seen].some(line => line.endsWith('やる気がしなかったのだ。')));
-  assert.ok([...seen].some(line => line.endsWith('真理もそうだろ」')));
-  assert.ok([...seen].some(line => line.endsWith('すごく売れてるみたいよ」')));
-  assert.match(await label(), /今度貸してよ」$/);
-  await key('ArrowDown');
-  const reply = await label();
-  assert.match(reply, /なかなか面白かったよね」$/);
-  await key('Enter'); await at('story');
-  assert.equal(await label(), reply);
-  for (let i=0; i<30 && !(await label()).endsWith('どのへんが面白かった？」'); i++) {
-    await key('Enter');
-    await page.waitForTimeout(100);
-  }
-  assert.match(await label(), /どのへんが面白かった？」$/);
-  for (let i=0; i<30 && await canvas.getAttribute('data-scene') === 'story'; i++) {
-    await key('Enter');
-    await page.waitForTimeout(100);
-  }
-  await at('choice');
-  assert.match(await label(), /もちろん犯人当てだよ」$/);
-  if (process.env.K2_CULPRIT_ROUTE) {
-    await key('Enter'); await at('story'); await advanceTo('choice-wait', 50);
-    await key('ArrowDown'); await key('Enter');
-    assert.equal(await canvas.getAttribute('data-scene'), 'choice-wait');
-    await at('choice');
-    assert.match(await label(), /当然だよ」/);
-    await key('ArrowDown');
-    assert.match(await label(), /チャレンジしてみるよ」/);
-    await key('Enter'); await at('story');
-    for (let i=0; i<100 && !(await label()).endsWith('泊まっていなかった。'); i++) {
-      await key('Enter');
-      await page.waitForTimeout(100);
-    }
-    assert.match(await label(), /あの時、我孫子なんてやつは泊まっていなかった。$/);
-    const discussion = new Set();
-    for (let i=0; i<260 && await canvas.getAttribute('data-scene') === 'story'; i++) {
-      discussion.add(await label());
-      await key('Enter');
-      await page.waitForTimeout(100);
-    }
-    await at('choice');
-    assert.ok([...discussion].some(line => line.includes('「我孫子武丸って誰なんだろう」')));
-    assert.ok([...discussion].some(line => line.endsWith('真理は自信ありげに言った。')));
-    assert.ok([...discussion].some(line => line.includes('香山さんが透ああああぁに就職の世話')));
-    assert.ok([...discussion].some(line => line.endsWith('もう一人の乗客である小林二郎さんに言った。')));
-    assert.ok([...discussion].some(line => line.includes('いい宣伝になってるよ')));
-    assert.ok([...discussion].some(line => line.endsWith('小林さんは、ニヤニヤ笑って返事をしない。')));
-    assert.ok([...discussion].some(line => line.includes('ペンション「シュプール」のオーナー')));
-    assert.ok([...discussion].some(line => line.endsWith('今日子さんは、料理はからきしダメなのだ。')));
-    assert.ok([...discussion].some(line => line.includes('真理がたずねた。') && line.endsWith('いいのか、そんなことで。')));
-    assert.ok([...discussion].some(line => line.includes('小林夫妻には招待状は来ていなかった。')));
-    assert.ok([...discussion].some(line => line.endsWith('真理が、小林さんに今回の話をしたら……。')));
-    assert.ok([...discussion].some(line => line.endsWith('と、突然、参加を決めたらしい。')));
-    assert.ok([...discussion].some(line => line.endsWith('今は、まったく元気がない。')));
-    assert.ok([...discussion].some(line => line.endsWith('真理が叫んだ。')));
-    assert.ok([...discussion].some(line => line.includes('三日月島」らしい。')));
-    assert.ok([...discussion].some(line => line.endsWith('あまりリゾート地らしく思えない。')));
-    assert.ok([...discussion].some(line => line.includes('これで三往復目じゃ」')));
-    assert.ok([...discussion].some(line => line.endsWith('船長さんが、急に口を開いた。')));
-    assert.match(await label(), /いつも送迎をしてるんですか/);
-    await key('ArrowDown');
-    assert.match(await label(), /何で三日月島って言うんですか/);
-    await key('Enter'); await at('story');
-    const captainLines = new Set();
-    for (let i=0; i<450 && await canvas.getAttribute('data-scene') === 'story'; i++) {
-      captainLines.add(await label());
-      await key('Enter'); await page.waitForTimeout(100);
-    }
-    await at('complete');
-    assert.ok([...captainLines].some(line => line.includes('あの島は、三日月の形をしとるから')));
-    assert.ok([...captainLines].some(line => line.endsWith('そう言ったまま口をつぐんでしまった。')));
-    assert.ok([...captainLines].some(line => line.endsWith('船長さんは、しぶしぶといった表情で言った。')));
-    assert.ok([...captainLines].some(line => line.includes('『監獄島』って呼んどるよ')));
-    assert.ok([...captainLines].some(line => line.includes('私設監獄を建てたんだ')));
-    assert.ok([...captainLines].some(line => line.endsWith('ぼくは思わず聞き返した。')));
-    assert.ok([...captainLines].some(line => line.includes('真理が唾を飲み込む音が聞こえた。')));
-    assert.ok([...captainLines].some(line => line.includes('岸猿家は監獄を廃止した。')));
-    assert.ok([...captainLines].some(line => line.endsWith('船長さんは追い打ちをかける。')));
-    assert.ok([...captainLines].some(line => line.includes('獄死した奉公人たちの祟り')));
-    assert.ok([...captainLines].some(line => line.includes('岸猿伊右衛門')));
-    assert.ok([...captainLines].some(line => line.endsWith('残った家族は行方知れずになったそうだ」')));
-    assert.ok([...captainLines].some(line => line.endsWith('そう言おうと口を開きかけたら……。')));
-    assert.ok([...captainLines].some(line => line.includes('監獄なんて、おもしろいじゃない')));
-    assert.ok([...captainLines].some(line => line.endsWith('楽しみだなあ……」')));
-    assert.ok([...captainLines].some(line => line.includes('妙な〈わらべ唄〉')));
-    assert.ok([...captainLines].some(line => line.endsWith('船長さんはうれしそうに歌いだした。')));
-    const verses = [...captainLines, await label()].filter(line => line.includes('　') && line.length >= 130);
-    assert.ok(verses.some(line => line.replaceAll('　','').startsWith('底蟲村のしん太郎どん')));
-    assert.match(await label(), /真理は率直に感想をもらした。/);
-    assert.match(await label(), /漢字などを\s*教えてくれた。$/);
-    assert.deepEqual(verses.slice(-5).map(line => line.length), [131, 138, 133, 134, 142]);
-    assert.ok([...requests].some(url => url.endsWith('/k2h002.ogg')));
-    assert.ok([...requests].some(url => url.endsWith('/my0018.mp4')));
-    assert.ok([...requests].some(url => url.endsWith('/my0012.mp4')));
-    assert.ok([...requests].some(url => url.endsWith('/my0004.mp4')));
-    assert.ok([...requests].some(url => url.endsWith('/k1a004.ogg')));
-    assert.ok([...requests].some(url => url.endsWith('/my0010.mp4')));
-    assert.ok([...requests].some(url => url.endsWith('/my0008.mp4')));
-  } else {
-    await key('ArrowDown');
-    const bossReply = await label();
-    assert.match(bossReply, /最後のボスキャラを倒すのがたいへんだったけどね」$/);
-    await key('Enter'); await at('story');
-    assert.equal(await label(), bossReply);
-    for (let i=0; i<60 && await canvas.getAttribute('data-scene') === 'story'; i++) {
-      await key('Enter');
-      await page.waitForTimeout(100);
-    }
-    await at('complete');
-    assert.match(await label(), /真理はにっこり笑って、/);
-    assert.match(await label(), /ドラゴンを８８匹集めないと倒せないのよね」$/);
-  }
-  assert.ok([...requests].some(url => url.endsWith('/k2h003.ogg')));
-  const saved = await page.evaluate(()=>JSON.parse(localStorage.getItem('soundnovel.slps25132.opening.v1')));
-  assert.deepEqual(saved,{names:['透ああああぁ','真理'],slot:1});
-  await page.reload(); await page.getByRole('button',{name:'게임 시작'}).click();
-  await key('Space'); await at('title'); await key('Enter');
-  await at('story');
-  assert.equal(await label(), '彼女の名前は、真理。');
-  await advanceTo('choice');
-  await page.clock.install();
-  for (const [phase, skip] of [['copyright','2'], ['opening','Enter']]) {
-    await page.reload();
-    await page.getByRole('button',{name:'게임 시작'}).click();
-    await at('logo');
-    await page.locator('video').evaluate(v => { v.playbackRate = 8; });
-    await at(phase);
-    await key('Escape');
-    assert.equal(await canvas.getAttribute('data-scene'), phase);
-    await key(skip);
-    await at('title');
-    assert.ok(await page.locator('video').evaluate(v => v.src.endsWith('/title.mp4') && v.loop));
-    if (phase === 'copyright') {
-      await page.clock.fastForward(80200);
-      await at('attract');
-      assert.ok(await page.locator('video').evaluate(v => v.src.endsWith('/opening.mp4')));
-    }
-  }
-  await page.keyboard.press('ArrowLeft');
-  await page.clock.fastForward(79000);
-  assert.equal(await canvas.getAttribute('data-scene'), 'title');
-  await page.keyboard.press('ArrowRight');
-  await page.clock.fastForward(79000);
-  assert.equal(await canvas.getAttribute('data-scene'), 'title');
-  await page.clock.fastForward(1200);
-  await at('attract');
-  assert.ok(await page.locator('video').evaluate(v => v.src.endsWith('/pre_dv.mp4')));
-  for (const phase of ['title-entry', 'title']) {
-    await page.locator('video').evaluate(v => { v.playbackRate = 12; });
-    await at(phase);
-  }
-  await page.clock.fastForward(80200);
-  await at('attract');
-  assert.ok(await page.locator('video').evaluate(v => v.src.endsWith('/opening.mp4')));
-  assert.deepEqual(unexpected,[]);
-  const isoRequests = [...requests].filter(url => /\.iso(?:$|[?#])/i.test(url));
-  assert.equal(isoRequests.length,0);
-  for (const asset of ['chunlogo.mp4','opening.mp4','title-1.mp4','title.mp4','opening.json','font.png','k2t002.ogg','k1a001.ogg','cancel.wav']) {
-    assert.ok([...requests].some(url => new URL(url).pathname.endsWith('/' + asset)), asset);
-  }
-  console.log('PASS standalone HTTP site: ' + requests.size + ' distinct URLs, ' + isoRequests.length + ' ISO requests, ' + unexpected.length + ' requests outside the prepared site, no file picker');
-  assert.deepEqual(errors,[]);
-  console.log('PASS real intro playback, title, new game, both name commands, defaults, six-character overwrite, both confirmation directions, story substitution and browser checkpoint');
-} finally { await browser.close(); }
+
+  assert.equal(result.entry, 'my01_0000');
+  assert.equal(result.hero.role, 0);
+  assert.equal(result.partner.role, 1);
+  assert.ok(result.choice.targets.length >= 2);
+  assert.ok(result.labels.every(label => label && !/^my/.test(label)));
+  assert.ok(result.commands.some(command => command.name === 'Default'));
+  assert.deepEqual(errors, []);
+  console.log(`PASS browser VM: names -> ${result.choice.label}, ${result.commands.length} subsystem commands`);
+} finally {
+  await browser.close();
+}

@@ -811,6 +811,11 @@ try {
     clearText:() => { sn4Style.position = null; sn4Style.positions = []; sn4Style.rubies = []; },
     scene:value => { sn4Style.scenePack = value; },
     caption:value => { sn4Style.caption = value; return applyScenePack(value); },
+    command:(name, args, context) => {
+      sn4Style.sceneCommands.push({kind:'sn4', name, args, ...context});
+      if (name === 'Center') sn4Style.position = (320 << 16) | (sn4Style.marginTop ?? 31);
+      return 0;
+    },
   });
   // The complete SN4 program is authoritative. Legacy page construction is
   // retained only for old save compatibility and is never used for new play.

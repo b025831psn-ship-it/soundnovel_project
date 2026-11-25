@@ -40,4 +40,33 @@ for (const [cmp, [left, right]] of Object.entries(cases)) {
 }
 const other = run([set(1, 6, 2), set(2, 6, 2), {op: 0x71, offset: 0, args: [{var: 1, cmp: 12, other: 2, target: 'no'}]}]);
 assert.equal(other.event.label, 'no', '0x71 compares two variables');
+
+// Every formerly unknown opcode is now tied to its EE command class. Hooks
+// receive decoded operands plus source context instead of a generic unknown.
+const classes = new Map([
+  [0x10,'Name3'],[0x11,'Name4'],[0x17,'BgWait'],[0x1a,'Break'],[0x1b,'ManualJump'],
+  [0x1f,'Cipher'],[0x23,'MiniGame'],[0x27,'End'],[0x28,'End'],[0x29,'AutoRead'],
+  [0x2d,'SpiritJump'],[0x2e,'TMemory'],[0x2f,'MojiInOut'],[0x31,'MojiAfter'],
+  [0x34,'RecordStart'],[0x35,'RecordEnd'],[0x3a,'InbouStart'],[0x3b,'InbouEnd'],
+  [0x3c,'Center'],[0x3d,'MiniGameAreaStart'],[0x3e,'MiniGameAreaEnd'],[0x41,'Default'],
+  [0x45,'Default'],[0x47,'MiniGameParam'],[0x48,'EventBox'],[0x4d,'Line'],
+  [0x53,'LetterSpace'],[0x54,'Default'],[0x56,'Default'],[0x57,'MojiInOutParam'],
+  [0x59,'MojiAfterParam'],[0x5b,'MojiAllInOut'],[0x5e,'Default'],[0x60,'Default'],
+  [0x62,'Default'],[0x64,'Default'],[0x76,'AddSelect'],[0x79,'AutoReadParam'],
+  [0x7a,'ClickMap'],[0x7c,'PageLoopStart'],[0x7e,'Panel'],[0x7f,'DelusionPanel'],
+  [0x81,'NameInputGeneral'],[0x82,'NameInputCriminal'],[0x83,'TMemorySave'],[0x84,'TMemoryLoad'],
+]);
+for (const [op, name] of classes) {
+  const called = [];
+  const event = run([{op, offset:0x123, args:[7]}], {
+    command:(actual, args, context) => { called.push({actual,args,context}); return 0; },
+  }).event;
+  assert.equal(called[0].actual, name, `0x${op.toString(16)} dispatches ${name}`);
+  assert.deepEqual(called[0].args, [7]);
+  assert.equal(called[0].context.offset, 0x123);
+  assert.ok(['end','pause'].includes(event.type));
+}
+const cancelable = run([{op:0x51, offset:3, args:[45]}]).event;
+assert.deepEqual(cancelable, {type:'wait', reason:'cancelable', label:'a', offset:3, ticks:45, text:''});
+assert.equal(classes.size + 1, 47, 'all 47 formerly unknown opcodes are covered');
 console.log('sn4 variable/condition semantics: PASS');

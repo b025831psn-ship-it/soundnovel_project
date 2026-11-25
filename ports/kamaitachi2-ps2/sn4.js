@@ -91,6 +91,10 @@ export class Sn4Vm {
       const unknown = () => this.hooks.unknown?.(command.op, args, {
         label:this.label, offset:command.offset, variables:this.variables,
       });
+      const invoke = name => this.hooks.command?.(name, args, {
+        op:command.op, label:this.label, offset:command.offset,
+        variables:this.variables, text:this.text,
+      });
       switch (command.op) {
         case 0x02: this.text += args[0]; break;
         case 0x04: this.text += '\n'; break;
@@ -190,19 +194,66 @@ export class Sn4Vm {
         case 0x75: this.hooks.color?.(...args); break;
         case 0x7b: this.hooks.command7b?.(args[0]); break;
         case 0x106: this.hooks.ruby?.(...args); break;
-        // The complete extractor preserves these commands and their decoded
-        // operands. Their EE-side presentation/system meanings are not all
-        // confirmed yet; report them with location and continue instead of
-        // aborting the scenario traversal.
-        case 0x10: case 0x11: case 0x17: case 0x1a: case 0x1b: case 0x1f:
-        case 0x23: case 0x27: case 0x28: case 0x29: case 0x2d: case 0x2e:
-        case 0x2f: case 0x31: case 0x34: case 0x35: case 0x3a: case 0x3b:
-        case 0x3c: case 0x3d: case 0x3e: case 0x41: case 0x45: case 0x47:
-        case 0x48: case 0x4d: case 0x51: case 0x53: case 0x54: case 0x56:
-        case 0x57: case 0x59: case 0x5b: case 0x5e: case 0x60: case 0x62:
-        case 0x64: case 0x76: case 0x79: case 0x7a: case 0x7c: case 0x7e:
-        case 0x7f: case 0x81: case 0x82: case 0x83: case 0x84:
-          unknown(); break;
+        // EE command-constructor dispatch table 0x0021A240. These are real
+        // command classes, not unknown bytecode: presentation and subsystem
+        // work is delegated with the original operands and source location.
+        case 0x10: invoke('Name3'); break;
+        case 0x11: invoke('Name4'); break;
+        case 0x17: {
+          const ticks = invoke('BgWait') ?? 0;
+          if (ticks > 0) return {type:'wait', reason:'background', label:this.label,
+            offset:command.offset, ticks, text:this.text};
+          break;
+        }
+        case 0x1a:
+          invoke('Break');
+          return {type:'pause', reason:'break', label:this.label, offset:command.offset, text:this.text};
+        case 0x1b: invoke('ManualJump'); break;
+        case 0x1f: invoke('Cipher'); break;
+        case 0x23: invoke('MiniGame'); break;
+        case 0x27: case 0x28:
+          invoke('End');
+          return {type:'end', reason:command.op === 0x27 ? 'normal' : 'alternate',
+            label:this.label, offset:command.offset, text:this.text};
+        case 0x29: invoke('AutoRead'); break;
+        case 0x2d: {
+          const target = invoke('SpiritJump');
+          if (typeof target === 'string') this.jump(target);
+          break;
+        }
+        case 0x2e: invoke('TMemory'); break;
+        case 0x2f: invoke('MojiInOut'); break;
+        case 0x31: invoke('MojiAfter'); break;
+        case 0x34: invoke('RecordStart'); break;
+        case 0x35: invoke('RecordEnd'); break;
+        case 0x3a: invoke('InbouStart'); break;
+        case 0x3b: invoke('InbouEnd'); break;
+        case 0x3c: invoke('Center'); break;
+        case 0x3d: invoke('MiniGameAreaStart'); break;
+        case 0x3e: invoke('MiniGameAreaEnd'); break;
+        case 0x41: case 0x45: case 0x54: case 0x56:
+        case 0x5e: case 0x60: case 0x62: case 0x64:
+          invoke('Default'); break;
+        case 0x47: invoke('MiniGameParam'); break;
+        case 0x48: invoke('EventBox'); break;
+        case 0x4d: invoke('Line'); break;
+        case 0x51:
+          return {type:'wait', reason:'cancelable', label:this.label,
+            offset:command.offset, ticks:args[0], text:this.text};
+        case 0x53: invoke('LetterSpace'); break;
+        case 0x57: invoke('MojiInOutParam'); break;
+        case 0x59: invoke('MojiAfterParam'); break;
+        case 0x5b: invoke('MojiAllInOut'); break;
+        case 0x76: invoke('AddSelect'); break;
+        case 0x79: invoke('AutoReadParam'); break;
+        case 0x7a: invoke('ClickMap'); break;
+        case 0x7c: invoke('PageLoopStart'); break;
+        case 0x7e: invoke('Panel'); break;
+        case 0x7f: invoke('DelusionPanel'); break;
+        case 0x81: invoke('NameInputGeneral'); break;
+        case 0x82: invoke('NameInputCriminal'); break;
+        case 0x83: invoke('TMemorySave'); break;
+        case 0x84: invoke('TMemoryLoad'); break;
         default:
           throw new Error(`Unsupported SN4 opcode 0x${command.op.toString(16).padStart(2, '0')} at ${this.label}+0x${command.offset.toString(16)}`);
       }
