@@ -51,8 +51,30 @@ function portRoute(url) {
   return null;
 }
 
+// Outside testing goes through a tunnel (cloudflared, ngrok): those requests carry a forwarding header.
+// They need the test password (env SOUNDNOVEL_PASSWORD or a local, uncommitted serve.password file)
+// and never get the cartridge files. Direct requests on this PC are unchanged.
+const password = (process.env.SOUNDNOVEL_PASSWORD ?? (() => {
+  try { return fs.readFileSync(path.join(__dirname, 'serve.password'), 'utf8'); } catch { return ''; }
+})()).trim();
+const cartridges = new Set(['/AGB-AHZJ.gba', '/AGB-AKZJ.gba']);
+function allowedFromOutside(request, response, url) {
+  if (!['cf-connecting-ip', 'x-forwarded-for', 'x-forwarded-host'].some(name => name in request.headers)) return true;
+  if (!password) { response.writeHead(503).end('No test password is set on this server.'); return false; }
+  const [scheme, token] = (request.headers.authorization ?? '').split(' ');
+  const given = scheme === 'Basic' && token ? Buffer.from(token, 'base64').toString().split(':').slice(1).join(':') : '';
+  const a = Buffer.from(given), b = Buffer.from(password);
+  if (a.length !== b.length || !require('node:crypto').timingSafeEqual(a, b)) {
+    response.writeHead(401, {'WWW-Authenticate': 'Basic realm="soundnovel test", charset="UTF-8"'}).end();
+    return false;
+  }
+  if (cartridges.has(url)) { response.writeHead(404).end(); return false; }
+  return true;
+}
+
 http.createServer((request, response) => {
   const url = request.url.split('?')[0];
+  if (!allowedFromOutside(request, response, url)) return;
   // scene images from kamaitachi-gba-kor/tools/export_images.py: NNN.png and palette variants NNN-v.png
   const bg = /^\/kamaitachi-gba-kor\/assets\/bg\/(\d{3}(?:-[1-3])?\.png)$/.exec(url);
   const route = bg ? [path.join(__dirname, 'kamaitachi-gba-kor', 'assets', 'bg', bg[1]), 'image/png'] : routes.get(url) ?? portRoute(url);
