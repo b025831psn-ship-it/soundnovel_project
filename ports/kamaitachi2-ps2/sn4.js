@@ -211,10 +211,10 @@ export class Sn4Vm {
         case 0x1b: invoke('ManualJump'); break;
         case 0x1f: invoke('Cipher'); break;
         case 0x23: invoke('MiniGame'); break;
-        case 0x27: case 0x28:
-          invoke('End');
-          return {type:'end', reason:command.op === 0x27 ? 'normal' : 'alternate',
-            label:this.label, offset:command.offset, text:this.text};
+        // CommandEnd::Execute (0x0012EF80) only records the ending through
+        // 0x001B56F0 (0x27) or 0x001B5730 (0x28) and returns 0, so the
+        // following flag updates and jumps still run in the same frame.
+        case 0x27: case 0x28: invoke('End'); break;
         case 0x29: invoke('AutoRead'); break;
         case 0x2d: {
           const target = invoke('SpiritJump');
