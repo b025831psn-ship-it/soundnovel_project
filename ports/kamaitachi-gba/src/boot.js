@@ -4,6 +4,7 @@
 // (08002FB8); fades use the same brightness slots the scenario VM steps every VBlank.
 import { ObjTextSurface } from "./obj-text.js";
 import { NameEntry, NAME_PICTURES } from "./name-entry.js";
+import { Books, pageState, restoreState } from "./save.js";
 
 // Image ids passed to 08003878. 08000DC4 maps 0x2329-0x2331 to picture id - 0x2328 + 0xE7 and
 // 0x238C-0x2422 through the signed byte table at 08019400 (+0xE7).
@@ -51,7 +52,42 @@ const OBJ_COLORS = { 1: 0x0000, 2: 0x7fff, 3: 0x56b5, 5: 0x03e0 };
 const EVA = 13;
 const EVB = 7;
 
-export const KEY = { A: 1, B: 2, SELECT: 4, START: 8, RIGHT: 16, LEFT: 32, UP: 64, DOWN: 128 };
+export const KEY = { A: 1, B: 2, SELECT: 4, START: 8, RIGHT: 16, LEFT: 32, UP: 64, DOWN: 128, R: 256, L: 512 };
+
+// Shift JIS of the few fixed strings the bookmark screens print (0801ACxx, 080198xx, 080199xx).
+const SJIS = {
+  // 08825F4C: 本を読む, 本の内容を消す, 本の内容を写す, もどるⒷ
+  bookMenu: [
+    [0x96, 0x7b, 0x82, 0xf0, 0x93, 0xc7, 0x82, 0xde],
+    [0x96, 0x7b, 0x82, 0xcc, 0x93, 0xe0, 0x97, 0x65, 0x82, 0xf0, 0x8f, 0xc1, 0x82, 0xb7],
+    [0x96, 0x7b, 0x82, 0xcc, 0x93, 0xe0, 0x97, 0x65, 0x82, 0xf0, 0x8e, 0xca, 0x82, 0xb7],
+    [0x82, 0xe0, 0x82, 0xc7, 0x82, 0xe9, 0x84, 0x87],
+  ],
+  // 0800C9xx: 移動, オプション (glyphs 8490 8491 8470 8471 8472), セーブ, もどるⒷ
+  gameMenu: [
+    [0x88, 0xda, 0x93, 0xae],
+    [0x84, 0x90, 0x84, 0x91, 0x84, 0x70, 0x84, 0x71, 0x84, 0x72],
+    [0x83, 0x5a, 0x81, 0x5b, 0x83, 0x75],
+    [0x82, 0xe0, 0x82, 0xc7, 0x82, 0xe9, 0x84, 0x87],
+  ],
+  saving: [0x83, 0x5a, 0x81, 0x5b, 0x83, 0x75, 0x92, 0x86, 0x82, 0xc5, 0x82, 0xb7, 0x81, 0x42], // セーブ中です。
+  saved: [0x83, 0x5a, 0x81, 0x5b, 0x83, 0x75, 0x82, 0xaa, 0x8f, 0x49, 0x97, 0xb9, 0x82, 0xb5, 0x82, 0xdc, 0x82, 0xb5, 0x82, 0xbd, 0x81, 0x42],
+  // 0801ACC8 ゲームデータを読み込み中です。
+  loading: [0x83, 0x51, 0x81, 0x5b, 0x83, 0x80, 0x83, 0x66, 0x81, 0x5b, 0x83, 0x5e, 0x82, 0xf0, 0x93, 0xc7, 0x82, 0xdd, 0x8d, 0x9e, 0x82, 0xdd, 0x92, 0x86, 0x82, 0xc5, 0x82, 0xb7, 0x81, 0x42],
+  // 0801AD2C ゲームデータを消去しています。
+  erasing: [0x83, 0x51, 0x81, 0x5b, 0x83, 0x80, 0x83, 0x66, 0x81, 0x5b, 0x83, 0x5e, 0x82, 0xf0, 0x8f, 0xc1, 0x8b, 0x8e, 0x82, 0xb5, 0x82, 0xc4, 0x82, 0xa2, 0x82, 0xdc, 0x82, 0xb7, 0x81, 0x42],
+  turns: [0x89, 0xf1, 0x96, 0xda], // 080199C4 回目
+  good: [0x8a, 0xae], // 080199CC 完
+  bad: [0x8f, 0x49], // 080199D0 終
+};
+// 0801ACC0, 080198F4, 0801AC80: BG1 rectangles of the book menu, the saving note and the header.
+const BOOK_MENU_BOX = [60, 35, 120, 65];
+const SAVE_BOX = [75, 49, 93, 22];
+const LOAD_BOX = [0x12, 0x31, 0xcc, 0x16];
+const GAME_MENU_BOX = [0xa6, 0x28, 0x4a, 0x60];
+const MENU_POINTER = 0x8484;
+// 0800C97C: the in-game menu shows picture 0xDE (the owl) behind its boxes.
+const MENU_PICTURE = 0xde;
 
 export class Boot {
   constructor({ vm, screen, assets, font, sound }) {
@@ -72,6 +108,14 @@ export class Boot {
     // select(), key }); a tap moves the cursor there like the d-pad, or presses A on the current item.
     this.hits = [];
     this.injected = 0;
+    // Bookmarks: the page-start state the VM reports, the book being read back, and the books.
+    this.books = new Books();
+    this.pageStart = null;
+    this.loading = null;
+    this.resumeWaiting = null;
+    vm.onPageStart = (bank, offset) => {
+      this.pageStart = pageState(vm, bank, offset, { names: this.names });
+    };
     // 02006649 + 16 * slot: the names the text shows (1 hero 透, 2 girlfriend 真理, 0 culprit).
     this.names = { 0: [], 1: [0x93, 0xa7], 2: [0x90, 0x5e, 0x97, 0x9d] };
     // 020006C4: VBlank count (080066E8), zeroed by the 080031C0 init. mGBA frame f reads f - 3, and
@@ -87,14 +131,15 @@ export class Boot {
     this.pictureMap = await this.assets.bin("ui/picture-map.bin");
     this.nameTable = await this.assets.bin("ui/name-table.bin");
     this.nameEntry = new NameEntry({ boot: this, font: this.font, table: this.nameTable });
-    for (const id of [LOGO, COPYRIGHT, TITLE, ...BOOKS, ...NAME_PICTURES]) {
+    try { this.flow = await this.assets.bin("ui/flow-map.bin"); } catch { this.flow = null; }
+    for (const id of [LOGO, COPYRIGHT, TITLE, ...BOOKS, ...NAME_PICTURES, MENU_PICTURE]) {
       const name = String(pictureIndex(id, this.pictureMap)).padStart(3, "0");
       const [tiles, palette] = await Promise.all([
         this.assets.bin(`bg/${name}.bin`),
         this.assets.bin(`palette/${name}.bin`),
       ]);
       // BG palette bank 15 (240-255) holds the menu colors on the title and the bookmark screen.
-      if (id === TITLE || BOOKS.includes(id)) {
+      if (id === TITLE || BOOKS.includes(id) || id === MENU_PICTURE) {
         palette.fill(0, 480);
         [[253, 0x5b7f], [254, BOX], [255, BOX]].forEach(([index, color]) => {
           palette[2 * index] = color & 255;
@@ -111,6 +156,14 @@ export class Boot {
     // 1D 1C (080096FC): set 0200077F so the next opcode 16 takes the preset entry unseen.
     if (command === 0x1c) { ram.choiceSkip = 1; return undefined; }
     this.ram = ram;
+    // 1D 67 (08009858): the game proper starts (0200078D = 1, R opens the menu). After 本を読む
+    // the scenario carries on from the book's page instead.
+    if (command === 0x67) {
+      ram.inGame = 1;
+      if (this.loading) this.resume(this.loading);
+      this.loading = null;
+      return undefined;
+    }
     if (command === 0x03) this.run = this.nameScreens([0, 1]);
     else if (command === 0x04) this.run = this.nameScreens([2]);
     else if (command === 0x00) this.run = this.title();
@@ -124,9 +177,62 @@ export class Boot {
     if (modes[0] === 2) this.ram.choiceSkip = 1;
   }
 
-  // 0800B79C asks whether any save slot is in use; saves are not ported yet.
+  // 0800B79C: whether any book is in use.
   anySave() {
-    return false;
+    return this.books.any();
+  }
+
+  // R in the story (0800C9xx): open the in-game menu over the page.
+  openMenu() {
+    if (this.run || !this.vm.ram.inGame) return false;
+    this.ram = this.vm.ram;
+    this.resumeWaiting = this.vm.waiting;
+    this.vm.waiting = "boot";
+    this.run = this.gameMenu();
+    return true;
+  }
+
+  // A book's page state goes back into the VM at 1D 67 (0800AEA4 restored it before the welcome).
+  resume(book) {
+    const state = book.state;
+    restoreState(this.vm, state);
+    Object.assign(this.names, state.names ?? {});
+    this.vm.text?.resumed?.();
+    if (this.vm.text) { this.vm.text.fragments = []; this.vm.text.pageRaw = []; }
+    if (state.picture !== null && state.picture !== undefined) this.vm.scene?.load?.(state.picture);
+    if (state.song !== undefined && state.song !== -1 && state.song !== 0xffff) this.vm.sound?.play?.(state.song, 0);
+    // The page comes up out of black.
+    for (const slot of [1, 5]) {
+      const effect = this.vm.ram.brightness[slot];
+      effect.current = 0;
+      effect.target = 0x8000;
+      effect.duration = 17;
+      effect.delta = Math.trunc(0x8000 / 16);
+    }
+  }
+
+  // 02028B8C: the flowchart's scene titles. 0800B8A0 keeps what follows '：' and drops the
+  // control pairs (s8, c2, ...).
+  nodeTitle(node) {
+    const flow = this.flow;
+    if (!flow || !node) return [];
+    const be = (at) => ((flow[at] << 24) | (flow[at + 1] << 16) | (flow[at + 2] << 8) | flow[at + 3]) >>> 0;
+    const list = be(4 + 8 * 2);
+    const at = list + be(list + 4 * (node - 1));
+    let bytes = [];
+    for (let i = at; i < flow.length && flow[i]; ) {
+      if (flow[i] >= 0x81) { bytes.push(flow[i], flow[i + 1]); i += 2; }
+      else i += 2; // an ASCII control letter and its argument
+    }
+    for (let i = bytes.length - 2; i >= 0; i -= 2) {
+      if (bytes[i] === 0x81 && bytes[i + 1] === 0x46) { bytes = bytes.slice(i + 2); break; }
+    }
+    return bytes;
+  }
+
+  // Full-width digits for the 回目 / 完 / 終 counts (0800722C).
+  digits(value) {
+    return [...String(value)].flatMap((d) => [0x82, 0x4f + Number(d)]);
   }
 
   get active() {
@@ -156,6 +262,13 @@ export class Boot {
     this.draw();
     if (done) {
       this.run = null;
+      if (this.resumeWaiting) {
+        // Back from the in-game menu: the story picture and page come back as they were.
+        this.vm.waiting = this.resumeWaiting;
+        this.resumeWaiting = null;
+        this.onMenuClosed?.();
+        return;
+      }
       this.vm.waiting = "none";
       for (let count = 0; count < 1024 && this.vm.step(); count++);
     }
@@ -378,13 +491,29 @@ export class Boot {
   bookGlyphs(book) {
     const glyphs = [];
     const five = book * 5;
+    const data = this.books.read(book);
+    if (data) {
+      // 0800B7C4 for a used book: the scene title in the header, the count of saves (回目) and
+      // the good and bad endings seen (完, 終) on the front book.
+      const at = (n) => Math.trunc(((five * 16 + n) * 3 * 64) / 256);
+      this.text(glyphs, data.title ?? [], 7, 0x0c, 2, true);
+      const turns = this.digits(data.turns ?? 1);
+      this.text(glyphs, turns, at(0x33), five * 2 + 0x96, 2, true);
+      this.text(glyphs, SJIS.turns, at(0x33) + 8 * turns.length / 2, five * 2 + 0x96, 2, true);
+      this.text(glyphs, SJIS.good, at(0x23), five * 2 + 0xa9, 2, true);
+      this.text(glyphs, this.digits(data.good ?? 0), at(0x3b), five * 2 + 0xa9, 2, true);
+      this.text(glyphs, SJIS.bad, at(0x53), five * 2 + 0xa9, 2, true);
+      this.text(glyphs, this.digits(data.bad ?? 0), at(0x6b), five * 2 + 0xa9, 2, true);
+      return glyphs;
+    }
     this.text(glyphs, UNUSED, Math.trunc(((five * 16 + 0x37) * 3 * 64) / 256), five * 2 + 0x9b, 2, true);
     this.text(glyphs, UNUSED, 0x65, 0x0c, 2, true);
     return glyphs;
   }
 
-  // 0800E328 with the 0800E4E4 callback. Returns true when a book was chosen.
-  *bookmarks() {
+  // 0800E328 with the 0800E4E4 callback (title) or 0800EA10 (セーブ in the game).
+  // Returns true when a book was chosen.
+  *bookmarks(mode = "title") {
     let book = this.book;
     let shown = -1;
     let first = true;
@@ -437,6 +566,25 @@ export class Boot {
       if (!this.pressed(KEY.A)) continue;
       this.effect(0);
       this.book = book; // 02004642
+      if (mode === "save") {
+        yield* this.saveTo(book);
+        shown = -1;
+        first = false;
+        continue;
+      }
+      if (this.books.read(book)) {
+        const result = yield* this.bookMenu(book);
+        if (result !== "read") { shown = -1; continue; }
+        this.layer = { boxes: [HEADER], glyphs: [] };
+        for (let n = 0; n < 3; n++) yield;
+        this.fadeOut(1, 1);
+        this.fadeOut(1, 5);
+        yield;
+        this.layer = null;
+        yield* this.waitFade(1);
+        for (let n = 0; n < 2; n++) yield;
+        return true;
+      }
       // 0800E4E4 for an unused book: 08003BFC(1), clear the text, the slot 9 fade and
       // 08003BFC(1) again before the new game starts in it.
       this.layer = { boxes: [HEADER], glyphs: [] };
@@ -450,6 +598,193 @@ export class Boot {
       for (let n = 0; n < 2; n++) yield;
       return true;
     }
+  }
+
+  // A box with one line of text (08009EB4 / 0800A5E4 style notes).
+  noteLayer(base, box, bytes, y = 0x4c) {
+    return { ...base, boxes: [...base.boxes, box], glyphs: [...base.glyphs, ...this.text([], bytes, box[0] + 6, y, 2, true)] };
+  }
+
+  // 0800EA10 -> 0800B724 -> 0800A5E4: write the page-start state into the book.
+  *saveTo(book) {
+    const base = this.layer ?? { boxes: [HEADER], glyphs: [] };
+    if (this.books.read(book) && !(yield* this.confirm(base))) return;
+    const old = this.books.read(book);
+    this.layer = this.noteLayer(base, SAVE_BOX, SJIS.saving);
+    yield;
+    const state = this.pageStart ?? pageState(this.vm, this.vm.bank, this.vm.offset, { names: this.names });
+    this.books.write(book, {
+      title: this.nodeTitle(this.vm.ram.node),
+      turns: Math.min(999, (old?.turns ?? 0) + 1),
+      good: old?.good ?? 0,
+      bad: old?.bad ?? 0,
+      state,
+    });
+    for (let n = 0; n < 30; n++) yield;
+    const glyphs = this.bookGlyphs(book);
+    this.layer = this.noteLayer({ boxes: [HEADER], glyphs }, SAVE_BOX, SJIS.saved);
+    // 08009EB4: the note waits for A (or a tap) before it goes.
+    this.hits = [{ x: 0, y: 0, w: 240, h: 160, current: true }];
+    while (true) {
+      yield;
+      this.hits = [{ x: 0, y: 0, w: 240, h: 160, current: true }];
+      if (this.pressed(KEY.A | KEY.B)) break;
+    }
+    this.effect(0);
+    this.layer = { boxes: [HEADER], glyphs };
+  }
+
+  // 08009FA8: a yes/no question over the books; true for はい.
+  *confirm(base) {
+    const yes = [0x82, 0xcd, 0x82, 0xa2]; // はい
+    const no = [0x82, 0xa2, 0x82, 0xa2, 0x82, 0xa6]; // いいえ
+    let choice = 1;
+    while (true) {
+      const glyphs = [...base.glyphs];
+      this.text(glyphs, [0x8f, 0xe3, 0x8f, 0x91, 0x82, 0xab, 0x82, 0xb5, 0x82, 0xdc, 0x82, 0xb7, 0x82, 0xa9, 0x81, 0x48], 0x30, 0x4c, 2, true); // 上書きしますか？
+      this.text(glyphs, yes, 0x50, 0x68, choice === 0 ? 2 : 3, true);
+      this.text(glyphs, no, 0x88, 0x68, choice === 1 ? 2 : 3, true);
+      glyphs.push({ ...this.point(choice === 0 ? 0x44 : 0x7c, 0x68), encoded: MENU_POINTER, color: 2 });
+      this.layer = { ...base, boxes: [...base.boxes, [0x24, 0x2e, 0xa8, 0x34]], glyphs };
+      this.hits = [
+        { x: 0x48, y: 0x46, w: 0x30, h: 0x10, current: choice === 0, select: () => { this.effect(3); choice = 0; } },
+        { x: 0x80, y: 0x46, w: 0x30, h: 0x10, current: choice === 1, select: () => { this.effect(3); choice = 1; } },
+      ];
+      yield;
+      if (this.pressed(KEY.LEFT) && choice) { this.effect(3); choice = 0; }
+      if (this.pressed(KEY.RIGHT) && !choice) { this.effect(3); choice = 1; }
+      if (this.pressed(KEY.B)) { this.effect(1); this.layer = base; return false; }
+      if (this.pressed(KEY.A)) { this.effect(choice ? 1 : 0); this.layer = base; return choice === 0; }
+    }
+  }
+
+  point(x, y) {
+    return { x, y: Math.trunc((y * 14) / 20) };
+  }
+
+  // 0800E4E4 for a used book: 本を読む / 本の内容を消す / 本の内容を写す / もどる.
+  *bookMenu(book) {
+    let selected = 0;
+    const base = () => ({ boxes: [HEADER], glyphs: this.bookGlyphs(book) });
+    while (true) {
+      const layer = base();
+      layer.boxes.push(BOOK_MENU_BOX);
+      SJIS.bookMenu.forEach((label, i) => this.text(layer.glyphs, label, 0x4e, 0x38 + 0x14 * i, 2, true));
+      layer.glyphs.push({ ...this.point(0x3e, 0x38 + 0x14 * selected), encoded: MENU_POINTER, color: 2 });
+      this.layer = layer;
+      this.hits = SJIS.bookMenu.map((_, i) => ({
+        x: 0x3c, y: Math.trunc(((0x38 + 0x14 * i) * 14) / 20) - 1, w: 0x78, h: 14, current: i === selected,
+        select: () => { this.effect(3); selected = i; },
+      }));
+      yield;
+      if (this.pressed(KEY.DOWN) && selected < 3) { this.effect(3); selected++; continue; }
+      if (this.pressed(KEY.UP) && selected > 0) { this.effect(3); selected--; continue; }
+      if (this.pressed(KEY.B) || (this.pressed(KEY.A) && selected === 3)) { this.effect(1); this.layer = base(); return "back"; }
+      if (!this.pressed(KEY.A)) continue;
+      this.effect(0);
+      if (selected === 0) {
+        // 0800E654: ゲームデータを読み込み中です。 for 60 frames, then the game starts from it.
+        const data = this.books.read(book);
+        this.layer = this.noteLayer({ boxes: [HEADER], glyphs: [] }, LOAD_BOX, SJIS.loading);
+        for (let n = 0; n < 60; n++) yield;
+        this.loading = data;
+        Object.assign(this.names, data.state?.names ?? {});
+        return "read";
+      }
+      if (selected === 1) {
+        // 0800E718: confirm, ゲームデータを消去しています。, the book is unused again.
+        if (!(yield* this.confirm(base()))) continue;
+        this.layer = this.noteLayer(base(), LOAD_BOX, SJIS.erasing);
+        for (let n = 0; n < 30; n++) yield;
+        this.books.erase(book);
+        return "changed";
+      }
+      // 0800E7F4: copy into one of the other books (左 / 中央 / 右の本に写す).
+      const target = yield* this.pickBook(book);
+      if (target < 0) continue;
+      if (this.books.read(target) && !(yield* this.confirm(base()))) continue;
+      this.books.copy(book, target);
+      return "changed";
+    }
+  }
+
+  // The copy target: the other two books, left to right.
+  *pickBook(from) {
+    const names = [
+      [0x8d, 0xb6, 0x82, 0xcc, 0x96, 0x7b, 0x82, 0xc9, 0x8e, 0xca, 0x82, 0xb7], // 左の本に写す
+      [0x92, 0x86, 0x89, 0x9b, 0x82, 0xcc, 0x96, 0x7b, 0x82, 0xc9, 0x8e, 0xca, 0x82, 0xb7], // 中央の本に写す
+      [0x89, 0x45, 0x82, 0xcc, 0x96, 0x7b, 0x82, 0xc9, 0x8e, 0xca, 0x82, 0xb7], // 右の本に写す
+    ];
+    const targets = [0, 1, 2].filter((b) => b !== from);
+    let selected = 0;
+    while (true) {
+      const layer = { boxes: [HEADER, BOOK_MENU_BOX], glyphs: this.bookGlyphs(from) };
+      targets.forEach((b, i) => this.text(layer.glyphs, names[b], 0x4e, 0x38 + 0x14 * i, 2, true));
+      layer.glyphs.push({ ...this.point(0x3e, 0x38 + 0x14 * selected), encoded: MENU_POINTER, color: 2 });
+      this.layer = layer;
+      this.hits = targets.map((_, i) => ({
+        x: 0x3c, y: Math.trunc(((0x38 + 0x14 * i) * 14) / 20) - 1, w: 0x78, h: 14, current: i === selected,
+        select: () => { this.effect(3); selected = i; },
+      }));
+      yield;
+      if (this.pressed(KEY.DOWN) && selected < targets.length - 1) { this.effect(3); selected++; }
+      if (this.pressed(KEY.UP) && selected > 0) { this.effect(3); selected--; }
+      if (this.pressed(KEY.B)) { this.effect(1); return -1; }
+      if (this.pressed(KEY.A)) { this.effect(0); return targets[selected]; }
+    }
+  }
+
+  // 0800C9xx: the in-game menu (R). 移動 and オプション are not ported yet.
+  *gameMenu() {
+    const story = this.screen.background;
+    this.effect(2);
+    this.fadeOut(1, 1);
+    this.fadeOut(1, 5);
+    yield* this.waitFade(1);
+    this.showPicture(MENU_PICTURE);
+    let selected = 0;
+    const draw = () => {
+      const glyphs = [];
+      this.text(glyphs, this.nodeTitle(this.vm.ram.node), 7, 0x0c, 2, true);
+      SJIS.gameMenu.forEach((label, i) => this.text(glyphs, label, 0xb8, 0x30 + 0x14 * i, i < 2 ? 3 : 2, true));
+      glyphs.push({ ...this.point(0xaa, 0x30 + 0x14 * selected), encoded: MENU_POINTER, color: 2 });
+      this.layer = { boxes: [HEADER, GAME_MENU_BOX], glyphs };
+      this.hits = SJIS.gameMenu.map((_, i) => ({
+        x: 0xa6, y: Math.trunc(((0x30 + 0x14 * i) * 14) / 20) - 1, w: 0x4a, h: 14, current: i === selected,
+        select: () => { this.effect(3); selected = i; },
+      }));
+    };
+    draw();
+    this.fadeIn(1, 1);
+    this.fadeIn(1, 5);
+    while (true) {
+      draw();
+      yield;
+      if (this.pressed(KEY.UP) && selected > 0) { this.effect(3); selected--; continue; }
+      if (this.pressed(KEY.DOWN) && selected < 3) { this.effect(3); selected++; continue; }
+      if (this.pressed(KEY.B | KEY.R) || (this.pressed(KEY.A) && selected === 3)) { this.effect(1); break; }
+      if (!this.pressed(KEY.A)) continue;
+      if (selected === 2) {
+        this.effect(0);
+        this.fadeOut(1, 1);
+        this.fadeOut(1, 5);
+        yield* this.waitFade(1);
+        this.layer = null;
+        yield* this.bookmarks("save");
+        this.showPicture(MENU_PICTURE);
+        this.fadeIn(1, 1);
+        this.fadeIn(1, 5);
+      }
+      // 移動 (0800D9A0) and オプション (0800C50C) come later.
+    }
+    this.fadeOut(1, 1);
+    this.fadeOut(1, 5);
+    yield* this.waitFade(1);
+    this.layer = null;
+    this.screen.background = story;
+    this.fadeIn(1, 1);
+    this.fadeIn(1, 5);
+    yield;
   }
 
   // 0800A320: menu sound effects on m4a player 11, songs from 080198E6.

@@ -150,6 +150,9 @@ export class VM {
     this.unimplemented = new Set();
     this.ram = {
       flags: new Uint8Array(256),
+      node: 0, // 02004608: current flowchart node (opcode 53)
+      visited: new Uint8Array(0x12c), // 0200293C: flowchart nodes seen
+      inGame: 0, // 0200078D: set by 1D 67, lets R open the in-game menu
       vars: new Uint8Array(256),
       bits: new Uint8Array(256),
       stack: [],
@@ -335,7 +338,11 @@ export class VM {
         args.push(...raw);
         if (this.ram.choiceActive && this.collectingChoice !== undefined)
           this.text?.collectChoice?.(this.collectingChoice, raw);
-        else this.waiting = this.text?.feed(raw) ?? "none";
+        else {
+          // A page's first text: what a bookmark records (0800A838 keeps the page start).
+          if (!this.text?.fragments?.length) this.onPageStart?.(startBank, startOffset);
+          this.waiting = this.text?.feed(raw) ?? "none";
+        }
         break;
       }
       case 0x01: {
@@ -824,7 +831,16 @@ export class VM {
       case 0x53: {
         const effect = this.word();
         args.push(effect);
-        this.suppressed(opcode);
+        if (this.suppressed(opcode)) break;
+        // 08005914: the operand is the flowchart node (080033D0 reads it high byte first and
+        // 08009B34 swaps it back). Unless it is 0x105 it becomes the current node (02004608, the
+        // bookmark and menu title) and is marked visited (0200293C[node] = 3) for the 移動 map.
+        const node = effect;
+        if (node !== 0x105) {
+          this.ram.node = node;
+          this.ram.visited[node] = 3;
+        }
+        if (node === 0x84 && this.banks[this.bank][this.offset] === 0x0a) this.offset += 2;
         break;
       }
       case 0x56: {

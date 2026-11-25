@@ -9,6 +9,8 @@ export class GBAInput {
       ArrowDown: "DOWN",
       ArrowLeft: "LEFT",
       ArrowRight: "RIGHT",
+      KeyA: "L",
+      KeyS: "R",
     };
     target.addEventListener(
       "keydown",

@@ -50,6 +50,7 @@ const page = new PageText(screen, font, text);
 // Opcode 1D's native screens (1D 00: logo, copyright, title menu, bookmarks; 1D 03/04: names).
 const boot = await new Boot({ vm, screen, assets, font, sound: vm.sound }).load();
 vm.system = boot;
+boot.onMenuClosed = () => { page.drawn = -1; screen.renderBackground(); };
 text.nameBytes = boot.names; // names entered on 1D 03 / 1D 04 show up in the story text
 // Touch and mouse: a tap on an item picks it (the cursor moves there as with the d-pad; a tap on
 // the current item confirms). Taps elsewhere fall through to the shell, which presses A.
@@ -90,6 +91,8 @@ function loop(now) {
     const pressed = (key) => (input.pressed(key) && !previous.has(key)) || (key === "A" && tapA);
     if (pressed("UP")) vm.moveChoice(-1);
     if (pressed("DOWN")) vm.moveChoice(1);
+    // R at a page wait opens the in-game menu (0800C9xx): 移動, オプション, セーブ.
+    if (pressed("R") && vm.waiting === "click" && !page.typing) boot.openMenu();
     if (pressed("A") && ((vm.waiting === "click" && !page.typing) || vm.waiting === "choice")) vm.resume();
     // KEYINPUT bits newly pressed this frame, for the native screens (020006E4).
     let trigger = 0;

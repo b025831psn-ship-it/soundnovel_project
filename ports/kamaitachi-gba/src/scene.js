@@ -31,6 +31,7 @@ export class SceneLoader {
     this.screen.setBrightness?.(slot, current);
   }
   async load(request, generation = ++this.generation) {
+    this.current = request; // the picture a bookmark records
     const { image, variant } = this.resolve(request),
       [tiles, palette] = await Promise.all([
         this.assets.bin(`bg/${String(image).padStart(3, "0")}.bin`),
