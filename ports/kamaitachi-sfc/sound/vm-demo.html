@@ -19,11 +19,8 @@
   <div id="stat"></div>
 </main>
 <script type="module">
-  import { APU } from './apu.js';
   import { createAudioOut } from './output.js';
-  import { runRealtime } from './realtime.js';
-  import { VmSound, PAD, DEFAULT_KEYS } from './vm-sound.js';
-  import { SfcMachine } from '../../../sfc-vm/machine.js';
+  import { PAD, DEFAULT_KEYS } from './vm-sound.js';
 
   const q = new URLSearchParams(location.search);
   const base = new URL(q.get('data') ?? '../../../kamaitachi-sfc-kor/port-data/', location.href);
@@ -40,25 +37,27 @@
   $('play').onclick = async () => {
     $('play').disabled = true; $('pause').disabled = false; $('mute').disabled = false;
     const out = await createAudioOut(); await out.resume();
-    const apu = new APU({ gauss: new Int16Array(gauss) }); apu.powerOn(); apu.dsp.onSample = out.sample;
-    const machine = new SfcMachine({ rom: new Uint8Array(game), apu });
-    machine.setButtons(0);
-    const vm = new VmSound(machine);
-    let muted = false, paused = false, cost = 0;
-    const run = runRealtime({ get time() { return vm.time; }, end: null,
-      runTo(t) { const a = performance.now(); vm.runTo(t); cost = cost * 0.9 + (performance.now() - a) * 0.1; } }, out, {
-      onFrame: () => {
-        const s = out.stats();
-        $('stat').textContent = `frame ${vm.frame}  ${vm.time.toFixed(1)}초\n프레임당 계산 ${cost.toFixed(1)} ms` +
-          (s ? `\n출력 ${out.context.sampleRate} Hz  버퍼 ${s.fill}  부족 ${s.underruns}` : '');
-      },
-    });
+    // The VM and APU run in a Worker; samples go from there straight to the worklet.
+    const worker = new Worker(new URL('./vm-worker.js', import.meta.url), { type: 'module' });
+    const port = out.connectPort();
+    worker.postMessage({ type: 'start', game, gauss, port }, [game, gauss, port]);
+    let status = null, error = '';
+    worker.onmessage = ({ data }) => { if (data.type === 'status') status = data; else if (data.type === 'error') error = data.message; };
+    worker.onerror = (e) => { error = e.message; };
+    let muted = false, paused = false;
     $('mute').onclick = () => { muted = !muted; out.setMuted(muted); $('mute').textContent = muted ? '소리 켜기' : '음소거'; };
-    $('pause').onclick = () => { paused = !paused; run.setPaused(paused); $('pause').textContent = paused ? '계속' : '일시정지'; };
+    $('pause').onclick = () => { paused = !paused; worker.postMessage({ type: 'pause', on: paused }); $('pause').textContent = paused ? '계속' : '일시정지'; };
     const key = (down) => (e) => {
       const b = PAD[DEFAULT_KEYS[e.code]]; if (!b) return;
-      e.preventDefault(); held = down ? held | b : held & ~b; machine.setButtons(held);
+      e.preventDefault(); held = down ? held | b : held & ~b; worker.postMessage({ type: 'buttons', mask: held });
     };
     addEventListener('keydown', key(true)); addEventListener('keyup', key(false));
+    const show = () => {
+      const s = out.stats();
+      $('stat').textContent = (status ? `frame ${status.frame}  ${status.time.toFixed(1)}초\n계산 ${status.cost.toFixed(1)} ms(8 ms마다)` : '시작 중…') +
+        (s ? `\n출력 ${out.context.sampleRate} Hz  버퍼 ${s.fill}  부족 ${s.underruns}` : '') + (error ? `\n오류: ${error}` : '');
+      requestAnimationFrame(show);
+    };
+    requestAnimationFrame(show);
   };
 </script>
