@@ -36,7 +36,6 @@ function sizeTo(height) {
 // 240x360 with the cartridge's 240x160 at rows 100-259. The middle is always the live screen (tone,
 // fades and silhouettes as the game draws them); the margins follow the picture's tone by the ratio of
 // the live screen to the untoned picture.
-const EXTENDED = [1, 2, 9, 201, 202];
 const EXTENDED_TOP = 100, EXTENDED_HEIGHT = 360;
 const extended = new Map(); // tiles signature -> { pixels, raw }
 const signature = (tiles) => { let h = tiles.length; for (let i = 0; i < tiles.length; i += 61) h = (h * 31 + tiles[i]) | 0; return h; };
@@ -56,7 +55,9 @@ function untoned(tiles, palette) {
 const outpaint = new URLSearchParams(location.search).get("outpaint") !== "0";
 async function loadExtended(game) {
   if (!outpaint) return;
-  for (const id of EXTENDED) {
+  let ids = [];
+  try { ids = await (await fetch("/art/outpaint/index.json")).json(); } catch { return; }
+  for (const id of ids) {
     try {
       const name = String(id).padStart(3, "0");
       const [tiles, palette] = await Promise.all([game.assets.bin(`bg/${name}.bin`), game.assets.bin(`palette/${name}.bin`)]);
@@ -71,10 +72,15 @@ async function loadExtended(game) {
   }
 }
 let extendedLoading = null;
+const extendedFor = (screen) => screen.background?.tiles && extended.get(signature(screen.background.tiles));
 function compose(screen, base) {
-  const entry = screen.background?.tiles && extended.get(signature(screen.background.tiles));
+  const entry = extendedFor(screen);
   if (!entry) { sizeTo(160); sourceCtx.putImageData(new ImageData(new Uint8ClampedArray(base), 240, 160), 0, 0); return 0; }
   sizeTo(EXTENDED_HEIGHT);
+  sourceCtx.putImageData(new ImageData(extendedPixels(entry, base), 240, EXTENDED_HEIGHT), 0, 0);
+  return EXTENDED_TOP;
+}
+function extendedPixels(entry, base) {
   const live = new Float64Array(3);
   for (let i = 0; i < base.length; i += 4) { live[0] += base[i]; live[1] += base[i + 1]; live[2] += base[i + 2]; }
   const gain = [0, 1, 2].map((c) => (entry.raw.sums[c] ? live[c] / entry.raw.sums[c] : 1));
@@ -112,8 +118,28 @@ function compose(screen, base) {
     if (t === 1) { out.set(base.subarray(from, from + 960), to); continue; }
     for (let i = 0; i < 960; i++) out[to + i] = i % 4 === 3 ? 255 : out[to + i] * (1 - t) + base[from + i] * t;
   }
-  sourceCtx.putImageData(new ImageData(out, 240, EXTENDED_HEIGHT), 0, 0);
-  return EXTENDED_TOP;
+  return out;
+}
+
+// The game's own screens (title, bookmarks, character pages) upright: the screen at full width, as
+// it is (menus and taps unchanged), with the extended picture's margins drawn behind it above and
+// below; the screen's top and bottom rows fade into them (CSS mask).
+const extend = $("extend");
+const extendCtx = extend.getContext("2d");
+extend.width = 240; extend.height = EXTENDED_HEIGHT;
+let extendBase = null;
+function drawExtend(game) {
+  const screen = game.screen;
+  const entry = screen.base && extendedFor(screen);
+  shell.classList.toggle("extended", Boolean(entry));
+  if (!entry) { extendBase = null; return; }
+  const canvas = $("screen");
+  const width = canvas.clientWidth;
+  extend.style.width = `${width}px`;
+  extend.style.height = `${(width * EXTENDED_HEIGHT) / 240}px`;
+  if (screen.base === extendBase) return;
+  extendBase = screen.base;
+  extendCtx.putImageData(new ImageData(extendedPixels(entry, screen.base), 240, EXTENDED_HEIGHT), 0, 0);
 }
 
 // Where to cut: the silhouette when one is up (people are what the page is about), otherwise the band
@@ -367,6 +393,8 @@ function frame() {
   shell.classList.toggle("reading", reading);
   if (reading) { drawPicture(game); drawText(game); }
   else crop = -1;
+  if (wanted && game && !reading) { extendedLoading ??= loadExtended(game); drawExtend(game); }
+  else shell.classList.remove("extended");
   requestAnimationFrame(frame);
 }
 requestAnimationFrame(frame);

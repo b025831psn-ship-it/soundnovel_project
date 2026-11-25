@@ -22,8 +22,6 @@ const routes = new Map([
   ['/art/kamaitachi-still.png', [path.join(__dirname, 'kamaitachi-gba-kor/assets/bg/002.png'), 'image/png']],
   // Title logo: the official clear logo traced to vector paths and laid out on one line (kamaitachi-gba-kor/assets/hub).
   ['/art/kamaitachi-logo.svg', [path.join(__dirname, 'kamaitachi-gba-kor/assets/hub/logo-row.svg'), 'image/svg+xml']],
-  // Outpainting pilot: five opening pictures extended to 240x360 for upright phones (kamaitachi-gba-kor assets/outpaint-pilot/v3).
-  ...['001', '002', '009', '201', '202'].map((id) => ['/art/outpaint/' + id + '.png', [path.join(__dirname, 'kamaitachi-gba-kor', 'assets', 'outpaint-pilot', 'v3', id + '-portrait.png'), 'image/png']]),
   // Cover art for the works list: each work's package front, cropped to 3:2 (kamaitachi-gba-kor/assets/hub/covers).
   ...['higanbana', 'otogirisou', 'machi', 'majo', 'yakouchuu', 'yakouchuu2', 'zakuro', 'anubis'].map(slug =>
     ['/art/covers/' + slug + '.jpg', [path.join(__dirname, 'kamaitachi-gba-kor', 'assets', 'hub', 'covers', slug + '.jpg'), 'image/jpeg']]),
@@ -51,7 +49,7 @@ function portRoute(url) {
     if (!url.startsWith(prefix)) continue;
     const file = path.join(dir, decodeURIComponent(url.slice(prefix.length)) || 'index.html');
     const ext = path.extname(file);
-    if (!file.startsWith(dir + path.sep) || !exts.includes(ext) || /(^|[\\/])(tests?|tools)[\\/]/.test(file.slice(dir.length))) return null;
+    if (!file.startsWith(dir + path.sep) || !exts.includes(ext) || /(^|[\\/])(tests?|tools|server)[\\/]/.test(file.slice(dir.length))) return null;
     return [file, portTypes[ext]];
   }
   return null;
@@ -68,6 +66,7 @@ const password = (process.env.SOUNDNOVEL_PASSWORD ?? (() => {
 const SFC_GAME = '/kamaitachi-sfc-kor/port-data/game/kamaitachi.sfc';
 const sfcRom = (() => { try { return fs.readFileSync(path.join(__dirname, 'serve.sfcrom'), 'utf8').trim(); } catch { return ''; } })();
 if (sfcRom) routes.set(SFC_GAME, [path.resolve(__dirname, sfcRom), 'application/octet-stream']);
+const OUTPAINT = path.join(__dirname, 'kamaitachi-gba-kor', 'assets', 'outpaint', 'portrait');
 const cartridges = new Set(['/AGB-AHZJ.gba', '/AGB-AKZJ.gba', SFC_GAME]);
 function allowedFromOutside(request, response, url) {
   if (!['cf-connecting-ip', 'x-forwarded-for', 'x-forwarded-host'].some(name => name in request.headers)) return true;
@@ -87,6 +86,15 @@ http.createServer((request, response) => {
   const url = request.url.split('?')[0];
   if (!allowedFromOutside(request, response, url)) return;
   // scene images from kamaitachi-gba-kor/tools/export_images.py: NNN.png and palette variants NNN-v.png
+  // Pictures extended for upright phones (kamaitachi-gba-kor assets/outpaint/portrait/NNN.png) and their list.
+  if (url === '/art/outpaint/index.json') {
+    let ids = [];
+    try { ids = fs.readdirSync(OUTPAINT).filter(f => /^\d{3}\.png$/.test(f)).map(f => Number(f.slice(0, 3))); } catch {}
+    response.writeHead(200, {'Content-Type': 'application/json'}).end(JSON.stringify(ids));
+    return;
+  }
+  const extended = /^\/art\/outpaint\/(\d{3}\.png)$/.exec(url);
+  if (extended) routes.set(url, [path.join(OUTPAINT, extended[1]), 'image/png']);
   const bg = /^\/kamaitachi-gba-kor\/assets\/bg\/(\d{3}(?:-[1-3])?\.png)$/.exec(url);
   const route = bg ? [path.join(__dirname, 'kamaitachi-gba-kor', 'assets', 'bg', bg[1]), 'image/png'] : routes.get(url) ?? portRoute(url);
   if (!route || !['HEAD', 'GET'].includes(request.method)) {

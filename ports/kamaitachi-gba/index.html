@@ -15,6 +15,7 @@
        the only thing laid on top is the menu button, an HTML element in the bottom-right corner. -->
   <div class="stage" id="stage">
     <canvas id="glow" width="24" height="16" aria-hidden="true"></canvas>
+    <canvas id="extend" aria-hidden="true"></canvas>
     <div class="screen-box">
       <canvas id="screen" aria-label="게임 화면 240×160"></canvas>
       <!-- The game menu (GBA R: 移動 flowchart, オプション, セーブ) at a finished page; inside the game's own
@@ -93,6 +94,7 @@
 </main>
 <script type="module" src="shell.js"></script>
 <script type="module" src="reader.js"></script>
+<script type="module" src="sync-ui.js"></script>
 <script type="module" src="main.js"></script>
 </body>
 </html>
