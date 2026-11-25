@@ -10,6 +10,14 @@ export class NativeFont {
     this.count = 2 * this.view.getUint16(0, false);
   }
 
+  // Another language's font container and lookup (the objects holding this font stay the same).
+  replace(blob, lookup) {
+    this.blob = blob;
+    this.view = new DataView(blob.buffer, blob.byteOffset, blob.byteLength);
+    this.lookup = new DataView(lookup.buffer, lookup.byteOffset, lookup.byteLength);
+    this.count = 2 * this.view.getUint16(0, false);
+  }
+
   glyph(index) {
     const at = 4 * this.view.getUint16(index * 2, false);
     const next =
