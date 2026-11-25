@@ -220,7 +220,7 @@ function cropLeft(base, layer, width) {
   return best;
 }
 
-let shownBase = null, shownBackground = null, shownLayer = null, crop = -1, shownEdit = -1;
+let shownBase = null, shownBackground = null, shownLayer = null, crop = -1, shownEdit = -1, settledZoom = 1.2;
 function drawPicture(game) {
   const screen = game.screen;
   const base = screen.base;
@@ -235,7 +235,13 @@ function drawPicture(game) {
     shownEdit = editVersion;
     compose(screen, base);
     if (edited) crop = -1;
-    const width = Math.min(240, (source.height * size.width) / (size.height * zoomOf(edit)));
+    // The zoom too is settled when the picture first shows: the editor's, or 120% unless silhouettes
+    // are on it then (or about to be), which stay whole at 100% (태우 2026-11-26).
+    if (!(screen.background === shownBackground) || crop < 0) {
+      const people = [game.vm?.scene?.layerBuffer, screen.silhouette?.vram].some((v) => v && v.some((b) => b));
+      settledZoom = Number.isFinite(edits[currentId]?.zoom) ? zoomOf(edit) : people ? 1 : zoomOf(edit);
+    }
+    const width = Math.min(240, (source.height * size.width) / (size.height * settledZoom));
     // Across, the place is settled when a picture first shows: the editor's value, or centred on the
     // silhouettes of that moment (the layer's buffer, shown or about to be). While the same picture
     // stays it holds, whatever the silhouettes do (태우 2026-11-26); the zoom is the editor's.
@@ -250,7 +256,7 @@ function drawPicture(game) {
     shownBackground = screen.background;
     shownLayer = screen.silhouette ? silhouetteSpan(screen.silhouette)?.left : null;
   }
-  const zoom = zoomOf(edit);
+  const zoom = settledZoom;
   const scale = (size.height * zoom) / source.height;
   picture.style.width = `${240 * scale}px`;
   picture.style.height = `${size.height * zoom}px`;
