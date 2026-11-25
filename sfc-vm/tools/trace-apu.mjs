@@ -6,15 +6,25 @@ import { Cpu65816 } from '../cpu.js';
 
 const [
   romPath, apuModulePath, outputPath, targetArg = '5700',
-  limitArg = '200000000', iplPath = '',
+  limitArg = '200000000', iplPath = '', joypadPath = '',
 ] = process.argv.slice(2);
 if (!romPath || !apuModulePath || !outputPath) throw new Error(
-  'usage: trace-apu.mjs ROM.sfc APU-MODULE output.tsv [target-frame] [instruction-limit] [spc-ipl.bin]',
+  'usage: trace-apu.mjs ROM.sfc APU-MODULE output.tsv [target-frame] [instruction-limit] [spc-ipl.bin] [joypad.tsv]',
 );
 
 const { APU } = await import(pathToFileURL(apuModulePath));
 const apu = new APU();
 if (iplPath) apu.cpu.loadIplImage(fs.readFileSync(iplPath));
+const joypad = new Map();
+if (joypadPath) {
+  for (const line of fs.readFileSync(joypadPath, 'utf8').trim().split('\n').slice(1)) {
+    const [frameText, , addressText, valueText] = line.split('\t');
+    const frame = Number(frameText), address = Number.parseInt(addressText, 16);
+    if (address !== 0x4218 && address !== 0x4219) continue;
+    const shift = address === 0x4218 ? 0 : 8;
+    joypad.set(frame, (joypad.get(frame) ?? 0) | (Number.parseInt(valueText, 16) << shift));
+  }
+}
 const output = fs.createWriteStream(outputPath);
 output.write('frame\tcpu_cycle\tdir(w/r)\tport\tvalue\n');
 let frame = 0;
@@ -51,7 +61,8 @@ try {
     }
     while (cpu.masterCycle >= nextNmi) {
       inVblank = true;
-      const buttons = frame > 300 && frame % 90 < 2 ? 0x0080 : 0;
+      const buttons = joypadPath ? (joypad.get(frame) ?? 0)
+        : (frame > 300 && frame % 90 < 2 ? 0x0080 : 0);
       bus.setController1(buttons);
       if (bus.io[0x4200 - 0x2000] & 0x80) cpu.nmi();
       nextNmi += frameLength;

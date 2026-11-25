@@ -14,6 +14,7 @@ node sfc-vm/tools/trace-boot.mjs path/to/original.sfc 2000000
 node sfc-vm/tools/trace-boot.mjs path/to/original.sfc 2000000 1,60,120 /tmp/kamai/frame
 node sfc-vm/tools/render-snapshot.mjs /tmp/kamai/frame.60 /tmp/kamai/frame.60.ppm
 node sfc-vm/tools/trace-apu.mjs original.sfc /path/to/sound/apu.js /tmp/vm-apu.tsv 25 2000000 /path/to/spc-ipl.bin
+node sfc-vm/tools/trace-apu.mjs original.sfc /path/to/sound/apu.js /tmp/vm-apu.tsv 5701 150000000 /path/to/spc-ipl.bin /path/to/joypad.tsv
 node sfc-vm/tools/compare-apu-trace.mjs /path/to/apu-ports.tsv /tmp/vm-apu.tsv 25
 node sfc-vm/tools/compare-apu-trace.mjs /path/to/apu-ports.tsv /tmp/vm-apu.tsv 5700 semantic
 ```
@@ -59,3 +60,10 @@ frame 5700 runner 자체는 끝까지 실행된다. 현재 semantic 대조는 VM
 없어 거기서 중단된다. 마지막 공통 의미 행은 기준 frame 271/VM frame 174이고,
 누적 timing drift 때문에 max master delta는 41,028,468이다. 따라서 다음 작업은
 frame 174 이후 CPU/PPU 진행 분기와 장기 master timing을 맞추는 것이다.
+
+native `$4016/$4017/$4218..$421F` read trace를 선택 입력으로 주면 runner는
+`$4218/$4219` JOY1 word를 같은 frame의 NMI에 latch한다. 실제 첫 nonzero input은
+frame 453의 `$4218=80`이다. 이를 재생해도 위 56,600행/첫 불일치 결과는 변하지
+않았다. delta의 첫 100k jump는 semantic row 35,306(기준 frame 64, VM frame 63),
+결정적인 jump는 row 41,891의 기준 frame 94→209 wait이다. 이 wait는 첫 패드
+입력보다 앞이므로 입력 문제가 아니라 frame/fade wait 모델 차이다.
