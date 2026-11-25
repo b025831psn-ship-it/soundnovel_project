@@ -97,6 +97,17 @@ test('sparse program image replaces the owned ROM buffer', () => {
   assert.throws(() => bus.readMapped(0x018000), /unmapped program byte/);
 });
 
+test('program manifest carries explicit SRAM into the ROM-free bus', async () => {
+  const bytes = fixtureRom([0xea]);
+  const program = await ProgramImage.load({
+    sram: { size: 8192, fill: 0x60 }, ranges: [{ offset: 0, length: bytes.length, file: 'range.bin' }],
+  }, async () => bytes);
+  const bus = new ZakuroBus({ program, sram: program.sram, masterLink: { read: () => 0, write() {} } });
+  assert.equal(bus.read(0x700000), 0x60);
+  bus.write(0x700000, 0x33);
+  assert.equal(bus.read(0xf00000), 0x33);
+});
+
 test('recorded joypad frames feed auto-joypad registers and serial reads', () => {
   const frames = [0, 0x1000, 0x0080];
   const bus = new ZakuroBus({
@@ -137,6 +148,20 @@ test('65C816 store opcodes report total cycles without double-counting fetch', (
   assert.equal(vm.cpu.step(), 3);
   assert.equal(vm.cpu.step(), 3);
   assert.equal(vm.cpu.step(), 4);
+});
+
+test('indexed store positions its IO cycle before the data write', () => {
+  let writeMaster = -1;
+  const clock = new MasterClock(0, { refresh: false });
+  const vm = new ZakuroVM({
+    rom: fixtureRom([0x9e, 0x00, 0x21]), clock,
+    ppu: { write(offset, value, master) { assert.equal(offset, 0x2100); assert.equal(value, 0); writeMaster = master; } },
+    masterLink: { read: () => 0, write() {} },
+  });
+  vm.reset(); clock.master = 0; vm.cpu.P.E = 0; vm.cpu.P.M = 1; vm.cpu.P.X = 1;
+  assert.equal(vm.cpu.step(), 5);
+  assert.equal(vm.cpu.positionedInternalMaster, 6);
+  assert.equal(writeMaster, 36);
 });
 
 test('NMITIMEN enable edge waits until its trigger then enters before fetch', () => {

@@ -1,3 +1,15 @@
+const ABS_X_READ = new Set([0x1d, 0x3c, 0x3d, 0x5d, 0x7d, 0xbc, 0xbd, 0xdd, 0xfd]);
+const ABS_X_WRITE = new Set([0x1e, 0x3e, 0x5e, 0x7e, 0x9d, 0x9e, 0xde, 0xfe]);
+const ABS_Y_READ = new Set([0x19, 0x39, 0x59, 0x79, 0xb9, 0xbe, 0xd9, 0xf9]);
+const ABS_Y_WRITE = new Set([0x99]);
+const DP_INDEXED = new Set([0x15, 0x16, 0x34, 0x35, 0x36, 0x55, 0x56, 0x74, 0x75, 0x76,
+  0x94, 0x95, 0x96, 0xb4, 0xb5, 0xb6, 0xd5, 0xd6, 0xf5, 0xf6]);
+const DP_PENALTY = new Set([0x04, 0x05, 0x06, 0x07, 0x11, 0x12, 0x14, 0x17, 0x24, 0x25, 0x26, 0x27,
+  0x31, 0x32, 0x37, 0x45, 0x46, 0x47, 0x51, 0x52, 0x57, 0x64, 0x65, 0x66, 0x67, 0x71, 0x72,
+  0x77, 0x84, 0x85, 0x86, 0x87, 0x91, 0x92, 0x97, 0xa4, 0xa5, 0xa6, 0xa7, 0xb1, 0xb2,
+  0xb7, 0xc4, 0xc5, 0xc6, 0xc7, 0xd1, 0xd2, 0xd7, 0xe4, 0xe5, 0xe6, 0xe7, 0xf1, 0xf2, 0xf7]);
+const STACK_RELATIVE = new Set([0x03, 0x23, 0x43, 0x63, 0x83, 0xa3, 0xc3, 0xe3]);
+
 export class CPU {
   constructor(bus) {
     this.bus = bus;
@@ -48,9 +60,34 @@ export class CPU {
   }
 
   // --- Helpers ---
-  read(addr) { return this.bus.read(addr); }
-  write(addr, val) { this.bus.write(addr, val); }
-  ioCycle() { this.bus.clock.idle(6); this.positionedInternalCycles++; }
+  read(addr) { this.beforeAccess(); return this.bus.read(addr); }
+  write(addr, val) { this.beforeAccess(); this.bus.write(addr, val); }
+
+  beforeAccess() {
+    if (this.ioPlan && this.instructionAccess === this.ioPlan.index) {
+      this.bus.clock.idle(this.ioPlan.master);
+      this.positionedInternalMaster += this.ioPlan.master;
+      this.ioPlan = null;
+    }
+    this.instructionAccess++;
+  }
+
+  planIo() {
+    if (this.P.E) return null;
+    const pc = (this.PB << 16) | this.PC;
+    const opcode = this.bus.readMapped(pc);
+    const dlMaster = (this.DP & 0xff) ? 6 : 0;
+    if (ABS_X_WRITE.has(opcode) || ABS_Y_WRITE.has(opcode)) return { index: 3, master: 6 };
+    if (ABS_X_READ.has(opcode) || ABS_Y_READ.has(opcode)) {
+      const base = this.bus.readMapped(pc + 1) | (this.bus.readMapped(pc + 2) << 8);
+      const index = ABS_X_READ.has(opcode) ? this.X : this.Y;
+      return !this.P.X || ((base ^ ((base + index) & 0xffff)) & 0xff00) ? { index: 3, master: 6 } : null;
+    }
+    if (DP_INDEXED.has(opcode)) return { index: 2, master: 6 + dlMaster };
+    if (dlMaster && DP_PENALTY.has(opcode)) return { index: 2, master: dlMaster };
+    if (STACK_RELATIVE.has(opcode)) return { index: 2, master: 6 };
+    return null;
+  }
 
   // Read word based on current settings (little endian)
   readWord(addr) {
@@ -289,7 +326,9 @@ export class CPU {
 
   step() {
     const prevCycles = this.cycles;
-    this.positionedInternalCycles = 0;
+    this.positionedInternalMaster = 0;
+    this.ioPlan = null;
+    this.instructionAccess = 0;
 
     // Handle Wait State (WAI)
     if (this.waiting) {
@@ -328,6 +367,7 @@ export class CPU {
     this._opPC = opPC; // expose for watchpoints
     this._opPB = opPB;
     
+    this.ioPlan = this.planIo();
     const opcode = this.fetchByte();
 
     // Record this instruction in the ring buffer (for post-mortem traces).
@@ -1919,8 +1959,7 @@ export class CPU {
         this.cycles += this.P.M ? 3 : 4;
         break;
        case 0x9E: // STZ abs,x
-        { const addr = this.addr_abs_x(); this.ioCycle();
-          if (this.P.M) this.write(addr, 0); else { this.write(addr, 0); this.write(addr+1, 0); } }
+        if (this.P.M) this.write(this.addr_abs_x(), 0); else { const addr=this.addr_abs_x(); this.write(addr, 0); this.write(addr+1, 0); }
         this.cycles += this.P.M ? 4 : 5;
         break;
 

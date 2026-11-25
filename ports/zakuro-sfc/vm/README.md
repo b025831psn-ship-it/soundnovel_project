@@ -83,6 +83,12 @@ The former row-947,770 value mismatch is gone; all 1,253,625 APUIO rows now
 match in order and value. Exact master timing has one remaining six-access
 section at frame 422 (rows 523,881-523,886, delta -42) where DRAM refresh and
 NMI entry meet, then returns to zero.
+Internal IO clocks for the measured native-mode absolute-indexed,
+direct-page-indexed, direct-page-low-byte penalty, and stack-relative modes are
+charged immediately before their documented bus access instead of being
+collected at the end of the instruction. ROM-free `ProgramImage` manifests also
+carry explicit SRAM size/fill metadata, so the browser and owned-ROM paths
+produce the same complete APUIO result.
 All legacy `[WP]` and `[STUCK]` diagnostics are disabled unless
 `globalThis.ZAKURO_VM_DEBUG` is explicitly enabled, so they no longer print or
 perform timing-visible watchpoint reads in normal runs.

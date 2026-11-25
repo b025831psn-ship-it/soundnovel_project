@@ -26,8 +26,10 @@ export class ZakuroVM {
     const beforeMaster = this.bus.clock.master;
     const accesses = this.bus.accessCount;
     const cpuCycles = this.cpu.step();
-    const internalCycles = Math.max(0, cpuCycles - (this.bus.accessCount - accesses) - this.cpu.positionedInternalCycles);
-    this.bus.clock.idle(internalCycles * 6);
+    const internalCycles = Math.max(0, cpuCycles - (this.bus.accessCount - accesses));
+    const trailingInternalMaster = internalCycles * 6 - this.cpu.positionedInternalMaster;
+    if (trailingInternalMaster < 0) throw new Error('positioned IO exceeds instruction internal cycles');
+    this.bus.clock.idle(trailingInternalMaster);
     if (this.cpu.interruptMasterAdjustment) {
       this.bus.clock.idle(this.cpu.interruptMasterAdjustment);
       this.cpu.interruptMasterAdjustment = 0;

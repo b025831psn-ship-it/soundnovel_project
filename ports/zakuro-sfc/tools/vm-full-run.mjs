@@ -21,7 +21,7 @@ const got = [];
 const programReads = process.env.ZAKURO_PROGRAM_OUT ? new Set() : null;
 const { link } = createApuLink({ ipl, powerOnDsp });
 const inputFrameOffset = Number(process.env.ZAKURO_INPUT_OFFSET ?? 1);
-const vm = new ZakuroVM({ ...(useProgramData ? { program: image } : { rom: image }), masterLink: link, inputFrames, inputFrameOffset, onProgramRead: programReads ? offset => programReads.add(offset) : null, trace(access) { got.push(access); } });
+const vm = new ZakuroVM({ ...(useProgramData ? { program: image, sram: image.sram } : { rom: image }), masterLink: link, inputFrames, inputFrameOffset, onProgramRead: programReads ? offset => programReads.add(offset) : null, trace(access) { got.push(access); } });
 vm.reset();
 const started = Date.now();
 let instructions = 0, error = null, lastReport = 0;
@@ -94,7 +94,9 @@ if (programReads) {
     await writeFile(join(directory, file), data);
     ranges.push({ offset: span.offset, length: data.length, file, sha256: createHash('sha256').update(data).digest('hex') });
   }
-  await writeFile(join(directory, 'manifest.json'), `${JSON.stringify({ format: 1, mapping: 'LoROM-linear', sourceSha256: createHash('sha256').update(image).digest('hex'), ranges }, null, 2)}\n`);
+  const exponent = image[0x7fd8];
+  const sram = exponent ? { size: 1 << (exponent + 10), fill: 0x60 } : null;
+  await writeFile(join(directory, 'manifest.json'), `${JSON.stringify({ format: 1, mapping: 'LoROM-linear', sourceSha256: createHash('sha256').update(image).digest('hex'), ...(sram ? { sram } : {}), ranges }, null, 2)}\n`);
   result.programRanges = ranges.length;
   result.programBytes = ranges.reduce((sum, range) => sum + range.length, 0);
 }

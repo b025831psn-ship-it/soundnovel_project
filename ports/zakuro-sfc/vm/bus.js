@@ -8,7 +8,7 @@ function normalizeRom(bytes) {
 }
 
 export class ZakuroBus {
-  constructor({ rom = null, program = null, masterLink, clock = new MasterClock(), ppu = null, trace = null, wramFill = 0x55, inputFrames = null, inputFrameOffset = 1, onProgramRead = null } = {}) {
+  constructor({ rom = null, program = null, sram = null, masterLink, clock = new MasterClock(), ppu = null, trace = null, wramFill = 0x55, inputFrames = null, inputFrameOffset = 1, onProgramRead = null } = {}) {
     if (!masterLink) throw new TypeError('masterLink is required');
     if (!rom && !program) throw new TypeError('rom or program is required');
     this.rom = rom ? normalizeRom(rom) : null; this.program = program;
@@ -19,10 +19,20 @@ export class ZakuroBus {
     // observable state rather than an interchangeable debugging default.
     this.wram.fill(wramFill & 0xff);
     const sramExponent = this.rom?.[0x7fd8] ?? 0;
-    const sramSize = sramExponent ? 1 << (sramExponent + 10) : 0;
-    this.sram = new Uint8Array(sramSize);
-    this.sram.fill(0x60);
+    const headerSram = sramExponent ? {
+      size: 1 << (sramExponent + 10), fill: 0x60,
+      high: (this.rom[0x7fd7] > 11 || sramExponent > 5) ? 0x7fff : 0xffff,
+    } : null;
+    const sramConfig = sram ?? program?.sram ?? headerSram;
+    const sramSize = sramConfig?.size ?? 0;
+    if (!Number.isInteger(sramSize) || sramSize < 0 || (sramSize && (sramSize & (sramSize - 1)))) {
+      throw new RangeError('SRAM size must be zero or a power of two');
+    }
+    const sramFill = sramConfig?.fill ?? 0x60;
+    if (!Number.isInteger(sramFill) || sramFill < 0 || sramFill > 0xff) throw new RangeError('invalid SRAM fill');
+    this.sram = new Uint8Array(sramSize); this.sram.fill(sramFill);
     this.sramMask = sramSize - 1;
+    this.sramHigh = sramConfig?.high ?? (sramSize > 0x10000 ? 0x7fff : 0xffff);
     this.io = new Uint8Array(0x6000); this.fastRom = false; this.accessCount = 0;
     this.nmiFlag = false;
     this.inputFrames = inputFrames; this.pendingJoypad = null;
@@ -104,8 +114,7 @@ export class ZakuroBus {
   isLoRomSram(bank, offset) {
     if (!this.sram.length) return false;
     const sramBank = (bank >= 0x70 && bank <= 0x7d) || bank >= 0xf0;
-    const high = (this.rom[0x7fd7] > 11 || this.rom[0x7fd8] > 5) ? 0x7fff : 0xffff;
-    return sramBank && offset <= high;
+    return sramBank && offset <= this.sramHigh;
   }
 
   loRomSramAddress(address) {

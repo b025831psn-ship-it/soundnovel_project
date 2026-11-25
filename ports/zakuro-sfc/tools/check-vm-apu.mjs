@@ -35,7 +35,7 @@ if (spcTrace) apu.cpu.onPortWrite = (clock, port, value) => {
   spcTrace.write(`${clock}\t${clock + (link.writeLag[opcode] || link.readLag)}\t${opcode.toString(16).padStart(2, '0')}\t${port}\t${value.toString(16).padStart(2, '0')}\n`);
 };
 const vm = new ZakuroVM({
-  ...(useProgramData ? { program: image } : { rom: image }),
+  ...(useProgramData ? { program: image, sram: image.sram } : { rom: image }),
   inputFrames,
   masterLink: link,
   trace(access) {
