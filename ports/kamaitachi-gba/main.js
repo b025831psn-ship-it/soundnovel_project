@@ -49,6 +49,9 @@ const vm = new VM({ banks, scene, text, musicMap: music.request_to_song, audio: 
 const page = new PageText(screen, font, text);
 // Opcode 1D's native screens (1D 00: logo, copyright, title menu, bookmarks; 1D 03/04: names).
 const boot = await new Boot({ vm, screen, assets, font, sound: vm.sound }).load();
+// The cartridge's loading pauses (black while a picture decodes or the flash is read) are cut
+// in the web version; ?timing=original keeps them for frame comparisons with mGBA.
+boot.originalLoadTiming = new URLSearchParams(location.search).get("timing") === "original";
 vm.system = boot;
 boot.onMenuClosed = () => { page.drawn = -1; screen.renderBackground(); };
 text.nameBytes = boot.names; // names entered on 1D 03 / 1D 04 show up in the story text

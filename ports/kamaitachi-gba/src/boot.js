@@ -90,6 +90,7 @@ const MENU_POINTER = 0x8484;
 const MENU_PICTURE = 0xde;
 // 1D 66 with a book being read: from the exit fade's first step to the book's fade-in (mGBA 1804 -> 1932).
 const LOAD_FRAMES = 128;
+const LOAD_FADE_FRAMES = 31;
 
 export class Boot {
   constructor({ vm, screen, assets, font, sound }) {
@@ -166,7 +167,8 @@ export class Boot {
     // book's picture comes up from 1932 (LOAD_FRAMES covers the 0B waits and the flash read).
     if (command === 0x66) {
       if (!this.loading) return undefined;
-      this.vm.waitFrames = LOAD_FRAMES;
+      // Without the original timing only the exit fade (0x28 * 3/4 frames) is waited for.
+      this.vm.waitFrames = this.originalLoadTiming === false ? LOAD_FADE_FRAMES : LOAD_FRAMES;
       return { waiting: "delay" };
     }
     if (command === 0x67) {
