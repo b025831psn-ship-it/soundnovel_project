@@ -15,7 +15,8 @@ test('master clock uses integer SNES bus access costs', () => {
   assert.equal(accessCycles(0x7e1234), 8);
   assert.equal(accessCycles(0x808000, true), 6);
   const c = new MasterClock(0, { refresh: false }); c.charge(0x2140); c.idle(12); assert.equal(c.master, 18);
-  const refreshed = new MasterClock(530); refreshed.idle(8); assert.equal(refreshed.master, 578);
+  const wallClock = new MasterClock(530); wallClock.idle(8); assert.equal(wallClock.master, 538);
+  const refreshed = new MasterClock(530, { refresh: true }); refreshed.idle(8); assert.equal(refreshed.master, 578);
 });
 
 test('PPU fields alternate 357368/357364 master cycles', () => {

@@ -38,7 +38,7 @@ export function accessCycles(address, fastRom = false) {
 }
 
 export class MasterClock {
-  constructor(master = 0, { refresh = true } = {}) { this.master = master; this.refresh = refresh; }
+  constructor(master = 0, { refresh = false } = {}) { this.master = master; this.refresh = refresh; }
   advance(count) {
     let target = this.master + count;
     if (this.refresh) {
