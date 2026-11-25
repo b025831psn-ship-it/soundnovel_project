@@ -84,6 +84,18 @@ export function mergeSilhouette(buffer, tiles) {
   }
 }
 
+// 080014DC's erase: each nonzero nibble of `tiles` clears the nibble in `buffer`.
+export function removeSilhouette(buffer, tiles) {
+  for (let i = 0; i < LAYER_BYTES && i < tiles.length; i++) {
+    const value = tiles[i];
+    if (!value) continue;
+    let mask = 0;
+    if (value & 0xf0) mask |= 0xf0;
+    if (value & 0x0f) mask |= 0x0f;
+    buffer[i] &= ~mask;
+  }
+}
+
 // 08001138 on the layer's palette (080011B0(-1)): each channel times (tint + 1) / 32, a zero tint
 // byte giving zero. `tint` is 020066C5..C7: red, green, blue (opcodes 27, 26, 28).
 export function tintColor(color, tint) {

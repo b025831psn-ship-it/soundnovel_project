@@ -180,8 +180,6 @@ export class VM {
       effectDisabled: 0,
       effectBypass: 0,
       updatePending: 0,
-      overlayActive: 0,
-      overlayMasks: new Uint16Array(4),
       silhouettes: new Uint16Array(4).fill(0xffff), // 02000728: the silhouettes on the layer (29)
       silhouetteMode: 0, // 020007A5 (4D): 2E shows the layer; at 0 the fade-in of 09 does
       presentationC5: 5, // 020066C5..C7: the layer's tint, red/green/blue (080034D0 defaults)
@@ -698,26 +696,19 @@ export class VM {
         const request = ((high << 8) + lowPair) & 0xffff;
         args.push(high, lowPair, request);
         if (this.suppressed(opcode)) break;
-        this.scene?.overlay?.(request, this.ram);
-        this.ram.overlayActive = 1;
-        for (let index = 0; index < this.ram.overlayMasks.length; index++) {
-          const value = this.ram.overlayMasks[index];
-          const signedValue = (value << 16) >> 16;
-          if (
-            signedValue === request ||
-            (request === 0 && signedValue === 13)
-          )
-            this.ram.overlayMasks[index] = 0xffff;
-        }
-        // The same request takes silhouette `request` off the 02000728 slots, and the layer's
-        // buffer is merged again from the ones left (1B:10B3 removes the two standing people
-        // before 29 adds them seated); the next 2E shows the result.
+        // 080014DC: silhouette `request` is decoded and its pixels are cleared from the layer's
+        // buffer (020117C8; the other silhouettes keep theirs), and 020007A5 = 1 so the next 2E
+        // shows the result (1B:10B3 takes the two standing people off before 29 seats them).
+        this.scene?.silhouetteRemove?.(request);
+        this.ram.silhouetteMode = 1;
+        // The 02000728 slots holding it (compared as signed halfwords) are freed; request 0
+        // frees the slots holding 13 instead.
         const slots = this.ram.silhouettes;
-        if (slots && slots.includes(request)) {
-          for (let index = 0; index < slots.length; index++) if (slots[index] === request) slots[index] = 0xffff;
-          this.scene?.silhouetteRebuild?.([...slots].filter((id) => id !== 0xffff));
+        for (let index = 0; index < slots.length; index++) {
+          const signedValue = (slots[index] << 16) >> 16;
+          if (signedValue === request || (request === 0 && signedValue === 13)) slots[index] = 0xffff;
         }
-        this.writes.push(`overlay=${request}`);
+        this.writes.push(`silhouetteRemove=${request}`);
         break;
       }
       case 0x30: {

@@ -1,4 +1,4 @@
-import { LAYER_BYTES, mergeSilhouette } from "./silhouette.js";
+import { LAYER_BYTES, mergeSilhouette, removeSilhouette } from "./silhouette.js";
 
 export class SceneLoader {
   constructor(assets, screen) {
@@ -56,17 +56,11 @@ export class SceneLoader {
     this.screen.setSilhouetteLayer?.(layer);
   }
 
-  // Opcode 2D: the buffer is merged again from the silhouettes still on the slots (an empty
-  // buffer, not none, so a following 2E blind wipes the removed ones row by row).
-  silhouetteRebuild(ids) {
-    if (!this.layerBuffer) return;
-    this.layerBuffer = new Uint8Array(LAYER_BYTES);
-    for (const id of ids) {
-      const picture = this.silhouettes?.picture(id);
-      if (!picture) continue;
-      mergeSilhouette(this.layerBuffer, picture.tiles);
-      this.layerColors = picture.colors;
-    }
+  // 080014DC (opcode 2D): the picture's nonzero nibbles are cleared from the buffer.
+  silhouetteRemove(id) {
+    const picture = this.silhouettes?.picture(id);
+    if (!picture || !this.layerBuffer) return;
+    removeSilhouette(this.layerBuffer, picture.tiles);
   }
 
   // 0800350C: buffer, layer and palette cleared, the layer off and the buffer pointer 0.
