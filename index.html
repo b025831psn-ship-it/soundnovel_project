@@ -161,6 +161,8 @@
   addEventListener('message', (event) => {
     if (event.origin !== location.origin || event.source !== frame.contentWindow) return;
     if (event.data?.type === 'theatre') setTheatre(event.data.on ?? !document.body.classList.contains('theatre-mode'));
+    // Where the browser has no element full screen (iPhone Safari), the port page fills the window instead.
+    if (event.data?.type === 'fill') document.body.classList.toggle('filled', Boolean(event.data.on));
     if (event.data?.type === 'hello') setTheatre(document.body.classList.contains('theatre-mode'));
   });
   addEventListener('keydown', (event) => {

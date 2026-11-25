@@ -80,6 +80,8 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); ou
 .menu-button:hover, .menu-button:focus-visible { opacity: 1; background: rgba(8, 9, 11, .8); }
 .menu-button:active { transform: scale(.94); }
 .menu-button.unavailable { opacity: 0; pointer-events: none; }
+.menu-button .back, .menu-button.is-back .open { display: none; }
+.menu-button.is-back .back { display: block; }
 .stage:not(.ready) .menu-button { display: none; }
 .immersive.idle .menu-button:not(:hover) { opacity: .45; }
 .loading {
@@ -183,10 +185,13 @@ kbd {
 .immersive.idle .bar:focus-within { opacity: 1; }
 .immersive.idle .stage { cursor: none; }
 
-/* Touch buttons: only on touch screens. */
-.pad { display: none; }
+/* Touch buttons: only on touch screens, and only when asked for (the bar's pad button). */
+.pad, .icon.touch-only { display: none; }
+#padtoggle[aria-pressed="true"] { color: var(--accent); }
 @media (pointer: coarse) {
   .keys, .scale { display: none; }
+  .icon.touch-only { display: inline-grid; }
+  .shell:not(.pad-on) .pad { display: none; }
   .bar { min-height: 48px; justify-content: flex-end; border-top: 0; border-bottom: 1px solid var(--line); background: var(--stage); }
   .pad {
     flex: none;
@@ -290,6 +295,11 @@ kbd {
   .face { gap: 8px; }
   .face .key:first-child { margin-top: 30px; }
 }
+/* Sideways without the buttons: the screen takes the whole window, the bar sits in its lower right corner. */
+@media (pointer: coarse) and (orientation: landscape) {
+  .shell:not(.pad-on) .stage { grid-column: 1 / 4; grid-row: 1 / 4; width: auto; }
+  .shell:not(.pad-on) .bar { position: relative; z-index: 1; }
+}
 @media (pointer: coarse) and (max-width: 360px) {
   .dpad { --cell: 42px; }
   .round { width: 54px; height: 54px; }
@@ -297,3 +307,12 @@ kbd {
 
 /* Full screen: the stage takes everything; the bar stays reachable. */
 .shell:fullscreen { background: var(--stage); }
+
+/* Full screen without the browser's (iPhone): the player fills the window. Held upright, it is drawn a
+   quarter turn round so a phone held sideways shows it as landscape even with rotation lock on. */
+html.filled, html.filled body { overflow: hidden; }
+.shell.filled { position: fixed; inset: 0; z-index: 100; }
+.shell.filled .pad { display: none; }
+@media (orientation: portrait) {
+  .shell.filled { inset: auto; top: 0; left: 100vw; width: 100dvh; height: 100vw; transform-origin: 0 0; transform: rotate(90deg); }
+}
