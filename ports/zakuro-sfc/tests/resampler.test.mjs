@@ -13,11 +13,13 @@ test('resampler holds rate ratio and keeps DC level', () => {
   assert.ok(L.every((x) => Math.abs(x - 0.5) < 1e-6));
 });
 
-test('underrun outputs silence and counts', () => {
+test('underrun outputs silence and counts only after audio has started', () => {
   const rs = new Resampler();
   const L = new Float32Array(128), R = new Float32Array(128);
   rs.pull(L, R);
-  assert.equal(rs.underruns, 128); assert.ok(L.every((x) => x === 0));
+  assert.equal(rs.underruns, 0); assert.ok(L.every((x) => x === 0));
+  rs.push(new Int16Array(2 * 4)); rs.pull(L, R);
+  assert.ok(rs.underruns > 120); assert.ok(L.slice(8).every((x) => x === 0));
 });
 
 test('fill above target speeds consumption slightly', () => {
