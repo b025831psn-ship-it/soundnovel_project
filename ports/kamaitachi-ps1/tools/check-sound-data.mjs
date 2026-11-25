@@ -12,11 +12,11 @@ for (const m of pac("MUS.PAC")) {
   const b = m.bytes; const vab = be(b, 0), seq = be(b, 8);
   try {
     const h = parseVabHead(b, vab); const s = parseSeqHeader(b, seq); const ev = readSeqEvents(b, s);
-    const vbStart = 0x1c, vbEnd = seq; const fits = h.bodySize <= vbEnd - vbStart + 16;
+    const vbStart = be(b, 4), vbEnd = seq; const fits = h.bodySize <= vbEnd - vbStart;
     if (!ev.events.length || ev.events.at(-1).type !== "end" || !fits) bad.push({ id: m.id, end: ev.events.at(-1)?.type, body: h.bodySize, room: vbEnd - vbStart });
     else ok++;
     stat.notes += ev.events.filter(e => e.type === "on" && e.b).length; stat.nrpn += ev.events.filter(e => e.type === "cc" && (e.a === 99 || e.a === 98)).length; stat.tempo.add(s.tempo);
-    for (let v = 1; v <= h.vagCount; v++) { const r = decodeSample(b, vbStart + h.vagOffsets[v]); stat.vags++; if (r.repeats) stat.loops++; if (r.blocks * 16 > h.vagSizes[v] + 16) bad.push({ id: m.id, vag: v, blocks: r.blocks, size: h.vagSizes[v] }); }
+    for (let v = 1; v <= h.vagCount; v++) { const r = decodeSample(b, vbStart + h.vagOffsets[v]); stat.vags++; if (r.repeats) stat.loops++; if (r.blocks * 16 > h.vagSizes[v]) bad.push({ id: m.id, vag: v, blocks: r.blocks, size: h.vagSizes[v] }); }
   } catch (e) { bad.push({ id: m.id, err: e.message }); }
 }
 console.log("MUS ok", ok, "bad", bad.length, JSON.stringify(bad.slice(0, 6)), { ...stat, tempo: stat.tempo.size });
