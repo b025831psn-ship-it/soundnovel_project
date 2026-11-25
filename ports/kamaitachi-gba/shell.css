@@ -261,6 +261,35 @@ kbd {
   .round.down { transform: rotate(20deg) scale(.94); background: #2a2e36; }
   .round.primary.down { background: color-mix(in srgb, var(--accent) 40%, #1c1f25); }
 }
+/* Phone sideways: d-pad on the left, screen in the middle at full height, A/B on the right,
+   shoulder buttons in the top corners, the bar under the screen. */
+@media (pointer: coarse) and (orientation: landscape) {
+  .shell {
+    display: grid;
+    grid-template-columns: minmax(128px, 1fr) auto minmax(128px, 1fr);
+    grid-template-rows: auto minmax(0, 1fr) auto;
+    padding: 0 env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+    background: radial-gradient(80% 120% at 50% 50%, #14161a, var(--bg));
+  }
+  .stage { grid-column: 2; grid-row: 1 / 4; min-height: 0; background: transparent; width: min(calc(100vw - 256px - env(safe-area-inset-left) - env(safe-area-inset-right)), calc(100dvh * 1.5)); }
+  /* Sound and full screen move to the lower right so the screen gets the full height. */
+  .bar { grid-column: 3; grid-row: 3; min-height: 0; padding: 0 8px 6px 0; border: 0; background: transparent; justify-content: flex-end; }
+  .bar .icon { width: 40px; height: 40px; }
+  .bar .volume, .bar .sep, .bar #theatre { display: none; }
+  .pad { display: contents; }
+  .shoulders { display: contents; }
+  .shoulder { margin: 8px 12px 0; width: auto; min-width: 84px; justify-self: stretch; }
+  .shoulder[data-key="L"] { grid-column: 1; grid-row: 1; }
+  .shoulder[data-key="R"] { grid-column: 3; grid-row: 1; }
+  .dpad { grid-column: 1; grid-row: 2; justify-self: center; align-self: center; }
+  .face { grid-column: 3; grid-row: 2; justify-self: center; align-self: center; }
+  .system { grid-column: 1; grid-row: 3; justify-self: center; align-self: center; margin: 0 0 8px; }
+  .pad button { touch-action: none; }
+  .dpad { --cell: 38px; }
+  .round { width: 50px; height: 50px; font-size: 15px; }
+  .face { gap: 8px; }
+  .face .key:first-child { margin-top: 30px; }
+}
 @media (pointer: coarse) and (max-width: 360px) {
   .dpad { --cell: 42px; }
   .round { width: 54px; height: 54px; }

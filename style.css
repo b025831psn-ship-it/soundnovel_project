@@ -253,6 +253,12 @@ body.theatre-mode .theatre iframe { height: 100dvh }
   .theatre iframe { height: min(calc(66.667cqw + 52px + 200px), calc(100dvh - var(--top))) }
   body.theatre-mode .theatre iframe { height: 100dvh }
 }
+/* Phone turned sideways while a game is open: the player takes the whole window, like a handheld.
+   Turning back to portrait brings the hub back. */
+@media (pointer: coarse) and (orientation: landscape) {
+  body.playing { overflow: hidden }
+  body.playing .theatre iframe { position: fixed; inset: 0; z-index: 50; width: 100vw; height: 100dvh; border-radius: 0 }
+}
 
 /* Legacy emulator page (play.html) */
 main.game-pane { width: 100%; padding: 8px 10px }
