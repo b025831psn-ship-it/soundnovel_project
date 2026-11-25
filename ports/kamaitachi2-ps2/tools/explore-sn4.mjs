@@ -1,0 +1,168 @@
+// Exhaustive SN4 explorer: runs the browser VM over every reachable path and
+// collects problems in one report instead of checking scenes one at a time.
+//
+//   node ports/kamaitachi2-ps2/tools/explore-sn4.mjs <web-dir> [out-dir]
+//
+// Choices fork into every target and 0x70 conditions fork into both the taken
+// and the fall-through path. A path stops when it re-enters a label another
+// path already entered (flags are not modelled yet), at an end, or on an error.
+import { readFile, writeFile, mkdir, access } from 'node:fs/promises';
+import path from 'node:path';
+import { pathToFileURL } from 'node:url';
+
+const web = path.resolve(process.argv[2] || '.');
+const out = process.argv[3] ? path.resolve(process.argv[3]) : null;
+const { Sn4Vm } = await import(pathToFileURL(path.join(web, 'sn4.js')).href);
+const program = JSON.parse(await readFile(path.join(web, 'assets/sn4.json'), 'utf8'));
+const opening = JSON.parse(await readFile(path.join(web, 'assets/opening.json'), 'utf8'));
+const scenePack = opening.scenePack ?? {};
+const glyphs = new Set(Object.keys(opening.font ?? {}));
+const NAMES = ['名前一', '名前二'];
+const hex = n => '0x' + n.toString(16);
+
+const exists = async file => access(path.join(web, 'assets', file)).then(() => true, () => false);
+const problems = new Map(); // kind -> Map(key -> {count, first})
+function report(kind, key, where) {
+  if (!problems.has(kind)) problems.set(kind, new Map());
+  const bucket = problems.get(kind);
+  const entry = bucket.get(key) ?? {count: 0, first: where};
+  entry.count++;
+  bucket.set(key, entry);
+}
+
+const labels = new Map(program.labels.map(l => [l.label, l]));
+const entered = new Set();
+const opcodes = new Map();
+for (const l of program.labels) for (const op of l.ops) opcodes.set(op.op, (opcodes.get(op.op) ?? 0) + 1);
+// Static checks that do not depend on reaching the command.
+for (const l of program.labels) {
+  if (l.next && !labels.has(l.next)) report('missing-next', l.next, `${l.label}`);
+  for (const op of l.ops) {
+    const at = `${l.label}+${hex(op.offset - l.offset)}`;
+    if ((op.op === 0x6a || op.op === 0x6b) && !labels.has(op.args[0])) report('missing-jump', op.args[0], at);
+    if (op.op === 0x6c) for (const t of op.args[0]) if (!labels.has(t)) report('missing-choice-target', t, at);
+    if (op.op === 0x74 && !(op.args[0] in scenePack)) report('missing-scenepack', op.args[0], at);
+  }
+}
+for (const [name, entry] of Object.entries(scenePack)) {
+  if (entry.music?.file && !await exists(entry.music.file)) report('missing-music-file', entry.music.file, name);
+  if (entry.image && !await exists(entry.image + '.png')) report('missing-image', entry.image + '.png', name);
+}
+
+class Explorer extends Sn4Vm {
+  jump(label) {
+    super.jump(label);
+    if (entered.has(label)) throw new Revisit();
+    entered.add(label);
+  }
+}
+class Revisit extends Error {}
+
+const queue = [];
+const endings = new Map();
+let paths = 0, steps = 0;
+function fork(vm, payload) {
+  // 0x70 payloads are still raw until the extractor decodes them; fork only
+  // into a target that names a real label.
+  const label = typeof payload === 'string' ? payload : payload?.target;
+  if (labels.has(label)) queue.push({label, names: [...vm.names], bgm: current});
+  else report('condition-undecoded', typeof payload === 'string' ? payload : JSON.stringify(payload), where(vm));
+}
+function makeVm() {
+  const hooks = {};
+  const vm = new Explorer(program, new Proxy(hooks, {
+    get: (_, name) => (...args) => {
+      if (name === 'condition') { fork(vm, args[0]); return null; }
+      if (name === 'caption') { music(vm, args[0]); return 0; }
+      if (name === 'unknown') { report('unknown-op', hex(args[0]), where(vm)); return undefined; }
+      return undefined;
+    },
+  }));
+  return vm;
+}
+const where = vm => `${vm.label}+${hex((labels.get(vm.label)?.ops[vm.pc - 1]?.offset ?? 0) - (labels.get(vm.label)?.offset ?? 0))}`;
+let current = null;
+function music(vm, name) {
+  const m = scenePack[name]?.music;
+  if (!m) return;
+  if (current === undefined) current = null;
+  if (m.operation === 0x14) {
+    if (current && current.file !== m.file) report('bgm-start-without-stop', `${current.file} -> ${m.file}`, where(vm));
+    current = {file: m.file};
+  } else if (m.operation === 0x15) {
+    if (!current) report('info-bgm-stop-while-stopped', name, where(vm));
+    current = null;
+  } else if (m.operation === 0x17 && !current) report('bgm-volume-without-start', name, where(vm));
+}
+
+function checkText(vm, text) {
+  for (const ch of text) if (ch !== '\n' && !glyphs.has(ch) && !NAMES.join('').includes(ch)) report('unsupported-char', ch, where(vm));
+}
+
+function runPath(start) {
+  paths++;
+  current = start.bgm ?? null;
+  const vm = makeVm();
+  if (!labels.has(start.label)) return report('missing-root', start.label, start.from ?? '');
+  try {
+    vm.reset(start.label);
+    if (entered.has(start.label)) return;
+    entered.add(start.label);
+    vm.setNames(start.names ?? NAMES);
+    let event = vm.run();
+    for (;;) {
+      steps++;
+      checkText(vm, event.text ?? '');
+      if (event.type === 'pause' || event.type === 'wait') {
+        if (event.type === 'pause' && !(event.text ?? '').trim() && event.reason !== 'choice-separator') report('empty-pause', vm.label, where(vm));
+        event = vm.run();
+      } else if (event.type === 'name') {
+        event = vm.resume(NAMES[event.role]);
+      } else if (event.type === 'choice') {
+        for (const t of event.targets) queue.push({label: t, names: [...vm.names], bgm: current, from: where(vm)});
+        return;
+      } else if (event.type === 'end') {
+        endings.set(event.label, (endings.get(event.label) ?? 0) + 1);
+        return;
+      } else {
+        report('unknown-event', event.type, where(vm));
+        return;
+      }
+    }
+  } catch (error) {
+    if (error instanceof Revisit) return;
+    const m = /Unsupported SN4 opcode (0x[0-9a-f]+)/.exec(error.message);
+    if (m) report('unsupported-op', m[1], where(vm));
+    else report('vm-error', error.message, where(vm));
+  }
+}
+
+queue.push({label: program.entry, names: NAMES});
+while (queue.length) runPath(queue.shift());
+// Labels nobody reached from the entry are explored as roots so their own
+// problems still show up; they are listed separately as unreachable.
+const unreachable = program.labels.map(l => l.label).filter(l => !entered.has(l));
+for (const l of unreachable) { queue.push({label: l, names: NAMES, unknownBgm: true}); while (queue.length) runPath(queue.shift()); }
+
+const summary = {
+  web, labels: program.labels.length, ops: [...opcodes.values()].reduce((a, b) => a + b, 0),
+  opcodes: Object.fromEntries([...opcodes].sort((a, b) => a[0] - b[0]).map(([k, v]) => [hex(k), v])),
+  reachedFromEntry: program.labels.length - unreachable.length, unreachable,
+  paths, steps, endings: Object.fromEntries(endings),
+  problems: Object.fromEntries([...problems].map(([k, b]) => [k, Object.fromEntries(b)])),
+};
+const md = [
+  `# SN4 전수 검사`, '',
+  `라벨 ${summary.labels}개, 명령 ${summary.ops}개, 시작점에서 도달 ${summary.reachedFromEntry}개, 경로 ${paths}개, 끝 라벨 ${endings.size}개.`, '',
+  ...[...problems].flatMap(([kind, bucket]) => [`## ${kind} (${bucket.size}종)`, '',
+    ...[...bucket].slice(0, 50).map(([key, e]) => `- \`${key}\` ×${e.count} — 처음 ${e.first}`), '']),
+  unreachable.length ? `## 시작점에서 도달하지 못한 라벨 (${unreachable.length})\n\n${unreachable.slice(0, 200).map(l => '`' + l + '`').join(', ')}\n` : '',
+].join('\n');
+if (out) {
+  await mkdir(out, {recursive: true});
+  await writeFile(path.join(out, 'sn4-explore.json'), JSON.stringify(summary, null, 2));
+  await writeFile(path.join(out, 'sn4-explore.md'), md);
+}
+console.log(md);
+const blocking = ['unsupported-op', 'vm-error', 'missing-jump', 'missing-next', 'missing-choice-target', 'missing-scenepack', 'missing-music-file', 'missing-image'];
+process.exitCode = blocking.some(k => problems.has(k)) ? 1 : 0;
