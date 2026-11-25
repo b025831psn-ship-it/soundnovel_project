@@ -137,6 +137,23 @@ function proxySync(request, response) {
   request.on('end', () => upstream.end());
 }
 
+const zlib = require('node:zlib');
+const gzipCache = new Map(); // file -> {etag, body | pending callbacks}
+function gzipped(file, etag, done) {
+  const hit = gzipCache.get(file);
+  if (hit?.etag === etag) { if (hit.body) return done(hit.body); hit.waiting.push(done); return; }
+  const entry = { etag, body: null, waiting: [done] };
+  gzipCache.set(file, entry);
+  fs.readFile(file, (error, raw) => {
+    if (error) { gzipCache.delete(file); entry.waiting.forEach(fn => fn(null)); return; }
+    zlib.gzip(raw, { level: 6 }, (failure, body) => {
+      if (failure) gzipCache.delete(file); else entry.body = body;
+      entry.waiting.forEach(fn => fn(failure ? null : body));
+      entry.waiting = [];
+    });
+  });
+}
+
 http.createServer((request, response) => {
   const url = request.url.split('?')[0];
   if (url === '/sync' || url.startsWith('/sync/')) { if (syncAllowedFromOutside(request, response)) proxySync(request, response); return; }
@@ -161,6 +178,24 @@ http.createServer((request, response) => {
     if (error || !stat.isFile()) {
       response.writeHead(404).end();
       return;
+    }
+    // Caching: every file carries a validator, so a returning visitor gets 304s instead of the whole
+    // game again. Cartridge data and pictures may be reused for a day without asking; code and pages
+    // are checked every time (cheap when unchanged).
+    const etag = `"${stat.size.toString(36)}-${Math.floor(stat.mtimeMs).toString(36)}"`;
+    const data = /^(application\/(octet-stream|json)|image\/|audio\/|video\/|font\/)/.test(route[1]);
+    response.setHeader('ETag', etag);
+    response.setHeader('Last-Modified', stat.mtime.toUTCString());
+    response.setHeader('Cache-Control', data ? 'public, max-age=86400, stale-while-revalidate=604800' : 'no-cache');
+    if (request.headers['if-none-match'] === etag) { response.writeHead(304).end(); return; }
+    // Compression for text and the larger data files (kept in memory per version, so it is done once).
+    const compressible = /^(text\/|application\/(json|octet-stream|javascript)|image\/svg)/.test(route[1]);
+    if (compressible && !request.headers.range && /\bgzip\b/.test(request.headers['accept-encoding'] ?? '') && stat.size > 1024 && stat.size < 32 * 1024 * 1024) {
+      return gzipped(route[0], etag, (body) => {
+        if (!body) { response.writeHead(500).end(); return; }
+        response.writeHead(200, {'Content-Type': route[1], 'Content-Encoding': 'gzip', 'Content-Length': body.length, 'Vary': 'Accept-Encoding'});
+        response.end(request.method === 'HEAD' ? undefined : body);
+      });
     }
     // Byte ranges (video needs them on iPhone Safari): a single "bytes=a-b" range gets a 206.
     const range = /^bytes=(\d*)-(\d*)$/.exec(request.headers.range ?? '');
