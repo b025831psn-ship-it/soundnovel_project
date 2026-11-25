@@ -15,6 +15,10 @@ export const SPC_NUM = 15664, SPC_DEN = 328125;
 export const READ_LAG = 1;
 export const READ_POINT = new Int8Array(256);
 READ_POINT[0x65] = -3;
+// The IPL upload polls with MOV Y,dp (EB) and CMP Y,dp (7E); values from the VM's real-IPL
+// run (Codex 8313247), pending an exact fit.
+READ_POINT[0xeb] = 1;
+READ_POINT[0x7e] = -1;
 
 export class MasterLink {
   constructor(apu, { master = 0, readLag = READ_LAG, readPoint = READ_POINT } = {}) {
