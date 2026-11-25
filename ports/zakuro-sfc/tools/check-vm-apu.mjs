@@ -3,6 +3,8 @@ import { createWriteStream } from 'node:fs';
 import { finished } from 'node:stream/promises';
 import { dirname, join } from 'node:path';
 import { ApuTraceComparator, createApuLink, readApuPorts, readInputTrace, scanlineTiming, ZakuroVM } from '../vm/index.js';
+import { readProgramData } from './program-data.mjs';
+import { readBootRecords } from './rom.mjs';
 
 const [romPath, tracePath, iplPath] = process.argv.slice(2);
 if (!romPath || !tracePath) {
@@ -10,12 +12,16 @@ if (!romPath || !tracePath) {
   process.exit(2);
 }
 
-const [rom, reference, ipl, inputFrames] = await Promise.all([
-  readFile(romPath), readApuPorts(tracePath), iplPath ? readFile(iplPath) : null,
+const useProgramData = romPath.endsWith('.json') || romPath.endsWith('program');
+const [image, reference, ipl, inputFrames, powerOnDsp] = await Promise.all([
+  useProgramData ? readProgramData(romPath.endsWith('.json') ? dirname(romPath) : romPath) : readFile(romPath),
+  readApuPorts(tracePath), iplPath ? readFile(iplPath) : null,
   readInputTrace(join(dirname(tracePath), 'input.tsv')),
+  readFile(join(dirname(tracePath), '..', 'sound', 'boot-dsp.bin')),
 ]);
 const comparator = new ApuTraceComparator(reference);
-const { apu, link, bootMode } = createApuLink({ rom, ipl });
+const bootRecords = !ipl && !useProgramData ? readBootRecords(image) : null;
+const { apu, link, bootMode } = createApuLink({ ipl, powerOnDsp, bootRecords });
 let mismatch = null;
 const firstDeltas = [];
 const accessTrace = process.env.ZAKURO_VM_ACCESS_TRACE
@@ -29,7 +35,7 @@ if (spcTrace) apu.cpu.onPortWrite = (clock, port, value) => {
   spcTrace.write(`${clock}\t${clock + (link.writeLag[opcode] || link.readLag)}\t${opcode.toString(16).padStart(2, '0')}\t${port}\t${value.toString(16).padStart(2, '0')}\n`);
 };
 const vm = new ZakuroVM({
-  rom,
+  ...(useProgramData ? { program: image } : { rom: image }),
   inputFrames,
   masterLink: link,
   trace(access) {
@@ -70,6 +76,8 @@ const keepRunning = process.env.ZAKURO_VM_KEEP_RUNNING === '1';
 let instructions = 0;
 const instructionTrace = process.env.ZAKURO_VM_INSTRUCTION_TRACE
   ? createWriteStream(process.env.ZAKURO_VM_INSTRUCTION_TRACE) : null;
+const instructionTraceStart = Number(process.env.ZAKURO_VM_TRACE_START ?? 25_000_000);
+const instructionTraceEnd = Number(process.env.ZAKURO_VM_TRACE_END ?? 73_000_000);
 instructionTrace?.write('instruction\tmaster_cycle\tpc\topcode\n');
 const milestones = {};
 while ((!mismatch || keepRunning) && !vm.cpu.stopped && instructions < maxInstructions
@@ -83,7 +91,7 @@ while ((!mismatch || keepRunning) && !vm.cpu.stopped && instructions < maxInstru
       if (field >= 71 && field <= 204) nmiTrace.write(`${field}\t${vm.bus.clock.master}\t${pc.toString(16).padStart(6, '0')}\n`);
     }
   }
-  if (instructionTrace && vm.bus.clock.master >= 25_000_000 && vm.bus.clock.master <= 73_000_000) {
+  if (instructionTrace && vm.bus.clock.master >= instructionTraceStart && vm.bus.clock.master <= instructionTraceEnd) {
     instructionTrace.write(`${instructions}\t${vm.bus.clock.master}\t${pc.toString(16).padStart(6, '0')}\t${opcode.toString(16).padStart(2, '0')}\n`);
   }
   if (pc === 0x00938e && milestones.nmiEnable == null) milestones.nmiEnable = vm.bus.clock.master;

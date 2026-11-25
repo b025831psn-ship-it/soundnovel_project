@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { ApuTraceComparator, MasterClock, ZakuroBus, ZakuroVM, accessCycles, createApuLink, inAutoJoypadRead, inVblank, scanlineTiming, vblankBoundary } from '../vm/index.js';
+import { ApuTraceComparator, MasterClock, ProgramImage, ZakuroBus, ZakuroVM, accessCycles, createApuLink, inAutoJoypadRead, inVblank, scanlineTiming, vblankBoundary } from '../vm/index.js';
 import { LINK_TIMING, POWER_ON } from '../tools/rom.mjs';
 
 function fixtureRom(program) {
@@ -62,6 +62,14 @@ test('power-on WRAM uses the native reference pattern across low-bank mirrors', 
   assert.equal(bus.readMapped(0x0001ec), 0x55);
   assert.equal(bus.readMapped(0x3001ec), 0x55);
   assert.equal(bus.readMapped(0x7e01ec), 0x55);
+});
+
+test('sparse program image replaces the owned ROM buffer', () => {
+  const program = new ProgramImage([{ offset: 0, length: 0x8000, data: fixtureRom([0xea]) }]);
+  const bus = new ZakuroBus({ program, masterLink: { read: () => 0, write() {} } });
+  assert.equal(bus.readMapped(0x008000), 0xea);
+  assert.equal(bus.readMapped(0x00fffc), 0x00);
+  assert.throws(() => bus.readMapped(0x018000), /unmapped program byte/);
 });
 
 test('recorded joypad frames feed auto-joypad registers and serial reads', () => {
@@ -141,10 +149,12 @@ test('APUIO comparator checks order/value and reports maximum master delta', () 
 
 test('VM APU link injects private IPL and applies LINK_TIMING and POWER_ON', () => {
   const ipl = new Uint8Array(64); ipl[62] = 0xc0; ipl[63] = 0xff;
-  const { apu, link, bootMode } = createApuLink({ rom: fixtureRom([]), ipl });
+  const powerOnDsp = new Uint8Array(128); powerOnDsp[0x7d] = 5;
+  const { apu, link, bootMode } = createApuLink({ ipl, powerOnDsp });
   assert.equal(bootMode, 'ipl');
   assert.deepEqual(apu.cpu.ipl, ipl);
   assert.equal(apu.cpu.dspAccessOffset, POWER_ON.dspAccessOffset);
+  assert.equal(apu.dsp.regs[0x7d], 5);
   assert.deepEqual(apu.cpu.timers.map((timer) => timer.phase), [3, 3, 3]);
   assert.equal(link.readLag, LINK_TIMING.readLag);
   assert.equal(link.readPoint, LINK_TIMING.readPoint);

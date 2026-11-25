@@ -8,9 +8,11 @@ function normalizeRom(bytes) {
 }
 
 export class ZakuroBus {
-  constructor({ rom, masterLink, clock = new MasterClock(), ppu = null, trace = null, wramFill = 0x55, inputFrames = null, inputFrameOffset = 1 } = {}) {
+  constructor({ rom = null, program = null, masterLink, clock = new MasterClock(), ppu = null, trace = null, wramFill = 0x55, inputFrames = null, inputFrameOffset = 1, onProgramRead = null } = {}) {
     if (!masterLink) throw new TypeError('masterLink is required');
-    this.rom = normalizeRom(rom); this.masterLink = masterLink; this.clock = clock;
+    if (!rom && !program) throw new TypeError('rom or program is required');
+    this.rom = rom ? normalizeRom(rom) : null; this.program = program;
+    this.onProgramRead = onProgramRead; this.masterLink = masterLink; this.clock = clock;
     this.ppu = ppu; this.trace = trace; this.onNmi = null; this.wram = new Uint8Array(128 * 1024);
     // The native reference core powers WRAM on with the Snes9x 0x55 pattern.
     // Zakuro reads untouched $01EC during its first enabled NMI, so this is
@@ -51,7 +53,7 @@ export class ZakuroBus {
     if ((bank & 0x40) === 0 && offset === 0x4016) return this.readJoy1();
     if ((bank & 0x40) === 0 && offset === 0x4017) return 0;
     if ((bank & 0x40) === 0 && offset >= 0x2000 && offset < 0x6000) return this.io[offset];
-    if (offset >= 0x8000) return this.rom[((bank & 0x7f) * 0x8000 + (offset & 0x7fff)) % this.rom.length];
+    if (offset >= 0x8000) return this.readProgram(bank, offset);
     return 0;
   }
   write(address, value) {
@@ -113,8 +115,15 @@ export class ZakuroBus {
     const a = address & 0xffffff, bank = a >>> 16, offset = a & 0xffff;
     if (bank === 0x7e || bank === 0x7f) return this.wram[a & 0x1ffff];
     if ((bank & 0x40) === 0 && offset < 0x2000) return this.wram[offset];
-    if (offset >= 0x8000) return this.rom[((bank & 0x7f) * 0x8000 + (offset & 0x7fff)) % this.rom.length];
+    if (offset >= 0x8000) return this.readProgram(bank, offset);
     return 0;
+  }
+
+  readProgram(bank, offset) {
+    const linear = (bank & 0x7f) * 0x8000 + (offset & 0x7fff);
+    const mapped = this.rom ? linear % this.rom.length : linear;
+    this.onProgramRead?.(mapped);
+    return this.rom ? this.rom[mapped] : this.program.read(mapped);
   }
 
   writeMapped(address, value) {

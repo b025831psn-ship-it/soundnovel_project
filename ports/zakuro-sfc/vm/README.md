@@ -10,8 +10,17 @@ npm test
 npm run vm:check -- "path/to/Zakuro no Aji (Japan).sfc" "path/to/apu-ports.tsv" "private/port-data/sound/ipl.bin"
 ```
 
+`vm/browser.js` is the browser-safe entry point; Node-only trace readers stay
+behind `vm/index.js`. `sound/zakuro-timing.js` contains the shared timing data.
+Both check tools also accept a private `port-data/program/` directory instead
+of a ROM. Its manifest lists sparse LoROM ranges and SHA-256 hashes, and
+`ProgramImage` rejects every read outside those extracted ranges. Set
+`ZAKURO_PROGRAM_OUT` while running `vm-full-run.mjs` with an owned ROM to
+regenerate that private data from the addresses the VM actually reads.
+
 The IPL firmware is private data and is never embedded in this repository.
 `check-vm-apu.mjs` injects it into `new APU({ ipl })`, applies `POWER_ON`, and
+loads `sound/boot-dsp.bin` as the power-on DSP register image, then
 constructs `new MasterLink(apu, LINK_TIMING)`. Without an IPL argument it uses
 the high-level `APU.boot(readBootRecords(rom), APU_TIMING)` fallback.
 

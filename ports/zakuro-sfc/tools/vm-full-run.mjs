@@ -1,21 +1,27 @@
 // Runs the VM through the complete native trace and reports write-sequence divergences.
 // Usage: node tools/vm-full-run.mjs <vm-dir> <rom> <apu-ports.tsv> <ipl.bin> <out.json>
-import { readFile, writeFile } from 'node:fs/promises';
+import { createHash } from 'node:crypto';
+import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
 const [vmDir, romPath, tracePath, iplPath, outPath] = process.argv.slice(2);
 const { createApuLink, readApuPorts, readInputTrace, ZakuroVM } = await import(pathToFileURL(resolve(vmDir, 'vm/index.js')));
-const [rom, reference, ipl, inputFrames] = await Promise.all([
-  readFile(romPath), readApuPorts(tracePath), readFile(iplPath),
+const { readProgramData } = await import(pathToFileURL(resolve(vmDir, 'tools/program-data.mjs')));
+const useProgramData = romPath.endsWith('.json') || romPath.endsWith('program');
+const [image, reference, ipl, inputFrames, powerOnDsp] = await Promise.all([
+  useProgramData ? readProgramData(romPath.endsWith('.json') ? dirname(romPath) : romPath) : readFile(romPath),
+  readApuPorts(tracePath), readFile(iplPath),
   readInputTrace(join(dirname(tracePath), 'input.tsv')),
+  readFile(join(dirname(tracePath), '..', 'sound', 'boot-dsp.bin')),
 ]);
 const endMaster = reference.at(-1).master + 21_477_272;
 const FIELD = 357366;
 const got = [];
-const { link } = createApuLink({ rom, ipl });
+const programReads = process.env.ZAKURO_PROGRAM_OUT ? new Set() : null;
+const { link } = createApuLink({ ipl, powerOnDsp });
 const inputFrameOffset = Number(process.env.ZAKURO_INPUT_OFFSET ?? 1);
-const vm = new ZakuroVM({ rom, masterLink: link, inputFrames, inputFrameOffset, trace(access) { got.push(access); } });
+const vm = new ZakuroVM({ ...(useProgramData ? { program: image } : { rom: image }), masterLink: link, inputFrames, inputFrameOffset, onProgramRead: programReads ? offset => programReads.add(offset) : null, trace(access) { got.push(access); } });
 vm.reset();
 const started = Date.now();
 let instructions = 0, error = null, lastReport = 0;
@@ -71,5 +77,26 @@ const result = {
   writes: { ref: refW.length, vm: vmW.length, matched, unmatchedRef: refW.length - matched, maxDriftMaster: maxDrift },
   sections: sections.slice(0, 50), sectionCount: sections.length, driftByFrame: driftByFrame.slice(0, 100),
 };
+if (programReads) {
+  const directory = resolve(process.env.ZAKURO_PROGRAM_OUT);
+  await mkdir(directory, { recursive: true });
+  const offsets = [...programReads].sort((a, b) => a - b);
+  const spans = [];
+  for (const offset of offsets) {
+    const last = spans.at(-1);
+    if (last && offset <= last.end + 256) last.end = offset + 1;
+    else spans.push({ offset, end: offset + 1 });
+  }
+  const ranges = [];
+  for (const [index, span] of spans.entries()) {
+    const data = image.subarray(span.offset, span.end);
+    const file = `range-${String(index).padStart(3, '0')}.bin`;
+    await writeFile(join(directory, file), data);
+    ranges.push({ offset: span.offset, length: data.length, file, sha256: createHash('sha256').update(data).digest('hex') });
+  }
+  await writeFile(join(directory, 'manifest.json'), `${JSON.stringify({ format: 1, mapping: 'LoROM-linear', sourceSha256: createHash('sha256').update(image).digest('hex'), ranges }, null, 2)}\n`);
+  result.programRanges = ranges.length;
+  result.programBytes = ranges.reduce((sum, range) => sum + range.length, 0);
+}
 await writeFile(outPath, JSON.stringify(result, null, 1));
 console.log(JSON.stringify({ ...result, sections: result.sections.slice(0, 5), driftByFrame: result.driftByFrame.slice(0, 20) }, null, 1));
