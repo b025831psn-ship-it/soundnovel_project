@@ -1,9 +1,10 @@
 // Reference sync server (file-backed, no dependencies). Any host that implements the same
-// HTTP API can replace it. Run: node server.mjs [dataDir] [port]
+// HTTP API can replace it. Run: node server.mjs [dataDir] [port] [host=127.0.0.1]
 import http from "node:http";
 import fs from "node:fs";
 import path from "node:path";
 import crypto from "node:crypto";
+import { pathToFileURL } from "node:url";
 
 const MAX_BODY = 256 * 1024;
 const MAX_SLOTS = 200;
@@ -15,7 +16,7 @@ const PAIR = /^[0-9A-HJKMNP-TV-Z]{4}$/;
 // Pairing: a one-time, short-lived 4-character code hands a wrapped secret from one device to another.
 // It is never an account password; failed claims are rate limited per client and globally.
 export function createServer({ dir, maxBody = MAX_BODY, maxSlots = MAX_SLOTS, now = Date.now,
-  pairTtlMs = null, pairSingleUse = false, maxPairs = 1000, maxFailsPerClient = 10, maxFailsGlobal = 200, failWindowMs = 10 * 60 * 1000 } = {}) {
+  maxVaults = 500, maxVaultsPerClientPerHour = 10, pairTtlMs = null, pairSingleUse = false, maxPairs = 1000, maxFailsPerClient = 10, maxFailsGlobal = 200, failWindowMs = 10 * 60 * 1000 } = {}) {
   fs.mkdirSync(dir, { recursive: true });
   const pairFile = path.join(dir, "pairs.json");
   // code -> { blob, auth, expires|null }. Persistent by default (beta: a few dozen users); a short TTL and
@@ -26,6 +27,7 @@ export function createServer({ dir, maxBody = MAX_BODY, maxSlots = MAX_SLOTS, no
   let globalFails = [];
   const recent = (list) => list.filter((t) => now() - t < failWindowMs);
   const clientOf = (req) => req.headers["cf-connecting-ip"] ?? req.socket.remoteAddress ?? "?";
+  const created = new Map(); // client -> vault creation timestamps (last hour)
   const sweep = () => { let n = 0; for (const [c, p] of pairs) if (p.expires != null && p.expires <= now()) { pairs.delete(c); n++; } if (n) savePairs(); };
   const shaOf = (t) => crypto.createHash("sha256").update(t).digest("hex");
   fs.mkdirSync(dir, { recursive: true });
@@ -91,6 +93,12 @@ export function createServer({ dir, maxBody = MAX_BODY, maxSlots = MAX_SLOTS, no
 
       if (req.method === "PUT" && isVaultPath) {
         if (vault) return send(res, 409, { error: "exists" });
+        // Strangers must not be able to fill the disk: cap the number of vaults and how fast one client makes them.
+        const who = clientOf(req);
+        const mine = (created.get(who) ?? []).filter((t) => now() - t < 3600_000);
+        if (mine.length >= maxVaultsPerClientPerHour) return send(res, 429, { error: "too many vaults" });
+        if (fs.readdirSync(dir).filter((f) => /^[0-9a-f]{64}\.json$/.test(f)).length >= maxVaults) return send(res, 429, { error: "server full" });
+        mine.push(now()); created.set(who, mine);
         store(vaultId, { auth: sha(token), saves: {} });
         return send(res, 201, {});
       }
@@ -144,7 +152,8 @@ export function createServer({ dir, maxBody = MAX_BODY, maxSlots = MAX_SLOTS, no
   });
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
-  const [dir = "./vaults", port = "8780"] = process.argv.slice(2);
-  createServer({ dir }).listen(Number(port), () => console.log(`save server on :${port}, data in ${dir}`));
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  // Binds to 127.0.0.1 unless a host is given; put a front (serve.cjs, a proxy) in front for anything else.
+  const [dir = "./vaults", port = "8780", host = "127.0.0.1"] = process.argv.slice(2);
+  createServer({ dir }).listen(Number(port), host, () => console.log(`save server on ${host}:${port}, data in ${dir}`));
 }

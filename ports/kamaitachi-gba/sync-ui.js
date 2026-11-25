@@ -52,7 +52,10 @@ export async function mountSyncUi({ api = ready(), fetchImpl } = {}) {
   let last = null;
   let pass = store.getMeta("passcode") ?? null;
 
-  const server = () => new URLSearchParams(location.search).get("syncServer") ?? store.getMeta("syncServer") ?? "";
+  // Default: the hub's own origin under /sync (serve.cjs forwards it to the save server), so a phone that
+// opens the hub reaches the same server. ?syncServer= or the dialog's address field override it.
+  const server = () => new URLSearchParams(location.search).get("syncServer") ?? store.getMeta("syncServer")
+    ?? (/^https?:$/.test(location.protocol) ? `${location.origin}/sync` : "");
 
   async function connect(secret) {
     const keys = await deriveKeys(secret);
