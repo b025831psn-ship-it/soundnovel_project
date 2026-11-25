@@ -47,6 +47,7 @@ export class SPC700 {
     this.timers = [new Timer(128), new Timer(128), new Timer(16)];
     this.portIn = new Uint8Array(4);  // written by the main CPU, read at $F4-$F7
     this.portOut = new Uint8Array(4); // written by the SPC700, read by the main CPU
+    this.dspDone = 0; this.curOp = 0; this.dspAccessOffset = 0;
     this.reset();
   }
 
@@ -95,7 +96,7 @@ export class SPC700 {
   readIo(addr) {
     switch (addr) {
       case 0xf2: return this.dspAddr;
-      case 0xf3: return this.dsp.read(this.dspAddr & 0x7f);
+      case 0xf3: this.syncDsp(); return this.dsp.read(this.dspAddr & 0x7f);
       case 0xf4: case 0xf5: case 0xf6: case 0xf7: return this.portIn[addr - 0xf4];
       case 0xfd: case 0xfe: case 0xff: {
         const t = this.timers[addr - 0xfd]; const v = t.out; t.out = 0; return v;
@@ -121,6 +122,7 @@ export class SPC700 {
       case 0xf2: this.dspAddr = value; break;
       case 0xf3:
         if (this.dspAddr < 0x80) {
+          this.syncDsp();
           this.dsp.write(this.dspAddr, value);
           if (this.onDspWrite) this.onDspWrite(this.clock, this.dspAddr, value);
         }
@@ -202,7 +204,9 @@ export class SPC700 {
   // Executes one instruction and returns the clocks it took.
   step() {
     if (this.stopped) { this.tick(2); return 2; }
+    this.dspDone = 0;
     const op = this.fetch();
+    this.curOp = op;
     let extra = this.exec(op);
     const clocks = CYCLES[op] + extra;
     this.tick(clocks);
@@ -212,7 +216,17 @@ export class SPC700 {
   tick(clocks) {
     this.clock += clocks;
     for (const t of this.timers) t.tick(clocks);
-    if (this.dsp.tick) this.dsp.tick(clocks);
+    if (this.dsp.tick) this.dsp.tick(clocks - this.dspDone);
+    this.dspDone = 0;
+  }
+
+  // Brings the DSP up to the point inside the current instruction where a $F3 access
+  // takes effect, `dspAccessOffset` clocks after the instruction starts. 0 (the start)
+  // reproduced the reference PCM sample for sample; later offsets did not.
+  syncDsp() {
+    if (!this.dsp.tick) return;
+    const at = Math.min(CYCLES[this.curOp], Math.max(0, this.dspAccessOffset));
+    if (at > this.dspDone) { this.dsp.tick(at - this.dspDone); this.dspDone = at; }
   }
 
   run(clocks) {

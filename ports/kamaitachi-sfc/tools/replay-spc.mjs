@@ -15,7 +15,7 @@ export function replaySpc({ records, spcPorts, dsp, apu = new APU(), lead = 1 })
   const dspGot = [], portGot = [];
   apu.cpu.onDspWrite = (t, r, v) => dspGot.push([t, r, v]);
   apu.cpu.onPortWrite = (t, p, v) => portGot.push([t, p, v]);
-  apu.cpu.uploadRecords(records);
+  apu.boot(records);
   while (!dspGot.length) apu.cpu.step();
   const offset = Number(dsp[0][0]) - dspGot[0][0];
 

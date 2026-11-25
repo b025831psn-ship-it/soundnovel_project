@@ -37,9 +37,11 @@
 - `tools/boot-driver.mjs <rom>`: 소유 ROM(SHA-256 `3228a3b3…`)에서 IPL 레코드 4개를 읽어 드라이버를 부팅하고, CPU `$00:B7BE`의 부팅 handshake(`"Chun"` 쓰기 → `"SOFT"` 응답 → port 0에 0)를 재생한다. DSP 쓰기를 `clock reg value` TSV로 출력한다. 2026-11-25 확인: SOFT 응답 54,500클록, 드라이버 main loop(`$11C6` receiver) 진입, 첫 1초 DSP 쓰기 237건(대부분 KOFF).
 - `tools/replay-trace.mjs <rom> <apu-ports.tsv> <dsp-writes.tsv>`: 에뮬레이터의 APU 포트 로그를 시간에 맞춰 재생하고, CPU가 읽은 포트 값과 DSP 쓰기 순서(reg, value)를 자동 대조한다. 첫 불일치 위치와 클록 오차 최대값을 출력한다. 로그 형식은 PR #24 댓글 7149110384.
 
-### 대조 결과 (2026-11-25, kamaitachi-sfc-kor d07f1ef 로그 기준)
+### 대조 결과 (2026-11-25, kamaitachi-sfc-kor 76b42db 로그 기준)
 
 - 부팅 handshake 직후 ARAM 64 KiB가 `boot-aram.bin`과 완전히 같다. DSP는 드라이버가 쓴 레지스터가 모두 같고, 나머지 81개는 드라이버가 쓰지 않은 전원 투입 값이다.
-- `tools/replay-spc.mjs`: SPC 쪽 포트 로그(`spc-ports.tsv`)의 입력을 원본 SPC 클록에 맞춰 넣으면, reset부터 첫 선택지(frame 5700)까지 SPC가 포트에 쓴 값 37,772건과 DSP 쓰기 53,944건이 순서·값 모두 원본과 같다. DSP 쓰기 시각 차이는 최대 763 SPC 클록(약 0.75 ms)이다.
-- 이 결과를 얻기 전 BRA(`$2F`)에 분기 클록 2를 중복으로 더하던 오류를 고쳤다. 스트리밍 수신 루프가 한 바퀴에 4클록 느려져 전송이 밀렸다.
+- `tools/replay-spc.mjs`: reset부터 첫 선택지(frame 5700)까지 SPC 포트 쓰기 37,772건과 DSP 쓰기 53,944건이 순서·값이 모두 같고, 시각 차이는 최대 1 SPC 클록이다.
+- `tools/compare-pcm.mjs`: frame 40~1000의 S-DSP 출력 512,331 스테레오 샘플(1,024,662값)이 원본 PCM과 전부 같다.
+- 일치에 필요했던 것: S-DSP를 32단계 클록 처리로 바꾼 것, DSP 접근을 명령 시작 시점에 반영한 것, 전원 투입 뒤 IPL 동안(621,677클록) DSP와 타이머 분주기가 계속 돌았다는 점을 `APU.boot()`에 넣은 것, BRA 클록 중복 가산 수정.
 - `tools/replay-trace.mjs`는 CPU 쪽 로그(`apu-ports.tsv`) 기준 대조다. CPU가 읽은 APU 응답 4,209,120건이 모두 맞는다.
+- `sound/master-link.js`: 65c816 VM 연결. VM의 master clock을 `15664/328125`(나머지 누적)로 SPC 클록에 옮기고, `$2140–$2143` 접근 전에 APU를 그 시각까지 진행한다.

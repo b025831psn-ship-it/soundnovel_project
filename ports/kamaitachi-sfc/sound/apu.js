@@ -12,6 +12,18 @@ export class APU {
     this.dsp = new SDSP(this.cpu.ram, { gauss });
     this.cpu.dsp = this.dsp;
   }
+  // Boots the driver from `[len, dest, payload]` records. `iplClocks` is how long the IPL
+  // transfer ran on hardware; the DSP and the timer dividers free-run from power-on, so
+  // their phase at the driver's first instruction depends on it. 621,677 clocks is this
+  // game's measured boot (reference probe), which makes the output match sample for sample.
+  boot(records, { iplClocks = 621677 } = {}) {
+    const cb = this.dsp.onSample; this.dsp.onSample = null;
+    this.dsp.tick(iplClocks);
+    this.dsp.onSample = cb;
+    for (const t of this.cpu.timers) t.phase = (iplClocks - 1) % t.period;
+    return this.cpu.uploadRecords(records);
+  }
+
   cpuWrite(port, value) { this.cpu.portIn[port & 3] = value & 0xff; }
   cpuRead(port) { return this.cpu.portOut[port & 3]; }
   run(clocks) { this.cpu.run(clocks); }

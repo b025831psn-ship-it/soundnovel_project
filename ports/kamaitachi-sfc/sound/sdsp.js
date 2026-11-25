@@ -1,7 +1,6 @@
-// S-DSP: 8 BRR voices, ADSR/GAIN envelopes, gaussian interpolation, noise, pitch
-// modulation, echo with 8-tap FIR. One stereo sample per 32 SPC700 clocks (32 kHz).
-// Runs at sample granularity: register reads/writes take effect on the next sample,
-// not at the per-voice clock phase inside a sample.
+// S-DSP at clock granularity: each sample is 32 phases, one per SPC700 clock, and every
+// voice and echo step runs at its hardware phase. Register writes land between phases, so
+// a write is seen by exactly the steps that read that register after it.
 // The 512-entry gaussian table is chip data and is passed in, not shipped here.
 
 const RATES = Int32Array.from([0x7800, 2048, 1536, 1280, 1024, 768, 640, 512, 384, 320, 256, 192, 160, 128, 96, 80,
@@ -15,29 +14,36 @@ const clamp16 = (v) => (v > 32767 ? 32767 : v < -32768 ? -32768 : v);
 const s16 = (v) => (v << 16) >> 16;
 const s8 = (v) => (v << 24) >> 24;
 
-// Global register addresses.
 const R = { MVOLL: 0x0c, MVOLR: 0x1c, EVOLL: 0x2c, EVOLR: 0x3c, KON: 0x4c, KOFF: 0x5c, FLG: 0x6c, ENDX: 0x7c,
   EFB: 0x0d, PMON: 0x2d, NON: 0x3d, EON: 0x4d, DIR: 0x5d, ESA: 0x6d, EDL: 0x7d };
 
 class Voice {
   constructor(i) {
     this.i = i; this.bit = 1 << i; this.base = i << 4;
-    this.buf = new Int32Array(12); this.bufPos = 0; // ring of decoded samples
+    this.buf = new Int32Array(24); this.bufPos = 0; // 12 samples, second copy for wrap-around
     this.brrAddr = 0; this.brrOffset = 1; this.interp = 0;
-    this.env = 0; this.hidden = 0; this.mode = RELEASE; this.konDelay = 0; this.out = 0;
+    this.env = 0; this.hidden = 0; this.mode = RELEASE; this.konDelay = 0; this.envxOut = 0;
   }
 }
 
 export class SDSP {
-  constructor(aram, { gauss = null } = {}) {
+  constructor(aram, { gauss = null, phase = 0 } = {}) {
     this.ram = aram;
     this.regs = new Uint8Array(128);
     this.gauss = gauss ? Int16Array.from(gauss) : null;
     if (this.gauss && this.gauss.length !== 512) throw new Error('gaussian table must have 512 entries');
-    this.voices = Array.from({ length: 8 }, (_, i) => new Voice(i));
-    this.phase = 0; this.counter = 0; this.everyOther = 0; this.kon = 0; this.newKon = 0; this.koff = 0;
-    this.noise = 0x4000; this.echoPos = 0; this.echoLen = 4; this.echoBase = 0;
-    this.hist = [new Int32Array(8), new Int32Array(8)];
+    this.v = Array.from({ length: 8 }, (_, i) => new Voice(i));
+    this.phase = phase & 31;
+    this.counter = 0; this.everyOther = 1; this.kon = 0; this.newKon = 0; this.tKoff = 0;
+    this.noise = 0x4000;
+    // per-sample latches
+    this.tDir = 0; this.tDirAddr = 0; this.tSrcn = 0; this.tPitch = 0; this.tAdsr0 = 0;
+    this.tBrrNext = 0; this.tBrrByte = 0; this.tBrrHeader = 0; this.tOutput = 0; this.tLooped = 0;
+    this.tPmon = 0; this.tNon = 0; this.tEon = 0; this.tEsa = 0; this.tEchoEnabled = 0;
+    this.endxBuf = 0; this.outxBuf = 0; this.envxBuf = 0;
+    this.mainOut = [0, 0]; this.echoOut = [0, 0]; this.echoIn = [0, 0];
+    this.echoOffset = 0; this.echoLength = 0; this.echoPtr = 0;
+    this.hist = [new Int32Array(16), new Int32Array(16)]; this.histPos = 0;
     this.regs[R.FLG] = 0xe0;
     this.onSample = null; // (left, right)
   }
@@ -46,34 +52,38 @@ export class SDSP {
 
   write(addr, value) {
     this.regs[addr] = value;
-    if (addr === R.KON) this.newKon = value;
-    else if (addr === R.ENDX) this.regs[R.ENDX] = 0;
+    switch (addr & 0x0f) {
+      case 0x08: this.envxBuf = value; break;
+      case 0x09: this.outxBuf = value; break;
+      case 0x0c:
+        if (addr === R.KON) this.newKon = value;
+        if (addr === R.ENDX) { this.endxBuf = 0; this.regs[R.ENDX] = 0; }
+        break;
+    }
   }
 
-  tick(clocks) {
-    this.phase += clocks;
-    while (this.phase >= 32) { this.phase -= 32; this.sample(); }
-  }
+  tick(clocks) { for (let i = 0; i < clocks; i++) this.step(); }
+  sample() { this.tick(32); }
+  get voices() { return this.v; }
 
   readCounter(rate) { return ((this.counter + OFFSETS[rate]) % RATES[rate]) !== 0; }
 
   envelope(v) {
     let env = v.env;
     if (v.mode === RELEASE) { env -= 8; if (env < 0) env = 0; v.env = env; return; }
-    const adsr0 = this.regs[v.base | 5];
     let data = this.regs[v.base | 6]; let rate;
-    if (adsr0 & 0x80) {
+    if (this.tAdsr0 & 0x80) {
       if (v.mode >= DECAY) {
         env--; env -= env >> 8; rate = data & 0x1f;
-        if (v.mode === DECAY) rate = ((adsr0 >> 3) & 0x0e) + 0x10;
-      } else { rate = (adsr0 & 0x0f) * 2 + 1; env += rate < 31 ? 0x20 : 0x400; }
+        if (v.mode === DECAY) rate = ((this.tAdsr0 >> 3) & 0x0e) + 0x10;
+      } else { rate = (this.tAdsr0 & 0x0f) * 2 + 1; env += rate < 31 ? 0x20 : 0x400; }
     } else {
       data = this.regs[v.base | 7]; const mode = data >> 5;
       if (mode < 4) { env = data * 0x10; rate = 31; } else {
         rate = data & 0x1f;
         if (mode === 4) env -= 0x20;
         else if (mode < 6) { env--; env -= env >> 8; }
-        else { env += 0x20; if (mode > 6 && v.hidden >= 0x600) env += 0x8 - 0x20; }
+        else { env += 0x20; if (mode > 6 && (v.hidden >>> 0) >= 0x600) env += 0x8 - 0x20; }
       }
     }
     if ((env >> 8) === (data >> 5) && v.mode === DECAY) v.mode = SUSTAIN;
@@ -82,137 +92,221 @@ export class SDSP {
     if (!this.readCounter(rate)) v.env = env;
   }
 
-  // Decodes the next 4 samples of the current BRR block into the voice ring.
   decodeBrr(v) {
-    const header = this.ram[v.brrAddr];
-    const shift = header >> 4, filter = header & 0x0c;
-    for (let k = 0; k < 2; k++) {
-      const byte = this.ram[(v.brrAddr + v.brrOffset + k) & 0xffff];
-      for (const nib of [byte >> 4, byte & 0x0f]) {
-        let s = (nib << 28) >> 28;
-        s = (s << shift) >> 1;
-        if (shift >= 0x0d) s = (s >> 25) << 11;
-        const p1 = v.buf[(v.bufPos + 11) % 12];
-        const p2 = v.buf[(v.bufPos + 10) % 12] >> 1;
-        if (filter >= 8) {
-          s += p1; s -= p2;
-          if (filter === 8) { s += p2 >> 4; s += (p1 * -3) >> 6; }
-          else { s += (p1 * -13) >> 7; s += (p2 * 3) >> 4; }
-        } else if (filter) { s += p1 >> 1; s += (-p1) >> 5; }
-        s = s16(clamp16(s) * 2);
-        v.buf[v.bufPos] = s; v.bufPos = (v.bufPos + 1) % 12;
-      }
-    }
-    v.brrOffset += 2;
-    if (v.brrOffset >= 9) {
-      v.brrOffset = 1;
-      if (header & 1) {
-        this.regs[R.ENDX] |= v.bit;
-        const dir = (this.regs[R.DIR] << 8) + this.regs[v.base | 4] * 4;
-        v.brrAddr = this.ram[(dir + 2) & 0xffff] | (this.ram[(dir + 3) & 0xffff] << 8);
-        if (!(header & 2)) { v.mode = RELEASE; v.env = 0; }
-      } else v.brrAddr = (v.brrAddr + 9) & 0xffff;
+    let nybbles = (this.tBrrByte << 8) | this.ram[(v.brrAddr + v.brrOffset + 1) & 0xffff];
+    const header = this.tBrrHeader, shift = header >> 4, filter = header & 0x0c;
+    let pos = v.bufPos;
+    v.bufPos += 4; if (v.bufPos >= 12) v.bufPos = 0;
+    for (let k = 0; k < 4; k++, pos++, nybbles <<= 4) {
+      let s = s16(nybbles) >> 12;
+      s = (s << shift) >> 1;
+      if (shift >= 0x0d) s = (s >> 25) << 11;
+      const p1 = v.buf[pos + 11], p2 = v.buf[pos + 10] >> 1;
+      if (filter >= 8) {
+        s += p1; s -= p2;
+        if (filter === 8) { s += p2 >> 4; s += (p1 * -3) >> 6; }
+        else { s += (p1 * -13) >> 7; s += (p2 * 3) >> 4; }
+      } else if (filter) { s += p1 >> 1; s += (-p1) >> 5; }
+      s = s16(clamp16(s) * 2);
+      v.buf[pos + 12] = s; v.buf[pos] = s;
     }
   }
 
   interpolate(v) {
     const off = (v.interp >> 4) & 0xff;
-    const g = this.gauss; const pos = v.bufPos + (v.interp >> 12);
-    const at = (k) => v.buf[(pos + k) % 12];
+    const p = (v.interp >> 12) + v.bufPos; const b = v.buf; const g = this.gauss;
     let out;
     if (g) {
-      out = (g[255 - off] * at(0)) >> 11;
-      out += (g[511 - off] * at(1)) >> 11;
-      out += (g[256 + off] * at(2)) >> 11;
+      out = (g[255 - off] * b[p]) >> 11;
+      out += (g[511 - off] * b[p + 1]) >> 11;
+      out += (g[256 + off] * b[p + 2]) >> 11;
       out = s16(out);
-      out += (g[off] * at(3)) >> 11;
+      out += (g[off] * b[p + 3]) >> 11;
     } else { // linear stand-in for tests without the chip table
-      out = (at(1) * (256 - off) + at(2) * off) >> 8;
+      out = (b[p + 1] * (256 - off) + b[p + 2] * off) >> 8;
     }
     return clamp16(out) & ~1;
   }
 
-  sample() {
-    const regs = this.regs;
-    if (--this.counter < 0) this.counter = COUNTER_RANGE - 1;
-    if ((this.everyOther ^= 1)) {
-      this.newKon &= ~this.kon; this.kon = this.newKon; this.koff = regs[R.KOFF];
+  // ---- voice steps ----
+  V1(v) { this.tDirAddr = (this.tDir * 0x100 + this.tSrcn * 4) & 0xffff; this.tSrcn = this.regs[v.base | 4]; }
+  V2(v) {
+    let e = this.tDirAddr; if (!v.konDelay) e += 2;
+    this.tBrrNext = this.ram[e & 0xffff] | (this.ram[(e + 1) & 0xffff] << 8);
+    this.tAdsr0 = this.regs[v.base | 5];
+    this.tPitch = this.regs[v.base | 2];
+  }
+  V3a(v) { this.tPitch += (this.regs[v.base | 3] & 0x3f) << 8; }
+  V3b(v) {
+    this.tBrrByte = this.ram[(v.brrAddr + v.brrOffset) & 0xffff];
+    this.tBrrHeader = this.ram[v.brrAddr];
+  }
+  V3c(v) {
+    if (this.tPmon & v.bit) this.tPitch += ((this.tOutput >> 5) * this.tPitch) >> 10;
+    if (v.konDelay) {
+      if (v.konDelay === 5) { v.brrAddr = this.tBrrNext; v.brrOffset = 1; v.bufPos = 0; this.tBrrHeader = 0; }
+      v.env = 0; v.hidden = 0;
+      v.interp = 0;
+      if (--v.konDelay & 3) v.interp = 0x4000;
+      this.tPitch = 0;
     }
-    const flg = regs[R.FLG];
-    if (!this.readCounter(flg & 0x1f)) {
+    let output = this.interpolate(v);
+    if (this.tNon & v.bit) output = s16(this.noise * 2);
+    this.tOutput = ((output * v.env) >> 11) & ~1;
+    v.envxOut = (v.env >> 4) & 0xff;
+    if ((this.regs[R.FLG] & 0x80) || (this.tBrrHeader & 3) === 1) { v.mode = RELEASE; v.env = 0; }
+    if (this.everyOther) {
+      if (this.tKoff & v.bit) v.mode = RELEASE;
+      if (this.kon & v.bit) { v.konDelay = 5; v.mode = ATTACK; }
+    }
+    if (!v.konDelay) this.envelope(v);
+  }
+  V3(v) { this.V3a(v); this.V3b(v); this.V3c(v); }
+  output(v, ch) {
+    const amp = (this.tOutput * s8(this.regs[v.base | ch])) >> 7;
+    this.mainOut[ch] = clamp16(this.mainOut[ch] + amp);
+    if (this.tEon & v.bit) this.echoOut[ch] = clamp16(this.echoOut[ch] + amp);
+  }
+  V4(v) {
+    this.tLooped = 0;
+    if (v.interp >= 0x4000) {
+      this.decodeBrr(v);
+      if ((v.brrOffset += 2) >= 9) {
+        v.brrAddr = (v.brrAddr + 9) & 0xffff;
+        if (this.tBrrHeader & 1) { v.brrAddr = this.tBrrNext; this.tLooped = v.bit; }
+        v.brrOffset = 1;
+      }
+    }
+    v.interp = (v.interp & 0x3fff) + this.tPitch;
+    if (v.interp > 0x7fff) v.interp = 0x7fff;
+    this.output(v, 0);
+  }
+  V5(v) {
+    this.output(v, 1);
+    let endx = this.regs[R.ENDX] | this.tLooped;
+    if (v.konDelay === 5) endx &= ~v.bit;
+    this.endxBuf = endx & 0xff;
+  }
+  V6() { this.outxBuf = (this.tOutput >> 8) & 0xff; }
+  V7(v) { this.regs[R.ENDX] = this.endxBuf; this.envxBuf = v.envxOut; }
+  V8(v) { this.regs[v.base | 9] = this.outxBuf; }
+  V9(v) { this.regs[v.base | 8] = this.envxBuf; }
+  V7_V4_V1(i) { this.V7(this.v[i]); this.V4(this.v[(i + 1) & 7]); this.V1(this.v[(i + 3) & 7]); }
+  V8_V5_V2(i) { this.V8(this.v[i]); this.V5(this.v[(i + 1) & 7]); this.V2(this.v[(i + 2) & 7]); }
+  V9_V6_V3(i) { this.V9(this.v[i]); this.V6(this.v[(i + 1) & 7]); this.V3(this.v[(i + 2) & 7]); }
+
+  // ---- echo ----
+  fir(i, ch) { return (this.hist[ch][this.histPos + i + 1] * s8(this.regs[(i << 4) | 0x0f])) >> 6; }
+  echoRead(ch) {
+    const a = (this.echoPtr + ch * 2) & 0xffff;
+    const s = s16(this.ram[a] | (this.ram[(a + 1) & 0xffff] << 8));
+    this.hist[ch][this.histPos] = s >> 1; this.hist[ch][this.histPos + 8] = s >> 1;
+  }
+  echoOutput(ch) {
+    const out = s16((this.mainOut[ch] * s8(this.regs[R.MVOLL + ch * 0x10])) >> 7)
+      + s16((this.echoIn[ch] * s8(this.regs[R.EVOLL + ch * 0x10])) >> 7);
+    return clamp16(out);
+  }
+  echoWrite(ch) {
+    if (!(this.tEchoEnabled & 0x20)) {
+      const a = (this.echoPtr + ch * 2) & 0xffff, v = this.echoOut[ch];
+      this.ram[a] = v & 0xff; this.ram[(a + 1) & 0xffff] = (v >> 8) & 0xff;
+    }
+    this.echoOut[ch] = 0;
+  }
+  echo22() {
+    if (++this.histPos >= 8) this.histPos = 0;
+    this.echoPtr = (this.tEsa * 0x100 + this.echoOffset) & 0xffff;
+    this.echoRead(0);
+    this.echoIn[0] = this.fir(0, 0); this.echoIn[1] = this.fir(0, 1);
+  }
+  echo23() {
+    this.echoIn[0] += this.fir(1, 0) + this.fir(2, 0); this.echoIn[1] += this.fir(1, 1) + this.fir(2, 1);
+    this.echoRead(1);
+  }
+  echo24() {
+    this.echoIn[0] += this.fir(3, 0) + this.fir(4, 0) + this.fir(5, 0);
+    this.echoIn[1] += this.fir(3, 1) + this.fir(4, 1) + this.fir(5, 1);
+  }
+  echo25() {
+    let l = s16(this.echoIn[0] + this.fir(6, 0)), r = s16(this.echoIn[1] + this.fir(6, 1));
+    l += s16(this.fir(7, 0)); r += s16(this.fir(7, 1));
+    this.echoIn[0] = clamp16(l) & ~1; this.echoIn[1] = clamp16(r) & ~1;
+  }
+  echo26() {
+    this.mainOut[0] = this.echoOutput(0);
+    const efb = s8(this.regs[R.EFB]);
+    const l = clamp16(this.echoOut[0] + s16((this.echoIn[0] * efb) >> 7));
+    const r = clamp16(this.echoOut[1] + s16((this.echoIn[1] * efb) >> 7));
+    this.echoOut[0] = l & ~1; this.echoOut[1] = r & ~1;
+  }
+  echo27() {
+    let l = this.mainOut[0], r = this.echoOutput(1);
+    this.mainOut[0] = 0; this.mainOut[1] = 0;
+    if (this.regs[R.FLG] & 0x40) { l = 0; r = 0; }
+    if (this.onSample) this.onSample(l, r);
+  }
+  echo28() { this.tEchoEnabled = this.regs[R.FLG]; }
+  echo29() {
+    this.tEsa = this.regs[R.ESA];
+    if (!this.echoOffset) this.echoLength = (this.regs[R.EDL] & 0x0f) * 0x800;
+    this.echoOffset += 4;
+    if (this.echoOffset >= this.echoLength) this.echoOffset = 0;
+    this.echoWrite(0);
+    this.tEchoEnabled = this.regs[R.FLG];
+  }
+  echo30() { this.echoWrite(1); }
+
+  // ---- misc ----
+  misc27() { this.tPmon = this.regs[R.PMON] & 0xfe; }
+  misc28() { this.tNon = this.regs[R.NON]; this.tEon = this.regs[R.EON]; this.tDir = this.regs[R.DIR]; }
+  misc29() { if ((this.everyOther ^= 1)) this.newKon &= ~this.kon; }
+  misc30() {
+    if (this.everyOther) { this.kon = this.newKon; this.tKoff = this.regs[R.KOFF]; }
+    if (--this.counter < 0) this.counter = COUNTER_RANGE - 1;
+    if (!this.readCounter(this.regs[R.FLG] & 0x1f)) {
       const fb = (this.noise << 13) ^ (this.noise << 14);
       this.noise = (fb & 0x4000) ^ (this.noise >> 1);
     }
+  }
 
-    let mainL = 0, mainR = 0, echoL = 0, echoR = 0, prevOut = 0;
-    const pmon = regs[R.PMON], non = regs[R.NON], eon = regs[R.EON];
-    for (const v of this.voices) {
-      let pitch = (regs[v.base | 2] | (regs[v.base | 3] << 8)) & 0x3fff;
-      if ((pmon & v.bit) && v.i > 0) pitch += ((prevOut >> 5) * pitch) >> 10;
-
-      if (this.kon & v.bit && v.konDelay === 0) {
-        v.konDelay = 5; v.mode = ATTACK; regs[R.ENDX] &= ~v.bit;
-      }
-      if (v.konDelay) {
-        if (v.konDelay === 5) {
-          const dir = (regs[R.DIR] << 8) + regs[v.base | 4] * 4;
-          v.brrAddr = this.ram[dir & 0xffff] | (this.ram[(dir + 1) & 0xffff] << 8);
-          v.brrOffset = 1; v.bufPos = 0; v.buf.fill(0);
-        }
-        v.env = 0; v.hidden = 0;
-        v.interp = (--v.konDelay & 3) ? 0x4000 : 0;
-        pitch = 0;
-      }
-
-      let out = (non & v.bit) ? s16(this.noise * 2) : this.interpolate(v);
-      out = ((out * v.env) >> 11) & ~1;
-      v.out = out; prevOut = out;
-      regs[v.base | 8] = v.env >> 4;
-      regs[v.base | 9] = (out >> 8) & 0xff;
-
-      if ((this.koff & v.bit) || (flg & 0x80)) v.mode = RELEASE;
-      if (flg & 0x80) v.env = 0;
-      if (!v.konDelay) this.envelope(v);
-
-      const l = (out * s8(regs[v.base | 0])) >> 7;
-      const r = (out * s8(regs[v.base | 1])) >> 7;
-      mainL = clamp16(mainL + l); mainR = clamp16(mainR + r);
-      if (eon & v.bit) { echoL = clamp16(echoL + l); echoR = clamp16(echoR + r); }
-
-      const step = v.interp + pitch;
-      v.interp = step > 0x7fff ? 0x7fff : step;
-      if (v.interp >= 0x4000) { this.decodeBrr(v); v.interp -= 0x4000; }
+  step() {
+    const v = this.v;
+    switch (this.phase) {
+      case 0: this.V5(v[0]); this.V2(v[1]); break;
+      case 1: this.V6(v[0]); this.V3(v[1]); break;
+      case 2: this.V7_V4_V1(0); break;
+      case 3: this.V8_V5_V2(0); break;
+      case 4: this.V9_V6_V3(0); break;
+      case 5: this.V7_V4_V1(1); break;
+      case 6: this.V8_V5_V2(1); break;
+      case 7: this.V9_V6_V3(1); break;
+      case 8: this.V7_V4_V1(2); break;
+      case 9: this.V8_V5_V2(2); break;
+      case 10: this.V9_V6_V3(2); break;
+      case 11: this.V7_V4_V1(3); break;
+      case 12: this.V8_V5_V2(3); break;
+      case 13: this.V9_V6_V3(3); break;
+      case 14: this.V7_V4_V1(4); break;
+      case 15: this.V8_V5_V2(4); break;
+      case 16: this.V9_V6_V3(4); break;
+      case 17: this.V1(v[0]); this.V7(v[5]); this.V4(v[6]); break;
+      case 18: this.V8_V5_V2(5); break;
+      case 19: this.V9_V6_V3(5); break;
+      case 20: this.V1(v[1]); this.V7(v[6]); this.V4(v[7]); break;
+      case 21: this.V8(v[6]); this.V5(v[7]); this.V2(v[0]); break;
+      case 22: this.V3a(v[0]); this.V9(v[6]); this.V6(v[7]); this.echo22(); break;
+      case 23: this.V7(v[7]); this.echo23(); break;
+      case 24: this.V8(v[7]); this.echo24(); break;
+      case 25: this.V3b(v[0]); this.V9(v[7]); this.echo25(); break;
+      case 26: this.echo26(); break;
+      case 27: this.misc27(); this.echo27(); break;
+      case 28: this.misc28(); this.echo28(); break;
+      case 29: this.misc29(); this.echo29(); break;
+      case 30: this.misc30(); this.V3c(v[0]); this.echo30(); break;
+      case 31: this.V4(v[0]); this.V1(v[2]); break;
     }
-
-    // Echo: read history, FIR, feedback write.
-    if (this.echoPos === 0) {
-      this.echoBase = regs[R.ESA] << 8;
-      this.echoLen = (regs[R.EDL] & 0x0f) ? (regs[R.EDL] & 0x0f) * 0x800 : 4;
-    }
-    const ea = (this.echoBase + this.echoPos) & 0xffff;
-    const rd = (a) => s16(this.ram[a & 0xffff] | (this.ram[(a + 1) & 0xffff] << 8));
-    const inEcho = [0, 0];
-    for (let ch = 0; ch < 2; ch++) {
-      const h = this.hist[ch];
-      h.copyWithin(0, 1); h[7] = rd(ea + ch * 2) >> 1;
-      let sum = 0;
-      for (let t = 0; t < 7; t++) sum += (h[t] * s8(regs[(t << 4) | 0x0f])) >> 6;
-      sum = s16(sum);
-      sum += (h[7] * s8(regs[0x7f])) >> 6;
-      inEcho[ch] = clamp16(sum) & ~1;
-    }
-    let outL = clamp16(((mainL * s8(regs[R.MVOLL])) >> 7) + ((inEcho[0] * s8(regs[R.EVOLL])) >> 7));
-    let outR = clamp16(((mainR * s8(regs[R.MVOLR])) >> 7) + ((inEcho[1] * s8(regs[R.EVOLR])) >> 7));
-    if (!(flg & 0x20)) {
-      const efb = s8(regs[R.EFB]);
-      const wl = clamp16(echoL + s16((inEcho[0] * efb) >> 7)) & ~1;
-      const wr = clamp16(echoR + s16((inEcho[1] * efb) >> 7)) & ~1;
-      this.ram[ea & 0xffff] = wl & 0xff; this.ram[(ea + 1) & 0xffff] = (wl >> 8) & 0xff;
-      this.ram[(ea + 2) & 0xffff] = wr & 0xff; this.ram[(ea + 3) & 0xffff] = (wr >> 8) & 0xff;
-    }
-    this.echoPos += 4; if (this.echoPos >= this.echoLen) this.echoPos = 0;
-    if (flg & 0x40) { outL = 0; outR = 0; }
-    if (this.onSample) this.onSample(outL, outR);
+    this.phase = (this.phase + 1) & 31;
   }
 }
 
