@@ -33,9 +33,14 @@ const screen = new Screen(document.querySelector("#screen"));
 const scene = new SceneLoader(assets, screen);
 const text = new TextWindow({ 1: "透", 2: "真理" });
 const input = new GBAInput();
+// Opcode 57 lists (A/B rows over the story) are drawn by the screen; opcode 13 menus (welcome
+// screen) put their labels under the story text, which PageText keeps drawing.
 const choiceView = {
-  show: (choices, selected) => screen.showChoices(font, text.pageRaw, choices, selected),
-  hide: () => screen.clearChoices(),
+  show: (choices, selected) => {
+    if (vm.choiceState?.opcode === 0x13) page.showMenu(choices, selected, vm.choiceState.entries);
+    else screen.showChoices(font, text.pageRaw, choices, selected);
+  },
+  hide: () => { page.hideMenu(); screen.clearChoices(); },
 };
 const entryRow = Number.parseInt(new URLSearchParams(location.search).get("entryRow") ?? "31000", 10);
 const vm = new VM({ banks, scene, text, musicMap: music.request_to_song, audio: sound,

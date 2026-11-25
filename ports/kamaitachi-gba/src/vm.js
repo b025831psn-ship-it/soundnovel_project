@@ -273,7 +273,12 @@ export class VM {
       this.ram.choiceActive = 1;
       this.ram.effectDisabled = 1;
       this.text?.beginChoices?.(entries.length);
-    } else if (!this.ram.choiceSkip) this.waiting = "choice"; // 1D 1C: opcode 16 picks the entry
+    } else {
+      // 080040A0 also sets 0200077E: the 14/00/02/17/15 that follow collect the labels and
+      // opcode 16 waits (19:15F welcome menu). 1D 1C makes 16 take the preset entry instead.
+      this.ram.choiceActive = 1;
+      this.text?.beginChoices?.(entries.length);
+    }
     return [
       count,
       index,
@@ -344,7 +349,10 @@ export class VM {
         this.ram.stack.push({ bank: this.bank, offset: this.offset });
         if (this.ram.choiceActive) {
           const index = this.choiceState?.entries.findIndex((entry) => entry.row === row);
-          if (index >= 0) this.collectingChoice = index;
+          if (index >= 0) {
+            this.collectingChoice = index;
+            this.choiceState.entries[index].x = this.ram.textX;
+          }
         }
         this.branch(row);
         break;
@@ -450,6 +458,8 @@ export class VM {
         break;
       case 0x14:
         args.push(this.byte());
+        // 0800814C: the text x origin of the current window becomes the operand + 8.
+        this.ram.textX = args[0] + 8;
         break;
       case 0x15: {
         if (this.ram.effectBypass === 1) {
