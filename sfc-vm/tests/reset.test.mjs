@@ -104,7 +104,7 @@ test('timestamps APUIO at the bus transaction and routes it through MasterLink',
   bus.write8(0x2141, 0x7f, 656250);
   assert.deepEqual(calls, [['read', 15663, 2]], 'read observes only completed SPC instructions; write is queued');
   link.sync(656400);
-  assert.deepEqual(calls, [['read', 15663, 2], ['write', 31331, 1, 0x7f]]);
+  assert.deepEqual(calls, [['read', 15663, 2], ['write', 31335, 1, 0x7f]]);
   assert.deepEqual(bus.apuTrace, [
     { masterCycle: 328125, direction: 'r', port: 2, value: 0x52 },
     { masterCycle: 656250, direction: 'w', port: 1, value: 0x7f },

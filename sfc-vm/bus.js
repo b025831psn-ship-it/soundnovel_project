@@ -114,8 +114,11 @@ export class SfcBus {
     else if ((bank & 0x40) === 0 && word >= 0x2140 && word <= 0x2143) {
       const port = word - 0x2140;
       if (this.masterLink) {
-        this.masterLink.write(masterCycle, port, value);
+        // This is a CPU-bus trace. Record the store before advancing/delivering
+        // anything on the SPC side; APU consumption may happen later at an
+        // opcode-specific port-read point.
         this.recordApuAccess(masterCycle, 'w', port, value);
+        this.masterLink.write(masterCycle, port, value);
         return;
       }
       this.apuInputPorts[port] = value;
