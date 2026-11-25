@@ -391,6 +391,79 @@ def scenario_choice(data, source):
     return choices
 
 
+def first_choice_program(data):
+    """Emit original SN4 commands needed from the first name input to choice branches."""
+    label_pattern = re.compile(rb"\x85[\x0b\x0c][\x0c\x0d](myb?0[12]_[0-9]{4})\x00\x22")
+    labels = list(label_pattern.finditer(data))
+    blocks = {a[1].decode("ascii"): (a.end(), data[a.end():b.start()])
+              for a, b in zip(labels, labels[1:])}
+
+    def decode(name, stop_at_choice=False, first_text_only=False):
+        base, block = blocks[name]
+        pos = block.find(b"\x02") if first_text_only else 0
+        if pos < 0:
+            raise ValueError(f"Missing text in {name}")
+        ops = []
+        while pos < len(block):
+            offset = base + pos
+            op = block[pos]
+            pos += 1
+            if op == 0x02:
+                end = block.index(b"\x03", pos)
+                ops.append({"op": op, "offset": offset,
+                            "args": [block[pos:end].decode("cp932")]})
+                pos = end + 1
+            elif op in (0x04, 0x09, 0x0B, 0x0D, 0x0E, 0x12, 0x13, 0x1E):
+                ops.append({"op": op, "offset": offset, "args": []})
+                if first_text_only and op in (0x09, 0x0B, 0x16):
+                    break
+            elif op in (0x40, 0x46):
+                ops.append({"op": op, "offset": offset, "args": [block[pos]]})
+                pos += 1
+            elif op in (0x50, 0x55, 0x65):
+                ops.append({"op": op, "offset": offset,
+                            "args": [int.from_bytes(block[pos:pos + 4], "big")]})
+                pos += 4
+            elif op in (0x72, 0x73, 0x74):
+                size = block[pos]
+                raw = block[pos + 1:pos + 1 + size]
+                if len(raw) != size or not raw.endswith(b"\0"):
+                    raise ValueError(f"Invalid resource command in {name} at {offset:#x}")
+                ops.append({"op": op, "offset": offset, "args": [raw[:-1].decode("ascii")]})
+                pos += size + 1
+            elif op == 0x6C:
+                size = block[pos]
+                payload = block[pos + 1:pos + 1 + size]
+                targets = select_destinations(bytes((op, size)) + payload)
+                ops.append({"op": op, "offset": offset,
+                            "args": [[target.decode("ascii") for target in targets]]})
+                pos += size + 1
+                if stop_at_choice:
+                    break
+            elif op == 0x70:
+                size = block[pos]
+                payload = block[pos + 1:pos + 1 + size]
+                if len(payload) != size:
+                    raise ValueError(f"Truncated CommandIf in {name} at {offset:#x}")
+                ops.append({"op": op, "offset": offset, "args": [payload.hex()]})
+                pos += size + 1
+            elif op == 0x16:
+                # Command separators are part of the bytecode but have no visible effect.
+                ops.append({"op": op, "offset": offset, "args": []})
+                if first_text_only:
+                    break
+            else:
+                raise ValueError(f"Unsupported first-choice extraction opcode {op:#x} in {name} at {offset:#x}")
+        return {"label": name, "offset": base, "ops": ops}
+
+    names = ["my01_0047", "my01_0055", "my01_0062", "my01_0070"]
+    decoded = [decode(name, stop_at_choice=name == "my01_0070") for name in names]
+    for current, following in zip(decoded, decoded[1:]):
+        current["next"] = following["label"]
+    decoded.extend(decode(name, first_text_only=True) for name in ("my01_0075", "my01_0073"))
+    return {"entry": names[0], "labels": decoded}
+
+
 def culprit_choice_wait(data):
     marker = b"\x85\x0c\x0dmyb02_0126\x00\x22"
     pos = data.index(marker) + len(marker)
@@ -503,4 +576,6 @@ def opening_assets(disc, out, encode):
         "invitationOrigin": invitation_origin(scenario),
         "titleMusic": title_music,
     }
+    (out / "sn4.json").write_text(
+        json.dumps(first_choice_program(scenario), ensure_ascii=False), encoding="utf-8")
     (out / "opening.json").write_text(json.dumps(config, ensure_ascii=False), encoding="utf-8")

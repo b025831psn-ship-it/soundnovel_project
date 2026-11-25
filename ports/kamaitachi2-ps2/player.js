@@ -1,5 +1,6 @@
 import { DirectionRepeat, NameEditor, keyboardGroups } from './names.js';
 import { Screen } from './render.js';
+import { Sn4Vm } from './sn4.js';
 
 const canvas = document.querySelector('canvas');
 const movie = document.querySelector('#movie');
@@ -16,7 +17,7 @@ const loopFrames = {
 const cues = Object.fromEntries(['confirm','cancel','move'].map(name => [name, new Audio(asset(name + '.wav'))]));
 const saveKey = 'soundnovel.slps25132.opening.v1';
 let saved = readSave();
-let data, screen, groups, editor, pages;
+let data, screen, groups, editor, pages, sn4;
 let scene = 'loading', index = 0, role = 0, page = 0, revealed = 0;
 let names = [], autosave = false, slot = 0, entered = 0, lastFrame, userNotice = '';
 let idleMovie = 'opening';
@@ -169,6 +170,12 @@ function printPage() {
   const block = pages[page];
   if (block.background && !movie.hidden) stopMovie();
   if (block.name !== undefined) {
+    if (block.sn4) {
+      sn4.reset(block.sn4);
+      sn4.setNames(names);
+      const event = sn4.run();
+      if (event.type !== 'name' || event.role !== block.name) throw new Error(`SN4 name mismatch at ${block.sn4}`);
+    }
     role = block.name;
     editor = new NameEditor(groups, names[role]);
     enter('name');
@@ -294,15 +301,15 @@ function makePages(s) {
     { append:true, book:true, nativeGlyphWidth:true, advanceMark:{x:36, y:157}, text: () => first[0] + '\n' + first[1] + s.my01_0022[0] },
     { text: () => hero[1], nativeGlyphWidth:true, advanceMark:{x:39, y:77} },
     { append:true, book:true, nativeGlyphWidth:true, advanceMark:{x:278, y:77}, text: () => hero[1] + '\n' + hero[2] },
-    { name:0 },
+    { name:0, sn4:'my01_0047' },
     { text: heroLine },
     { append:true, text: () => heroLine() + '\n' + partnerLead(),
       waits:() => [{offset:heroLine().length + 1 + second[2].length, remaining:20 * 1000 / 59.94}] },
     { append:true, book:true, text: () => heroLine() + '\n' + partnerLead() + '\n' + second[5] },
-    { name:1 },
+    { name:1, sn4:'my01_0062' },
     { checkpoint:true, nativeGlyphWidth:true, advanceMark:{x:40, y:77}, text: partnerLine },
     { append:true, nativeGlyphWidth:true, text: classmates },
-    { append:true, nativeGlyphWidth:true, choice:data.prologueChoice, text: () => classmates() + '\n' + last[4] + names[1] + last[5] + '\n' + last[6] },
+    { append:true, nativeGlyphWidth:true, choice:data.prologueChoice, sn4Choice:'my01_0070', text: () => classmates() + '\n' + last[4] + names[1] + last[5] + '\n' + last[6] },
     { target:'my01_0073', book:true, text: () => outcome('my01_0073') },
     { text: () => s.mo01_0011[0] },
     { append:true, book:true, text: () => s.mo01_0011.join('\n') },
@@ -478,7 +485,17 @@ function step(key) {
       index = (index + (key === 'up' ? -1 : 1) + pages[page].choice.length) % pages[page].choice.length;
       cue('move'); announce();
     } else if (key === 'circle') {
-      page = pages.findIndex(block => block.target === pages[page].choice[index].target);
+      let target = pages[page].choice[index].target;
+      if (pages[page].sn4Choice) {
+        sn4.reset(pages[page].sn4Choice);
+        sn4.setNames(names);
+        let event = sn4.run();
+        while (event.type === 'pause') event = sn4.run();
+        if (event.type !== 'choice') throw new Error(`SN4 choice missing at ${pages[page].sn4Choice}`);
+        event = sn4.choose(index);
+        target = event.label;
+      }
+      page = pages.findIndex(block => block.target === target);
       cue('confirm'); printPage();
     }
     return;
@@ -704,13 +721,14 @@ start.addEventListener('click', () => {
   else intro();
 });
 try {
-  const response = await fetch(asset('opening.json'));
-  if (!response.ok) throw new Error('Missing opening data');
+  const [response, sn4Response] = await Promise.all([fetch(asset('opening.json')), fetch(asset('sn4.json'))]);
+  if (!response.ok || !sn4Response.ok) throw new Error('Missing opening or SN4 data');
   data = await response.json();
+  const sn4Program = await sn4Response.json();
   await Promise.all(['font','copyrigh','g_start','title_00','my0000','my0002','my0007','my0011','my0016b','my0021','my0645','mo0000','name_e01','mark','sys_fc01','sys_cd01','sys_cd02','sys_jo01','sys_jo02','sys_jo03','sys_save','sys_wa01'].map(async name => {
     const image = new Image(); image.src = asset(name + '.png'); await image.decode(); images[name] = image;
   }));
-  groups = keyboardGroups(data.rows); pages = makePages(data.story);
+  groups = keyboardGroups(data.rows); sn4 = new Sn4Vm(sn4Program); pages = makePages(data.story);
   screen = new Screen(canvas, images, data);
   enter('ready'); start.disabled = false; start.textContent = '게임 시작';
   requestAnimationFrame(frame);

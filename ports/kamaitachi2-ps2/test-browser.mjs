@@ -20,7 +20,7 @@ await page.route('**/*', route => {
   requests.add(url.href);
   const local = url.origin === site.origin && url.pathname.startsWith(site.pathname);
   const relative = url.pathname.slice(site.pathname.length);
-  const resource = /^(?:|index\.html|player\.css|(?:player|render|names)\.js|favicon\.ico|assets\/[\w.-]+\.(?:json|png|mp4|ogg|wav))$/.test(relative);
+  const resource = /^(?:|index\.html|player\.css|(?:player|render|names|sn4)\.js|favicon\.ico|assets\/[\w.-]+\.(?:json|png|mp4|ogg|wav))$/.test(relative);
   if (local && resource) return route.continue();
   unexpected.push(url.href);
   return route.abort();
@@ -57,6 +57,27 @@ async function advanceTo(target, interval = target === 'name' ? 80 : 0) {
 }
 try {
   await page.goto(base);
+  const vmBranches = await page.evaluate(async () => {
+    const [{Sn4Vm}, program] = await Promise.all([
+      import('./sn4.js'), fetch('./assets/sn4.json').then(response => response.json()),
+    ]);
+    return [0, 1].map(index => {
+      const vm = new Sn4Vm(program);
+      vm.reset('my01_0070');
+      vm.setNames(['透', '真理']);
+      let event = vm.run();
+      while (event.type === 'pause') event = vm.run();
+      if (event.type !== 'choice') throw new Error('VM did not reach first choice');
+      const targets = event.targets;
+      event = vm.choose(index);
+      return {targets, label:event.label, text:event.text};
+    });
+  });
+  assert.deepEqual(vmBranches.map(branch => branch.targets), [
+    ['my01_0075', 'my01_0073'], ['my01_0075', 'my01_0073'],
+  ]);
+  assert.deepEqual(vmBranches.map(branch => branch.label), ['my01_0075', 'my01_0073']);
+  assert.ok(vmBranches.every(branch => branch.text.length > 0));
   assert.equal(await page.locator('input[type=file]').count(),0);
   await page.getByRole('button', {name:'게임 시작'}).click();
   await at('logo');
