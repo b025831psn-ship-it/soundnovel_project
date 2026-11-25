@@ -15,6 +15,10 @@ export const SPC_NUM = 15664, SPC_DEN = 328125;
 export const READ_LAG = 1;
 export const READ_POINT = new Int8Array(256);
 READ_POINT[0x65] = -3;
+// The IPL upload polls CPU ports with these direct-page forms. Treating both as
+// the default point makes each record transition execute an extra wait-loop.
+READ_POINT[0xeb] = 1;
+READ_POINT[0x7e] = -1;
 
 export class MasterLink {
   constructor(apu, { master = 0, readLag = READ_LAG, readPoint = READ_POINT } = {}) {

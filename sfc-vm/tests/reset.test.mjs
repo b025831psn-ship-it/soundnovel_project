@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { SfcBus } from '../bus.js';
 import { Cpu65816 } from '../cpu.js';
 import { decodeTilePixel, renderMode3Bg1 } from '../ppu.js';
-import { MasterLink } from '../../ports/kamaitachi-sfc/sound/master-link.js';
+import { MasterLink, READ_POINT } from '../../ports/kamaitachi-sfc/sound/master-link.js';
 
 // Real reset sequence bytes from the verified ROM. Keeping only this short
 // sequence makes the test redistributable without embedding game assets.
@@ -92,6 +92,8 @@ test('answers the uploaded sound driver identity handshake', () => {
 });
 
 test('timestamps APUIO at the bus transaction and routes it through MasterLink', () => {
+  assert.equal(READ_POINT[0xeb], 1, 'IPL MOV Y,dp samples the pending CPU port write');
+  assert.equal(READ_POINT[0x7e], -1, 'IPL CMP Y,dp retains the old value at its boundary');
   const calls = [];
   const apu = {
     cpu: { clock: 0, step() { this.clock++; } },

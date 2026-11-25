@@ -9,13 +9,18 @@ const [
   limitArg = '200000000', iplPath = '', joypadPath = '', snapshotDir = '',
   semanticSnapshotRowArg = '-1', watchWramArg = '', probePcArg = '',
   instructionTracePath = '', instructionTraceStartArg = 'Infinity', instructionTraceEndArg = '-1',
+  spcPortTracePath = '', dspTracePath = '',
 ] = process.argv.slice(2);
 if (!romPath || !apuModulePath || !outputPath) throw new Error(
-  'usage: trace-apu.mjs ROM.sfc APU-MODULE output.tsv [target-frame] [instruction-limit] [spc-ipl.bin] [joypad.tsv] [snapshot-dir] [semantic-row] [watch-wram-hex-csv] [probe-pc-hex-csv] [instruction-trace.tsv] [trace-start-master] [trace-end-master]',
+  'usage: trace-apu.mjs ROM.sfc APU-MODULE output.tsv [target-frame] [instruction-limit] [spc-ipl.bin] [joypad.tsv] [snapshot-dir] [semantic-row] [watch-wram-hex-csv] [probe-pc-hex-csv] [instruction-trace.tsv] [trace-start-master] [trace-end-master] [spc-port-trace.tsv] [dsp-trace.tsv]',
 );
 
 const { APU } = await import(pathToFileURL(apuModulePath));
-const apu = new APU();
+const spcPortTrace = [], dspTrace = [];
+const apu = new APU({
+  onPortWrite: (clock, port, value) => spcPortTrace.push([clock, port, value]),
+  onDspWrite: (clock, reg, value) => dspTrace.push([clock, reg, value]),
+});
 if (iplPath) apu.cpu.loadIplImage(fs.readFileSync(iplPath));
 const joypad = new Map();
 if (joypadPath) {
@@ -130,6 +135,12 @@ try {
 await new Promise((resolve, reject) => output.end((error) => error ? reject(error) : resolve()));
 if (instructionTracePath) fs.writeFileSync(instructionTracePath,
   `master\tframe\tpc\topcode\ta\tx\ty\ts\td\tdbr\tp\n${instructionTrace.join('\n')}\n`);
+if (spcPortTracePath) fs.writeFileSync(spcPortTracePath,
+  `spc_cycle\tdir(w/r)\tport\tvalue\n${spcPortTrace.map(([c, p, v]) =>
+    `${c}\tw\t${p}\t${v.toString(16).padStart(2, '0').toUpperCase()}`).join('\n')}\n`);
+if (dspTracePath) fs.writeFileSync(dspTracePath,
+  `spc_cycle\treg\tvalue\n${dspTrace.map(([c, r, v]) =>
+    `${c}\t${r.toString(16).padStart(2, '0').toUpperCase()}\t${v.toString(16).padStart(2, '0').toUpperCase()}`).join('\n')}\n`);
 console.log(JSON.stringify({
   frame, executed: cpu.executed, masterCycle: cpu.masterCycle,
   apuAccesses: bus.apuAccessCount, address: cpu.address(), failure,
