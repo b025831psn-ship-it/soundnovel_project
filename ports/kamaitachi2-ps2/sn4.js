@@ -18,6 +18,14 @@ export class Sn4Vm {
     this.variables = new Map();
   }
 
+  // EE 0x0017ED10: a uniform draw over [0, max + 1) truncated and clamped
+  // to [0, max]. Hooks can replace it to make a run reproducible.
+  random(max) {
+    const draw = this.hooks.random?.(max);
+    if (Number.isInteger(draw)) return draw;
+    return Math.min(max, Math.max(0, Math.floor(Math.random() * (max + 1))));
+  }
+
   setNames(names) {
     if (!Array.isArray(names) || names.length !== 2) throw new Error('SN4 requires two names');
     this.names = [...names];
@@ -108,15 +116,18 @@ export class Sn4Vm {
           const spec = args[0] ?? {};
           const left = this.variables.get(spec.var) ?? 0;
           const right = command.op === 0x68 ? spec.value : (this.variables.get(spec.source) ?? 0);
+          // EE 0x00101428 (table 0x00219670): 2 sub, 3 add, 4 mul, 5 div,
+          // 6 assign, 13 remainder, 14 random 0..right. Other operators abort
+          // in the executable, so they are reported and leave the value.
           let value;
-          // Operation 6 is the assignment form verified in the executable.
-          // Preserve the common arithmetic forms; unknown forms are reported
-          // and leave the previous value intact.
-          if (spec.op === 6) value = right;
-          else if (spec.op === 0) value = left + right;
-          else if (spec.op === 1) value = left - right;
-          else if (spec.op === 2) value = left * right;
-          else if (spec.op === 3) value = right ? Math.trunc(left / right) : left;
+          if (spec.op === 2) value = left - right;
+          else if (spec.op === 3) value = left + right;
+          else if (spec.op === 4) value = Math.imul(left, right);
+          else if ((spec.op === 5 || spec.op === 13) && right === 0) { unknown(); break; }
+          else if (spec.op === 5) value = Math.trunc(left / right);
+          else if (spec.op === 6) value = right;
+          else if (spec.op === 13) value = left % right;
+          else if (spec.op === 14) value = this.random(right);
           else { unknown(); break; }
           this.variables.set(spec.var, (value << 16) >> 16);
           this.hooks.variable?.(spec, this.variables.get(spec.var));
@@ -150,9 +161,12 @@ export class Sn4Vm {
           const right = command.op === 0x70 ? spec.value : (this.variables.get(spec.other) ?? 0);
           const forced = this.hooks.condition?.(spec, left, right);
           if (typeof forced === 'string') { this.jump(forced); break; }
+          // EE 0x001014F8 (table 0x002196B0) compares variable to value:
+          // 6/7 equal, 8 greater, 9 less, 10 not less, 11 not greater,
+          // 12 not equal. Other comparisons abort in the executable.
           let passes = typeof forced === 'boolean' ? forced : ({
-            0:left < right, 1:left <= right, 2:left > right, 3:left >= right,
-            7:left === right, 12:left !== right,
+            6:left === right, 7:left === right, 8:left > right, 9:left < right,
+            10:left >= right, 11:left <= right, 12:left !== right,
           })[spec.cmp];
           if (passes === undefined) { unknown(); passes = true; }
           // CommandIf skips to target when the comparison is false.

@@ -88,7 +88,10 @@ function makeVm() {
   const hooks = {};
   const vm = new Explorer(program, new Proxy(hooks, {
     get: (_, name) => (...args) => {
-      if (name === 'condition') { fork(vm, args[0]); return null; }
+      // Queue the taken branch, then make the VM fall through so both sides
+      // run. The variable-aware VM takes a boolean (true = no jump); the
+      // earlier one jumps to whatever label the hook returns.
+      if (name === 'condition') { fork(vm, args[0]); return vm.variables ? true : null; }
       if (name === 'caption') { music(vm, args[0]); return 0; }
       if (name === 'unknown') { report('unknown-op', hex(args[0]), where(vm)); return undefined; }
       return undefined;
