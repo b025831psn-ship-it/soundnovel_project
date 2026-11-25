@@ -10,8 +10,6 @@ const reader = $("reader");
 const picture = $("picture");
 const words = $("words");
 const choiceList = $("choices");
-const SJIS = new TextDecoder("shift_jis");
-const char = (code) => SJIS.decode(new Uint8Array([code >> 8, code & 255]));
 const store = {
   get(key, fallback) { try { return localStorage.getItem(key) ?? fallback; } catch { return fallback; } },
   set(key, value) { try { localStorage.setItem(key, value); } catch { /* private mode */ } },
@@ -110,84 +108,119 @@ function drawPicture(game) {
   picture.style.transform = `translateX(${-crop * scale}px)`;
 }
 
-// The page as text: the glyphs PageText has shown so far, with the line breaks the script asked for
-// (the cartridge's own wrapping at 220 pixels is left to the phone's width).
-function pageHtml(page) {
-  const fragments = page.source ?? [];
-  const layout = page.layout ?? [];
-  let index = 0, html = "", color = null, open = false;
-  const limit = page.shown ?? layout.length;
-  for (const fragment of fragments) {
-    if (index >= limit) break;
-    if (fragment === "\n") { html += "<br>"; continue; }
-    if (fragment?.color !== undefined) {
-      if (open) html += "</span>";
-      color = fragment.color;
-      open = color === 4;
-      if (open) html += '<span class="blue">';
-      continue;
+// The page in the cartridge's own type: the glyphs PageText has placed so far (font, line breaks and
+// colors as the cartridge draws them, 08001xxx), drawn with whole device pixels per GBA pixel.
+const COLORS = { 1: [0, 0, 0], 2: [255, 255, 255], 4: [181, 181, 255], 8: [255, 123, 222], 9: [255, 255, 255] };
+const TEXT_LEFT = 7, TEXT_WIDTH = 226; // story glyphs start at x 8 and wrap before 220 (+ a glyph)
+function paint(canvas, font, glyphs, left, top, width, height, scale) {
+  canvas.width = width;
+  canvas.height = height;
+  const ratio = devicePixelRatio || 1;
+  canvas.style.width = `${(width * scale) / ratio}px`;
+  canvas.style.height = `${(height * scale) / ratio}px`;
+  const image = new ImageData(width, height);
+  for (const { encoded, x, y, color } of glyphs) {
+    const index = font.find(encoded);
+    if (index < 0) continue;
+    const glyph = font.glyph(index);
+    for (let gy = 0; gy < glyph.height; gy++) for (let gx = 0; gx < glyph.width; gx++) {
+      const value = glyph.pixels[gy * glyph.width + gx];
+      if (!value) continue;
+      const px = x - left + gx, py = y - top + gy;
+      if (px < 0 || py < 0 || px >= width || py >= height) continue;
+      const rgb = COLORS[value === 1 ? 1 : color] ?? COLORS[2];
+      image.data.set([...rgb, 255], 4 * (py * width + px));
     }
-    const count = typeof fragment === "string" ? page.place([fragment]).length : 1;
-    for (let i = 0; i < count && index < limit; i++, index++) html += escape(char(layout[index].encoded));
   }
-  if (open) html += "</span>";
-  return html;
+  canvas.getContext("2d").putImageData(image, 0, 0);
 }
-// The ideographic space advances only 2 pixels on the cartridge (a little air around names), so a
-// run of them is a thin space here, not a gap of full-width blanks.
-const escape = (text) => text.replace(/\u3000+/g, "\u2009").replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" })[c]);
+// Largest whole number of device pixels per GBA pixel that fits the story's 226-pixel band.
+const textScale = () => Math.max(1, Math.floor(((reader.clientWidth - 8) * (devicePixelRatio || 1)) / TEXT_WIDTH));
 
-function chunkText(game, chunks) {
-  let out = "";
+// A choice's glyphs, laid out the way 08004200 lays out a list row (、。 advance 8), wrapped to width.
+const NO_START = new Set([0x8141, 0x8142, 0x8143, 0x8144, 0x8176, 0x8178, 0x816a, 0x8175 + 0x0e, 0x8163, 0x815b]);
+function choiceGlyphs(game, chunks, width, color) {
+  const { font } = game;
+  const glyphs = [];
+  let x = 0, y = 0;
+  const put = (encoded) => {
+    const index = font.find(encoded);
+    const glyphWidth = index < 0 ? 8 : font.glyph(index).width;
+    const advance = encoded === 0x8141 || encoded === 0x8142 ? 8 : encoded === 0x8140 ? 2 : glyphWidth;
+    // No row starts with 、。」』） or a small kana mark: those may hang past the edge instead.
+    if (x + glyphWidth > width && !NO_START.has(encoded)) { x = 0; y += 14; }
+    glyphs.push({ encoded, x, y, color });
+    x += advance;
+  };
   for (const raw of chunks ?? []) for (let pos = 0; pos < raw.length; pos++) {
     const byte = raw[pos];
-    if (byte > 0x80) { out += char((byte << 8) | raw[++pos]); continue; }
+    if (byte > 0x80) { put((byte << 8) | raw[++pos]); continue; }
     const letter = String.fromCharCode(byte);
     if (letter === "n") {
       const id = raw[++pos] - 0x30;
-      const bytes = game.page.text.nameBytes?.[id];
-      out += bytes ? SJIS.decode(new Uint8Array(bytes)) : game.page.text.names?.[id] ?? "";
+      const bytes = game.page.text.nameBytes?.[id] ?? { 1: [0x93, 0xa7], 2: [0x90, 0x5e, 0x97, 0x9d] }[id] ?? [];
+      for (let i = 0; i + 1 < bytes.length; i += 2) put((bytes[i] << 8) | bytes[i + 1]);
     } else if ("svcC".includes(letter)) pos++;
   }
-  return out.replace(/\u3000+/g, "\u2009").trim();
+  // Leading ideographic spaces only push the row right; drop them in a button of its own.
+  while (glyphs.length && glyphs[0].encoded === 0x8140) {
+    const shift = 2;
+    glyphs.shift();
+    for (const glyph of glyphs) if (glyph.y === 0) glyph.x -= shift;
+  }
+  return { glyphs, height: y + 14 };
 }
 function currentChoices(game) {
   const { vm, page, screen } = game;
   if (vm.waiting !== "choice") return null;
-  const list = vm.choiceState?.opcode === 0x13 ? page.menu?.choices : screen.choiceOverlay?.choices;
-  return list ? list.map((chunks) => chunkText(game, chunks)) : null;
+  return vm.choiceState?.opcode === 0x13 ? page.menu?.choices : screen.choiceOverlay?.choices;
 }
 
-let shownHtml = null, shownChoices = "", shownSelected = -1;
+const pageCanvas = document.createElement("canvas");
+pageCanvas.className = "type";
+words.replaceChildren(pageCanvas);
+let shownKey = "", shownChoices = null, shownSelected = -1, shownScale = 0;
 function drawText(game) {
-  const html = pageHtml(game.page);
-  if (html !== shownHtml) {
-    words.innerHTML = html;
-    shownHtml = html;
+  const { page, font, vm } = game;
+  const scale = textScale();
+  const glyphs = (page.layout ?? []).slice(0, page.shown ?? 0);
+  const key = `${scale}|${glyphs.map((g) => `${g.encoded}.${g.x}.${g.y}.${g.color}`).join(",")}`;
+  if (key !== shownKey) {
+    const bottom = glyphs.length ? Math.max(...glyphs.map((g) => g.y)) + 15 : 9;
+    paint(pageCanvas, font, glyphs, TEXT_LEFT, 9, TEXT_WIDTH, Math.max(1, bottom - 9), scale);
+    pageCanvas.hidden = !glyphs.length;
+    shownKey = key;
   }
   const choices = currentChoices(game);
-  const key = choices ? choices.join("\u0001") : "";
-  const selected = game.vm.choiceSelection ?? 0;
-  if (key !== shownChoices) {
-    choiceList.replaceChildren(...(choices ?? []).map((label, index) => {
+  const selected = vm.choiceSelection ?? 0;
+  if (choices !== shownChoices || selected !== shownSelected || scale !== shownScale) {
+    const lettered = choices && vm.choiceState?.opcode !== 0x13;
+    const ratio = devicePixelRatio || 1;
+    choiceList.replaceChildren(...(choices ?? []).map((chunks, index) => {
       const button = document.createElement("button");
       button.type = "button";
       button.className = "choice";
+      button.classList.toggle("selected", index === selected);
       button.dataset.index = index;
-      const mark = document.createElement("span");
-      mark.className = "mark";
-      mark.textContent = choices.length > 1 && game.vm.choiceState?.opcode !== 0x13 ? String.fromCharCode(65 + index) : "▶";
-      const text = document.createElement("span");
-      text.textContent = label;
-      button.append(mark, text);
+      const color = index === selected ? 8 : 9;
+      // Room for the row in GBA pixels: the list's width less the button's padding.
+      const room = Math.floor(((reader.clientWidth - 36 - 34) * ratio) / scale) - (lettered ? 14 : 0);
+      const row = choiceGlyphs(game, chunks, Math.max(64, room), color);
+      // Lists drawn by the screen put Ａ, Ｂ… in front, as the cartridge does (x 10, label at 24).
+      if (lettered) {
+        for (const glyph of row.glyphs) glyph.x += 14;
+        row.glyphs.unshift({ encoded: 0x8260 + index, x: 0, y: 0, color });
+      }
+      const width = Math.max(1, ...row.glyphs.map((g) => g.x + 13));
+      const canvas = document.createElement("canvas");
+      canvas.className = "type";
+      paint(canvas, font, row.glyphs, 0, 0, width, row.height, scale);
+      button.append(canvas);
       return button;
     }));
-    shownChoices = key;
-    shownSelected = -1;
-  }
-  if (selected !== shownSelected) {
-    for (const button of choiceList.children) button.classList.toggle("selected", Number(button.dataset.index) === selected);
+    shownChoices = choices;
     shownSelected = selected;
+    shownScale = scale;
   }
   reader.classList.toggle("choosing", Boolean(choices));
   reader.classList.toggle("waiting", game.vm.waiting === "click" && !game.page.typing);

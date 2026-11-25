@@ -188,7 +188,6 @@ kbd {
 
 /* Touch buttons: only on touch screens, and only when asked for (the bar's pad button). */
 .pad, .icon.touch-only { display: none; }
-#padtoggle[aria-pressed="true"] { color: var(--accent); }
 @media (pointer: coarse) {
   .keys, .scale { display: none; }
   .icon.touch-only { display: inline-grid; }
@@ -345,37 +344,30 @@ html.filled, html.filled body { overflow: hidden; }
 }
 .page {
   position: absolute; inset: 0; display: flex; flex-direction: column; gap: 22px;
-  padding: max(28px, env(safe-area-inset-top)) 22px calc(76px + env(safe-area-inset-bottom));
+  padding: max(24px, env(safe-area-inset-top)) 4px calc(76px + env(safe-area-inset-bottom));
   overflow-y: auto; scrollbar-width: none;
 }
-.words {
-  margin: 0; color: #f4f1ea;
-  font: 400 18px/1.95 "Noto Serif JP", "Hiragino Mincho ProN", serif;
-  letter-spacing: .04em;
-  text-shadow: 0 0 2px #000, 0 1px 3px rgba(0, 0, 0, .9), 0 0 14px rgba(0, 0, 0, .6);
-  line-break: strict; overflow-wrap: anywhere;
-}
-.words .blue { color: #b5b5ff; }
-/* The page is finished and waits for a tap: a small marker after the last character. */
+.words { margin: 0; display: grid; justify-items: center; filter: drop-shadow(0 0 6px rgba(0, 0, 0, .55)); }
+/* The cartridge's own glyphs, whole device pixels per GBA pixel. */
+.type { display: block; image-rendering: pixelated; image-rendering: crisp-edges; }
+.type[hidden] { display: none; }
+/* The page is finished and waits for a tap. */
 .reader.waiting .words::after {
-  content: ""; display: inline-block; width: 7px; height: 7px; margin-left: 6px; vertical-align: .1em;
-  border-right: 1.5px solid currentColor; border-bottom: 1.5px solid currentColor; transform: rotate(45deg);
+  content: ""; justify-self: end; width: 7px; height: 7px; margin: 4px 22px 0 0;
+  border-right: 1.5px solid #fff; border-bottom: 1.5px solid #fff; transform: rotate(45deg);
   opacity: .7; animation: nudge 1.2s ease-in-out infinite;
 }
 @keyframes nudge { 50% { translate: 0 3px; opacity: .3; } }
-.choices { display: grid; gap: 10px; margin-top: auto; }
+.choices { display: grid; gap: 10px; margin: auto 18px 0; }
 .choices:empty { display: none; }
 .choice {
   display: flex; align-items: center; gap: 12px; width: 100%; min-height: 54px; padding: 12px 16px;
   border: 1px solid rgba(255, 255, 255, .22); border-radius: 12px;
   background: rgba(10, 11, 14, .55); -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px);
   color: #f4f1ea; text-align: left;
-  font: 400 17px/1.5 "Noto Serif JP", "Hiragino Mincho ProN", serif;
   transition: background .15s ease, border-color .15s ease, transform .06s ease;
 }
-.choice .mark { flex: none; display: inline-grid; place-items: center; width: 26px; height: 26px; border-radius: 50%; border: 1px solid rgba(255, 255, 255, .35); font: 600 13px/1 "IBM Plex Sans KR", system-ui, sans-serif; }
 .choice.selected { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 22%, rgba(10, 11, 14, .6)); }
-.choice.selected .mark { border-color: var(--accent); background: var(--accent); color: var(--on-accent); }
 .choice:active { transform: scale(.985); }
 #readertoggle[aria-pressed="true"] { color: var(--accent); }
 /* Full screen upright while reading stays upright (no quarter turn). */

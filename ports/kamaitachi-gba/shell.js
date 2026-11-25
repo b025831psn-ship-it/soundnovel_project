@@ -92,22 +92,9 @@ whenReady(({ input, sound }) => {
     press("R");
   });
 
-  // Console buttons on touch screens: off by default, since taps on the screen and this button play
-  // the whole game. The choice is remembered.
-  const padToggle = $("padtoggle");
-  const showPad = (on) => {
-    shell.classList.toggle("pad-on", on);
-    padToggle.setAttribute("aria-pressed", String(on));
-    padToggle.setAttribute("aria-label", on ? "게임 버튼 숨기기" : "게임 버튼 보이기");
-    if (embedded) parent.postMessage({ type: "pad", on }, location.origin); // the hub sizes its frame
-    fit();
-  };
-  showPad(store.get("kamaitachi.pad", "0") === "1");
-  padToggle.addEventListener("click", () => {
-    const on = !shell.classList.contains("pad-on");
-    store.set("kamaitachi.pad", on ? "1" : "0");
-    showPad(on);
-  });
+  // Phones play by tapping the screen and the menu button; the console buttons are not offered there
+  // (the user's call: a sound novel needs no pad).
+  if (embedded) parent.postMessage({ type: "pad", on: false }, location.origin);
 
   const mute = $("mute");
   const volume = $("volume");
