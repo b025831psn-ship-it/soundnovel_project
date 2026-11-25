@@ -81,7 +81,7 @@ export class ZakuroBus {
       if (offset === 0x420b && v) this.runDma(v);
       if (offset === 0x420c) { this.hdmaMask = v; this.hdmaEvents.push([master, v]); }
       // NMITIMEN low->high during VBlank triggers NMI if RDNMI has not been read.
-      if (offset === 0x4200 && (v & 0x80) && !(old & 0x80) && this.nmiFlag) this.onNmi?.();
+      if (offset === 0x4200 && (v & 0x80) && !(old & 0x80) && this.nmiFlag && inVblank(master)) this.onNmi?.();
     }
   }
 

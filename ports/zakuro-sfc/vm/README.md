@@ -57,18 +57,21 @@ first interrupt I/O cycle is an 8-master opcode fetch plus a 6-master internal
 cycle, while the VM's integer CPU-cycle accounting had supplied only 12 master
 clocks. NMI/IRQ now enter at a separately scheduled opcode boundary (VBlank
 HC=12, NMITIMEN edge +6) and carry the remaining two master clocks. This gets
-past row 66,428 and raises the strict prefix to 523,770 rows; the next mismatch
-is the known one-field transition at reference frame 403.
+past row 66,428. Odd-field V=240 now uses the inverted refresh phase without
+changing the phase carried into V=241. The remaining frame-403 shift was a
+false NMITIMEN enable-edge NMI: the VM honored a stale RDNMI flag during the
+visible region, whereas the hardware permits that immediate trigger only while
+VBlank is active. Adding the VBlank condition removes that extra interrupt.
 
 The private `port-data/trace/input.tsv` contains all 3,713 native controller
 frames through the first choice. `readInputTrace()` feeds each VBlank sample to
 the `$4218/$4219` auto-joypad registers and the `$4016/$4017` serial interface.
 With that input, `tools/vm-full-run.mjs` reaches the end without a stop or CPU
-error and finds all 252,918 reference CPU writes. Three harmless extra idle-clear
-triplets remain immediately before commands at reference frames 422, 760, and
-1798; the command writes themselves differ by only -14, +20, and -12 master
-clocks. The strict all-access checker still stops at row 66,426 while the live
-APU response becomes visible 76 master clocks earlier than the native trace.
+error and finds all 252,918 reference CPU writes. The former extra idle-clear
+triplets at reference frames 422, 760, and 1798 are gone, and the write sequence
+has no unmatched reference rows or drift sections. The strict all-access prefix
+is 947,769 rows; the next value mismatch is row 947,770 at 622,326,106 master
+clocks, with the VM read 12 master clocks earlier.
 All legacy `[WP]` and `[STUCK]` diagnostics are disabled unless
 `globalThis.ZAKURO_VM_DEBUG` is explicitly enabled, so they no longer print or
 perform timing-visible watchpoint reads in normal runs.

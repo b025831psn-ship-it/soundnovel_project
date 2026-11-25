@@ -49,11 +49,15 @@ export function scanlineTiming(master) {
   }
   const fieldStart = pair * FIELD_PAIR_MASTER_CYCLES + (oddField ? FRAME_MASTER_CYCLES : 0);
   const normalLinesBefore = pair * 523 + (oddField ? 262 : 0) + completedNormalLines;
+  let refresh = 538 - ((normalLinesBefore & 1) ? 4 : 0);
+  // The odd field's shortened V=240 line uses the opposite refresh phase.
+  // It does not change the parity carried into V=241.
+  if (oddField && line === 240) refresh = refresh === 538 ? 534 : 538;
   return {
     field: pair * 2 + (oddField ? 1 : 0), line,
     start: fieldStart + lineStart,
     length: oddField && line === 240 ? SCANLINE_MASTER_CYCLES - 4 : SCANLINE_MASTER_CYCLES,
-    refresh: 538 - ((normalLinesBefore & 1) ? 4 : 0),
+    refresh,
   };
 }
 

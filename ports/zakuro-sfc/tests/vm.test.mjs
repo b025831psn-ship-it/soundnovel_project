@@ -50,7 +50,7 @@ test('DRAM refresh follows alternating H positions across the short scanline', (
   assert.deepEqual(scanlineTiming(0), { field: 0, line: 0, start: 0, length: 1364, refresh: 538 });
   assert.equal(scanlineTiming(1364).refresh, 534);
   const odd240 = scanlineTiming(357368 + 240 * 1364);
-  assert.deepEqual({ line: odd240.line, length: odd240.length, refresh: odd240.refresh }, { line: 240, length: 1360, refresh: 538 });
+  assert.deepEqual({ line: odd240.line, length: odd240.length, refresh: odd240.refresh }, { line: 240, length: 1360, refresh: 534 });
   assert.equal(scanlineTiming(odd240.start + odd240.length).refresh, 538);
   assert.equal(scanlineTiming(357368 + 357364).refresh, 534);
 });
@@ -121,7 +121,7 @@ test('NMITIMEN enable edge waits until its trigger then enters before fetch', ()
   const rom = fixtureRom([0xa9, 0x80, 0x8d, 0x00, 0x42, 0xa9, 0x55, 0xdb]);
   rom[0x7ffa] = 0x00; rom[0x7ffb] = 0x90;
   const vm = new ZakuroVM({ rom, masterLink: { read: () => 0, write() {} } });
-  vm.reset(); vm.bus.nmiFlag = true;
+  vm.reset(); vm.bus.clock.master = vblankBoundary(0) + 100; vm.bus.nmiFlag = true;
   vm.step(); vm.step();
   assert.equal(vm.cpu.PC, 0x8005);
   vm.step();
@@ -130,6 +130,16 @@ test('NMITIMEN enable edge waits until its trigger then enters before fetch', ()
   vm.step();
   assert.equal(vm.cpu.PC, 0x9000);
   assert.equal(vm.bus.nmiFlag, true);
+});
+
+test('NMITIMEN enable edge ignores a stale RDNMI flag outside VBlank', () => {
+  const rom = fixtureRom([0xa9, 0x80, 0x8d, 0x00, 0x42, 0xa9, 0x55, 0xdb]);
+  rom[0x7ffa] = 0x00; rom[0x7ffb] = 0x90;
+  const vm = new ZakuroVM({ rom, masterLink: { read: () => 0, write() {} } });
+  vm.reset(); vm.bus.nmiFlag = true;
+  while (!vm.cpu.stopped) vm.step();
+  assert.equal(vm.cpu.A & 0xff, 0x55);
+  assert.equal(vm.cpu.PC, 0x8008);
 });
 
 test('$420B DMA halts the CPU for setup, channel, and byte clocks', () => {

@@ -29,6 +29,7 @@ export class CPU {
     this.stopped = false;
     this.waiting = false;
     this.interruptMasterAdjustment = 0;
+    this.onNmi = null;
 
     // Ring buffer of recently executed instructions, used to print a trace
     // when the CPU hits an unrecoverable error (e.g. invalid BRK vector).
@@ -147,6 +148,7 @@ export class CPU {
   }
   
   nmi() {
+      this.onNmi?.();
       // NMI Logic
       // console.log(`[CPU] NMI Triggered at ${this.PB.toString(16).padStart(2,'0')}:${this.PC.toString(16).padStart(4,'0')}`);
       

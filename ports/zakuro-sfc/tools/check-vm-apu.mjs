@@ -1,5 +1,5 @@
 import { readFile } from 'node:fs/promises';
-import { createWriteStream } from 'node:fs';
+import { createWriteStream, mkdirSync, writeFileSync } from 'node:fs';
 import { finished } from 'node:stream/promises';
 import { dirname, join } from 'node:path';
 import { ApuTraceComparator, createApuLink, readApuPorts, readInputTrace, scanlineTiming, ZakuroVM } from '../vm/index.js';
@@ -56,14 +56,41 @@ const nmiTrace = process.env.ZAKURO_VM_NMI_TRACE
 stateTrace?.write('field\tmaster_cycle\tpc\tvalue\tinside_nmi\n');
 nmiTrace?.write('field\tmaster_cycle\tpc\n');
 let insideNmi = false;
-if (stateTrace) {
+const wramNmiDir = process.env.ZAKURO_VM_WRAM_NMI_DIR;
+const wramNmiFirst = Number(process.env.ZAKURO_VM_WRAM_NMI_FIRST ?? 395);
+const wramNmiLast = Number(process.env.ZAKURO_VM_WRAM_NMI_LAST ?? 404);
+const dumpedWramFields = new Set();
+if (wramNmiDir) mkdirSync(wramNmiDir, { recursive: true });
+const wramWriteTrace = process.env.ZAKURO_VM_WRAM_WRITE_TRACE
+  ? createWriteStream(process.env.ZAKURO_VM_WRAM_WRITE_TRACE) : null;
+const watchedWram = new Set((process.env.ZAKURO_VM_WRAM_WATCH ?? '').split(',').filter(Boolean).map((v) => Number.parseInt(v, 16)));
+wramWriteTrace?.write('field\tmaster_cycle\taddress\tpc\tvalue\tinside_nmi\n');
+vm.cpu.onNmi = () => {
+  insideNmi = true;
+  const field = scanlineTiming(vm.bus.clock.master).field;
+  const pc = (vm.cpu.PB << 16) | vm.cpu.PC;
+  if (wramNmiDir && field >= wramNmiFirst && field <= wramNmiLast && !dumpedWramFields.has(field)) {
+    writeFileSync(join(wramNmiDir, `wram-nmi-${field}.bin`), vm.bus.wram);
+    dumpedWramFields.add(field);
+  }
+  if (nmiTrace && field >= 71 && field <= 404) {
+    nmiTrace.write(`${field}\t${vm.bus.clock.master}\t${pc.toString(16).padStart(6, '0')}\n`);
+  }
+};
+if (stateTrace || wramWriteTrace) {
   const busWrite = vm.bus.write.bind(vm.bus);
   vm.bus.write = (address, value) => {
     busWrite(address, value);
     const target = address & 0xffffff;
     const field = scanlineTiming(vm.bus.clock.master).field;
     const bank = target >>> 16;
-    if ((((bank & 0x40) === 0) && (target & 0xffff) === 0x01ec) || target === 0x7e01ec) {
+    const wramOffset = bank === 0x7e || bank === 0x7f ? target & 0x1ffff
+      : ((bank & 0x40) === 0 && (target & 0xffff) < 0x2000 ? target & 0xffff : -1);
+    if (wramWriteTrace && watchedWram.has(wramOffset)) {
+      const pc = (vm.cpu._opPB << 16) | vm.cpu._opPC;
+      wramWriteTrace.write(`${field}\t${vm.bus.clock.master}\t${target.toString(16).padStart(6, '0')}\t${pc.toString(16).padStart(6, '0')}\t${(value & 0xff).toString(16).padStart(2, '0')}\t${insideNmi ? 1 : 0}\n`);
+    }
+    if (stateTrace && ((((bank & 0x40) === 0) && (target & 0xffff) === 0x01ec) || target === 0x7e01ec)) {
       const pc = (vm.cpu._opPB << 16) | vm.cpu._opPC;
       stateTrace.write(`${field}\t${vm.bus.clock.master}\t${pc.toString(16).padStart(6, '0')}\t${(value & 0xff).toString(16).padStart(2, '0')}\t${insideNmi ? 1 : 0}\n`);
     }
@@ -84,13 +111,6 @@ while ((!mismatch || keepRunning) && !vm.cpu.stopped && instructions < maxInstru
   && vm.bus.clock.master < stopMaster) {
   const pc = (vm.cpu.PB << 16) | vm.cpu.PC;
   const opcode = vm.bus.readMapped(pc);
-  if (pc === 0x008cd8) {
-    insideNmi = true;
-    if (nmiTrace) {
-      const field = scanlineTiming(vm.bus.clock.master).field;
-      if (field >= 71 && field <= 316) nmiTrace.write(`${field}\t${vm.bus.clock.master}\t${pc.toString(16).padStart(6, '0')}\n`);
-    }
-  }
   if (instructionTrace && vm.bus.clock.master >= instructionTraceStart && vm.bus.clock.master <= instructionTraceEnd) {
     instructionTrace.write(`${instructions}\t${vm.bus.clock.master}\t${pc.toString(16).padStart(6, '0')}\t${opcode.toString(16).padStart(2, '0')}\n`);
   }
@@ -105,7 +125,8 @@ stateTrace?.end();
 nmiTrace?.end();
 accessTrace?.end();
 spcTrace?.end();
-await Promise.all([instructionTrace, stateTrace, nmiTrace, accessTrace, spcTrace].filter(Boolean).map(stream => finished(stream)));
+wramWriteTrace?.end();
+await Promise.all([instructionTrace, stateTrace, nmiTrace, accessTrace, spcTrace, wramWriteTrace].filter(Boolean).map(stream => finished(stream)));
 
 const result = {
   instructions,
