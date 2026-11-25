@@ -105,7 +105,7 @@ const LOAD_FRAMES = 128;
 const LOAD_FADE_FRAMES = 31;
 
 export class Boot {
-  constructor({ vm, screen, assets, font, sound }) {
+  constructor({ vm, screen, assets, font, sound, books }) {
     this.vm = vm;
     this.screen = screen;
     this.assets = assets;
@@ -124,7 +124,7 @@ export class Boot {
     this.hits = [];
     this.injected = 0;
     // Bookmarks: the page-start state the VM reports, the book being read back, and the books.
-    this.books = new Books();
+    this.books = books ?? new Books();
     this.pageStart = null;
     this.loading = null;
     this.resumeWaiting = null;
