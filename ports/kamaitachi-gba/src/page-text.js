@@ -18,6 +18,9 @@ const MENU_BLINK_ON = 16;
 const TEXT_COLOR = { 0: 2, 4: 4 };
 
 // 。！？、・」』）…―～ (08007F04)
+// The Korean patch's EUC-KR punctuation (．，」』…！？) and spaces, for the large text only.
+const KOREAN_HANGING = new Set([0xa3ae, 0xa3ac, 0xa1b9, 0xa1bb, 0xa1a6, 0xa3a1, 0xa3bf, 0xa1a3, 0xa1a2]);
+const SPACES = new Set([0x8140, 0xa1a1]);
 const NATIVE = { k: 1, scale: 1, pitch: 14 };
 const HANGING = new Set([0x8142, 0x8149, 0x8148, 0x8141, 0x8145, 0x8176, 0x8178, 0x816a, 0x8163, 0x815c, 0x8160]);
 
@@ -84,38 +87,60 @@ export class PageText {
   // Glyph positions for the page collected so far. `g` scales the cartridge's geometry for the
   // large mobile text (large-text.js); the default is the screen's own (k = 1, scale = 1).
   place(fragments, g = NATIVE) {
-    const glyphs = [];
-    const left = 8 * g.k, top = 11 * g.k, limit = g.limit ?? 0xdb;
-    let x = left, y = top, color = 2, hung = false;
-    const newline = () => { x = left; y += g.pitch; };
-    const put = (encoded) => {
+    // The page as a list: glyphs (with their color), new lines, and 'L' breaks.
+    const items = [];
+    let color = 2;
+    const glyph = (encoded) => {
       const index = this.font.find(encoded);
       const width = index < 0 ? 8 : this.font.glyph(index).width;
       // 、。 advance 8; the ideographic space advances 2 (mGBA: 「は　　　透」 leaves 6 pixels).
       const advance = (encoded === 0x8141 || encoded === 0x8142 ? 8 : encoded === 0x8140 ? 2 : width) * g.scale;
-      // 08007F04: past x 0xDB a glyph goes to the next row, but closing punctuation may stay
-      // on the row once (02024E1A); a second one in a row wraps.
-      if (x > limit) {
-        if (HANGING.has(encoded) && !hung) hung = true;
-        else { hung = false; newline(); }
-      } else if (!HANGING.has(encoded)) hung = false;
-      glyphs.push({ encoded, x, y, color });
-      x += advance;
+      items.push({ encoded, color, advance });
     };
     for (const fragment of fragments) {
-      if (fragment === "\n") { newline(); continue; }
-      if (fragment.breakPast !== undefined) { if (x > fragment.breakPast * g.k) newline(); continue; }
-      if (fragment.color !== undefined) { color = TEXT_COLOR[fragment.color] ?? 2; continue; }
-      if (typeof fragment === "string") {
+      if (fragment === "\n") items.push("\n");
+      else if (fragment.breakPast !== undefined) items.push(fragment);
+      else if (fragment.color !== undefined) color = TEXT_COLOR[fragment.color] ?? 2;
+      else if (typeof fragment === "string") {
         // TextWindow gives the name, or {name:n} with n the raw argument byte ('1' = 0x31).
         let id = Number(fragment.match(/^\{name:(\d+)\}$/)?.[1] ?? Object.keys(this.text.names).find((k) => this.text.names[k] === fragment));
         if (id >= 0x30) id -= 0x30;
         const bytes = this.text.nameBytes?.[id] ?? NAMES[id] ?? [];
-        for (let i = 0; i + 1 < bytes.length; i += 2) put((bytes[i] << 8) | bytes[i + 1]);
-        continue;
-      }
-      put((fragment[0] << 8) | fragment[1]);
+        for (let i = 0; i + 1 < bytes.length; i += 2) glyph((bytes[i] << 8) | bytes[i + 1]);
+      } else glyph((fragment[0] << 8) | fragment[1]);
     }
+
+    const glyphs = [];
+    const left = 8 * g.k, top = 11 * g.k, limit = g.limit ?? 0xdb;
+    let x = left, y = top, hung = false;
+    const newline = () => { x = left; y += g.pitch; };
+    // The large mobile text (g.words) keeps words whole: a word that would run past the right
+    // edge starts the next row, with the punctuation after it, and spaces never start a row.
+    const wordWidth = (from) => {
+      let width = 0;
+      for (let i = from; i < items.length && items[i].encoded !== undefined && !SPACES.has(items[i].encoded); i++)
+        width += HANGING.has(items[i].encoded) || KOREAN_HANGING.has(items[i].encoded) ? 0 : items[i].advance;
+      return width;
+    };
+    items.forEach((item, i) => {
+      if (item === "\n") return newline();
+      if (item.breakPast !== undefined) { if (x > item.breakPast * g.k) newline(); return; }
+      const { encoded, advance } = item;
+      if (g.words) {
+        const space = SPACES.has(encoded);
+        const hangs = HANGING.has(encoded) || KOREAN_HANGING.has(encoded);
+        const startsWord = !space && !hangs && (i === 0 || items[i - 1].encoded === undefined || SPACES.has(items[i - 1].encoded));
+        if (startsWord && x > left && x + wordWidth(i) > g.right) newline();
+        else if (hangs ? x + advance > g.right + 6 * g.k : !space && x > limit) newline();
+      } else if (x > limit) {
+        // 08007F04: past x 0xDB a glyph goes to the next row, but closing punctuation may stay
+        // on the row once (02024E1A); a second one in a row wraps.
+        if (HANGING.has(encoded) && !hung) hung = true;
+        else { hung = false; newline(); }
+      } else if (!HANGING.has(encoded)) hung = false;
+      glyphs.push({ encoded, x, y, color: item.color });
+      x += advance;
+    });
     // Where the next glyph would go (the wait marker's place; the next row past the limit).
     glyphs.end = x > limit ? { x: left, y: y + g.pitch } : { x, y };
     return glyphs;
