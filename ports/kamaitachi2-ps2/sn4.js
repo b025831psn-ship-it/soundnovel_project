@@ -14,6 +14,7 @@ export class Sn4Vm {
     this.pc = 0;
     this.text = '';
     this.pending = null;
+    this.clearBeforeRun = false;
   }
 
   setNames(names) {
@@ -32,6 +33,7 @@ export class Sn4Vm {
     const target = this.pending.targets[index];
     if (!target) throw new Error(`Invalid SN4 choice index ${index}`);
     this.pending = null;
+    this.text = '';
     this.jump(target);
     return this.run();
   }
@@ -44,6 +46,10 @@ export class Sn4Vm {
   }
 
   run() {
+    if (this.clearBeforeRun) {
+      this.text = '';
+      this.clearBeforeRun = false;
+    }
     while (true) {
       const block = this.labels.get(this.label);
       if (!block) throw new Error(`Unknown SN4 label ${this.label}`);
@@ -58,7 +64,9 @@ export class Sn4Vm {
         case 0x02: this.text += args[0]; break;
         case 0x04: this.text += '\n'; break;
         case 0x09:
+          return {type:'pause', label:this.label, offset:command.offset, text:this.text};
         case 0x0b:
+          this.clearBeforeRun = true;
           return {type:'pause', label:this.label, offset:command.offset, text:this.text};
         case 0x0d: this.text += this.names[0]; break;
         case 0x0e: this.text += this.names[1]; break;
@@ -71,7 +79,8 @@ export class Sn4Vm {
         case 0x40: this.hooks.speed?.(args[0]); break;
         case 0x46: this.hooks.spacing?.(args[0]); break;
         case 0x4c: this.hooks.font?.(...args); break;
-        case 0x50: this.hooks.wait?.(args[0]); break;
+        case 0x50:
+          return {type:'wait', label:this.label, offset:command.offset, ticks:args[0], text:this.text};
         case 0x55: this.hooks.lineSpacing?.(args[0]); break;
         case 0x65: this.hooks.position?.(args[0]); break;
         case 0x6a:

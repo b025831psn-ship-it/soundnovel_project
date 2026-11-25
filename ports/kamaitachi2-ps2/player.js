@@ -18,6 +18,8 @@ const cues = Object.fromEntries(['confirm','cancel','move'].map(name => [name, n
 const saveKey = 'soundnovel.slps25132.opening.v1';
 let saved = readSave();
 let data, screen, groups, editor, pages, sn4;
+let sn4Mode = false, sn4Event, sn4WaitUntil = 0;
+const sn4Style = {speed:1, spacing:0, position:null, scene:null, scenePack:null, caption:null};
 let scene = 'loading', index = 0, role = 0, page = 0, revealed = 0;
 let names = [], autosave = false, slot = 0, entered = 0, lastFrame, userNotice = '';
 let idleMovie = 'opening';
@@ -70,7 +72,10 @@ function enter(next, selected = 0) {
 
 function announce() {
   const story = ['story','complete','choice-wait'].includes(scene);
-  const label = scene === 'choice' ? pages[page].choice[index].text : story ? storyText() : editor && ['name','confirm'].includes(scene)
+  const choices = sn4Mode && sn4Event?.type === 'choice'
+    ? sn4Event.targets.map(target => data.prologueChoice.find(route => route.target === target))
+    : pages?.[page]?.choice;
+  const label = scene === 'choice' ? choices[index].text : story ? storyText() : editor && ['name','confirm'].includes(scene)
     ? (role === 0 ? '주인공 ' : '여자친구 ') + editor.value : scene;
   canvas.setAttribute('aria-label', label);
   status.textContent = userNotice || label;
@@ -85,6 +90,16 @@ function playMusic(file) {
     music.play().catch(() => { status.textContent = '오디오를 재생하려면 화면을 눌러 주세요.'; });
   };
   music.play().catch(() => { status.textContent = '오디오를 재생하려면 화면을 눌러 주세요.'; });
+}
+
+function applyScenePack(name) {
+  const command = data.scenePack?.[name];
+  if (!command) return;
+  if (command.image) sn4Style.scene = command.image;
+  if (command.music?.operation === 0x14) {
+    music.volume = command.music.volume / 100;
+    playMusic(command.music.file);
+  } else if (command.music?.operation === 0x15) stopMusic();
 }
 
 function stopMusic() {
@@ -158,16 +173,46 @@ function newGame() {
 }
 
 function beginStory() {
+  sn4Mode = false;
   page = 0;
   printPage();
 }
 
 function storyText() {
+  if (sn4Mode) return sn4Event?.text?.trimEnd() ?? '';
   return pages?.[page]?.text?.() ?? '';
+}
+
+function showSn4(event) {
+  sn4Event = event;
+  if (event.type === 'name') {
+    role = event.role;
+    editor = new NameEditor(groups, names[role]);
+    enter('name');
+  } else if (event.type === 'choice') {
+    enter('choice');
+  } else if (event.type === 'wait') {
+    sn4WaitUntil = performance.now() + event.ticks * 1000 / 59.94;
+    revealed = event.text.length;
+    enter('story');
+  } else {
+    revealed = 0;
+    textWaits = [];
+    textSpeeds = [{offset:0, speed:sn4Style.speed}];
+    enter('story');
+  }
+}
+
+function startSn4(label) {
+  sn4Mode = true;
+  sn4.reset(label);
+  sn4.setNames(names);
+  showSn4(sn4.run());
 }
 
 function printPage() {
   const block = pages[page];
+  if (block.sn4Start) { startSn4(block.sn4Start); return; }
   if (block.background && !movie.hidden) stopMovie();
   if (block.name !== undefined) {
     if (block.sn4) {
@@ -262,11 +307,6 @@ function makePages(s) {
   Object.assign(reunionPages[0], {movie:'my0006',
     waits: () => [{offset:0, remaining:s.my02_0030.introWaits[0] * 1000 / 59.94}]});
   const start = s.my01_0010, first = s.my01_0012, hero = s.my01_0040;
-  const second = s.my01_0055, last = s.my01_0070;
-  const heroLine = () => second[0] + names[0] + second[1];
-  const partnerLead = () => second[2] + second[3] + '\n' + second[4];
-  const partnerLine = () => last[0] + names[1] + last[1];
-  const classmates = () => partnerLine() + '\n' + last[2] + names[1] + last[3];
   const north = s.my01_0076;
   const middle = s.my01_0079, closing = s.my01_0080;
   const phone = s.my01_0085;
@@ -301,17 +341,8 @@ function makePages(s) {
     { append:true, book:true, nativeGlyphWidth:true, advanceMark:{x:36, y:157}, text: () => first[0] + '\n' + first[1] + s.my01_0022[0] },
     { text: () => hero[1], nativeGlyphWidth:true, advanceMark:{x:39, y:77} },
     { append:true, book:true, nativeGlyphWidth:true, advanceMark:{x:278, y:77}, text: () => hero[1] + '\n' + hero[2] },
-    { name:0, sn4:'my01_0047' },
-    { text: heroLine },
-    { append:true, text: () => heroLine() + '\n' + partnerLead(),
-      waits:() => [{offset:heroLine().length + 1 + second[2].length, remaining:20 * 1000 / 59.94}] },
-    { append:true, book:true, text: () => heroLine() + '\n' + partnerLead() + '\n' + second[5] },
-    { name:1, sn4:'my01_0062' },
-    { checkpoint:true, nativeGlyphWidth:true, advanceMark:{x:40, y:77}, text: partnerLine },
-    { append:true, nativeGlyphWidth:true, text: classmates },
-    { append:true, nativeGlyphWidth:true, choice:data.prologueChoice, sn4Choice:'my01_0070', text: () => classmates() + '\n' + last[4] + names[1] + last[5] + '\n' + last[6] },
-    { target:'my01_0073', book:true, text: () => outcome('my01_0073') },
-    { text: () => s.mo01_0011[0] },
+    { sn4Start:'my01_0047', text:() => '' },
+    { target:'my01_0073-cont', text: () => s.mo01_0011[0] },
     { append:true, book:true, text: () => s.mo01_0011.join('\n') },
     { background:'mo0000', book:true, text: () => s.mo01_0012[0] },
     { movie:'mo0001', music:'k2h017.ogg', book:true, text: () => s.mo02_0010[0] },
@@ -320,8 +351,7 @@ function makePages(s) {
       retainMovie:true, append:i > 0, end:i === lines.length - 1, book:i === lines.length - 1,
       text: () => lines.slice(0, i + 1).join('\n'),
     })),
-    { target:'my01_0075', book:true, text: () => outcome('my01_0075') },
-    { text: () => north[0] },
+    { target:'my01_0075-cont', text: () => north[0] },
     { append:true, book:true, text: () => north[0] + '\n' + north[1] + names[1] + north[2] + '\n' + north[3] + names[1] + north[4] },
     { text: correspondence },
     { append:true, book:true, text: () => correspondence() + '\n' + letter[3] },
@@ -455,8 +485,7 @@ function step(key) {
         names = [...saved.names]; stopMovie(); playMusic('k1a001.ogg');
         slot = saved.slot;
         autosave = true;
-        page = pages.findIndex(block => block.checkpoint);
-        printPage();
+        startSn4('my01_0070');
       } else {
         userNotice = index === 1 ? '이 브라우저에 이어할 기록이 없습니다.' : '이 빌드는 스키 여행 회상의 첫 분기까지 플레이할 수 있습니다.';
         status.textContent = userNotice;
@@ -482,19 +511,16 @@ function step(key) {
   if (scene === 'save-note') { if (key === 'circle') beginStory(); return; }
   if (scene === 'choice') {
     if (key === 'up' || key === 'down') {
-      index = (index + (key === 'up' ? -1 : 1) + pages[page].choice.length) % pages[page].choice.length;
+      const length = sn4Mode ? sn4Event.targets.length : pages[page].choice.length;
+      index = (index + (key === 'up' ? -1 : 1) + length) % length;
       cue('move'); announce();
     } else if (key === 'circle') {
-      let target = pages[page].choice[index].target;
-      if (pages[page].sn4Choice) {
-        sn4.reset(pages[page].sn4Choice);
-        sn4.setNames(names);
-        let event = sn4.run();
-        while (event.type === 'pause') event = sn4.run();
-        if (event.type !== 'choice') throw new Error(`SN4 choice missing at ${pages[page].sn4Choice}`);
-        event = sn4.choose(index);
-        target = event.label;
+      if (sn4Mode) {
+        cue('confirm');
+        showSn4(sn4.choose(index));
+        return;
       }
+      const target = pages[page].choice[index].target;
       page = pages.findIndex(block => block.target === target);
       cue('confirm'); printPage();
     }
@@ -502,8 +528,19 @@ function step(key) {
   }
   if (scene === 'story' || scene === 'complete') {
     if (key === 'circle' || key === 'start') {
+      if (sn4Mode && sn4Event.type === 'wait') {
+        if (performance.now() >= sn4WaitUntil) showSn4(sn4.run());
+        return;
+      }
       if (revealed < storyText().length) revealed = textWaits[0]?.offset ?? storyText().length;
       else if (textWaits.length) return;
+      else if (sn4Mode) {
+        if (sn4Event.type === 'end') {
+          sn4Mode = false;
+          page = pages.findIndex(block => block.target === `${sn4Event.label}-cont`);
+          printPage();
+        } else showSn4(sn4.run());
+      }
       else if (scene === 'story' && pages[page].choice) enter(pages[page].choiceWait ? 'choice-wait' : 'choice');
       else if (scene === 'story') {
         const target = pages[page].nextTarget;
@@ -529,7 +566,10 @@ function step(key) {
     if (key === 'cross' || (key === 'circle' && index === 1)) enter('name');
     else if (key === 'circle') {
       names[role] = editor.value;
-      page++; printPage();
+      if (sn4Mode) {
+        sn4.setNames(names);
+        showSn4(sn4.resume(editor.value));
+      } else { page++; printPage(); }
       if (role === 1 && autosave) {
         const checkpoint = {names:[...names], slot};
         try {
@@ -545,8 +585,9 @@ function step(key) {
 }
 
 function drawStory(time) {
-  const block = pages[page], text = storyText().slice(0, Math.floor(revealed));
-  const background = block.background ?? (block.center ? 'my0007' : 'my0645');
+  const block = sn4Mode ? {text:storyText, nativeGlyphWidth:true} : pages[page];
+  const text = storyText().slice(0, Math.floor(revealed));
+  const background = block.background ?? (sn4Mode && sn4Style.scene ? sn4Style.scene : (block.center ? 'my0007' : 'my0645'));
   if (block.positioned) {
     if (block.background) screen.background(block.background, false, time);
     let remaining = text.length;
@@ -560,7 +601,8 @@ function drawStory(time) {
   }
   if (block.movie && !text) return;
   if (!block.movie && !block.retainMovie) screen.background(background, background === 'my0645', time);
-  const origin = block.background === 'my0000' ? data.invitationOrigin : {x:32, y:31};
+  const vmPosition = sn4Style.position === null ? null : {x:sn4Style.position >>> 16, y:sn4Style.position & 0xffff};
+  const origin = vmPosition ?? (block.background === 'my0000' ? data.invitationOrigin : {x:32, y:31});
   const scale = block.center || (background === 'my0645' && !block.movie && !block.retainMovie) ? .96 : .91;
   const y = block.center ? 192 : origin.y;
   const x = block.center ? (640 - screen.width(storyText(), scale)) / 2 : origin.x;
@@ -574,7 +616,8 @@ function drawStory(time) {
   if (!block.movie && !block.retainMovie && ['my0007', 'my0645'].includes(background)) {
     screen.c.filter = 'brightness(86%)';
   }
-  const metrics = block.nativeGlyphWidth ? {spacing:0, widthScale:1} : {};
+  const metrics = sn4Mode ? {spacing:sn4Style.spacing, widthScale:1}
+    : block.nativeGlyphWidth ? {spacing:0, widthScale:1} : {};
   const end = screen.text(text, x, y, {...metrics, scale, max:Math.min(580, 640 - x), readings, colors:textColors});
   screen.c.restore();
   if (revealed >= storyText().length) {
@@ -598,6 +641,7 @@ function frame(now) {
   const dt = Math.min(100, now - (lastFrame ?? now));
   lastFrame = now;
   const time = now / 1000;
+  if (sn4Mode && sn4Event?.type === 'wait' && now >= sn4WaitUntil) showSn4(sn4.run());
   screen.c.clearRect(0,0,640,448);
   if (scene === 'copyright') {
     screen.c.drawImage(images.copyrigh, 0, 0);
@@ -611,7 +655,8 @@ function frame(now) {
     if (now - entered >= pages[page].choiceWait * 1000 / 59.94) enter('choice');
   } else if (scene === 'choice') {
     if (!pages[page].retainMovie) screen.background('my0645', true, time);
-    pages[page].choice.forEach((route, i) => {
+    const choices = sn4Mode ? sn4Event.targets.map(target => data.prologueChoice.find(route => route.target === target)) : pages[page].choice;
+    choices.forEach((route, i) => {
       const y = 60 + 64 * i;
       if (i === index) screen.rect(24, y - 4, 592, 49);
       screen.text(route.text, 32, y, {scale:.91, max:580});
@@ -728,7 +773,15 @@ try {
   await Promise.all(['font','copyrigh','g_start','title_00','my0000','my0002','my0007','my0011','my0016b','my0021','my0645','mo0000','name_e01','mark','sys_fc01','sys_cd01','sys_cd02','sys_jo01','sys_jo02','sys_jo03','sys_save','sys_wa01'].map(async name => {
     const image = new Image(); image.src = asset(name + '.png'); await image.decode(); images[name] = image;
   }));
-  groups = keyboardGroups(data.rows); sn4 = new Sn4Vm(sn4Program); pages = makePages(data.story);
+  groups = keyboardGroups(data.rows);
+  sn4 = new Sn4Vm(sn4Program, {
+    speed:value => { sn4Style.speed = value; },
+    spacing:value => { sn4Style.spacing = value; },
+    position:value => { sn4Style.position = value; },
+    scene:value => { sn4Style.scenePack = value; },
+    caption:value => { sn4Style.caption = value; applyScenePack(value); },
+  });
+  pages = makePages(data.story);
   screen = new Screen(canvas, images, data);
   enter('ready'); start.disabled = false; start.textContent = '게임 시작';
   requestAnimationFrame(frame);

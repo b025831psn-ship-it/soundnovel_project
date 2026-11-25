@@ -561,6 +561,26 @@ def opening_assets(disc, out, encode):
     for name in ("sys_fc01", "sys_cd01", "sys_cd02", "sys_jo01", "sys_jo02", "sys_jo03", "sys_save", "sys_wa01"):
         texture(asset(f"SYS_MENU/{name}.ctf")).save(out / f"{name}.png")
     scenario = asset("SCENARIO/scenario.sn4")
+    scene_pack = asset("SCENARIO/scene_pk.spk")
+    music_pattern = re.compile(rb"\x14\x00\x27\x00([^\0]+\.ogg)\x00\x2f\x00(.{2})"
+                               rb"\x2e\x00(.{2})\x2b\x00(.{2})\x07\x00", re.S)
+    scene_pack_opening = {}
+    for name, offset in {"my0002b_00": 0x72217, "my0002c_00": 0x7227B,
+                         "my0002d_00": 0x722DF,
+                         "my0002e_00": 0x72343}.items():
+        command = scene_pack[offset:offset + 100]
+        music = music_pattern.search(command)
+        image = re.search(rb"\x27\x00([^\0]+\.ipu)\x00\x28\x00\x00\x00\x01\x00", command)
+        if not music or not image:
+            raise ValueError(f"Unexpected ScenePack opening command {name}")
+        scene_pack_opening[name] = {
+            "image": image[1].decode("ascii").removesuffix(".ipu"),
+            "music": {"operation": 0x14, "command": 0x07,
+                      "file": music[1].decode("ascii"),
+                      "volume": int.from_bytes(music[2], "little"),
+                      "fadeFrames": int.from_bytes(music[3], "little"),
+                      "channel": int.from_bytes(music[4], "little")},
+        }
     config = {
         "font": font_atlas(asset("SCENARIO/sn4.fnt"), out),
         "rows": asset("SCENARIO/namkan.txt").decode("cp932").strip("\n").split("\n\n"),
@@ -575,6 +595,7 @@ def opening_assets(disc, out, encode):
         "culpritChoice": scenario_choice(scenario, b"myb02_0126"),
         "invitationOrigin": invitation_origin(scenario),
         "titleMusic": title_music,
+        "scenePack": scene_pack_opening,
     }
     (out / "sn4.json").write_text(
         json.dumps(first_choice_program(scenario), ensure_ascii=False), encoding="utf-8")

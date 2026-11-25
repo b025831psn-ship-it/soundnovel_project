@@ -76,6 +76,9 @@ public class OpeningChecks extends GhidraScript {
             directCall(0x10f6cc, 0x127618);
             if (getInt(va(0x21a240 + 4 * (0x50 - 2))) != 0x10fa00)
                 throw new Exception("Unexpected CommandWait dispatch");
+            if (getInt(va(0x21a240 + 4 * (0x16 - 2))) != 0x10f700)
+                throw new Exception("Unexpected CommandNoop16 dispatch");
+            directCall(0x10f70c, 0x127e28);
             directCall(0x10fa0c, 0x12d1f8);
             directCall(0x12d230, 0x10cc10);
             directCall(0x12d23c, 0x112de8);
