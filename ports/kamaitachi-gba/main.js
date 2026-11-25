@@ -51,7 +51,34 @@ const page = new PageText(screen, font, text);
 const boot = await new Boot({ vm, screen, assets, font, sound: vm.sound }).load();
 vm.system = boot;
 text.nameBytes = boot.names; // names entered on 1D 03 / 1D 04 show up in the story text
-window.kamaitachi = { vm, screen, assets, font, input, sound, page, boot };
+// Touch and mouse: a tap on an item picks it (the cursor moves there as with the d-pad; a tap on
+// the current item confirms). Taps elsewhere fall through to the shell, which presses A.
+function tap(x, y) {
+  if (vm.waiting === "boot") return boot.tap(x, y);
+  if (vm.waiting !== "choice") return false;
+  const rows = vm.choiceState?.opcode === 0x13 ? page.menuRows() : screen.choiceRows ?? [];
+  const index = rows.findIndex(({ top, bottom }) => y >= top && y < bottom);
+  if (index < 0) return true;
+  if (index === vm.choiceSelection) vm.resume();
+  else vm.moveChoice(index - vm.choiceSelection);
+  return true;
+}
+const canvas = document.querySelector("#screen");
+let tapA = false;
+canvas.addEventListener("pointerdown", (event) => {
+  const box = canvas.getBoundingClientRect();
+  const x = Math.floor(((event.clientX - box.left) * 240) / box.width);
+  const y = Math.floor(((event.clientY - box.top) * 160) / box.height);
+  if (!tap(x, y)) {
+    // A quick click can release before the next frame looks at the keys; count it once anyway.
+    tapA = true;
+    return;
+  }
+  event.preventDefault();
+  event.stopImmediatePropagation(); // the shell's "tap = A" must not also fire
+  sound.resume();
+}, { capture: true });
+window.kamaitachi = { vm, screen, assets, font, input, sound, page, boot, tap };
 
 let last = performance.now();
 let accumulated = 0;
@@ -60,7 +87,7 @@ function loop(now) {
   accumulated += Math.min(100, now - last);
   last = now;
   while (accumulated >= 1000 / 60) {
-    const pressed = (key) => input.pressed(key) && !previous.has(key);
+    const pressed = (key) => (input.pressed(key) && !previous.has(key)) || (key === "A" && tapA);
     if (pressed("UP")) vm.moveChoice(-1);
     if (pressed("DOWN")) vm.moveChoice(1);
     if (pressed("A") && ((vm.waiting === "click" && !page.typing) || vm.waiting === "choice")) vm.resume();
@@ -76,8 +103,9 @@ function loop(now) {
     if (vm.waiting === "boot") boot.frame(trigger, held);
     else page.frame(Boolean(screen.choiceOverlay));
     for (const key of Object.keys(KEY)) {
-      if (input.pressed(key)) previous.add(key); else previous.delete(key);
+      if (input.pressed(key) || (key === "A" && tapA)) previous.add(key); else previous.delete(key);
     }
+    tapA = false;
     accumulated -= 1000 / 60;
   }
   requestAnimationFrame(loop);

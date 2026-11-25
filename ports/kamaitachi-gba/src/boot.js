@@ -68,6 +68,10 @@ export class Boot {
     this.deferred = [];
     this.logoShown = false; // 020066C1: set when returning to the title from a game
     this.book = 0; // 02004642: last bookmark chosen
+    // Touch and mouse: the screen in front lists what can be picked ({ x, y, w, h, current,
+    // select(), key }); a tap moves the cursor there like the d-pad, or presses A on the current item.
+    this.hits = [];
+    this.injected = 0;
     // 02006649 + 16 * slot: the names the text shows (1 hero 透, 2 girlfriend 真理, 0 culprit).
     this.names = { 0: [], 1: [0x93, 0xa7], 2: [0x90, 0x5e, 0x97, 0x9d] };
     // 020006C4: VBlank count (080066E8), zeroed by the 080031C0 init. mGBA frame f reads f - 3, and
@@ -142,8 +146,11 @@ export class Boot {
       this.repeatKeys = pad;
     }
     // 020006E4 is latched in the VBlank interrupt, so the routine sees a press one frame later.
+    trigger |= this.injected;
+    this.injected = 0;
     this.trigger = this.latched;
     this.latched = trigger;
+    this.hits = [];
     for (const start of this.deferred.splice(0)) start();
     const { done } = this.run.next();
     this.draw();
@@ -157,6 +164,18 @@ export class Boot {
   // 080066E8 runs in every VBlank, story or native screen alike.
   vblank() {
     this.tick++;
+  }
+
+  // A tap at (x, y) in GBA pixels. Returns false when the screen has nothing to pick (the shell
+  // then treats the tap as A, which skips the logo and advances text).
+  tap(x, y) {
+    if (!this.run || !this.hits.length) return false;
+    const hit = this.hits.find((h) => x >= h.x && x < h.x + h.w && y >= h.y && y < h.y + h.h);
+    if (!hit) return true;
+    if (hit.key) this.injected |= hit.key;
+    else if (hit.current) this.injected |= KEY.A;
+    else hit.select();
+    return true;
   }
 
   pressed(mask) {
@@ -314,6 +333,10 @@ export class Boot {
       this.layer = this.menuLayer(items, selected, cursor);
       if (partial) this.layer.glyphs.pop();
       partial = false;
+      this.hits = items.map(({ rect: [x, y, w, h] }, index) => ({
+        x, y, w, h, current: index === selected,
+        select: () => { this.effect(3); selected = index; },
+      }));
       yield;
       if (this.pressed(KEY.RIGHT) && selected < items.length - 1) { this.effect(3); selected++; }
       if (this.pressed(KEY.LEFT) && selected > 0) { this.effect(3); selected--; }
@@ -387,6 +410,12 @@ export class Boot {
         }
         shown = book;
       }
+      // Touch: the three books stand side by side; their spine labels sit at x = (80n + 55) * 3/4.
+      this.hits = [0, 1, 2].map((index) => ({
+        x: index === 0 ? 0 : 89 + 60 * (index - 1), y: 0x18, w: index === 0 ? 89 : index === 1 ? 60 : 91, h: 0x88,
+        current: index === book,
+        select: () => { this.effect(3); book = index; },
+      }));
       yield;
       if (this.layer?.boxBlack) this.layer.boxBlack--;
       first = false;

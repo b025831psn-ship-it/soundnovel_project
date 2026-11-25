@@ -42,6 +42,14 @@ export class PageText {
     this.drawn = -1;
   }
 
+  // Touch: the band of each menu label (14 pixels per row, as menuGlyphs lays them out).
+  menuRows() {
+    if (!this.menu || !this.layout) return [];
+    const last = this.layout[this.layout.length - 1];
+    const y = (last ? last.y : -3) + 28;
+    return this.menu.choices.map((_, index) => ({ top: y + 14 * index - 2, bottom: y + 14 * index + 12 }));
+  }
+
   // Labels sit on the rows after the story, one blank row between (welcome screen, mGBA).
   menuGlyphs() {
     const glyphs = [];

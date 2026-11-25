@@ -97,6 +97,10 @@ export class NameEntry {
     let done = false;
     while (true) {
       boot.layer = this.layer(mode, cells, rows, name, length, cursor, top);
+      boot.hits = this.hits(mode, cells, rows, length, cursor, top, (index) => {
+        boot.effect(3);
+        cursor = index;
+      });
       yield;
       if (done) {
         boot.layer = this.layer(mode, cells, rows, name, length, cursor, top, { underline: false });
@@ -213,6 +217,26 @@ export class NameEntry {
       }
     }
     return { boxes: [], replace: true, glyphs, fills, sprites: sprites.map((s) => ({ ...s, w: 8, h: 8, color: CURSOR_COLOR })) };
+  }
+
+  // Touch: each character cell, 消す (B), 終了 (START) and the scroll arrows (UP/DOWN).
+  hits(mode, cells, rows, length, cursor, top, select) {
+    const at = (y) => Math.trunc((y * 14) / 20);
+    const hits = [
+      { x: 0x10, y: at(0x22), w: 0x30, h: 14, key: KEY.B },
+      { x: 0xb3, y: at(0x22), w: 0x30, h: 14, key: KEY.START },
+    ];
+    if (mode < 2 && top) hits.push({ x: 0x60, y: at(0x3c) - 2, w: 0x20, h: 12, key: KEY.UP });
+    if (mode < 2 && top + ROWS < rows) hits.push({ x: 0x60, y: at(0xbe) - 2, w: 0x20, h: 12, key: KEY.DOWN });
+    if (length >= LENGTH) return hits;
+    for (let r = 0; r < ROWS; r++) for (let c = 0; c < COLUMNS; c++) {
+      const index = (top + r) * COLUMNS + c;
+      const char = cells[index]?.char;
+      if (char === undefined || char === SKIP || char === SKIP_HORIZONTAL) continue;
+      const x = ((0x4b + 0x36 * c) * 64) >> 8;
+      hits.push({ x: x - 2, y: at(18 * r + 0x52) - 2, w: 14, h: 13, current: index === cursor, select: () => select(index) });
+    }
+    return hits;
   }
 
   point(x, y) {

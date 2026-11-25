@@ -111,6 +111,7 @@ export class Screen {
     this.choiceOverlay = { font, story, choices, selected };
     if (this.base) this.image.data.set(this.base);
     const surface = new ObjTextSurface().choices(font, story, choices, selected);
+    this.choiceRows = surface.rows;
     const colors = { 1: [0, 0, 0], 2: [255, 255, 255], 8: [255, 123, 222], 9: [255, 255, 255] };
     for (let pixel = 0; pixel < surface.pixels.length; pixel++) {
       const color = colors[surface.pixels[pixel]];

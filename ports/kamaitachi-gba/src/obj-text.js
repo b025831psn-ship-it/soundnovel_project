@@ -45,10 +45,13 @@ export class ObjTextSurface {
     // are v/c buffer-selection commands and their A/B prefixes.
     if (story[0]) this.text(font, [story[0]], 8, 11, 2);
     let y = 25;
+    this.rows = [];
     for (let index = 0; index < choices.length; index++) {
       const color = index === selected ? 8 : 9;
       this.glyph(font, 0x8260 + index, 10, y, color);
+      const top = y;
       y = this.text(font, choices[index] ?? [], 24, y, color, 232, 24);
+      this.rows.push({ top, bottom: y }); // touch: the band each choice covers
     }
     return this;
   }
