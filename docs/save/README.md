@@ -104,7 +104,7 @@ IndexedDB 데이터베이스 `soundnovel` 하나.
 
 | 요청 | 설명 |
 |---|---|
-| `PUT /v1/pair/{code}` | 패스코드 등록(본문 `{blob}`, 보관함 `authToken` 필요). 사용 중이면 `409`. |
+| `PUT /v1/pair/{code}` | 패스코드 등록(본문 `{blob}`, 헤더 `x-vault-id`와 보관함 `authToken` 필요). 사용 중이면 `409`. |
 | `POST /v1/pair/{code}/claim` | 패스코드로 `blob`을 받는다. 틀리면 `404`, 실패가 많으면 `429`. 인증 없음. |
 | `DELETE /v1/pair/{code}` | 패스코드 삭제(발급한 보관함의 `authToken`만). |
 | `PUT /v1/vaults/{vaultId}` | 보관함 생성. 첫 요청에서 `authToken` 해시를 등록한다. 이미 있으면 `409`. |
