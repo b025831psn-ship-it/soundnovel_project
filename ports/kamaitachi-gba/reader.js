@@ -185,6 +185,11 @@ let cutEasing = false; // set while a margin is still moving toward framed or op
 function cutLevel(ctx, cut) {
   const now = performance.now();
   const state = cutLevels.get(ctx) ?? { top: cut.top ? 1 : 0, bottom: cut.bottom ? 1 : 0, time: now };
+  // Once a figure has stood on the bottom edge, the picture stays lowered until the picture itself
+  // changes, so silhouettes changing within the scene don't move the background (태우 2026-11-26).
+  if (state.picture !== currentId) { state.picture = currentId; state.held = false; state.bottom = cut.bottom ? 1 : 0; }
+  if (cut.bottom) state.held = true;
+  cut = { top: cut.top, bottom: cut.bottom || state.held };
   const step = Math.min(1, (now - state.time) / CUT_MS);
   const ease = (value, wanted) => (wanted ? Math.min(1, value + step) : Math.max(0, value - step));
   state.top = ease(state.top, cut.top);
@@ -487,7 +492,7 @@ function cropLeft(base, layer, width) {
   return best;
 }
 
-let shownBase = null, shownBackground = null, shownLayer = null, crop = -1, shownEdit = -1;
+let shownBase = null, shownBackground = null, shownLayer = null, crop = -1, shownEdit = -1, cropHadLayer = false;
 function drawPicture(game) {
   const screen = game.screen;
   const base = screen.base;
@@ -504,14 +509,17 @@ function drawPicture(game) {
     picture.classList.toggle("sharp", edit?.mode !== "fill" && edit?.mode !== "frame" && Boolean(extendedFor(screen)?.hd));
     if (edited) crop = -1;
     const width = Math.min(240, (source.height * size.width) / (size.height * zoomOf(edit)));
-    // A new picture cuts straight to its place; a silhouette coming or going on the same one pans.
+    // A new picture cuts straight to its place. On the same picture the place holds while silhouettes
+    // change (태우 2026-11-26: the background moved with them); it pans only once, when the first
+    // silhouette arrives on a picture placed without one.
     const same = screen.background === shownBackground;
-    const layerChanged = (screen.silhouette ? silhouetteSpan(screen.silhouette)?.left : null) !== shownLayer;
-    if (!same || layerChanged || crop < 0) {
+    const span = screen.silhouette ? silhouetteSpan(screen.silhouette) : null;
+    if (!same || crop < 0 || (span && !cropHadLayer)) {
       const next = Number.isFinite(edit?.crop)
         ? Math.round((Math.max(0, Math.min(100, edit.crop)) / 100) * Math.max(0, 240 - width)) : cropLeft(base, screen.silhouette, width);
       picture.classList.toggle("pan", same && crop >= 0);
       crop = next;
+      cropHadLayer = Boolean(span);
     }
     shownBase = base;
     shownBackground = screen.background;
