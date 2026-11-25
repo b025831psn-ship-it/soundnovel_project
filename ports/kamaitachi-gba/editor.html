@@ -64,6 +64,10 @@
     <div class="row"><input type="range" id="shift" min="-100" max="100" step="1" value="0"><output id="shiftOut">0</output></div>
     <p class="hint">오른쪽으로 갈수록 그림이 아래로 내려가요.</p>
   </div>
+  <div>
+    <h2>확대</h2>
+    <div class="row"><input type="range" id="zoom" min="100" max="300" step="5" value="100"><output id="zoomOut">100%</output></div>
+  </div>
   <div id="cropBox">
     <h2>좌우 위치 (0 왼쪽 끝, 100 오른쪽 끝)</h2>
     <div class="row"><label><input type="checkbox" id="cropAuto" checked> 자동</label></div>
@@ -114,6 +118,8 @@ function syncControls() {
   }
   const mode = edit.mode ?? (ai.has(current) ? "ai" : "fill");
   $("shiftBox").hidden = mode === "fill";
+  $("zoom").value = Math.round((edit.zoom ?? 1) * 100);
+  $("zoomOut").textContent = `${Math.round((edit.zoom ?? 1) * 100)}%`;
   $("shift").value = edit.shift ?? 0;
   $("shiftOut").textContent = edit.shift ?? 0;
   const auto = !Number.isFinite(edit.crop);
@@ -149,6 +155,7 @@ function change(patch) {
   const edit = { ...(edits[current] ?? {}), ...patch };
   for (const key of Object.keys(edit)) if (edit[key] === undefined || edit[key] === "" || edit[key] === null) delete edit[key];
   if (edit.shift === 0) delete edit.shift;
+  if (edit.zoom === 1) delete edit.zoom;
   if (Object.keys(edit).length) edits[current] = edit; else delete edits[current];
   dirty = true;
   $("status").textContent = "저장하지 않은 변경이 있어요.";
@@ -164,6 +171,7 @@ $("modes").addEventListener("click", (event) => {
   const mode = event.target.closest("button")?.dataset.mode;
   if (mode !== undefined) change({ mode: mode || undefined });
 });
+$("zoom").addEventListener("input", () => change({ zoom: Number($("zoom").value) / 100 }));
 $("shift").addEventListener("input", () => change({ shift: Number($("shift").value) }));
 $("cropAuto").addEventListener("change", () => change({ crop: $("cropAuto").checked ? undefined : Number($("crop").value) }));
 $("crop").addEventListener("input", () => change({ crop: Number($("crop").value) }));

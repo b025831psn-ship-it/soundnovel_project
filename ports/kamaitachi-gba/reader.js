@@ -89,6 +89,7 @@ let extendedLoading = null;
 //   mode  "ai" (the extended picture; the default when there is one), "fill" (the original cut to fill
 //         the screen) or "frame" (the original whole, over a blurred enlargement of itself)
 //   shift GBA rows the picture moves (+ down) in "ai" and "frame"
+//   zoom  enlargement, 1 to 3 (cut evenly above and below)
 //   crop  where the part shown across sits, 0 (left edge) to 100 (right edge); otherwise automatic
 let edits = {};
 let editVersion = 0;
@@ -473,7 +474,7 @@ function drawPicture(game) {
     compose(screen, base);
     picture.classList.toggle("sharp", edit?.mode !== "fill" && edit?.mode !== "frame" && Boolean(extendedFor(screen)?.hd));
     if (edited) crop = -1;
-    const width = Math.min(240, (source.height * size.width) / size.height);
+    const width = Math.min(240, (source.height * size.width) / (size.height * zoomOf(edit)));
     // A new picture cuts straight to its place; a silhouette coming or going on the same one pans.
     const same = screen.background === shownBackground;
     const layerChanged = (screen.silhouette ? silhouetteSpan(screen.silhouette)?.left : null) !== shownLayer;
@@ -487,11 +488,15 @@ function drawPicture(game) {
     shownBackground = screen.background;
     shownLayer = screen.silhouette ? silhouetteSpan(screen.silhouette)?.left : null;
   }
-  const scale = size.height / source.height;
+  const zoom = zoomOf(edit);
+  const scale = (size.height * zoom) / source.height;
   picture.style.width = `${240 * scale}px`;
-  picture.style.height = `${size.height}px`;
-  picture.style.transform = `translateX(${-crop * scale}px)`;
+  picture.style.height = `${size.height * zoom}px`;
+  // A zoomed picture is cut evenly above and below.
+  picture.style.transform = `translate(${-crop * scale}px, ${(-(zoom - 1) * size.height) / 2}px)`;
 }
+// The editor's enlargement (zoom, 1 to 3), on top of filling the screen's height.
+const zoomOf = (edit) => (Number.isFinite(edit?.zoom) ? Math.max(1, Math.min(3, edit.zoom)) : 1);
 
 // The page in the cartridge's own type: the glyphs PageText has placed so far (font, line breaks and
 // colors as the cartridge draws them, 08001xxx), drawn with whole device pixels per GBA pixel.
