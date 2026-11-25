@@ -56,6 +56,18 @@ test('$420B DMA halts the CPU for setup, channel, and byte clocks', () => {
   assert.equal(bus.dmaBytes, 3); assert.equal(bus.dmaTransfers, 1);
 });
 
+test('$420B mode-0 DMA writes ROM bytes through the WRAM data port', () => {
+  const rom = fixtureRom([]); rom.set([0x11, 0x22, 0x33], 0x100);
+  const bus = new ZakuroBus({ rom, masterLink: { read: () => 0, write() {} }, clock: new MasterClock(0, { refresh: false }) });
+  bus.write(0x2181, 0x40); bus.write(0x2182, 0x23); bus.write(0x2183, 1);
+  bus.write(0x4300, 0); bus.write(0x4301, 0x80);
+  bus.write(0x4302, 0x00); bus.write(0x4303, 0x81); bus.write(0x4304, 0);
+  bus.write(0x4305, 3); bus.write(0x4306, 0); bus.write(0x420b, 1);
+  assert.deepEqual([...bus.wram.subarray(0x12340, 0x12343)], [0x11, 0x22, 0x33]);
+  assert.equal(bus.wramAddress, 0x12343);
+  assert.equal(bus.io[0x4302] | (bus.io[0x4303] << 8), 0x8103);
+});
+
 test('APUIO comparator checks order/value and reports maximum master delta', () => {
   const c = new ApuTraceComparator([
     { master: 100, dir: 'w', port: 0, value: 0xaa },
