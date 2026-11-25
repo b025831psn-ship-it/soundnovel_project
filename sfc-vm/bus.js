@@ -1,7 +1,11 @@
 import { loRomOffset, normalizeRom } from './rom.js';
+import { MasterLink } from '../ports/kamaitachi-sfc/sound/master-link.js';
 
 export class SfcBus {
-  constructor(rom, { eventLimit = Infinity } = {}) {
+  constructor(rom, {
+    eventLimit = Infinity, apu = null, masterLink = null,
+    apuTraceLimit = Infinity, onApuAccess = null,
+  } = {}) {
     this.rom = normalizeRom(rom);
     this.wram = new Uint8Array(128 * 1024);
     // Internal header SRAM size code $03: 2^(3 + 10) = 8 KiB.
@@ -20,7 +24,13 @@ export class SfcBus {
     this.controller1 = 0;
     this.events = [];
     this.eventLimit = eventLimit;
+    this.masterLink = masterLink ?? (apu ? new MasterLink(apu) : null);
+    this.apuTrace = [];
+    this.apuTraceLimit = apuTraceLimit;
+    this.onApuAccess = onApuAccess;
+    this.apuAccessCount = 0;
     this.dmaStats = {};
+    this.pendingDmaMasterCycles = 0;
     this.readStats = {};
   }
 
@@ -37,7 +47,15 @@ export class SfcBus {
     this.io[0x4219 - 0x2000] = this.controller1 >>> 8;
   }
 
-  read8(address) {
+  recordApuAccess(masterCycle, direction, port, value) {
+    const event = { masterCycle, direction, port, value };
+    this.lastApuAccess = event;
+    if (this.apuTrace.length < this.apuTraceLimit) this.apuTrace.push(event);
+    this.apuAccessCount++;
+    this.onApuAccess?.(event);
+  }
+
+  read8(address, masterCycle = 0) {
     address &= 0xffffff;
     const bank = address >>> 16;
     const word = address & 0xffff;
@@ -45,8 +63,12 @@ export class SfcBus {
     if (((bank >= 0x70 && bank <= 0x7d) || bank >= 0xf0) && word < 0x8000)
       return this.sram[word & (this.sram.length - 1)];
     if ((bank & 0x40) === 0 && word < 0x2000) return this.wram[word];
-    if ((bank & 0x40) === 0 && word >= 0x2140 && word <= 0x2143)
-      return this.apuPorts[word - 0x2140];
+    if ((bank & 0x40) === 0 && word >= 0x2140 && word <= 0x2143) {
+      const port = word - 0x2140;
+      const value = this.masterLink ? this.masterLink.read(masterCycle, port) : this.apuPorts[port];
+      this.recordApuAccess(masterCycle, 'r', port, value);
+      return value;
+    }
     if ((bank & 0x40) === 0 && word >= 0x2000 && word < 0x8000) {
       const value = this.io[word - 0x2000];
       if (word === 0x4212 || (word >= 0x4218 && word <= 0x421b)) {
@@ -70,18 +92,25 @@ export class SfcBus {
     return this.read8(address) | (this.read8((address + 1) & 0xffffff) << 8);
   }
 
-  write8(address, value) {
+  write8(address, value, masterCycle = 0) {
     address &= 0xffffff;
     value &= 0xff;
     const bank = address >>> 16;
     const word = address & 0xffff;
+    this.currentMasterCycle = masterCycle;
     if (bank === 0x7e || bank === 0x7f) this.wram[((bank - 0x7e) << 16) | word] = value;
     else if (((bank >= 0x70 && bank <= 0x7d) || bank >= 0xf0) && word < 0x8000)
       this.sram[word & (this.sram.length - 1)] = value;
     else if ((bank & 0x40) === 0 && word < 0x2000) this.wram[word] = value;
     else if ((bank & 0x40) === 0 && word >= 0x2140 && word <= 0x2143) {
       const port = word - 0x2140;
+      if (this.masterLink) {
+        this.masterLink.write(masterCycle, port, value);
+        this.recordApuAccess(masterCycle, 'w', port, value);
+        return;
+      }
       this.apuInputPorts[port] = value;
+      this.recordApuAccess(masterCycle, 'w', port, value);
       this.recordEvent({ kind: 'apu-write', address: word, value });
       // CPU->APU input and APU->CPU output ports are distinct latches. During
       // IPL upload the SPC echoes the transfer token on port 0. The uploaded
@@ -134,7 +163,7 @@ export class SfcBus {
       case 0x2181: this.wramAddress = (this.wramAddress & 0x1ff00) | value; break;
       case 0x2182: this.wramAddress = (this.wramAddress & 0x100ff) | (value << 8); break;
       case 0x2183: this.wramAddress = (this.wramAddress & 0xffff) | ((value & 1) << 16); break;
-      case 0x420b: this.runDma(value); break;
+      case 0x420b: this.runDma(value, this.currentMasterCycle ?? 0); break;
     }
   }
 
@@ -142,7 +171,7 @@ export class SfcBus {
     this.vramAddress = (this.vramAddress + [1, 32, 128, 128][this.vmain & 3]) & 0xffff;
   }
 
-  runDma(mask) {
+  runDma(mask, masterCycle = 0) {
     const patterns = [[0], [0, 1], [0, 0], [0, 0, 1, 1], [0, 1, 2, 3], [0, 1, 0, 1], [0, 0], [0, 0, 1, 1]];
     for (let channel = 0; channel < 8; channel++) {
       if (!(mask & (1 << channel))) continue;
@@ -154,6 +183,8 @@ export class SfcBus {
       const sourceStart = source;
       let size = reg(5) | (reg(6) << 8);
       if (size === 0) size = 0x10000;
+      const alignment = 8 - ((masterCycle + this.pendingDmaMasterCycles) & 7);
+      this.pendingDmaMasterCycles += alignment + size * 8;
       const pattern = patterns[dmap & 7];
       let nonzeroBytes = 0;
       for (let index = 0; index < size; index++) {
@@ -184,5 +215,11 @@ export class SfcBus {
   write16(address, value) {
     this.write8(address, value);
     this.write8((address + 1) & 0xffffff, value >>> 8);
+  }
+
+  takeDmaMasterCycles() {
+    const cycles = this.pendingDmaMasterCycles;
+    this.pendingDmaMasterCycles = 0;
+    return cycles;
   }
 }

@@ -7,11 +7,38 @@ const N = 0x80;
 const X = 0x10;
 const M = 0x20;
 
+const IMPLIED_INTERNAL = new Set([
+  0x0a, 0x18, 0x1a, 0x1b, 0x2a, 0x38, 0x3a, 0x4a, 0x58, 0x5b,
+  0x6a, 0x78, 0x7b, 0x88, 0x8a, 0x98, 0x9a, 0x9b, 0xa8, 0xaa,
+  0xba, 0xbb, 0xc2, 0xc8, 0xca, 0xe2, 0xe8, 0xea, 0xeb, 0xfb,
+]);
+const PUSH_OPS = new Set([0x48, 0x4b, 0x5a, 0x8b, 0x0b, 0xda]);
+const PULL_OPS = new Set([0x68, 0x7a, 0xab, 0x2b, 0xfa]);
+const BRANCH_OPS = new Set([0x10, 0x30, 0x50, 0x70, 0x80, 0x90, 0xb0, 0xd0, 0xf0]);
+const INDEXED_DP_OPS = new Set([
+  0x15, 0x35, 0x55, 0x75, 0x95, 0xb5, 0xd5, 0xf5,
+  0x16, 0x36, 0x56, 0x76, 0x96, 0xb6, 0xd6, 0xf6,
+  0x03, 0x23, 0x43, 0x63, 0x83, 0xa3, 0xc3, 0xe3,
+]);
+const INDEXED_STORE_OPS = new Set([0x99, 0x9d, 0x9e, 0x9f]);
+const RMW_OPS = new Set([0x04, 0x0c, 0x14, 0x1c, 0x46, 0xc6, 0xce, 0xe6, 0xee]);
+
 const hex = (n, width) => n.toString(16).toUpperCase().padStart(width, '0');
 
 export class Cpu65816 {
   constructor(bus, { traceLimit = Infinity } = {}) {
-    this.bus = bus;
+    this.rawBus = bus;
+    const cpu = this;
+    this.bus = new Proxy(bus, {
+      get(target, property) {
+        if (property === 'read8') return (address) => cpu.read8(address);
+        if (property === 'read16') return (address) => cpu.read16(address);
+        if (property === 'write8') return (address, value) => cpu.write8(address, value);
+        if (property === 'write16') return (address, value) => cpu.write16(address, value);
+        const value = Reflect.get(target, property, target);
+        return typeof value === 'function' ? value.bind(target) : value;
+      },
+    });
     this.trace = [];
     this.traceLimit = traceLimit;
     this.executed = 0;
@@ -24,7 +51,84 @@ export class Cpu65816 {
     this.p = 0x34;
     this.e = true;
     this.pbr = 0;
-    this.pc = this.bus.read16(0x00fffc);
+    // Snes9x starts at 182 master clocks just after the hardware reset-vector jump.
+    this.masterCycle = 182;
+    this.nextWramRefresh = 538;
+    this.busTransactions = 0;
+    this.pc = this.rawBus.read16(0x00fffc);
+  }
+
+  memorySpeed(address) {
+    address &= 0xffffff;
+    if (address & 0x408000) {
+      if (address & 0x800000)
+        return this.rawBus.io?.[0x420d - 0x2000] & 1 ? 6 : 8;
+      return 8;
+    }
+    if ((address + 0x6000) & 0x4000) return 8;
+    if ((address - 0x4000) & 0x7e00) return 6;
+    return 12;
+  }
+
+  read8(address) {
+    address &= 0xffffff;
+    const value = this.rawBus.read8(address, this.masterCycle);
+    this.advanceMaster(this.memorySpeed(address));
+    this.busTransactions++;
+    return value;
+  }
+
+  read16(address) {
+    const low = this.read8(address);
+    return low | (this.read8((address + 1) & 0xffffff) << 8);
+  }
+
+  write8(address, value) {
+    address &= 0xffffff;
+    this.rawBus.write8(address, value, this.masterCycle);
+    this.advanceMaster(this.rawBus.takeDmaMasterCycles?.() ?? 0);
+    this.advanceMaster(this.memorySpeed(address));
+    this.busTransactions++;
+  }
+
+  write16(address, value) {
+    this.write8(address, value);
+    this.write8((address + 1) & 0xffffff, value >>> 8);
+  }
+
+  advanceMaster(cycles) {
+    let target = this.masterCycle + cycles;
+    while (this.nextWramRefresh <= target) {
+      target += 40;
+      this.nextWramRefresh += 1364;
+    }
+    this.masterCycle = target;
+  }
+
+  internalCycle(count = 1) { this.advanceMaster(count * 6); }
+
+  finishInstructionTiming(opcode, at, startTransactions) {
+    if (IMPLIED_INTERNAL.has(opcode)) this.internalCycle();
+
+    if (PUSH_OPS.has(opcode)) this.internalCycle();
+    if (PULL_OPS.has(opcode)) this.internalCycle(2);
+    if (opcode === 0x20 || opcode === 0x22) this.internalCycle();
+    if (opcode === 0x60) this.internalCycle(3);
+    if (opcode === 0x6b) this.internalCycle(2);
+    if (opcode === 0x40) this.internalCycle(2);
+
+    if (BRANCH_OPS.has(opcode)) {
+      const fallthrough = (at & 0xff0000) | ((at + 2) & 0xffff);
+      if (this.address() !== fallthrough) this.internalCycle();
+    }
+    if (opcode === 0x82) this.internalCycle();
+
+    if (INDEXED_DP_OPS.has(opcode)) this.internalCycle();
+
+    if (INDEXED_STORE_OPS.has(opcode)) this.internalCycle();
+    if (RMW_OPS.has(opcode)) this.internalCycle(2);
+
+    this.lastInstructionTransactions = this.busTransactions - startTransactions;
   }
 
   interrupt(vector) {
@@ -63,6 +167,7 @@ export class Cpu65816 {
 
   step() {
     const at = this.address();
+    const startTransactions = this.busTransactions;
     const op = this.fetch8();
     let name;
     switch (op) {
@@ -1063,7 +1168,8 @@ export class Cpu65816 {
       case 0x88: name = 'DEY'; this.y = this.setNZ(this.y - 1, this.x8()); break;
       default: throw new Error(`unimplemented opcode $${hex(op, 2)} at $${hex(at, 6)}`);
     }
-    const entry = { address: at, opcode: op, name, a: this.a, x: this.x, y: this.y, s: this.s, d: this.d, dbr: this.dbr, p: this.p, e: this.e };
+    this.finishInstructionTiming(op, at, startTransactions);
+    const entry = { address: at, opcode: op, name, a: this.a, x: this.x, y: this.y, s: this.s, d: this.d, dbr: this.dbr, p: this.p, e: this.e, masterCycle: this.masterCycle };
     this.lastTrace = entry;
     this.executed++;
     if (this.trace.length < this.traceLimit) this.trace.push(entry);

@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { SfcBus } from '../bus.js';
 import { Cpu65816 } from '../cpu.js';
 import { decodeTilePixel, renderMode3Bg1 } from '../ppu.js';
+import { MasterLink } from '../../ports/kamaitachi-sfc/sound/master-link.js';
 
 // Real reset sequence bytes from the verified ROM. Keeping only this short
 // sequence makes the test redistributable without embedding game assets.
@@ -87,6 +88,37 @@ test('answers the uploaded sound driver identity handshake', () => {
   assert.equal(bus.read8(0x2141), 0x4f, 'CPU input does not overwrite the SPC output latch');
   bus.write8(0x2140, 0);
   assert.deepEqual([...bus.apuPorts], [0, 0, 0, 0]);
+});
+
+test('timestamps APUIO at the bus transaction and routes it through MasterLink', () => {
+  const calls = [];
+  const apu = {
+    cpu: { clock: 0, step() { this.clock++; } },
+    cpuRead(port) { calls.push(['read', this.cpu.clock, port]); return 0x50 + port; },
+    cpuWrite(port, value) { calls.push(['write', this.cpu.clock, port, value]); },
+  };
+  const link = new MasterLink(apu);
+  const bus = new SfcBus(fixture(), { masterLink: link });
+  assert.equal(bus.read8(0x2142, 328125), 0x52);
+  bus.write8(0x2141, 0x7f, 656250);
+  assert.deepEqual(calls, [['read', 15664, 2], ['write', 31328, 1, 0x7f]]);
+  assert.deepEqual(bus.apuTrace, [
+    { masterCycle: 328125, direction: 'r', port: 2, value: 0x52 },
+    { masterCycle: 656250, direction: 'w', port: 1, value: 0x7f },
+  ]);
+});
+
+test('charges memory-speed and internal master cycles per CPU bus transaction', () => {
+  const rom = fixture();
+  rom.set([0xad, 0x40, 0x21], 0); // LDA $2140
+  const bus = new SfcBus(rom);
+  const cpu = new Cpu65816(bus);
+  cpu.step();
+  assert.deepEqual(bus.apuTrace[0], {
+    masterCycle: 182 + 8 + 8 + 8,
+    direction: 'r', port: 0, value: 0xaa,
+  });
+  assert.equal(cpu.masterCycle, 182 + 8 + 8 + 8 + 6);
 });
 
 test('enters the native NMI vector with a restorable interrupt frame', () => {
