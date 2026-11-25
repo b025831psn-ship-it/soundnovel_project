@@ -253,8 +253,15 @@ export class VM {
       this.text?.collectChoice?.(this.collectingChoice, raw);
       return "none";
     }
+    if (this.choiceLabel(raw)) return "none";
     this.writes.push(`inline-text=${raw.length}`);
     return this.text?.feed?.(raw) ?? "none";
+  }
+
+  // While a choice collects its entries, a text run that opens with 'v' n selects entry n's
+  // window buffer: "v0 c1 Ａ" is the label of entry 0, not page text.
+  choiceLabel(raw) {
+    return Boolean(this.ram.choiceActive) && raw[0] === 0x76;
   }
 
   write(kind, index, value) {
@@ -353,7 +360,10 @@ export class VM {
         args.push(...raw);
         if (this.ram.choiceActive && this.collectingChoice !== undefined)
           this.text?.collectChoice?.(this.collectingChoice, raw);
-        else {
+        else if (this.choiceLabel(raw)) {
+          // The entry's 'v' buffer label (Ａ, Ｂ, ...) belongs to the choice window, which draws
+          // its own labels; it must not reach the page (it showed as "AB" after the choice).
+        } else {
           // A page's first text: what a bookmark records (0800A838 keeps the page start).
           // A page that ended in 'p' + 'g' is only cleared here, so clear it before the check.
           this.text?.resumed?.();
