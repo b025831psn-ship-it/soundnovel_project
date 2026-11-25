@@ -17,9 +17,9 @@ export const READ_POINT = new Int8Array(256);
 READ_POINT[0x65] = -3;
 
 export class MasterLink {
-  constructor(apu, { master = 0, readLag = READ_LAG, readPoint = READ_POINT, writeHold = 3 } = {}) {
+  constructor(apu, { master = 0, readLag = READ_LAG, readPoint = READ_POINT, writeHold = 3, writeLag = null } = {}) {
     this.apu = apu; this.master = master; this.rem = 0; this.target = apu.cpu.clock;
-    this.readLag = readLag; this.readPoint = readPoint; this.writeHold = writeHold; this.pending = [];
+    this.readLag = readLag; this.readPoint = readPoint; this.writeHold = writeHold; this.writeLag = writeLag; this.pending = [];
     apu.cpu.onPortRead = (s, op) => this.deliver(s + this.readPoint[op]);
   }
   get time() { return this.target + this.rem / SPC_DEN; }
@@ -38,9 +38,20 @@ export class MasterLink {
     const cpu = this.apu.cpu;
     while (cpu.clock < end) cpu.step();
   }
+  // Runs instructions while s + lag(next opcode) < T. `writeLag[op]` (0 = use readLag) is
+  // how long after its start an instruction's port write becomes visible to the CPU.
+  runWhileBefore(T) {
+    const cpu = this.apu.cpu;
+    for (;;) {
+      const lag = this.writeLag[cpu.read(cpu.pc)] || this.readLag;
+      if (!(cpu.clock + lag < T)) break;
+      cpu.step();
+    }
+  }
   read(master, port) {
     this.advanceTo(master);
-    this.runBefore(Math.ceil(this.time - this.readLag)); // every s with s + readLag < T
+    if (this.writeLag) this.runWhileBefore(this.time); // per-opcode lag of the next instruction
+    else this.runBefore(Math.ceil(this.time - this.readLag)); // every s with s + readLag < T
     return this.apu.cpuRead(port);
   }
   write(master, port, value) {

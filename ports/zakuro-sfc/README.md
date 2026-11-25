@@ -53,6 +53,8 @@
 
 - `master-link.js`와 `spc700.js`의 `onPortRead`는 카마이타치 포트(5cf35c6)와 같다. `writeHold` 인수만 더했다(기본 3, 동작 같음).
 - `replay-cpu.mjs <rom> <port-data> --link`: 기준 실행의 CPU `$2140-$2143` 접근 1,253,625건을 master clock 그대로 `MasterLink`에 넣는다. VM이 할 일과 같다. CPU 읽기 982,716건이 모두 같은 값을 받고, 그 결과 DSP 쓰기 264,389건도 모두 같다.
+- `--ipl <로컬 ipl.bin>`: 실제 64바이트 IPL ROM을 전원 투입부터 실행한다(파일은 커밋하지 않는다). CPU 접근 1,253,625건 전부를 `MasterLink`로 넣어 CPU 읽기 1,000,707건이 모두 같고 DSP 쓰기 264,389건도 모두 같다. 드라이버 첫 명령은 1,223,778클록에 정확히 온다. 전원 투입 상태는 `POWER_ON`(타이머 분주 위치 3, `dspAccessOffset` 5)이다.
+- `master-link.js`에 `writeLag`(명령별, SPC 쪽 포트 쓰기가 CPU에 보이는 시점)를 더했다. 주면 CPU 읽기 전에 `s + writeLag[op] < T`인 명령까지 실행한다.
 - 석류의 맛 드라이버용 시각 규칙은 `tools/rom.mjs`의 `LINK_TIMING`이다(측정값과 근거는 주석). 드라이버가 포트를 `!abs` 주소로만 접근해서 카마이타치(`dp` 주소)와 값이 다르다.
 
 ### 전송 확인 (2026-11-25)
@@ -62,4 +64,4 @@
 
 ## 테스트
 
-`npm test` (직접 조립한 프로그램만 사용, 21개).
+`npm test` (직접 조립한 프로그램만 사용, 23개).
