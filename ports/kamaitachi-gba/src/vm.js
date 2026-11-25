@@ -1142,6 +1142,9 @@ export class VM {
     }
     this.waiting = "none";
     this.text?.resumed?.();
+    // The text run goes on from the wait (08007880 reads on from 02024E24).
+    const rest = this.text?.rest;
+    if (rest?.length) this.waiting = this.text.feed(rest, true) ?? "none";
   }
 
   moveChoice(delta) {

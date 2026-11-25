@@ -69,10 +69,14 @@ export class TextWindow {
     this.names = names;
     this.fragments = [];
     this.wait = "none";
-    this.suppressNextWait = false;
-    this.afterWait = false;
+    this.suppress = false; // 02024DFC ('o')
+    this.waited = false; // 02024DFA: a click wait with no glyph since
+    this.deferredWait = false; // 02024E1B
+    this.quote = false; // 02024DF6: inside 「」
+    this.doubleQuote = false; // 02024DF8: inside 『』
     this.pageRaw = [];
     this.choiceRaw = [];
+    this.rest = null; // the text after a wait (02024E24 stops there until the press)
   }
 
   beginChoices(count) {
@@ -90,60 +94,87 @@ export class TextWindow {
     this.pendingClear = false;
     this.fragments = [];
     this.pageRaw = [];
-    this.afterWait = false;
   }
 
   // 080080C4 after a choice: an empty page.
   clearPage() {
     this.pendingClear = false;
+    this.rest = null;
     this.fragments = [];
     this.pageRaw = [];
-    this.afterWait = false;
   }
 
-  feed(raw) {
+  // The control codes of 08007880..08008018 (table 080076A0), per window:
+  //  r  (08007908) new line (x back to 8, y + 20), skipped inside 「」/『』 (02024DF6/F8, set
+  //     and cleared by the Shift JIS 8175/8176 and 8177/8178 glyphs) and after 'o' (02024DFC);
+  //  @  (080079A4) new line, always;  L (08007E50) new line when x is past 0xC3;
+  //  o  (08007C5C) 02024DFC = 1: the next 'r' is skipped and the next 'p'/'P' does not wait
+  //     (02024E1B: the wait moves to the page's 'g');
+  //  p  (08007A40) the click wait (02024DFA), unless a wait came just before with no glyph since;
+  //  P  (08007AA4) the same, but no wait inside 「」/『』 either;
+  //  g  (08007B70) clears the page, after a wait first when one was moved there.
+  feed(raw, continued = false) {
     this.resumed();
-    this.pageRaw.push(raw);
+    // pageRaw keeps whole runs: the rest of a run after a wait belongs to the run already kept.
+    if (!continued || !this.pageRaw.length) this.pageRaw.push(raw);
     this.wait = "none";
+    this.rest = null;
     for (let pos = 0; pos < raw.length; pos++) {
+      if (this.wait !== "none") {
+        // The window stops at the wait; the rest of the run is read after the press.
+        this.rest = raw.slice(pos);
+        break;
+      }
       const byte = raw[pos];
       if (byte > 0x80) {
+        const code = (byte << 8) | raw[pos + 1];
         this.fragments.push(raw.slice(pos, pos + 2));
         pos++;
-        this.afterWait = false;
+        this.waited = false;
+        if (code === 0x8175) this.quote = true;
+        else if (code === 0x8176) this.quote = false;
+        else if (code === 0x8177) this.doubleQuote = true;
+        else if (code === 0x8178) this.doubleQuote = false;
         continue;
       }
       const control = String.fromCharCode(byte);
       const arg = "nsvcC".includes(control) ? raw[++pos] : undefined;
+      const quoted = this.quote || this.doubleQuote;
       if (control === "r") {
-        if (this.suppressNextWait) this.suppressNextWait = false;
-        else this.wait = "click";
-        this.afterWait = true;
-      } else if (control === "p") {
-        if (this.afterWait) this.fragments.push("\n");
-        else {
-          // 08007A3C: a 'p' that no 'r' wait came before waits itself (02024DFA), with the page
-          // marker; a following 'g' clears the page after the press (welcome "お名前をどうぞ……。pg").
-          this.wait = "click";
-          if (raw[pos + 1] === 0x67) { pos++; this.pendingClear = true; }
-          else this.fragments.push("\n");
-        }
-        this.afterWait = false;
-      } else if (control === "P") {
-        this.afterWait = false;
-      } else if (control === "g") {
-        this.fragments = [];
-        this.pageRaw = [];
-        this.wait = "none";
-        this.afterWait = false;
+        if (!quoted && !this.suppress) this.fragments.push("\n");
+      } else if (control === "@") {
+        this.fragments.push("\n");
+      } else if (control === "L") {
+        this.fragments.push({ breakPast: 0xc3 });
       } else if (control === "o") {
-        this.suppressNextWait = true;
+        this.suppress = true;
+      } else if (control === "p" || control === "P") {
+        const clears = raw[pos + 1] === 0x67;
+        if (this.waited || (control === "P" && quoted)) this.suppress = false;
+        else if (this.suppress) { this.suppress = false; this.deferredWait = true; }
+        else {
+          this.wait = "click";
+          this.waited = true;
+          this.deferredWait = false; // the press that ends this wait also ends a moved one
+          if (clears) { pos++; this.pendingClear = true; }
+        }
+      } else if (control === "g") {
+        if (this.deferredWait) {
+          this.deferredWait = false;
+          this.wait = "click";
+          this.waited = true;
+          this.pendingClear = true;
+        } else {
+          this.fragments = [];
+          this.pageRaw = [];
+          this.wait = "none";
+        }
       } else if (control === "C") {
         // Text color: C4 (light blue) marks the player's names, C0 returns to white.
         this.fragments.push({ color: arg - 0x30 });
       } else if (control === "n") {
         this.fragments.push(this.names[arg] ?? `{name:${arg}}`);
-        this.afterWait = false;
+        this.waited = false;
       }
     }
     return this.wait;

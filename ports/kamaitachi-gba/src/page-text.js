@@ -17,6 +17,9 @@ const MENU_BLINK = 30;
 const MENU_BLINK_ON = 16;
 const TEXT_COLOR = { 0: 2, 4: 4 };
 
+// 。！？、・」』）…―～ (08007F04)
+const HANGING = new Set([0x8142, 0x8149, 0x8148, 0x8141, 0x8145, 0x8176, 0x8178, 0x816a, 0x8163, 0x815c, 0x8160]);
+
 export class PageText {
   constructor(screen, font, text) {
     this.screen = screen;
@@ -80,18 +83,24 @@ export class PageText {
   // Glyph positions for the page collected so far.
   place(fragments) {
     const glyphs = [];
-    let x = 8, y = 11, color = 2;
+    let x = 8, y = 11, color = 2, hung = false;
     const put = (encoded) => {
       const index = this.font.find(encoded);
       const width = index < 0 ? 8 : this.font.glyph(index).width;
       // 、。 advance 8; the ideographic space advances 2 (mGBA: 「は　　　透」 leaves 6 pixels).
       const advance = encoded === 0x8141 || encoded === 0x8142 ? 8 : encoded === 0x8140 ? 2 : width;
-      if (x >= 220) { x = 8; y += 14; }
+      // 08007F04: past x 0xDB a glyph goes to the next row, but closing punctuation may stay
+      // on the row once (02024E1A); a second one in a row wraps.
+      if (x > 0xdb) {
+        if (HANGING.has(encoded) && !hung) hung = true;
+        else { hung = false; x = 8; y += 14; }
+      } else if (!HANGING.has(encoded)) hung = false;
       glyphs.push({ encoded, x, y, color });
       x += advance;
     };
     for (const fragment of fragments) {
       if (fragment === "\n") { x = 8; y += 14; continue; }
+      if (fragment.breakPast !== undefined) { if (x > fragment.breakPast) { x = 8; y += 14; } continue; }
       if (fragment.color !== undefined) { color = TEXT_COLOR[fragment.color] ?? 2; continue; }
       if (typeof fragment === "string") {
         // TextWindow gives the name, or {name:n} with n the raw argument byte ('1' = 0x31).
@@ -103,6 +112,7 @@ export class PageText {
       }
       put((fragment[0] << 8) | fragment[1]);
     }
+    glyphs.end = { x, y }; // where the next glyph would go (the wait marker's place)
     return glyphs;
   }
 
@@ -121,6 +131,13 @@ export class PageText {
       if (this.shown > this.layout.length) this.shown = this.layout.length;
     }
     if (this.shown < this.layout.length) this.shown++;
+    // 080073F4 while the window waits for a press (02024E21 counts the frames): the marker is
+    // drawn at the next glyph's place, on the next row past x 0xDB, when the count reaches 16,
+    // and erased and drawn again every 16 frames.
+    const marking = this.waitMarker && this.shown >= this.layout.length;
+    this.waitFrames = marking ? (this.waitFrames ?? -1) + 1 : -1;
+    const markerOn = marking && ((this.waitFrames >> 4) & 1) === 1;
+    if (markerOn !== Boolean(this.markerShown)) { this.markerShown = markerOn; this.drawn = -1; }
     if (hidden) { this.drawn = -1; return; }
     const screen = this.screen;
     if (this.menu) { this.menu.blink++; this.drawn = -1; }
@@ -130,6 +147,11 @@ export class PageText {
     const surface = new ObjTextSurface();
     for (const glyph of this.layout.slice(0, this.shown)) surface.glyph(this.font, glyph.encoded, glyph.x, glyph.y, glyph.color);
     if (this.menu) for (const glyph of this.menuGlyphs()) surface.glyph(this.font, glyph.encoded, glyph.x, glyph.y, glyph.color);
+    if (this.markerShown) {
+      const { x, y } = this.layout.end ?? { x: 8, y: 11 };
+      if (x > 0xdb) surface.glyph(this.font, this.waitMarker, 8, y + 14, 2);
+      else surface.glyph(this.font, this.waitMarker, x, y, 2);
+    }
     const data = screen.image.data;
     data.set(screen.base);
     for (let pixel = 0; pixel < surface.pixels.length; pixel++) {

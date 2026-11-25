@@ -142,12 +142,13 @@ test("13 and 57 consume all variable-length choice entries", () => {
 test("00 text scans CP932 pairs and control arguments", () => {
   const text = new TextWindow({ 1: "透" });
   const vm = new VM({
-    banks: { 27: bank([[0x00, 0x82, 0xa0, 0x6e, 1, 0x72, 0x00]]) },
+    banks: { 27: bank([[0x00, 0x82, 0xa0, 0x6e, 1, 0x72, 0x70, 0x00]]) },
     text,
   });
   vm.step();
   assert.equal(vm.waiting, "click");
   assert.equal(text.fragments[1], "透");
+  assert.equal(text.fragments[2], "\n");
 });
 
 test("04 uses a little-endian request", () => {
@@ -591,27 +592,49 @@ test("57 runs candidate bytecode in collection mode and 16 opens the choice", ()
   assert.equal(vm.offset, vm.rows[27][2]);
 });
 
-test("lone p waits; p g clears the page on resume; r p only breaks the line", () => {
+test("08007880 codes: r breaks the line, p waits, o moves the wait to g, quotes keep r", () => {
   const sjis = (s) => [...s].map((c) => c.charCodeAt(0));
   const text = new TextWindow();
-  // r then p: the r waits, the p after it is a line break (no second wait).
+  // r p: a new line, then the wait.
   assert.equal(text.feed(new Uint8Array([0x82, 0xa0, ...sjis("rp")])), "click");
   text.resumed();
-  assert.deepEqual(text.fragments.length, 2);
-  assert.equal(text.fragments[1], "\n");
-  // lone p: waits and breaks the line, the page stays.
+  assert.deepEqual(text.fragments.slice(1), ["\n"]);
+  // A lone p waits without a new line; a second p before any glyph does not wait again.
   text.feed(new Uint8Array(sjis("g")));
   assert.equal(text.feed(new Uint8Array([0x82, 0xa2, ...sjis("p")])), "click");
-  text.resumed();
-  assert.equal(text.fragments.length, 2);
+  assert.equal(text.feed(new Uint8Array(sjis("p"))), "none");
+  assert.equal(text.fragments.length, 1);
   // p g: waits, the page stays until the press, then is cleared at once.
   text.feed(new Uint8Array(sjis("g")));
   assert.equal(text.feed(new Uint8Array([0x82, 0xa4, ...sjis("pg")])), "click");
   assert.equal(text.fragments.length, 1);
-  assert.equal(text.pageRaw.length, 1);
   text.resumed();
   assert.equal(text.fragments.length, 0);
-  assert.equal(text.pageRaw.length, 0);
+  // o r p: no new line and no wait; the page's g waits instead before clearing.
+  assert.equal(text.feed(new Uint8Array([0x82, 0xa0, ...sjis("orp")])), "none");
+  assert.equal(text.fragments.length, 1);
+  assert.equal(text.feed(new Uint8Array([0x82, 0xa2, ...sjis("g")])), "click");
+  text.resumed();
+  assert.equal(text.fragments.length, 0);
+  // Inside 「」 an r is skipped and P does not wait; after 」 they work again. @ always breaks.
+  assert.equal(text.feed(new Uint8Array([0x81, 0x75, 0x82, 0xa0, ...sjis("rP"), 0x81, 0x76, ...sjis("rP")])), "click");
+  assert.deepEqual(text.fragments.map((f) => (typeof f === "string" ? f : f[1])), [0x75, 0xa0, 0x76, "\n"]);
+  text.feed(new Uint8Array(sjis("g")));
+  text.feed(new Uint8Array([0x82, 0xa0, ...sjis("@")]));
+  assert.equal(text.fragments[1], "\n");
+});
+
+test("a wait in the middle of a run stops the window there; the press reads on", () => {
+  const sjis = (s) => [...s].map((c) => c.charCodeAt(0));
+  const text = new TextWindow();
+  const vm = new VM({ banks: { 27: bank([[0x00, 0x82, 0xa0, ...sjis("rp"), 0x82, 0xa2, ...sjis("p")], [0x00]]) }, text });
+  vm.step();
+  assert.equal(vm.waiting, "click");
+  assert.equal(text.fragments.length, 2); // あ and the new line, not い yet
+  vm.resume();
+  assert.equal(vm.waiting, "click");
+  assert.equal(text.fragments.length, 3);
+  assert.equal(text.pageRaw.length, 1);
 });
 
 test("opcode 13 disables effects while it collects labels", () => {
