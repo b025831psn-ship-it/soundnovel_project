@@ -112,6 +112,7 @@ export async function mountSyncUi({ api = ready(), fetchImpl } = {}) {
         try {
           const secret = newSecret();
           const keys = await connect(secret);
+          await client.ensureVault(); // a passcode can only be registered by an existing vault
           const p = await startPairing(secret, { baseUrl: server(), authToken: keys.authToken, vaultId: keys.vaultId, ...(fetchImpl ? { fetchImpl } : {}) });
           pass = p.code; store.setMeta("passcode", pass);
           await sync();
