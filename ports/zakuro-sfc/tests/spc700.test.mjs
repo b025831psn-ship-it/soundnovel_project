@@ -109,3 +109,16 @@ test('BRA takes 4 clocks including the jump', () => {
   cpu.uploadRecords([{ dest: 0x0400, payload: Uint8Array.of(0x2f, 0x00, 0xff) }, { dest: 0x0400 }]);
   assert.equal(cpu.step(), 4);
 });
+
+test('timer reads see ticks up to two clocks before the read cycle', () => {
+  const readY = (phase) => {
+    const cpu = new SPC700();
+    cpu.uploadRecords([{ dest: 0x0400, payload: Uint8Array.of(0xec, 0xfd, 0x00) }, { dest: 0x0400 }]);
+    const t = cpu.timers[0]; t.enabled = true; t.target = 1; t.phase = phase;
+    cpu.step();
+    return cpu.y;
+  };
+  // MOV Y,!$00FD takes 4 clocks and reads on the last; a tick within its first clock counts.
+  assert.equal(readY(127), 1);
+  assert.equal(readY(126), 0);
+});

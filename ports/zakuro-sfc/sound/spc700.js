@@ -99,6 +99,7 @@ export class SPC700 {
       case 0xf3: this.syncDsp(); return this.dsp.read(this.dspAddr & 0x7f);
       case 0xf4: case 0xf5: case 0xf6: case 0xf7: return this.portIn[addr - 0xf4];
       case 0xfd: case 0xfe: case 0xff: {
+        this.syncTimers();
         const t = this.timers[addr - 0xfd]; const v = t.out; t.out = 0; return v;
       }
       case 0xf0: case 0xf1: case 0xfa: case 0xfb: case 0xfc: return 0;
@@ -204,7 +205,7 @@ export class SPC700 {
   // Executes one instruction and returns the clocks it took.
   step() {
     if (this.stopped) { this.tick(2); return 2; }
-    this.dspDone = 0;
+    this.dspDone = 0; this.timerDone = 0;
     const op = this.fetch();
     this.curOp = op;
     let extra = this.exec(op);
@@ -215,9 +216,19 @@ export class SPC700 {
 
   tick(clocks) {
     this.clock += clocks;
-    for (const t of this.timers) t.tick(clocks);
+    for (const t of this.timers) t.tick(clocks - this.timerDone);
+    this.timerDone = 0;
     if (this.dsp.tick) this.dsp.tick(clocks - this.dspDone);
     this.dspDone = 0;
+  }
+
+  // Brings the timers up to the point inside the current instruction where a $FD-$FF read
+  // sees them: two clocks before the instruction's last (read) cycle. This matched both
+  // references: Kamaitachi polls with MOV A,dp (3 clocks, offset 0) and Zakuro with
+  // MOV Y,!abs (4 clocks, offset 1; reading at the start drops a pitch-slide step).
+  syncTimers() {
+    const at = this.timerAccessOffset ?? Math.max(0, CYCLES[this.curOp] - 3);
+    if (at > this.timerDone) { for (const t of this.timers) t.tick(at - this.timerDone); this.timerDone = at; }
   }
 
   // Brings the DSP up to the point inside the current instruction where a $F3 access
