@@ -75,8 +75,16 @@ const sfcRom = (() => { try { return fs.readFileSync(path.join(__dirname, 'serve
 if (sfcRom) routes.set(SFC_GAME, [path.resolve(__dirname, sfcRom), 'application/octet-stream']);
 const OUTPAINT = path.join(__dirname, 'kamaitachi-gba-kor', 'assets', 'outpaint', 'portrait');
 const cartridges = new Set(['/AGB-AHZJ.gba', '/AGB-AKZJ.gba', SFC_GAME]);
+// Open beta: while a local, uncommitted serve.open file exists (or SOUNDNOVEL_OPEN=1), tunnel visitors
+// need no password. Cartridges stay blocked and pages ask search engines not to index them.
+const openBeta = () => process.env.SOUNDNOVEL_OPEN === '1' || fs.existsSync(path.join(__dirname, 'serve.open'));
 function allowedFromOutside(request, response, url) {
   if (!['cf-connecting-ip', 'x-forwarded-for', 'x-forwarded-host'].some(name => name in request.headers)) return true;
+  if (openBeta()) {
+    if (cartridges.has(url)) { response.writeHead(404).end(); return false; }
+    response.setHeader('X-Robots-Tag', 'noindex, nofollow');
+    return true;
+  }
   if (!password) { response.writeHead(503).end('No test password is set on this server.'); return false; }
   const [scheme, token] = (request.headers.authorization ?? '').split(' ');
   const given = scheme === 'Basic' && token ? Buffer.from(token, 'base64').toString().split(':').slice(1).join(':') : '';
@@ -94,6 +102,7 @@ function allowedFromOutside(request, response, url) {
 const gateCookie = require('node:crypto').createHash('sha256').update('soundnovel-gate:' + password).digest('hex');
 function syncAllowedFromOutside(request, response) {
   if (!['cf-connecting-ip', 'x-forwarded-for', 'x-forwarded-host'].some(name => name in request.headers)) return true;
+  if (openBeta()) return true;
   const given = /(?:^|;\s*)sn_gate=([0-9a-f]{64})/.exec(request.headers.cookie ?? '')?.[1] ?? '';
   const a = Buffer.from(given), b = Buffer.from(gateCookie);
   if (password && a.length === b.length && require('node:crypto').timingSafeEqual(a, b)) return true;
