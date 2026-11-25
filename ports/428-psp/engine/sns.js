@@ -20,12 +20,28 @@ export function parseSns(plain) {
   for (let i = 0; i < count; i++) {
     const off = u32(plain, 0x104 + i * 8), size = u32(plain, 0x108 + i * 8);
     const f = plain.subarray(off, off + size);
-    const name = cstr(f, 4);
+    const name = cstr(f, 0);
     const sections = [0, 1, 2, 3, 4].map(k => u32(f, 0x420 + k * 4));
     const codeStart = sections[4];
-    scripts.push({ index: i, name, bytes: f, codeStart, sections, labels: scanLabels(f, codeStart) });
+    scripts.push({ index: i, name, bytes: f, codeStart, sections, labels: readLabelTable(f, codeStart) });
   }
   return { scripts, byName: Object.fromEntries(scripts.map(s => [s.name.replace(/\.xml$/, ''), s])) };
+}
+
+// Label table at +0x434 .. code start (u32 at +0x430; +0x000..0x42F = name + hash buckets): records [u16 chain][tag 'No' = scene label | 0xFFFF = internal
+// branch target __<script>_<n>][u32 offset from code start][name\0, padded to 4]. Internal labels
+// have no 0x56 op in the code; they mark a position directly.
+export function readLabelTable(f, codeStart) {
+  const end = codeStart;
+  const labels = new Map();
+  let p = 0x434;
+  while (p + 8 < end) {
+    const off = u32(f, p + 4), name = cstr(f, p + 8);
+    if (!name) break;
+    labels.set(name, codeStart + off);
+    p = (p + 8 + name.length + 1 + 3) & ~3;
+  }
+  return labels;
 }
 
 // Walk the bytecode once and record label positions (pc just after the label op).
