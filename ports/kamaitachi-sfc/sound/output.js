@@ -24,5 +24,8 @@ export async function createAudioOut({ inRate = DSP_RATE, target = 0.08, block =
     setMuted: (on) => node.port.postMessage({ type: 'mute', on }),
     setPaused: (on) => node.port.postMessage({ type: 'pause', on }),
     stats: () => stats,
+    // A MessagePort straight to the worklet, for an APU running in a Worker: hand it to
+    // createPcmSink() there so samples skip the main thread.
+    connectPort() { const ch = new MessageChannel(); node.port.postMessage({ type: 'connect', port: ch.port1 }, [ch.port1]); return ch.port2; },
   };
 }

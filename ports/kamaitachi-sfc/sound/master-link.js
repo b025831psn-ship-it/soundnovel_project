@@ -56,6 +56,9 @@ export class MasterLink {
     this.runBefore(Math.ceil(this.time) - 3);
     this.pending.push([this.time, port, value]);
   }
-  // Runs the APU up to the VM's current time (for audio output between port accesses).
-  sync(master) { this.advanceTo(master); this.runBefore(this.target); this.deliver(this.time); }
+  // Runs the APU close to the VM's current time (for audio output between port accesses).
+  // It stops where write() would stop and leaves pending writes queued: a later read or
+  // write at the same master time must still find the SPC where the port rules expect it,
+  // and pending writes reach the SPC only when it reads the port (Claude-Zakuro 1a98dc9).
+  sync(master) { this.advanceTo(master); this.runBefore(Math.ceil(this.time) - 3); }
 }

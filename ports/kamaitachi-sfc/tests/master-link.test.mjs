@@ -10,8 +10,26 @@ test('master clock converts with carried remainder and never runs backwards', ()
   for (let m = 0; m <= 21477270; m += 1361) link.sync(m);
   const exact = Math.floor(link.master * SPC_NUM / SPC_DEN);
   assert.equal(link.target, exact);
-  assert.ok(apu.cpu.clock >= exact && apu.cpu.clock < exact + 8);
+  assert.ok(apu.cpu.clock >= exact - 3 && apu.cpu.clock < exact + 8);
   assert.throws(() => link.advanceTo(0));
+});
+
+test('sync between accesses does not change what the CPU or SPC sees', () => {
+  // MOV A,$F4 ; MOV $F5,A ; BRA back: port 1 echoes port 0 a few clocks later.
+  const prog = Uint8Array.of(0xe4, 0xf4, 0xc4, 0xf5, 0x2f, 0xfa);
+  const run = (syncs) => {
+    const apu = new APU();
+    apu.cpu.uploadRecords([{ dest: 0x400, payload: prog }, { dest: 0x400 }]);
+    const link = new MasterLink(apu), seen = [];
+    for (let m = 100, v = 1; m < 40000; m += 97, v = (v + 1) & 0xff) {
+      if (syncs) link.sync(m);
+      link.write(m, 0, v);
+      if (syncs) link.sync(m);
+      seen.push(link.read(m + 41, 1));
+    }
+    return seen;
+  };
+  assert.deepEqual(run(true), run(false));
 });
 
 test('port write is visible to the SPC after the link reaches that master time', () => {

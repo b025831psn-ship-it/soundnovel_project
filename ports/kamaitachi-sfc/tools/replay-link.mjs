@@ -10,8 +10,8 @@ import { MasterLink } from '../sound/master-link.js';
 import { readIplRecords } from './rom.mjs';
 import { parseTsv, findIplEnd } from './replay-trace.mjs';
 
-export function replayLink({ records, ports, dsp, apu = new APU(), progress = false, portLog = null, lags = {}, ipl = null, limit = Infinity }) {
-  if (ipl) return replayFromReset({ ports, apu, ipl, portLog, lags, progress, limit });
+export function replayLink({ records, ports, dsp, apu = new APU(), progress = false, portLog = null, lags = {}, ipl = null, limit = Infinity, syncEvery = 0 }) {
+  if (ipl) return replayFromReset({ ports, apu, ipl, portLog, lags, progress, limit, syncEvery });
   let first = null;
   if (portLog) apu.cpu.onPortWrite = (t, p, v) => portLog.push([t, p, v]);
   apu.cpu.onDspWrite = (t) => { if (first === null) first = t; };
@@ -42,17 +42,19 @@ export function replayLink({ records, ports, dsp, apu = new APU(), progress = fa
 
 // With a local 64-byte IPL image, runs from reset: the SPC executes the IPL and the CPU's
 // whole upload goes through the link, so the IPL transfer timing is checked too.
-function replayFromReset({ ports, apu, ipl, portLog, lags, progress, limit }) {
+function replayFromReset({ ports, apu, ipl, portLog, lags, progress, limit, syncEvery = 0 }) {
   const dspLog = [];
   if (portLog) apu.cpu.onPortWrite = (t, p, v) => portLog.push([t, p, v]);
   apu.cpu.onDspWrite = (t, r, v) => { if (dspLog.length < 4) dspLog.push([t, r, v]); };
   apu.powerOn(ipl === 'hle' ? null : ipl);
   const link = new MasterLink(apu, lags);
-  let reads = 0, bad = 0, firstBad = null;
+  let reads = 0, bad = 0, firstBad = null, nextSync = syncEvery;
   const n = Math.min(ports.length, limit);
   for (let i = 0; i < n; i++) {
     const [frame, master, dir, port, value] = ports[i];
     const m = Number(master), p = Number(port), v = parseInt(value, 16);
+    // SYNC=n: also sync the link every n master clocks, as a browser player does per frame.
+    if (syncEvery) while (nextSync <= m) { link.sync(nextSync); nextSync += syncEvery; }
     if (dir === 'w') { link.write(m, p, v); continue; }
     reads++;
     const got = link.read(m, p);
@@ -68,7 +70,7 @@ if (import.meta.url === `file://${process.argv[1]}`) {
     records: readIplRecords(readFileSync(rom)),
     ports: parseTsv(readFileSync(portsPath, 'utf8')),
     dsp: parseTsv(readFileSync(dspPath, 'utf8')),
-    progress: !!process.env.PROGRESS, ipl: process.env.IPL === 'hle' ? 'hle' : process.env.IPL ? readFileSync(process.env.IPL) : null, lags: process.env.LAGS ? JSON.parse(process.env.LAGS) : {},
+    progress: !!process.env.PROGRESS, ipl: process.env.IPL === 'hle' ? 'hle' : process.env.IPL ? readFileSync(process.env.IPL) : null, lags: process.env.LAGS ? JSON.parse(process.env.LAGS) : {}, syncEvery: Number(process.env.SYNC ?? 0),
   });
   console.log(JSON.stringify(r));
 }

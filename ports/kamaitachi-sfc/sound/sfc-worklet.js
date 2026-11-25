@@ -7,11 +7,13 @@ class SfcAudioOut extends AudioWorkletProcessor {
     const o = options.processorOptions ?? {};
     this.rs = new Resampler({ inRate: o.inRate, outRate: sampleRate, target: o.target });
     this.muted = false; this.paused = false; this.reportAt = 0;
-    this.port.onmessage = ({ data }) => {
+    const onmessage = ({ data }) => {
       if (data.type === 'pcm') this.rs.push(data.pcm);
       else if (data.type === 'mute') this.muted = data.on;
       else if (data.type === 'pause') this.paused = data.on;
+      else if (data.type === 'connect') data.port.onmessage = onmessage; // a producer in a Worker
     };
+    this.port.onmessage = onmessage;
   }
   process(_, outputs) {
     const L = outputs[0][0], R = outputs[0][1] ?? outputs[0][0];
