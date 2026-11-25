@@ -42,6 +42,7 @@ export class SfcMachine {
     this.rasterField = 0;
     this.nextIrq = Infinity;
     this.pendingIrq = false;
+    this.pendingNmi = false;
     this.renderedPpuRevision = -1;
 
     const externalNmiEnable = busOptions.onNmiEnable;
@@ -66,6 +67,7 @@ export class SfcMachine {
           this.onNmiVector?.(this.nmiCount, this.frame, master);
       },
     });
+    this.cpu.eventScheduler = this;
   }
 
   get master() { return this.cpu.masterCycle; }
@@ -96,27 +98,10 @@ export class SfcMachine {
     const instructionAddress = this.cpu.address();
     const result = this.cpu.step();
     this.onInstruction?.(instructionAddress, result);
-    this.processRasterEvents();
-
-    while (this.master >= this.nextFrame) {
-      this.frame++;
-      this.inVblank = false;
-      if (this.onFrame) {
-        this.framebuffer = this.rasterFramebuffer.slice();
-        this.onFrame(this.frame, this.framebuffer);
-      }
-      this.nextFrame += this.frameLength;
-      this.frameLength = this.frameLength === 357_368 ? 357_364 : 357_368;
-    }
-    while (this.master >= this.nextNmi) {
-      this.inVblank = true;
-      this.latchNmi();
-      this.nextNmi += this.nmiFrameLength;
-      this.nmiFrameLength = this.nmiFrameLength === 357_368 ? 357_364 : 357_368;
-    }
-    if (this.master >= this.pendingNmiAt) {
-      this.pendingNmiAt = Infinity;
-      this.enterNmi();
+    if (this.pendingNmi) { this.pendingNmi = false; this.enterNmi(); }
+    else if (this.pendingIrq && this.cpu.irq()) {
+      this.pendingIrq = false;
+      this.bus.io[0x4211 - 0x2000] &= 0x7f;
     }
     return { instructionAddress, result };
   }
@@ -137,26 +122,62 @@ export class SfcMachine {
     if (this.rasterLine === 262) { this.rasterLine = 0; this.rasterField ^= 1; }
   }
 
-  processRasterEvents() {
-    for (;;) {
-      const next = Math.min(this.nextRenderLine, this.nextHdma, this.nextHdmaInit, this.nextIrq);
-      if (next > this.master) break;
-      if (next === this.nextIrq) {
+  nextCpuEvent() {
+    const events = [
+      ['irq', this.nextIrq], ['hdma-init', this.nextHdmaInit], ['render', this.nextRenderLine],
+      ['hdma', this.nextHdma], ['frame', this.nextFrame], ['nmi', this.nextNmi],
+      ['nmi-edge', this.pendingNmiAt],
+    ];
+    let selected = events[0];
+    for (const event of events.slice(1)) if (event[1] < selected[1]) selected = event;
+    return { type: selected[0], master: selected[1] };
+  }
+
+  runCpuEvent({ type, master }) {
+    if (type === 'irq') {
         this.bus.io[0x4211 - 0x2000] |= 0x80;
         this.pendingIrq = true;
-        this.scheduleIrq(next + 1);
-      } else if (next === this.nextHdmaInit) {
-        if (this.rasterLine === 0) this.cpu.advanceMaster(this.bus.initHdma(next));
+        this.scheduleIrq(master + 1);
+        return 0;
+    }
+    if (type === 'hdma-init') {
+        const stall = this.rasterLine === 0 ? this.bus.initHdma(master) : 0;
         this.advanceRasterEvent('init');
-      } else if (next === this.nextRenderLine) {
+        return stall;
+    }
+    if (type === 'render') {
         if (this.onFrame && this.rasterLine < 224) renderScanline(this.bus, this.rasterFramebuffer, this.rasterLine);
         this.advanceRasterEvent('render');
-      } else {
-        if (this.rasterLine <= 224) this.cpu.advanceMaster(this.bus.runHdmaLine(next));
+        return 0;
+    }
+    if (type === 'hdma') {
+        const stall = this.rasterLine <= 224 ? this.bus.runHdmaLine(master) : 0;
         this.advanceRasterEvent('hdma');
         this.finishRasterLine();
-      }
+        return stall;
     }
+    if (type === 'frame') {
+      this.frame++;
+      this.inVblank = false;
+      if (this.onFrame) {
+        this.framebuffer = this.rasterFramebuffer.slice();
+        this.onFrame(this.frame, this.framebuffer);
+      }
+      this.nextFrame += this.frameLength;
+      this.frameLength = this.frameLength === 357_368 ? 357_364 : 357_368;
+      return 0;
+    }
+    if (type === 'nmi') {
+      this.inVblank = true;
+      this.bus.latchNmi();
+      if (this.bus.io[0x4200 - 0x2000] & 0x80) this.pendingNmi = true;
+      this.nextNmi += this.nmiFrameLength;
+      this.nmiFrameLength = this.nmiFrameLength === 357_368 ? 357_364 : 357_368;
+      return 0;
+    }
+    this.pendingNmiAt = Infinity;
+    this.pendingNmi = true;
+    return 0;
   }
 
   scheduleIrq(afterMaster = this.master) {

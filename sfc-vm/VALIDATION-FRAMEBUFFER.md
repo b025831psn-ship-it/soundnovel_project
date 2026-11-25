@@ -88,3 +88,40 @@ opcode is timestamped at master 148,256,514 native versus 148,256,512 VM.  That
 two-master NMI/HDMA phase difference changes the interrupted loop position and
 propagates into WRAM.  It remains open rather than being hidden with a
 frame-number timing constant.
+
+## Bus-cycle preemption and pixel inventory
+
+Raster events are now selected inside `Cpu65816.advanceMaster()`, alongside
+WRAM refresh, so an HDMA/IRQ/NMI boundary crossed by an individual bus cycle is
+processed before that cycle completes.  The apparent NMI-370 event error also
+exposed a narrower timing bug: the indirect-opcode I/O adjustment inspected
+only the final 16-bit word and mistook `$7E:2000` for bank-zero PPU I/O.  Requiring
+bank zero removes the extra four masters.  The first NMI-handler opcode at NMI
+370 is now master 148,256,514 on both native and VM without a frame constant.
+
+The old native recorded-input probe had two replay errors: it used the next NMI
+count at libretro poll time and treated SNES joypad bits as libretro button IDs.
+With current-NMI polling and the explicit B/Y/Select/Start/d-pad/A/X/L/R map,
+the corrected 5,700-NMI comparison has these remaining state intervals:
+
+- WRAM: NMI 501 only, then 676-5700;
+- semantic APUIO: 2222-5700;
+- VRAM: 1310, 1312-2576, and 2578-5700;
+- CGRAM: the pre-existing power-on rows 1-2, then 3476-5700;
+- OAM: 4876-5495.
+
+Instruction lockstep identifies the NMI-501 transient as controller-history
+phase after the consecutive A samples: at master 194,725,932 `$00:85A4 LDA`
+loads native `$0080` versus VM `$0000` from the input history table.  The value
+reconverges, but its later scheduler consequence begins at NMI 676 and reaches
+semantic APUIO at NMI 2222.  This is an auto-joypad/input-poll phase issue, not
+an unidentified CPU opcode.
+
+`tools/pixel-diff.mjs` compares normalized RGBA streams and records the exact
+different-pixel count and bounding box for every NMI.  Against the corrected
+native input run, 5,258 of 5,700 frames differ.  Early differences are small
+(NMI 19: 13 pixels, box 124,84-131,91), while the largest frames differ over
+all 57,344 pixels.  The name-confirmation sample at NMI 2063 differs in 56,319
+pixels with a full-screen bounding box; native hash is `4c919743e0e06cb3`
+and VM is `a43e52e06ee5bd17`.  The per-frame inventory is stored with the private
+trace data rather than reducing this result to hash equality alone.

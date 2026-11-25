@@ -82,6 +82,7 @@ export class Cpu65816 {
     this.traceLimit = traceLimit;
     this.onBusAccess = onBusAccess;
     this.onInterruptVector = onInterruptVector;
+    this.eventScheduler = null;
     this.executed = 0;
     this.reset();
   }
@@ -179,8 +180,14 @@ export class Cpu65816 {
 
   advanceMaster(cycles) {
     let target = this.masterCycle + cycles;
-    while (this.nextWramRefresh <= target) {
-      target += 40;
+    for (;;) {
+      const external = this.eventScheduler?.nextCpuEvent?.() ?? null;
+      const externalMaster = external?.master ?? Infinity;
+      const eventMaster = Math.min(this.nextWramRefresh, externalMaster);
+      if (eventMaster > target) break;
+      this.masterCycle = eventMaster;
+      if (this.nextWramRefresh <= externalMaster) {
+        target += 40;
       // Snes9x's 5A22-v2 timing alternates WRAM refresh between H=538 and
       // H=534.  On the odd field's one-dot-short V=240 line the position does
       // not toggle.  Preserve that H-event order instead of using a fixed
@@ -197,6 +204,9 @@ export class Cpu65816 {
       this.refreshPosition = nextPosition;
       this.refreshScanline = nextScanline;
       this.refreshField = nextField;
+      } else {
+        target += this.eventScheduler.runCpuEvent(external) ?? 0;
+      }
     }
     this.masterCycle = target;
   }
@@ -233,7 +243,8 @@ export class Cpu65816 {
     if (DIRECT_PAGE_OPS.has(opcode) && (this.d & 0xff)) this.internalCycle();
 
     const finalWord = this.lastBusAddress & 0xffff;
-    if (INDIRECT_POINTER_OPS.has(opcode) && finalWord >= 0x2000 && finalWord < 0x6000)
+    if (INDIRECT_POINTER_OPS.has(opcode) && (this.lastBusAddress >>> 16) === 0
+      && finalWord >= 0x2000 && finalWord < 0x6000)
       this.advanceMaster(this.a8() ? 2 : 4);
 
     if (INDEXED_STORE_OPS.has(opcode)) this.internalCycle();

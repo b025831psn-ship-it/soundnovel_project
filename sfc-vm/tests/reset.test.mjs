@@ -189,6 +189,32 @@ test('places the 16-bit absolute-index penalty before the data bus read', () => 
   assert.equal(cpu.masterCycle, 198 + 8 + 8 + 8 + 6 + 6);
 });
 
+test('does not apply bank-zero I/O pointer timing to a bank-7E indirect destination', () => {
+  const rom = fixture();
+  rom.set([0x97, 0x02], 0); // STA [$02],Y
+  const bus = new SfcBus(rom);
+  bus.wram.set([0x00, 0x20, 0x7e], 2);
+  const cpu = new Cpu65816(bus);
+  cpu.e = false;
+  cpu.p &= ~0x20; // 16-bit accumulator
+  cpu.a = 0x1234;
+  cpu.step();
+  assert.equal(cpu.masterCycle - 198, 56);
+  assert.equal(bus.wram[0x2000], 0x34);
+  assert.equal(bus.wram[0x2001], 0x12);
+});
+
+test('preempts a CPU bus cycle with a raster event and includes its stall', () => {
+  const cpu = new Cpu65816(new SfcBus(fixture()));
+  let pending = true;
+  cpu.eventScheduler = {
+    nextCpuEvent: () => ({ type: 'test', master: pending ? 202 : Infinity }),
+    runCpuEvent: () => { pending = false; return 4; },
+  };
+  cpu.advanceMaster(8);
+  assert.equal(cpu.masterCycle, 210);
+});
+
 test('8-bit LSR A does not shift the hidden B accumulator into A', () => {
   const rom = fixture();
   rom.set([0x4a, 0x4a, 0x4a, 0xa8], 0); // LSR A x3; TAY

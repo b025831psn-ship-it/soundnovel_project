@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import { pathToFileURL } from 'node:url';
 import { SfcMachine } from '../machine.js';
 
-const [romPath, apuModulePath, outputPath, targetArg = '20000', periodArg = '90', wramArg = '55', joypadPath = '', renderArg = '1'] = process.argv.slice(2);
+const [romPath, apuModulePath, outputPath, targetArg = '20000', periodArg = '90', wramArg = '55', joypadPath = '', renderArg = '1', pixelDumpPath = ''] = process.argv.slice(2);
 if (!romPath || !apuModulePath || !outputPath) throw new Error(
   'usage: long-run.mjs ROM.sfc APU-MODULE output.tsv [frames=20000] [a-period=90] [wram-fill=55]',
 );
@@ -37,6 +37,7 @@ let framebufferHash = hex(fnv(blankFramebuffer));
 let lastFramebuffer = null;
 const target = Number(targetArg), period = Number(periodArg);
 const renderFrames = renderArg !== '0';
+const pixelFd = pixelDumpPath ? fs.openSync(pixelDumpPath, 'w') : null;
 const recordedJoypad = new Map();
 if (joypadPath) for (const line of fs.readFileSync(joypadPath, 'utf8').trim().split('\n').slice(1)) {
   const [frameText,, addressText, valueText] = line.split('\t');
@@ -65,6 +66,7 @@ machine = new SfcMachine({
   },
   onNmi: () => { lastNmiPc = machine.cpu.address(); },
   onNmiVector: (nmi, frame) => {
+    if (pixelFd !== null) fs.writeSync(pixelFd, machine.framebuffer ?? blankFramebuffer);
     rows.push([nmi, frame, hex(fnv(machine.bus.wram)), hex(fnv(machine.bus.vram)), hex(fnv(machine.bus.cgram)),
       hex(fnv(machine.bus.oam)), lastNmiPc.toString(16).padStart(6, '0'), xorCount(raw, rawCount),
       xorCount(semantic, semanticCount), rawCount, framebufferHash].join('\t'));
@@ -86,5 +88,6 @@ try {
     message: error instanceof Error ? error.message : String(error) };
 }
 if (rows.length) fs.appendFileSync(outputPath, `${rows.join('\n')}\n`);
+if (pixelFd !== null) fs.closeSync(pixelFd);
 console.log(JSON.stringify({ target, frame: machine.frame, master: machine.master, rawCount, semanticCount, failure }, null, 2));
 if (failure) process.exitCode = 1;
