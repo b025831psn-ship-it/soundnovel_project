@@ -415,21 +415,18 @@ test("boot-path opcodes 3C, 3D, 4E and 63 preserve native alignment", () => {
   assert.equal(vm.ram.vars[2], 7);
 });
 
-test("12 and 43 emit native system cues, then 44 enters flowchart row 39000", () => {
+test("12 and 43 emit native system cues; 44 hands the screen to the host's ending()", () => {
   const calls = [];
   const vm = new VM({
-    banks: {
-      27: bank([[0x12, 0x43, 0x34, 0x12, 0x44]]),
-      39: bank([[0x41, 3, 9]]),
-    },
-    system: { cue: (...args) => calls.push(args.slice(0, 2)) },
+    banks: { 27: bank([[0x12, 0x43, 0x34, 0x12, 0x44, 0x41, 3, 9]]) },
+    system: { cue: (...args) => calls.push(args.slice(0, 2)), ending: () => ({ waiting: "boot" }) },
   });
   vm.step();
   vm.step();
   vm.step();
-  assert.deepEqual(calls, [[0x12, 0], [0x43, 0x1234], [0x44, 39000]]);
-  assert.equal(vm.bank, 39);
-  assert.equal(vm.offset, vm.rows[39][0]);
+  assert.deepEqual(calls, [[0x12, 0], [0x43, 0x1234], [0x44, 0]]);
+  assert.equal(vm.waiting, "boot");
+  vm.waiting = "none";
   vm.step();
   assert.equal(vm.ram.vars[3], 9);
 });
