@@ -171,7 +171,33 @@ function paintSharp(ctx, entry, base, width, height, layer) {
   ctx.imageSmoothingEnabled = false;
   ctx.drawImage(middle, 0, EXTENDED_TOP * scale, width, 160 * scale);
   ctx.restore();
+  // A silhouette standing on the picture's bottom edge (태우 2026-11-25): the picture moves down so the
+  // figure's cut-off feet sit on the screen's bottom edge, and the sky above grows to fill the top
+  // (the extended picture's top rows, stretched and blurred). It eases with the frame margin.
+  const drop = Math.round(level.bottom * (height - (EXTENDED_TOP + 160) * scale));
+  if (drop > 0) {
+    shifted.width = width; shifted.height = height;
+    shifted.getContext("2d").drawImage(ctx.canvas, 0, 0);
+    const blend = 16 * scale; // the stretched sky fades into the picture's own top rows
+    sky.width = width; sky.height = drop + blend;
+    const k = sky.getContext("2d");
+    k.filter = `blur(${Math.round(6 * scale)}px)`;
+    k.drawImage(shifted, 0, 0, width, 12 * scale, 0, -6 * scale, width, sky.height + 12 * scale);
+    k.filter = "none";
+    k.globalCompositeOperation = "destination-in";
+    const fade = k.createLinearGradient(0, drop, 0, drop + blend);
+    fade.addColorStop(0, "#000"); fade.addColorStop(1, "rgba(0,0,0,0)");
+    k.fillStyle = fade; k.fillRect(0, 0, width, sky.height);
+    k.globalCompositeOperation = "source-over";
+    ctx.save();
+    ctx.globalCompositeOperation = "source-over";
+    ctx.globalAlpha = 1;
+    ctx.drawImage(shifted, 0, 0, width, height - drop, 0, drop, width, height - drop);
+    ctx.drawImage(sky, 0, 0);
+    ctx.restore();
+  }
 }
+const shifted = document.createElement("canvas"), sky = document.createElement("canvas");
 function extendedPixels(entry, base) {
   const live = new Float64Array(3);
   for (let i = 0; i < base.length; i += 4) { live[0] += base[i]; live[1] += base[i + 1]; live[2] += base[i + 2]; }
