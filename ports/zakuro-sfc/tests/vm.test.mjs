@@ -78,6 +78,17 @@ test('power-on WRAM uses the native reference pattern across low-bank mirrors', 
   assert.equal(bus.readMapped(0x7e01ec), 0x55);
 });
 
+test('LoROM SRAM maps banks $70-$7d and powers on with the native fill', () => {
+  const rom = fixtureRom([]);
+  rom[0x7fd7] = 0x0b;
+  rom[0x7fd8] = 0x03;
+  const bus = new ZakuroBus({ rom, masterLink: { read: () => 0, write() {} } });
+  assert.equal(bus.read(0x700000), 0x60);
+  assert.equal(bus.read(0x700001), 0x60);
+  bus.write(0x700000, 0x42);
+  assert.equal(bus.read(0xf00000), 0x42);
+});
+
 test('sparse program image replaces the owned ROM buffer', () => {
   const program = new ProgramImage([{ offset: 0, length: 0x8000, data: fixtureRom([0xea]) }]);
   const bus = new ZakuroBus({ program, masterLink: { read: () => 0, write() {} } });

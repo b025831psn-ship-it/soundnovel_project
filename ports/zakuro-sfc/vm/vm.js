@@ -26,7 +26,7 @@ export class ZakuroVM {
     const beforeMaster = this.bus.clock.master;
     const accesses = this.bus.accessCount;
     const cpuCycles = this.cpu.step();
-    const internalCycles = Math.max(0, cpuCycles - (this.bus.accessCount - accesses));
+    const internalCycles = Math.max(0, cpuCycles - (this.bus.accessCount - accesses) - this.cpu.positionedInternalCycles);
     this.bus.clock.idle(internalCycles * 6);
     if (this.cpu.interruptMasterAdjustment) {
       this.bus.clock.idle(this.cpu.interruptMasterAdjustment);
@@ -41,7 +41,7 @@ export class ZakuroVM {
       // Snes9x schedules the VBlank NMI at HC=12 and enters it at the first
       // opcode boundary at or beyond that point.
       if (this.bus.io[0x4200] & 0x80) {
-        this.nmiTriggerMaster = vblankBoundary(afterVblank) + 12;
+        this.nmiTriggerMaster = vblankBoundary(afterVblank) + 6;
       }
     }
     return cpuCycles;

@@ -56,7 +56,7 @@ then exposed a two-master-clock interrupt-entry shortfall: the native CPU's
 first interrupt I/O cycle is an 8-master opcode fetch plus a 6-master internal
 cycle, while the VM's integer CPU-cycle accounting had supplied only 12 master
 clocks. NMI/IRQ now enter at a separately scheduled opcode boundary (VBlank
-HC=12, NMITIMEN edge +6) and carry the remaining two master clocks. This gets
+boundary +6, NMITIMEN edge +6) and carry the remaining two master clocks. This gets
 past row 66,428. Odd-field V=240 now uses the inverted refresh phase without
 changing the phase carried into V=241. The remaining frame-403 shift was a
 false NMITIMEN enable-edge NMI: the VM honored a stale RDNMI flag during the
@@ -75,9 +75,14 @@ row hit boxes still need PPU/text-row observation.
 With that input, `tools/vm-full-run.mjs` reaches the end without a stop or CPU
 error and finds all 252,918 reference CPU writes. The former extra idle-clear
 triplets at reference frames 422, 760, and 1798 are gone, and the write sequence
-has no unmatched reference rows or drift sections. The strict all-access prefix
-is 947,769 rows; the next value mismatch is row 947,770 at 622,326,106 master
-clocks, with the VM read 12 master clocks earlier.
+has no unmatched reference rows or drift sections. The frame-784 main-thread
+split was an unmapped LoROM SRAM read at `$70:0000`: native SRAM powers on as
+`$60`, while the VM had returned zero. The VM now derives SRAM size from the
+cartridge header, maps LoROM SRAM banks, and uses the same `$60` power-on fill.
+The former row-947,770 value mismatch is gone; all 1,253,625 APUIO rows now
+match in order and value. Exact master timing has one remaining six-access
+section at frame 422 (rows 523,881-523,886, delta -42) where DRAM refresh and
+NMI entry meet, then returns to zero.
 All legacy `[WP]` and `[STUCK]` diagnostics are disabled unless
 `globalThis.ZAKURO_VM_DEBUG` is explicitly enabled, so they no longer print or
 perform timing-visible watchpoint reads in normal runs.

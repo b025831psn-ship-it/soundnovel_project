@@ -50,6 +50,7 @@ export class CPU {
   // --- Helpers ---
   read(addr) { return this.bus.read(addr); }
   write(addr, val) { this.bus.write(addr, val); }
+  ioCycle() { this.bus.clock.idle(6); this.positionedInternalCycles++; }
 
   // Read word based on current settings (little endian)
   readWord(addr) {
@@ -288,6 +289,7 @@ export class CPU {
 
   step() {
     const prevCycles = this.cycles;
+    this.positionedInternalCycles = 0;
 
     // Handle Wait State (WAI)
     if (this.waiting) {
@@ -1917,7 +1919,8 @@ export class CPU {
         this.cycles += this.P.M ? 3 : 4;
         break;
        case 0x9E: // STZ abs,x
-        if (this.P.M) this.write(this.addr_abs_x(), 0); else { const addr=this.addr_abs_x(); this.write(addr, 0); this.write(addr+1, 0); }
+        { const addr = this.addr_abs_x(); this.ioCycle();
+          if (this.P.M) this.write(addr, 0); else { this.write(addr, 0); this.write(addr+1, 0); } }
         this.cycles += this.P.M ? 4 : 5;
         break;
 
