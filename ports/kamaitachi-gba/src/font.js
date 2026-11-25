@@ -104,6 +104,9 @@ export class TextWindow {
         this.afterWait = false;
       } else if (control === "o") {
         this.suppressNextWait = true;
+      } else if (control === "C") {
+        // Text color: C4 (light blue) marks the player's names, C0 returns to white.
+        this.fragments.push({ color: arg - 0x30 });
       } else if (control === "n") {
         this.fragments.push(this.names[arg] ?? `{name:${arg}}`);
         this.afterWait = false;

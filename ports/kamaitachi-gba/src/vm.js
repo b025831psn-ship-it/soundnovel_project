@@ -6,6 +6,7 @@ export const HANDLERS = {
   0x02: "08003724",
   0x03: "080037BC",
   0x04: "08003930",
+  0x05: "080039D0",
   0x08: "08003AE0",
   0x09: "08003B64",
   0x0a: "08003C3C",
@@ -14,17 +15,25 @@ export const HANDLERS = {
   0x0d: "08003CF0",
   0x0e: "08003DF0",
   0x0f: "08003E58",
+  0x12: "08004008",
   0x13: "080040A0",
   0x14: "0800411C",
   0x15: "08004154",
   0x16: "08004200",
+  0x17: "08004478",
+  0x18: "080044D0",
+  0x19: "0800450C",
   0x1a: "08003D30",
   0x1c: "08004574",
+  0x1d: "080045B4",
   0x1e: "080045F4",
   0x21: "08003D70",
   0x22: "08003DB0",
   0x23: "080046D4",
   0x25: "08003F30",
+  0x26: "08004724",
+  0x27: "0800475C",
+  0x28: "08004794",
   0x29: "080048C0",
   0x2c: "080049FC",
   0x2d: "08004B10",
@@ -32,23 +41,44 @@ export const HANDLERS = {
   0x2f: "08004C34",
   0x40: "080051B4",
   0x41: "08005264",
+  0x43: "08005290",
+  0x44: "080053DC",
   0x30: "08004C8C",
   0x31: "08004CDC",
   0x32: "08004D4C",
+  0x33: "08004DC4",
   0x34: "08004DD0",
   0x35: "08004E28",
+  0x36: "08004E84",
   0x37: "08004EE0",
+  0x39: "08004F8C",
+  0x3a: "08005000",
+  0x3b: "08004F54",
+  0x3c: "08005094",
+  0x3d: "080050F4",
   0x3e: "08005110",
   0x45: "08005214",
+  0x46: "080047CC",
+  0x47: "08004804",
+  0x48: "0800483C",
   0x4b: "080057C0",
   0x4c: "080057E8",
   0x4d: "080057EC",
+  0x4e: "08005828",
+  0x4f: "08005848",
+  0x51: "080058B4",
+  0x52: "080058EC",
   0x53: "08005914",
   0x56: "08005B1C",
   0x57: "08005BA8",
   0x58: "08005C30",
+  0x59: "08005C7C",
+  0x5b: "08005CD4",
   0x5e: "08005DE0",
   0x5f: "080059C0",
+  0x61: "08005EA4",
+  0x62: "08005EE4",
+  0x63: "08005F38",
 };
 
 // Native handlers which short-circuit while a 57 choice candidate is being
@@ -63,16 +93,21 @@ const SILENT = {
 export const SUPPRESSION = Object.freeze({
   0x04: ["77e-or-78e", "u16"], 0x08: ["77e-or-78e", "u16,u8"], 0x09: ["77e-or-78e", "u16,u8"],
   0x0a: ["77e-or-78e", "u8"], 0x0b: ["77e-or-78e", "u8"], 0x0c: ["77e-or-78e", "u16"],
-  0x0d: ["77e", "u8"], 0x0e: ["77e", "u8,u16"], 0x0f: ["77e", "u8,u16"], 0x1a: ["77e", "u8"],
+  0x0d: ["77e", "u8"], 0x0e: ["77e", "u8,u16"], 0x0f: ["77e", "u8,u16"],
+  0x19: ["77e", "u16"], 0x1a: ["77e", "u8"],
   0x13: ["sets-77e", "choice[]"], 0x15: ["78e-or-choice-return", ""],
   0x1c: ["77e-or-78e", "u8"], 0x21: ["77e", "u8"], 0x22: ["77e", "u8"],
   0x23: ["77e-or-78e", "u8,u8"], 0x25: ["77e", "u8,u16"], 0x29: ["77e-or-78e", "u8,u16"],
   0x2c: ["77e-or-78e", ""], 0x2d: ["77e-or-78e", "u8,u16"], 0x2e: ["77e-or-78e", "u8,u8"],
   0x2f: ["77e-or-78e", "u16"], 0x30: ["77e-or-78e", "u16"], 0x31: ["77e-or-78e", "u16,u16"],
   0x32: ["77e-or-78e", "u16,u16"], 0x34: ["77e-or-78e", "u16"], 0x35: ["77e-or-78e", "u8,u16"],
-  0x37: ["77e-or-78e", "u16"], 0x4d: ["77e-or-78e", "u8"], 0x53: ["77e-or-78e", "u16"],
+  0x37: ["77e-or-78e", "u16"], 0x46: ["78e", "u8"], 0x47: ["78e", "u8"], 0x48: ["78e", "u8"],
+  0x4d: ["77e-or-78e", "u8"], 0x51: ["77e-or-78e", "u8,u16"],
+  0x52: ["77e-or-78e", ""], 0x53: ["77e-or-78e", "u16"],
   0x57: ["sets-77e", "choice-key[]"], 0x58: ["77e-or-78e", "u16"],
   0x5e: ["77e", "u8,u16,u16"], 0x5f: ["77e-or-78e", "u16"],
+  0x61: ["77e-or-78e", "u16"],
+  0x62: ["77e-or-78e", "u16"],
 });
 
 export class VM {
@@ -85,6 +120,8 @@ export class VM {
     musicMap = [],
     audioTables = null,
     choiceView = null,
+    system = null,
+    transitionTimings = null,
     trace = null,
   } = {}) {
     this.banks = banks;
@@ -101,8 +138,13 @@ export class VM {
       : null;
     this.sound = new SceneAudio(engine, tables, effects);
     this.choiceView = choiceView;
+    this.system = system;
+    this.transitionTimings = transitionTimings?.sites ?? transitionTimings ?? {};
+    this.transitionVisits = new Map();
     this.trace = trace;
     this.frame = 0;
+    this.skipAudioFrame = false;
+    this.skipAudioIrq = false;
     this.halted = false;
     this.waiting = "none";
     this.unimplemented = new Set();
@@ -122,6 +164,9 @@ export class VM {
       audioRequest: 0xffff,
       choiceActive: 0,
       inputReady: 0,
+      system47: 0,
+      system48: 0,
+      clockTarget: 0,
       brightness: Array.from({ length: 11 }, (_, slot) => ({
         current: slot === 9 ? 0x8000 : 0,
         target: slot === 9 ? 0x8000 : 0,
@@ -205,8 +250,8 @@ export class VM {
 
   suppressed(opcode) {
     const gate = SUPPRESSION[opcode]?.[0];
-    const blocked = this.ram.effectDisabled === 1 ||
-      (gate === "77e-or-78e" && this.ram.effectBypass === 1);
+    const blocked = (gate !== "78e" && this.ram.effectDisabled === 1) ||
+      (gate !== "77e" && this.ram.effectBypass === 1);
     if (blocked) {
       this.ram.updatePending = 1;
       this.writes.push("updatePending=1");
@@ -228,7 +273,7 @@ export class VM {
       this.ram.choiceActive = 1;
       this.ram.effectDisabled = 1;
       this.text?.beginChoices?.(entries.length);
-    } else this.waiting = "choice";
+    } else if (!this.ram.choiceSkip) this.waiting = "choice"; // 1D 1C: opcode 16 picks the entry
     return [
       count,
       index,
@@ -236,6 +281,39 @@ export class VM {
         opcode === 0x57 ? [entry.row, entry.key] : [entry.row],
       ),
     ];
+  }
+
+  // Native transition handlers can cross several VBlanks before returning to
+  // the scenario dispatcher. The timing table is captured from the original
+  // cartridge and keyed by bank and cursor, because decompression/copy cost is
+  // site-specific and can differ for the same opcode and arguments.
+  nativeWait(bank, offset) {
+    const key = `${bank.toString(16)}:${offset.toString(16)}`;
+    const entries = this.transitionTimings[key];
+    if (!entries?.length) return;
+    const visit = this.transitionVisits.get(key) ?? 0;
+    const timing = entries[Math.min(visit, entries.length - 1)];
+    this.transitionVisits.set(key, visit + 1);
+    if (!timing.frames) return;
+    this.skipAudioFrame = timing.audioFrame?.[0] === "0";
+    // IRQ/play-length runs before dispatch, so frame zero cannot be changed by
+    // the opcode. Captures normally have it set; retain the observed value for
+    // documentation and apply the remaining frames from the next VBlank.
+    this.transitionWait = { ...timing, index: 1 };
+    this.waiting = "transition";
+  }
+
+  prepareNativeWaitFrame() {
+    const timing = this.transitionWait;
+    if (!timing) return;
+    if (timing.index >= timing.frames) {
+      this.transitionWait = null;
+      this.waiting = "none";
+      return;
+    }
+    this.skipAudioFrame = timing.audioFrame?.[timing.index] === "0";
+    this.skipAudioIrq = timing.audioIrq?.[timing.index] === "0";
+    timing.index++;
   }
 
   step() {
@@ -281,6 +359,20 @@ export class VM {
         const request = this.word();
         args.push(request);
         if (!this.suppressed(opcode)) this.scene?.request(request, this.ram);
+        break;
+      }
+      case 0x05: {
+        const request = this.word();
+        args.push(request);
+        if (this.ram.effectDisabled === 1 || this.ram.effectBypass === 1) {
+          this.ram.updatePending = 1;
+          this.writes.push("updatePending=1");
+          break;
+        }
+        // 080039D0 calls the shared scene loader in mode 1. Request 0x83
+        // additionally wraps it in slot 1/5 transitions; those pixels remain
+        // a renderer hook, while nativeWait preserves its cartridge timing.
+        this.scene?.request(request, this.ram, 1);
         break;
       }
       case 0x08:
@@ -347,6 +439,11 @@ export class VM {
           this.branch(row);
         break;
       }
+      case 0x12:
+        // 08004008: composite six-slot fade, menu command 00, and restore.
+        // Rendering is host-owned; nativeWait preserves its 36-frame span.
+        this.system?.cue?.(0x12, 0, this.ram);
+        break;
       case 0x13:
       case 0x57:
         args.push(...this.choice(opcode));
@@ -368,9 +465,46 @@ export class VM {
         break;
       }
       case 0x16:
+        // 08004200: when 0200077F is set (system command 1D 1C), the menu is not shown and the
+        // entry chosen beforehand (02000780, written by opcode 3C) is taken at once.
+        if (this.ram.choiceSkip) {
+          this.ram.choiceSkip = 0;
+          this.waiting = "choice";
+          this.resume(this.ram.choicePreset ?? 0);
+          break;
+        }
         this.waiting = "choice";
         this.choiceView?.show?.(this.text?.choiceRaw ?? [], this.choiceSelection);
         break;
+      case 0x17:
+        // 08004478: outside choice collection, advance over the already-shown
+        // label until (and including) opcode 15. Text bytes > 80 consume their
+        // following byte as well, exactly as the native cursor loop does.
+        if (!this.ram.choiceActive) {
+          while (this.banks[this.bank][this.offset] !== 0x15) {
+            if (this.byte() > 0x80) this.offset++;
+          }
+          this.offset++;
+        }
+        break;
+      case 0x18: {
+        const command = this.word();
+        args.push(command);
+        if (!this.ram.choiceActive) {
+          this.system?.cue?.(0x18, command, this.ram);
+          this.ram.updatePending = 1;
+          this.writes.push("updatePending=1");
+        }
+        break;
+      }
+      case 0x19: {
+        const command = this.word();
+        args.push(command);
+        if (!this.suppressed(opcode)) this.system?.cue?.(0x19, command, this.ram);
+        this.ram.updatePending = 1; // 02000781, both the call and suppressed paths
+        if (!this.writes.includes("updatePending=1")) this.writes.push("updatePending=1");
+        break;
+      }
       case 0x21:
       case 0x22: {
         const index = this.byte();
@@ -380,14 +514,36 @@ export class VM {
         break;
       }
       case 0x1c: {
-        args.push(this.byte());
-        this.suppressed(opcode);
+        const command = this.byte();
+        args.push(command);
+        const blocked = this.suppressed(opcode);
+        // Subcommand 14 (0800913E) performs one frame of presentation work,
+        // then consumes an immediately following `1C 00` pair itself.
+        if (
+          !blocked && command === 0x14 &&
+          this.banks[this.bank][this.offset] === 0x1c &&
+          this.banks[this.bank][this.offset + 1] === 0x00
+        ) this.offset += 2;
+        break;
+      }
+      case 0x1d: {
+        const command = this.byte();
+        args.push(command);
+        if (this.ram.choiceActive || this.ram.effectBypass === 1) break;
+        // 08009478's 00-6F system-command table. UI-specific commands are
+        // supplied by the host; a missing host is a deliberate no-op so the
+        // bytecode remains aligned while the corresponding UI is being ported.
+        const result = this.system?.command?.(command, this.ram);
+        if (result?.inputReady !== undefined)
+          this.ram.inputReady = result.inputReady ? 1 : 0;
+        if (result?.waiting) this.waiting = result.waiting;
         break;
       }
       case 0x1e: {
         const offset = this.word();
         args.push(offset);
-        if (this.ram.inputReady) this.offset = offset;
+        // Also taken while 0200077F (1D 1C) asks opcode 16 to pick the preset entry (mGBA 19:80 -> A6).
+        if (this.ram.inputReady || this.ram.choiceSkip) this.offset = offset;
         this.ram.updatePending = 1;
         break;
       }
@@ -406,6 +562,20 @@ export class VM {
         args.push(index, row);
         if (this.suppressed(opcode)) break;
         if (this.ram.bits[index]) this.branch(row);
+        break;
+      }
+      case 0x26:
+      case 0x27:
+      case 0x28: {
+        const value = this.byte();
+        args.push(value);
+        if (this.ram.effectBypass !== 1) {
+          const field = opcode === 0x26 ? "presentationC6" :
+            opcode === 0x27 ? "presentationC5" : "presentationC7";
+          this.ram[field] = value;
+          this.ram.updatePending = 1;
+          this.writes.push(`${field}=${value}`, "updatePending=1");
+        }
         break;
       }
       case 0x29: {
@@ -485,6 +655,11 @@ export class VM {
         this.waiting = "audio-start";
         break;
       }
+      case 0x33:
+        // 08004DC4: set the dispatch-continue flag (02000781).
+        this.ram.updatePending = 1;
+        this.writes.push("updatePending=1");
+        break;
       case 0x34: {
         const request = this.word();
         args.push(request);
@@ -503,11 +678,62 @@ export class VM {
         if (request !== 0xffff) this.sound.effects?.setFlag(value, (request - 1000) << 16 >> 16);
         break;
       }
+      case 0x36: {
+        const value = this.byte();
+        const request = this.word();
+        args.push(value, request);
+        if (this.ram.effectDisabled === 1 || this.ram.effectBypass === 1) {
+          this.ram.updatePending = 1;
+          this.writes.push("updatePending=1");
+          break;
+        }
+        if (request === 0xffff) break;
+        // 08004E84: start the request through 08004C80, then apply the same
+        // effect-program flag operation used by opcode 35.
+        this.sound.play(request, 0);
+        this.syncAudio();
+        this.sound.effects?.setFlag(value, (request - 1000) << 16 >> 16);
+        break;
+      }
       case 0x37: {
         args.push(this.word());
         this.suppressed(opcode);
         break;
       }
+      case 0x39:
+        // 08004F8C -> 080086F8: u8 plus three little-endian words.
+        // The first word is a bank-buffer-relative data address.
+        args.push(this.byte(), this.word(), this.word(), this.word());
+        break;
+      case 0x3a: {
+        const command = this.byte();
+        args.push(command);
+        if (!this.ram.choiceActive && this.ram.effectBypass !== 1) {
+          this.system?.cue?.(0x3a, command, this.ram);
+          this.ram.updatePending = 1;
+          this.writes.push("updatePending=1");
+        }
+        break;
+      }
+      case 0x3b:
+        // 08004F54 -> 08008684: one u8 presentation command.
+        args.push(this.byte());
+        break;
+      case 0x3c:
+        // 08005094: two u8 operands, followed by the 0800B79C menu-state
+        // query when its first operand is zero. The boot UI owns that state;
+        // retain bytecode alignment until the host implementation is attached.
+        {
+          const query = this.byte();
+          const index = this.byte();
+          args.push(query, index);
+          // 0800B79C: 1 when any save slot is in use (020007AC != FF), else 0.
+          if (query === 0) this.ram.choicePreset = this.system?.anySave?.() ? 1 : 0;
+        }
+        break;
+      case 0x3d:
+        // 080050F4: clears two menu/input bytes after 0800AEA4.
+        break;
       case 0x3e:
         break;
       case 0x40: {
@@ -525,6 +751,17 @@ export class VM {
         this.write("vars", index, value);
         break;
       }
+      case 0x43: {
+        const command = this.word();
+        args.push(command);
+        this.system?.cue?.(0x43, command, this.ram);
+        break;
+      }
+      case 0x44:
+        // 080053DC: the native flowchart UI returns through bank 27 row 0.
+        this.system?.cue?.(0x44, 39000, this.ram);
+        this.branch(39000);
+        break;
       case 0x45: {
         args.push(this.word(), this.word());
         if (
@@ -532,6 +769,19 @@ export class VM {
           this.banks[this.bank][this.offset] === 0x0a
         )
           this.offset += 2;
+        break;
+      }
+      case 0x46:
+      case 0x47:
+      case 0x48: {
+        const value = this.byte();
+        args.push(value);
+        if (!this.suppressed(opcode)) {
+          this.ram[`system${opcode.toString(16)}`] = value;
+          this.writes.push(`system${opcode.toString(16)}=${value}`);
+        }
+        this.ram.updatePending = 1; // 02000781, both the store and suppressed paths
+        if (!this.writes.includes("updatePending=1")) this.writes.push("updatePending=1");
         break;
       }
       case 0x4b:
@@ -544,6 +794,22 @@ export class VM {
         this.suppressed(opcode);
         break;
       }
+      case 0x4e:
+        // 08005828: composite boot/menu teardown; no scenario operands.
+        break;
+      case 0x4f:
+        // 08005848 -> 08008940: one u8 presentation command.
+        args.push(this.byte());
+        break;
+      case 0x51:
+        // 080058B4 consumes a u8/u16 pair; the native handler has no normal-path side effect.
+        args.push(this.byte(), this.word());
+        this.suppressed(opcode);
+        break;
+      case 0x52:
+        // 080058EC has no operands or normal-path side effect.
+        this.suppressed(opcode);
+        break;
       case 0x53: {
         const effect = this.word();
         args.push(effect);
@@ -571,9 +837,47 @@ export class VM {
         this.suppressed(opcode);
         break;
       }
+      case 0x61: {
+        const value = this.word();
+        args.push(value);
+        if (!this.suppressed(opcode)) {
+          this.ram.clockTarget = value;
+          this.writes.push(`clockTarget=${value}`);
+        }
+        break;
+      }
+      case 0x62: {
+        const value = this.word();
+        args.push(value);
+        if (!this.suppressed(opcode) && this.ram.clockTarget < value) {
+          this.clockWaitTarget = value;
+          this.waiting = "clock";
+        }
+        break;
+      }
+      case 0x63:
+        // 08005F38: invokes 080135C0(0); no scenario operands.
+        break;
       case 0x58: {
         args.push(this.word());
         this.suppressed(opcode);
+        break;
+      }
+      case 0x59:
+        // 08005C7C -> 0800FF24: wait until the shared presentation flag
+        // clears. The cartridge-frame duration is supplied by nativeWait.
+        break;
+      case 0x5b: {
+        const command = this.byte();
+        args.push(command);
+        if (this.ram.choiceActive || this.ram.effectBypass === 1) {
+          this.ram.updatePending = 1;
+          this.writes.push("updatePending=1");
+          break;
+        }
+        // 08005CFC: after consuming its u8 operand, skip a fixed 0x21-byte
+        // inline block and continue at the following scenario command.
+        this.offset += 0x21;
         break;
       }
       default:
@@ -593,6 +897,7 @@ export class VM {
       writes: [...this.writes],
       wait: this.waiting,
     });
+    if (this.waiting === "none") this.nativeWait(startBank, startOffset);
     return !this.halted;
   }
 
@@ -641,6 +946,7 @@ export class VM {
   vblank(budget = 1024) {
     this.frame++;
     this.ram.updatePending = 0;
+    this.prepareNativeWaitFrame();
     // Frame order on the cartridge: the VBlank interrupt runs the effect scripts (08002B00 from
     // 080005F0); the frame wait's tail 080062E0 -> 080003D8 -> 080066E8 then counts the play
     // length (0800A3E0); the frame's dispatches follow; the next frame wait (08002FB8) runs
@@ -651,6 +957,8 @@ export class VM {
     this.syncAudio();
     if (this.waiting === "audio" && !this.audioWaitFrame()) this.waiting = "none";
     if (this.waiting === "delay" && --this.waitFrames <= 0)
+      this.waiting = "none";
+    if (this.waiting === "clock" && ++this.ram.clockTarget >= this.clockWaitTarget)
       this.waiting = "none";
     if (this.waiting === "audio-start" && --this.waitFrames <= 0) {
       const { request, speed, afterText } = this.pendingAudio;
@@ -673,5 +981,7 @@ export class VM {
     // VBlank wait, so a fade started by this frame's opcode 31 takes its first step this frame.
     if (!this.skipAudioFrame) this.sound.frame();
     this.syncAudio();
+    this.skipAudioFrame = false;
+    this.skipAudioIrq = false;
   }
 }

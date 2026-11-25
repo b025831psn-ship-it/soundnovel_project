@@ -3,8 +3,8 @@ import path from "node:path";
 import { VM } from "../src/vm.js";
 import { traceLine, TRACE_HEADER } from "../src/trace.js";
 
-const [dataPath, limitText = "2000"] = process.argv.slice(2);
-if (!dataPath) throw new Error("usage: trace-scenario.mjs <port-data> [limit]");
+const [dataPath, limitText = "2000", entryRowText = "27000"] = process.argv.slice(2);
+if (!dataPath) throw new Error("usage: trace-scenario.mjs <port-data> [limit] [entry-row]");
 const scenario = path.join(dataPath, "scenario");
 const banks = {};
 for (const name of fs.readdirSync(scenario)) {
@@ -16,6 +16,7 @@ for (const name of fs.readdirSync(scenario)) {
 const lines = [];
 const vm = new VM({
   banks,
+  entryRow: Number(entryRowText),
   text: { feed: () => "none" },
   trace: (event) => lines.push(traceLine(event)),
 });
