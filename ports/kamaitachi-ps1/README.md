@@ -104,6 +104,20 @@ Opcode `4b` schedules the next resource, opcode `03` performs the retail call-
 stack pop, and the real `44` title return resumes through the common `27:0`
 hub without treating resource fall-off as an ending.
 
+The report also runs two native-entry root families that are not reachable by
+scenario bytecode alone: `title-menu:main` at `31:0` and
+`title-menu:scenario-select` at `39:0`. Resource 31 initializes/returns from the
+title flow, while resource 39 is the flag-driven scenario dispatch table and
+contains exits into the otherwise isolated scenario resources. These roots are
+reported separately from fresh play rather than silently inflating it.
+
+Ending coverage counts decoded source transfers into the shared `31:11`
+title-return record. The opcode `44` there is one shared implementation, not
+one story ending. `endingRoutes` reports only routes reached by a sweep;
+`catalog.endingRoutes` enumerates all instruction-aligned decoded transfers.
+Raw byte-pattern hits are not counted because most occur inside text or
+operands rather than at opcode boundaries.
+
 ## Touch shell
 
 `src/touch-shell.js` is the input shell for the ported VM/VRAM runtime. It maps
