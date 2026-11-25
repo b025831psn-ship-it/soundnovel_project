@@ -83,8 +83,32 @@ function allowedFromOutside(request, response, url) {
   return true;
 }
 
+// Save sync (shared/save): /sync/* goes to the save server on 127.0.0.1:SYNC_PORT with /sync stripped.
+// It skips the test password: the save API sends its own Authorization: Bearer (a Basic prompt would
+// replace it), and each vault's token guards its data. Bodies over 256 KB are refused here.
+const SYNC_PORT = Number(process.env.SOUNDNOVEL_SYNC_PORT ?? 8780);
+const SYNC_MAX_BODY = 256 * 1024;
+function proxySync(request, response) {
+  const headers = { ...request.headers, host: `127.0.0.1:${SYNC_PORT}` };
+  if (Number(request.headers['content-length'] ?? 0) > SYNC_MAX_BODY) { response.writeHead(413).end(); request.resume(); return; }
+  const upstream = http.request({ host: '127.0.0.1', port: SYNC_PORT, method: request.method,
+    path: request.url.slice('/sync'.length) || '/', headers }, (reply) => {
+    response.writeHead(reply.statusCode, reply.headers);
+    reply.pipe(response);
+  });
+  upstream.on('error', () => { if (!response.headersSent) response.writeHead(502).end('Save server is not running.'); else response.destroy(); });
+  let size = 0;
+  request.on('data', (chunk) => {
+    size += chunk.length;
+    if (size > SYNC_MAX_BODY) { upstream.destroy(); if (!response.headersSent) response.writeHead(413).end(); request.destroy(); return; }
+    upstream.write(chunk);
+  });
+  request.on('end', () => upstream.end());
+}
+
 http.createServer((request, response) => {
   const url = request.url.split('?')[0];
+  if (url === '/sync' || url.startsWith('/sync/')) return proxySync(request, response);
   if (!allowedFromOutside(request, response, url)) return;
   // scene images from kamaitachi-gba-kor/tools/export_images.py: NNN.png and palette variants NNN-v.png
   // Pictures extended for upright phones (kamaitachi-gba-kor assets/outpaint/portrait/NNN.png) and their list.
