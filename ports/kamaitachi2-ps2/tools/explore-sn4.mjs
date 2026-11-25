@@ -1,7 +1,11 @@
 // Exhaustive SN4 explorer: runs the browser VM over every reachable path and
 // collects problems in one report instead of checking scenes one at a time.
 //
-//   node ports/kamaitachi2-ps2/tools/explore-sn4.mjs <web-dir> [out-dir]
+//   node ports/kamaitachi2-ps2/tools/explore-sn4.mjs <web-dir> [out-dir] [--disc-files list.txt]
+//
+// With --disc-files (one disc path per line, tab-separated extras allowed),
+// ScenePack media are checked against the disc instead of the built web
+// assets, which is how the full extracted scenario is checked before a build.
 //
 // Choices fork into every target and 0x70 conditions fork into both the taken
 // and the fall-through path. A path stops when it re-enters a label another
@@ -10,8 +14,11 @@ import { readFile, writeFile, mkdir, access } from 'node:fs/promises';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 
-const web = path.resolve(process.argv[2] || '.');
-const out = process.argv[3] ? path.resolve(process.argv[3]) : null;
+const argv = process.argv.slice(2);
+const discAt = argv.indexOf('--disc-files');
+const discList = discAt >= 0 ? argv.splice(discAt, 2)[1] : null;
+const web = path.resolve(argv[0] || '.');
+const out = argv[1] ? path.resolve(argv[1]) : null;
 const { Sn4Vm } = await import(pathToFileURL(path.join(web, 'sn4.js')).href);
 const program = JSON.parse(await readFile(path.join(web, 'assets/sn4.json'), 'utf8'));
 const opening = JSON.parse(await readFile(path.join(web, 'assets/opening.json'), 'utf8'));
@@ -20,7 +27,10 @@ const glyphs = new Set(Object.keys(opening.font ?? {}));
 const NAMES = ['名前一', '名前二'];
 const hex = n => '0x' + n.toString(16);
 
-const exists = async file => access(path.join(web, 'assets', file)).then(() => true, () => false);
+const discFiles = discList ? new Set((await readFile(discList, 'utf8')).split(/\r?\n/)
+  .map(line => line.split('\t')[0].split('/').pop().toLowerCase()).filter(Boolean)) : null;
+const exists = async file => discFiles ? discFiles.has(file.toLowerCase())
+  : access(path.join(web, 'assets', file)).then(() => true, () => false);
 const problems = new Map(); // kind -> Map(key -> {count, first})
 function report(kind, key, where) {
   if (!problems.has(kind)) problems.set(kind, new Map());
@@ -45,8 +55,14 @@ for (const l of program.labels) {
   }
 }
 for (const [name, entry] of Object.entries(scenePack)) {
+  if (entry.commands && discFiles) {
+    // Full ScenePack dump: every file-bearing command, as named on the disc.
+    for (const c of entry.commands) for (const file of [c.file, c.motion])
+      if (typeof file === 'string' && !await exists(file)) report('missing-media', file, name);
+    continue;
+  }
   if (entry.music?.file && !await exists(entry.music.file)) report('missing-music-file', entry.music.file, name);
-  if (entry.image && !await exists(entry.image + '.png')) report('missing-image', entry.image + '.png', name);
+  if (entry.image && !await exists(entry.image + (discFiles ? '.ipu' : '.png'))) report('missing-image', entry.image + '.png', name);
 }
 
 class Explorer extends Sn4Vm {
@@ -65,7 +81,7 @@ function fork(vm, payload) {
   // 0x70 payloads are still raw until the extractor decodes them; fork only
   // into a target that names a real label.
   const label = typeof payload === 'string' ? payload : payload?.target;
-  if (labels.has(label)) queue.push({label, names: [...vm.names], bgm: current});
+  if (labels.has(label)) queue.push({label, names: [...vm.names], bgm: current, unknownBgm: current === undefined});
   else report('condition-undecoded', typeof payload === 'string' ? payload : JSON.stringify(payload), where(vm));
 }
 function makeVm() {
@@ -85,9 +101,12 @@ let current = null;
 function music(vm, name) {
   const m = scenePack[name]?.music;
   if (!m) return;
-  if (current === undefined) current = null;
+  if (current === undefined) {
+    current = m.operation === 0x14 ? {file: m.file} : m.operation === 0x15 ? null : undefined;
+    return;
+  }
   if (m.operation === 0x14) {
-    if (current && current.file !== m.file) report('bgm-start-without-stop', `${current.file} -> ${m.file}`, where(vm));
+    if (current && current.file !== m.file) report('info-bgm-switch-without-stop', `${current.file} -> ${m.file}`, where(vm));
     current = {file: m.file};
   } else if (m.operation === 0x15) {
     if (!current) report('info-bgm-stop-while-stopped', name, where(vm));
@@ -99,9 +118,26 @@ function checkText(vm, text) {
   for (const ch of text) if (ch !== '\n' && !glyphs.has(ch) && !NAMES.join('').includes(ch)) report('unsupported-char', ch, where(vm));
 }
 
+// An unsupported opcode is reported and skipped so one gap does not hide the
+// rest of the scenario. Sn4Vm advances pc before dispatching, so run() resumes
+// after the failing command. 0x71 (compare two variables) forks like 0x70.
+function step(vm, first) {
+  let call = first;
+  for (;;) {
+    try { return call(); } catch (error) {
+      const m = /Unsupported SN4 opcode (0x[0-9a-f]+)/.exec(error.message);
+      if (!m) throw error;
+      report('unsupported-op', m[1], where(vm));
+      const op = labels.get(vm.label)?.ops[vm.pc - 1];
+      if (op?.op === 0x71) fork(vm, op.args[0]);
+      call = () => vm.run();
+    }
+  }
+}
+
 function runPath(start) {
   paths++;
-  current = start.bgm ?? null;
+  current = start.unknownBgm ? undefined : start.bgm ?? null;
   const vm = makeVm();
   if (!labels.has(start.label)) return report('missing-root', start.label, start.from ?? '');
   try {
@@ -109,17 +145,17 @@ function runPath(start) {
     if (entered.has(start.label)) return;
     entered.add(start.label);
     vm.setNames(start.names ?? NAMES);
-    let event = vm.run();
+    let event = step(vm, () => vm.run());
     for (;;) {
       steps++;
       checkText(vm, event.text ?? '');
       if (event.type === 'pause' || event.type === 'wait') {
         if (event.type === 'pause' && !(event.text ?? '').trim() && event.reason !== 'choice-separator') report('empty-pause', vm.label, where(vm));
-        event = vm.run();
+        event = step(vm, () => vm.run());
       } else if (event.type === 'name') {
-        event = vm.resume(NAMES[event.role]);
+        event = step(vm, () => vm.resume(NAMES[event.role]));
       } else if (event.type === 'choice') {
-        for (const t of event.targets) queue.push({label: t, names: [...vm.names], bgm: current, from: where(vm)});
+        for (const t of event.targets) queue.push({label: t, names: [...vm.names], bgm: current, unknownBgm: current === undefined, from: where(vm)});
         return;
       } else if (event.type === 'end') {
         endings.set(event.label, (endings.get(event.label) ?? 0) + 1);
@@ -131,9 +167,7 @@ function runPath(start) {
     }
   } catch (error) {
     if (error instanceof Revisit) return;
-    const m = /Unsupported SN4 opcode (0x[0-9a-f]+)/.exec(error.message);
-    if (m) report('unsupported-op', m[1], where(vm));
-    else report('vm-error', error.message, where(vm));
+    report('vm-error', error.message.replace(/ at \S+$/, ''), where(vm));
   }
 }
 
@@ -154,8 +188,9 @@ const summary = {
 const md = [
   `# SN4 전수 검사`, '',
   `라벨 ${summary.labels}개, 명령 ${summary.ops}개, 시작점에서 도달 ${summary.reachedFromEntry}개, 경로 ${paths}개, 끝 라벨 ${endings.size}개.`, '',
+  // info-* kinds are expected engine behaviour worth counting, not listing.
   ...[...problems].flatMap(([kind, bucket]) => [`## ${kind} (${bucket.size}종)`, '',
-    ...[...bucket].slice(0, 50).map(([key, e]) => `- \`${key}\` ×${e.count} — 처음 ${e.first}`), '']),
+    ...[...bucket].slice(0, kind.startsWith('info-') ? 3 : 50).map(([key, e]) => `- \`${key}\` ×${e.count} — 처음 ${e.first}`), '']),
   unreachable.length ? `## 시작점에서 도달하지 못한 라벨 (${unreachable.length})\n\n${unreachable.slice(0, 200).map(l => '`' + l + '`').join(', ')}\n` : '',
 ].join('\n');
 if (out) {
@@ -164,5 +199,5 @@ if (out) {
   await writeFile(path.join(out, 'sn4-explore.md'), md);
 }
 console.log(md);
-const blocking = ['unsupported-op', 'vm-error', 'missing-jump', 'missing-next', 'missing-choice-target', 'missing-scenepack', 'missing-music-file', 'missing-image'];
+const blocking = ['unsupported-op', 'vm-error', 'missing-jump', 'missing-next', 'missing-choice-target', 'missing-scenepack', 'missing-music-file', 'missing-image', 'missing-media'];
 process.exitCode = blocking.some(k => problems.has(k)) ? 1 : 0;
