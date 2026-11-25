@@ -27,7 +27,8 @@ function bgPixel(bus, bg, x, y, bpp) {
   const value = decodeTilePixel(bus.vram, tileBase + (entry & 0x3ff) * (8 * bpp), px, py, bpp);
   if (!value) return null;
   const palette = (entry >>> 10) & 7;
-  const paletteBase = bpp === 8 ? 0 : bpp === 4 ? palette * 16 : bg * 32 + palette * 4;
+  const paletteBase = bpp === 8 ? 0 : bpp === 4 ? palette * 16
+    : ((io[0x2105 - 0x2000] & 7) === 0 ? bg * 32 : 0) + palette * 4;
   return { rgb: color(bus.cgram, paletteBase + value), priority: ((entry >>> 13) & 1) * 4 + (3 - bg) };
 }
 
@@ -48,7 +49,7 @@ function renderObjects(bus, width, height) {
         const tile = bus.oam[at + 2] | ((attr & 1) << 8) | ((tx >>> 3) + (ty >>> 3) * 16);
         const value = decodeTilePixel(bus.vram, tileBase + tile * 32, tx & 7, ty & 7, 4);
         if (!value) continue;
-        const priority = 8 + ((attr >>> 4) & 3), palette = 128 + ((attr >>> 1) & 7) * 16 + value;
+        const priority = (attr >>> 4) & 3, palette = 128 + ((attr >>> 1) & 7) * 16 + value;
         layer[sy * width + sx] = (priority << 9) | palette;
       }
     }
@@ -110,13 +111,30 @@ function mode7Pixel(bus, bg, x, y) {
   return { rgb: color(bus.cgram, value & (bg ? 0x7f : 0xff)), priority: bg && (value & 0x80) ? 7 : 1 };
 }
 
+function bgPriority(io, bg, high) {
+  const mode = io[0x2105 - 0x2000] & 7;
+  if (mode === 1) {
+    if (bg === 0) return high ? 10 : 7;
+    if (bg === 1) return high ? 9 : 6;
+    if (bg === 2) return high ? (io[0x2105 - 0x2000] & 8 ? 12 : 4)
+      : (io[0x2105 - 0x2000] & 8 ? 4 : 2);
+  }
+  return high * 4 + (3 - bg);
+}
+
+function objectPriority(io, priority) {
+  if ((io[0x2105 - 0x2000] & 7) === 1) return [3, 5, 8, 11][priority];
+  return 8 + priority;
+}
+
 function layerPixel(bus, objects, bg, x, y, bpps, direct) {
   if (bg === 4) {
     const packed = objects?.[y * 256 + x] ?? -1;
-    return packed < 0 ? null : { rgb: color(bus.cgram, packed & 0x1ff), priority: packed >>> 9 };
+    return packed < 0 ? null : { rgb: color(bus.cgram, packed & 0x1ff), priority: objectPriority(bus.io, packed >>> 9) };
   }
   if ((bus.io[0x2105 - 0x2000] & 7) === 7) return mode7Pixel(bus, bg, x, y);
   const pixel = bgPixel(bus, bg, x, y, bpps[bg]);
+  if (pixel) pixel.priority = bgPriority(bus.io, bg, pixel.priority >= 4 ? 1 : 0);
   if (pixel && direct && bpps[bg] === 8) {
     // Recover the direct-colour inputs without changing the tile decoder API.
     const screen = bus.io[0x2107 + bg - 0x2000], mapBase = ((screen >>> 2) * 0x800) & 0xffff;

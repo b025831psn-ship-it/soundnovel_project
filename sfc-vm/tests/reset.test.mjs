@@ -492,3 +492,18 @@ test('renders each scanline from the PPU state visible on that line', () => {
   renderScanline(bus, rgba, 1, 1, 2);
   assert.deepEqual([...rgba], [255, 0, 0, 255, 0, 255, 0, 255]);
 });
+
+test('mode 1 BG3 2bpp palettes start at CGRAM colour zero', () => {
+  const bus = new SfcBus(new Uint8Array(0x8000));
+  bus.io[0x2100 - 0x2000] = 15;
+  bus.io[0x2105 - 0x2000] = 1;
+  bus.io[0x2109 - 0x2000] = 4; // BG3 map at VRAM byte $0800
+  bus.io[0x212c - 0x2000] = 4;
+  bus.vram[0] = 0x80; // tile 0, pixel (0,0) = colour 1
+  bus.vram[0x800] = 0;
+  bus.vram[0x801] = 0;
+  bus.cgram[2] = 0xff;
+  bus.cgram[3] = 0x7f; // colour 1 = white
+  bus.cgram[130] = 0x1f; // old incorrect BG3 colour 65 = red
+  assert.deepEqual([...renderFrame(bus, 1, 1)], [255, 255, 255, 255]);
+});

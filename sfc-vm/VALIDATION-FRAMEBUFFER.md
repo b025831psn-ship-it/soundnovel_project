@@ -71,3 +71,20 @@ name-confirmation sample at frame 2108 / NMI 2063 is native
 are renderer priority/raster-phase differences; the long interval from NMI
 371 also includes the persistent WRAM/VRAM/CGRAM state divergence beginning at
 NMI 370.  These are recorded as remaining causes, not as a pixel-match claim.
+
+The mode-1 BG3 palette correction uses CGRAM palette 0 as the 2bpp base;
+mode-0 alone applies the per-BG 32-colour offset.  This restores the observed
+white, blue, and pink name-screen text.  Mode-1 priority ordering now also
+interleaves BG1/BG2/BG3 high/low pixels with OBJ priorities and honours the
+BG3-priority bit.  The hash inventory remains 5,597 because every affected
+frame still contains at least one differing pixel.  At frame 2108 / NMI 2063
+the corrected VM hash is `a43e52e06ee5bd17`; native remains
+`26f9cb4bd06b9a94`.
+
+An extended native/VM instruction trace through physical frame 415 shows the
+NMI-370 state split is an event-boundary problem, not a CPU opcode/value split:
+the instruction streams agree immediately beforehand, then the first handler
+opcode is timestamped at master 148,256,514 native versus 148,256,512 VM.  That
+two-master NMI/HDMA phase difference changes the interrupted loop position and
+propagates into WRAM.  It remains open rather than being hidden with a
+frame-number timing constant.
