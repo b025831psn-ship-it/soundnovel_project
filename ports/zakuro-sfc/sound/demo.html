@@ -46,7 +46,7 @@
   $(vmMode ? 'm-vm' : 'm-trace').setAttribute('aria-current', 'page');
   for (const a of document.querySelectorAll('nav a')) if (params.get('data')) a.href += `${a.href.includes('?mode') ? '&' : ''}data=${encodeURIComponent(params.get('data'))}`;
   $('desc').textContent = vmMode
-    ? '원작 프로그램을 65c816 VM으로 실행하고, VM이 사운드 포트에 접근하는 순간마다 SPC700·S-DSP를 같은 master clock으로 맞춰 소리를 냅니다. 버튼 입력은 기준 녹화의 입력 기록을 씁니다. VM의 포트 접근은 에뮬레이터 기록과 차례로 대조합니다. ROM은 이 컴퓨터에서만 읽고 어디에도 보내지 않습니다.'
+    ? '원작 프로그램을 65c816 VM으로 실행하고, VM이 사운드 포트에 접근하는 순간마다 SPC700·S-DSP를 같은 master clock으로 맞춰 소리를 냅니다. 버튼 입력은 기준 녹화의 입력 기록을 씁니다. VM의 포트 접근은 에뮬레이터 기록과 차례로 대조합니다. ROM은 이 컴퓨터에서만 읽고 어디에도 보내지 않습니다. 이 모드는 개발 중 대조용이며, 실제 플레이어는 ROM 없이 비공개 port-data의 추출 자료로 실행합니다.'
     : '원작 사운드 드라이버를 SPC700·S-DSP로 실행하고, 에뮬레이터에 기록된 메인 CPU의 사운드 포트 접근을 원래 시각 그대로 넣어 전원 투입부터 첫 선택지까지 재생합니다. CPU가 읽는 값은 기록과 하나씩 대조합니다. ROM은 쓰지 않습니다.';
   const get = (p) => fetch(new URL(p, base)).then((r) => { if (!r.ok) throw new Error(`${p}: HTTP ${r.status}`); return r; });
   const bin = (p) => get(p).then((r) => r.arrayBuffer()).then((b) => new Uint8Array(b));
