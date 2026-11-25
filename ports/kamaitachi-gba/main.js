@@ -8,11 +8,13 @@ import { Boot, KEY } from "./src/boot.js";
 import { createSound } from "./sound/output.js";
 import { Silhouettes } from "./src/silhouette.js";
 import { openBooks } from "./src/books-store.js";
+import { restoreData, restorePosition } from "./src/save.js";
 
 const base = "../../kamaitachi-gba-kor/port-data";
+const KOREAN = "../../kamaitachi-gba-kor/port-data-ko";
 // Text language. "ko" reads the script, font and menu strings extracted from a Korean fan patch of
 // the cartridge (kgk port-data-ko, same layout) over the Japanese data; everything else is shared.
-// ?lang=ja|ko picks it and is remembered; setLanguage() switches and reloads.
+// ?lang=ja|ko picks the first one and is remembered; setLanguage() switches on the page being read.
 const LANGUAGE_KEY = "kamaitachi-gba.lang";
 const LANGUAGES = ["ja", "ko"];
 function storedLanguage() {
@@ -21,22 +23,27 @@ function storedLanguage() {
 let language = new URLSearchParams(location.search).get("lang") ?? storedLanguage() ?? "ja";
 if (!LANGUAGES.includes(language)) language = "ja";
 try { localStorage.setItem(LANGUAGE_KEY, language); } catch {}
-const assets = new Assets(base);
-if (language === "ko") assets.overlay("../../kamaitachi-gba-kor/port-data-ko", (path) =>
-  /^(manifest\.json|scenario\/|font\/|ui\/(flow-map|option-text|name-table|map-titles|system-text|default-names)\.bin)/.test(path));
-const manifest = await assets.json("manifest.json");
-const bankPaths = manifest.files.filter((file) =>
-  file.path.startsWith("scenario/"),
-);
-const banks = {};
-for (const file of bankPaths) {
-  const bank = Number.parseInt(file.path.slice(-6, -4), 16);
-  banks[bank] = await assets.bin(file.path);
+function languageAssets(lang) {
+  const result = new Assets(base);
+  if (lang === "ko") result.overlay(KOREAN, (path) =>
+    /^(manifest\.json|scenario\/|font\/|ui\/(flow-map|option-text|name-table|map-titles|system-text|default-names)\.bin)/.test(path));
+  return result;
 }
-const font = new NativeFont(
-  await assets.bin("font/glyphs.bin"),
-  await assets.bin("font/lookup.bin"),
-);
+// The scenario banks and the font of one language.
+async function languageData(lang) {
+  const from = languageAssets(lang);
+  const manifest = await from.json("manifest.json");
+  const banks = {};
+  for (const file of manifest.files.filter((entry) => entry.path.startsWith("scenario/"))) {
+    banks[Number.parseInt(file.path.slice(-6, -4), 16)] = await from.bin(file.path);
+  }
+  const [glyphs, lookup] = await Promise.all([from.bin("font/glyphs.bin"), from.bin("font/lookup.bin")]);
+  return { assets: from, banks, glyphs, lookup };
+}
+const assets = languageAssets(language);
+const first = await languageData(language);
+const banks = first.banks;
+const font = new NativeFont(first.glyphs, first.lookup);
 const music = await assets.json("sound/scenario-map.json");
 const audioTables = await assets.json("sound/scene-audio.json");
 audioTables.effectBytes = await assets.bin("sound/effects.bin");
@@ -109,12 +116,55 @@ canvas.addEventListener("pointerdown", (event) => {
 let menuRequested = false;
 let menuAvailable = false;
 const openMenu = () => { if (!menuAvailable) return false; menuRequested = true; sound.resume(); return true; };
-function setLanguage(next) {
-  if (!LANGUAGES.includes(next) || next === language) return;
-  try { localStorage.setItem(LANGUAGE_KEY, next); } catch {}
-  const url = new URL(location.href);
-  url.searchParams.set("lang", next);
-  location.href = url.href;
+// Switches the text language in place. In the story the page being read starts over in the other
+// language: its start is paired through kgk port-data-ko/scenario-align.json (the Korean patch
+// splits some text runs), and the RAM goes back to what it was at that page start.
+let alignment = null;
+function pairedOffset(bank, offset, from, to) {
+  const pairs = alignment?.[bank.toString(16).padStart(2, "0")];
+  if (!pairs?.length) return null;
+  const a = from === "ja" ? 0 : 1;
+  let low = 0, high = pairs.length - 1, found = -1;
+  while (low <= high) {
+    const mid = (low + high) >> 1;
+    if (pairs[mid][a] <= offset) { found = mid; low = mid + 1; } else high = mid - 1;
+  }
+  return found < 0 ? null : pairs[found][1 - a];
+}
+let switching = false;
+async function setLanguage(next) {
+  if (!LANGUAGES.includes(next) || next === language || switching) return false;
+  switching = true;
+  try {
+    const data = await languageData(next);
+    alignment ??= await new Assets(KOREAN).json("scenario-align.json").catch(() => ({}));
+    const start = boot.pageStart;
+    const offset = start ? pairedOffset(start.bank, start.offset, language, next) : null;
+    font.replace(data.glyphs, data.lookup);
+    vm.banks = data.banks;
+    vm.rows = vm.indexRows(data.banks);
+    await boot.loadText(data.assets);
+    if (start && offset !== null && vm.ram.inGame && !boot.run && ["click", "choice", "none"].includes(vm.waiting)) {
+      restoreData(vm, start);
+      restorePosition(vm, { bank: start.bank, offset });
+      text.clearPage();
+      page.hideMenu();
+      screen.clearChoices();
+      boot.pageStart = null;
+    }
+    page.drawn = -1;
+    screen.renderBackground();
+    language = next;
+    window.kamaitachi.language = next;
+    try { localStorage.setItem(LANGUAGE_KEY, next); } catch {}
+    const url = new URL(location.href);
+    url.searchParams.set("lang", next);
+    history.replaceState(history.state, "", url.href);
+    window.dispatchEvent(new CustomEvent("kamaitachi:language", { detail: { language: next } }));
+    return true;
+  } finally {
+    switching = false;
+  }
 }
 window.kamaitachi = { language, languages: LANGUAGES, setLanguage, vm, screen, assets, font, input, sound, page, boot, tap, openMenu,
   get menuAvailable() { return menuAvailable; } };

@@ -176,34 +176,44 @@ export class Boot {
     this.menuPicture = MENU_PICTURE;
   }
 
-  async load() {
-    this.pictureMap = await this.assets.bin("ui/picture-map.bin");
-    this.nameTable = await this.assets.bin("ui/name-table.bin");
-    try { this.systemText = await this.assets.bin("ui/system-text.bin"); } catch { this.systemText = null; }
+  // The language-specific data of the native screens: menu strings, default names, name lists,
+  // the flowchart and the オプション text. Called again with the other language's assets when the
+  // player switches language; names still at the old defaults take the new ones.
+  async loadText(assets) {
+    const previousDefaults = this.defaultNames;
+    this.nameTable = await assets.bin("ui/name-table.bin");
+    try { this.systemText = await assets.bin("ui/system-text.bin"); } catch { this.systemText = null; }
     if (this.systemText) {
       adoptSystemText(this.systemText);
       adoptNameText(this.systemText);
     }
     // 088206F8 / 088206FC point at the names the game starts with (透 080197EC, 真理 080197E4);
     // kgk ui/default-names.bin holds the two strings, 0-terminated.
+    this.defaultNames = { 1: this.names[1], 2: this.names[2] };
     try {
-      const bytes = Array.from(await this.assets.bin("ui/default-names.bin"));
+      const bytes = Array.from(await assets.bin("ui/default-names.bin"));
       const end = bytes.indexOf(0);
-      if (end > 0) {
-        this.names[1] = bytes.slice(0, end);
-        this.names[2] = bytes.slice(end + 1, bytes.indexOf(0, end + 1));
-      }
+      if (end > 0) this.defaultNames = { 1: bytes.slice(0, end), 2: bytes.slice(end + 1, bytes.indexOf(0, end + 1)) };
     } catch {}
+    const same = (a, b) => a && b && a.length === b.length && a.every((v, i) => v === b[i]);
+    for (const slot of [1, 2]) {
+      if (!previousDefaults || same(this.names[slot], previousDefaults[slot])) this.names[slot] = this.defaultNames[slot];
+    }
     this.nameEntry = new NameEntry({ boot: this, font: this.font, table: this.nameTable });
-    try { this.flow = await this.assets.bin("ui/flow-map.bin"); } catch { this.flow = null; }
+    try { this.flow = await assets.bin("ui/flow-map.bin"); } catch { this.flow = null; }
     try {
-      const [glyphs, titles] = await Promise.all([this.assets.bin("ui/map-glyphs.bin"), this.assets.bin("ui/map-titles.bin")]);
+      const [glyphs, titles] = await Promise.all([assets.bin("ui/map-glyphs.bin"), assets.bin("ui/map-titles.bin")]);
       if (this.flow) this.flowMap = new FlowMap({ flow: this.flow, glyphs, titles });
     } catch { this.flowMap = null; }
     try {
-      const [text, tables] = await Promise.all([this.assets.bin("ui/option-text.bin"), this.assets.bin("ui/option-tables.bin")]);
+      const [text, tables] = await Promise.all([assets.bin("ui/option-text.bin"), assets.bin("ui/option-tables.bin")]);
       this.options = new Options({ boot: this, text, tables });
     } catch { this.options = null; }
+  }
+
+  async load() {
+    this.pictureMap = await this.assets.bin("ui/picture-map.bin");
+    await this.loadText(this.assets);
     const optionPictures = this.options ? [CONTROLS_PICTURE, TONE_PICTURE, ...CAST_PICTURES] : [];
     for (const id of [LOGO, COPYRIGHT, TITLE, ...BOOKS, ...NAME_PICTURES, MENU_PICTURE, ...optionPictures]) {
       const name = String(pictureIndex(id, this.pictureMap)).padStart(3, "0");
