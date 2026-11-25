@@ -6,6 +6,7 @@ import { VM } from "./src/vm.js";
 import { PageText } from "./src/page-text.js";
 import { Boot, KEY } from "./src/boot.js";
 import { createSound } from "./sound/output.js";
+import { Silhouettes } from "./src/silhouette.js";
 
 const base = "../../kamaitachi-gba-kor/port-data";
 const assets = new Assets(base);
@@ -31,6 +32,7 @@ const sound = await createSound(new URL(`${base}/sound/`, location.href));
 for (const type of ["keydown", "pointerdown"]) addEventListener(type, () => sound.resume(), { once: true });
 const screen = new Screen(document.querySelector("#screen"));
 const scene = new SceneLoader(assets, screen);
+scene.silhouettes = await Silhouettes.load(assets);
 const text = new TextWindow({ 1: "透", 2: "真理" });
 const input = new GBAInput();
 // Opcode 57 lists (A/B rows over the story) are drawn by the screen; opcode 13 menus (welcome

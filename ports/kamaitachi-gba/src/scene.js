@@ -1,3 +1,5 @@
+import { LAYER_BYTES, mergeSilhouette } from "./silhouette.js";
+
 export class SceneLoader {
   constructor(assets, screen) {
     this.assets = assets;
@@ -30,6 +32,37 @@ export class SceneLoader {
   brightness(slot, current) {
     this.screen.setBrightness?.(slot, current);
   }
+  // Opcode 29 (08001444): silhouette `id` is merged into the layer's buffer (020117C8), whose
+  // pointer (020117BC) is then set. Its palette replaces the layer's (0201ADC8).
+  silhouetteAdd(id) {
+    const picture = this.silhouettes?.picture(id);
+    if (!picture) return;
+    this.layerBuffer ??= new Uint8Array(LAYER_BYTES);
+    mergeSilhouette(this.layerBuffer, picture.tiles);
+    this.layerColors = picture.colors;
+  }
+
+  // 08008408 -> 08001354(step): step 0 copies the whole buffer to the layer, steps 1..8 copy row
+  // step-1 of every tile (2E's blind, two frames a step). The layer turns on with the tint of the
+  // moment (080011B0(-1)). Without a buffer, 080015DC(0) turns the layer off.
+  silhouetteShow(step, tint) {
+    if (!this.layerBuffer) {
+      if (this.screen.silhouette) this.screen.setSilhouetteLayer?.(null);
+      return;
+    }
+    const layer = this.screen.silhouette ?? { vram: new Uint8Array(LAYER_BYTES), colors: this.layerColors, tint: [...tint] };
+    if (step === 0) layer.vram.set(this.layerBuffer);
+    else for (let at = 4 * (step - 1); at < LAYER_BYTES; at += 32) layer.vram.set(this.layerBuffer.subarray(at, at + 4), at);
+    this.screen.setSilhouetteLayer?.(layer);
+  }
+
+  // 0800350C: buffer, layer and palette cleared, the layer off and the buffer pointer 0.
+  silhouetteClear() {
+    this.layerBuffer = null;
+    this.layerColors = null;
+    if (this.screen.silhouette) this.screen.setSilhouetteLayer?.(null);
+  }
+
   async load(request, generation = ++this.generation) {
     this.current = request; // the picture a bookmark records
     const { image, variant } = this.resolve(request),

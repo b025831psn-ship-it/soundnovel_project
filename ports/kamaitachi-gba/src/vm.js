@@ -179,6 +179,11 @@ export class VM {
       updatePending: 0,
       overlayActive: 0,
       overlayMasks: new Uint16Array(4),
+      silhouettes: new Uint16Array(4).fill(0xffff), // 02000728: the silhouettes on the layer (29)
+      silhouetteMode: 0, // 020007A5 (4D): 2E shows the layer; at 0 the fade-in of 09 does
+      presentationC5: 5, // 020066C5..C7: the layer's tint, red/green/blue (080034D0 defaults)
+      presentationC6: 0,
+      presentationC7: 15,
       audioRequest: 0xffff,
       choiceActive: 0,
       inputReady: 0,
@@ -440,7 +445,11 @@ export class VM {
         if (opcode === 0x09 && slot !== 5) configure(5);
         if (opcode === 0x08 && slot === 1 && this.ram.mirrorBrightness === 1)
           configure(2);
-        if (opcode === 0x09) this.ram.updatePending = 1;
+        if (opcode === 0x09) {
+          // 08003BC8: with 020007A5 clear, the fade-in also shows the silhouette layer.
+          if (!this.ram.silhouetteMode) this.scene?.silhouetteShow?.(0, this.tint());
+          this.ram.updatePending = 1;
+        }
         break;
       }
       case 0x0a: {
@@ -629,13 +638,31 @@ export class VM {
         break;
       }
       case 0x29: {
-        args.push(this.byte(), this.word());
-        this.suppressed(opcode);
+        // 080048C0: silhouette (high << 8) + word joins the layer's buffer, in the first free of
+        // the four 02000728 slots (slot 0 when all are taken).
+        const high = this.byte();
+        const low = this.word();
+        args.push(high, low);
+        if (this.suppressed(opcode)) break;
+        const id = ((high << 8) + low) & 0xffff;
+        const slots = this.ram.silhouettes;
+        const free = slots.indexOf(0xffff);
+        slots[free < 0 ? 0 : free] = id;
+        this.scene?.silhouetteAdd?.(id);
         break;
       }
       case 0x2e: {
-        args.push(this.byte(), this.byte());
-        this.suppressed(opcode);
+        // 08004B98: with 020007A5 set, the layer is shown at once (first operand 0, or 7F), or
+        // as a blind: row n of every tile in step n, two frames a step.
+        const mode = this.byte();
+        const speed = this.byte();
+        args.push(mode, speed);
+        if (this.suppressed(opcode) || !this.ram.silhouetteMode) break;
+        if (mode === 0 || speed === 0x7f) this.scene?.silhouetteShow?.(0, this.tint());
+        else {
+          this.scene?.silhouetteShow?.(1, this.tint());
+          this.silhouetteBlind = { step: 1, frames: 0 };
+        }
         break;
       }
       case 0x2f: {
@@ -650,7 +677,15 @@ export class VM {
         break;
       }
       case 0x2c:
-        this.suppressed(opcode);
+        // 080049FC: unless opcode 39 follows, every silhouette is removed (0800350C, 08004928(5))
+        // and the tint returns to its default (080034D0).
+        if (this.suppressed(opcode)) break;
+        if (this.banks[this.bank]?.[this.offset] !== 0x39) {
+          this.ram.silhouettes.fill(0xffff);
+          this.scene?.silhouetteClear?.();
+          Object.assign(this.ram, { presentationC5: 5, presentationC6: 0, presentationC7: 15 });
+        }
+        this.ram.updatePending = 1;
         break;
       case 0x2d: {
         const high = this.byte();
@@ -840,8 +875,10 @@ export class VM {
       case 0x4c:
         break;
       case 0x4d: {
-        args.push(this.byte());
-        this.suppressed(opcode);
+        // 080057EC: 020007A5, whether 2E (set) or 09 (clear) shows the silhouette layer.
+        const value = this.byte();
+        args.push(value);
+        if (!this.suppressed(opcode)) this.ram.silhouetteMode = value;
         break;
       }
       case 0x4e:
@@ -1028,6 +1065,19 @@ export class VM {
     return true;
   }
 
+  tint() {
+    return [this.ram.presentationC5 ?? 5, this.ram.presentationC6 ?? 0, this.ram.presentationC7 ?? 15];
+  }
+
+  // 08004C04: the rest of 2E's blind, one step every two frames up to row 8.
+  silhouetteBlindFrame() {
+    const blind = this.silhouetteBlind;
+    if (!blind || ++blind.frames < 2) return;
+    blind.frames = 0;
+    if (++blind.step > 8) { this.silhouetteBlind = null; return; }
+    this.scene?.silhouetteShow?.(blind.step, this.tint());
+  }
+
   resume(rowIndex = null) {
     if (this.waiting === "choice") {
       if (rowIndex === null) rowIndex = this.choiceSelection;
@@ -1041,6 +1091,9 @@ export class VM {
       this.ram.choiceActive = 0;
       this.ram.effectDisabled = 0;
       this.choiceView?.hide?.();
+      // 080043F8 -> 080080C4: the page is cleared and the text starts again at the top, so the
+      // chosen entry's text opens a new page (mGBA: the question above the choices is gone).
+      this.text?.clearPage?.();
       if (row !== undefined) this.branch(row);
       return;
     }
@@ -1059,6 +1112,7 @@ export class VM {
     this.frame++;
     this.ram.updatePending = 0;
     this.prepareNativeWaitFrame();
+    this.silhouetteBlindFrame();
     // Frame order on the cartridge: the VBlank interrupt runs the effect scripts (08002B00 from
     // 080005F0); the frame wait's tail 080062E0 -> 080003D8 -> 080066E8 then counts the play
     // length (0800A3E0); the frame's dispatches follow; the next frame wait (08002FB8) runs

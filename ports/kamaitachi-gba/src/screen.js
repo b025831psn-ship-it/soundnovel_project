@@ -1,4 +1,5 @@
 import { ObjTextSurface } from "./obj-text.js";
+import { tintColor } from "./silhouette.js";
 
 // 08001D74 for one BGR555 color: each channel moves toward the brightest by (16 + 彩度) / 16 of its
 // distance, then all shift by `adjustment`, clamped to 0..31.
@@ -39,6 +40,14 @@ export class Screen {
     return toneColor(raw, this.tone.saturation, Math.max(-31, this.tone.brightness + (coefficient - 15) * 3));
   }
 
+  // The silhouette layer (BG1, 4bpp, palette bank 15) as the cartridge's VRAM holds it, or null
+  // while it is off (0300195A). BLDCNT 0x3146 / BLDALPHA 0x070D: 13/16 of it over 7/16 of the
+  // picture (mGBA blends the 8-bit colors).
+  setSilhouetteLayer(layer) {
+    this.silhouette = layer;
+    this.renderBackground();
+  }
+
   setBrightness(slot, current) {
     this.brightness[slot] = current;
     if (slot === 1 || slot === 5) this.renderBackground();
@@ -60,16 +69,36 @@ export class Screen {
       if (index < 236 && color & 0x7fff) color = toneColor(color, saturation, adjustment, factor);
       colors.push([color & 31, (color >> 5) & 31, (color >> 10) & 31]);
     }
+    const rgb8 = (channel) => (channel << 3) | (channel >> 2);
+    const layer = this.silhouette;
+    let shades = null;
+    if (layer) {
+      // Bank 15 follows slot 5, as the menu colors do.
+      shades = layer.colors.map((raw, index) => {
+        const color = index ? this.menuColor(tintColor(raw, layer.tint)) : 0;
+        return [color & 31, (color >> 5) & 31, (color >> 10) & 31].map(rgb8);
+      });
+    }
     for (let y = 0; y < 160; y++) {
       for (let x = 0; x < 240; x++) {
         const tile = ((y >> 3) * 30 + (x >> 3)) * 64;
         const pixel = tile + (y & 7) * 8 + (x & 7);
         const color = colors[tiles[pixel]];
         const output = 4 * (y * 240 + x);
-        const rgb8 = (channel) => (channel << 3) | (channel >> 2);
-        this.image.data[output] = rgb8(color[0]);
-        this.image.data[output + 1] = rgb8(color[1]);
-        this.image.data[output + 2] = rgb8(color[2]);
+        let red = rgb8(color[0]), green = rgb8(color[1]), blue = rgb8(color[2]);
+        if (layer) {
+          const byte = layer.vram[((y >> 3) * 30 + (x >> 3)) * 32 + (y & 7) * 4 + ((x & 7) >> 1)];
+          const nibble = x & 1 ? byte >> 4 : byte & 15;
+          if (nibble) {
+            const shade = shades[nibble];
+            red = Math.min(255, (13 * shade[0] + 7 * red) >> 4);
+            green = Math.min(255, (13 * shade[1] + 7 * green) >> 4);
+            blue = Math.min(255, (13 * shade[2] + 7 * blue) >> 4);
+          }
+        }
+        this.image.data[output] = red;
+        this.image.data[output + 1] = green;
+        this.image.data[output + 2] = blue;
         this.image.data[output + 3] = 255;
       }
     }
