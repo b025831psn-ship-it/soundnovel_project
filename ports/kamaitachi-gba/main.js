@@ -28,7 +28,7 @@ try { localStorage.setItem(LANGUAGE_KEY, language); } catch {}
 function languageAssets(lang) {
   const result = new Assets(base);
   if (lang === "ko") result.overlay(KOREAN, (path) =>
-    /^(manifest\.json|scenario\/|font\/|ui\/(flow-map|option-text|name-table|map-titles|system-text|default-names)\.bin)/.test(path));
+    /^(manifest\.json|scenario\/|font\/|ui\/(flow-map|option-text|name-table|map-titles|system-text|default-names)\.bin|text-edits\.json)/.test(path));
   return result;
 }
 // The scenario banks and the font of one language.
@@ -182,11 +182,11 @@ async function setLanguage(next) {
     switching = false;
   }
 }
-// The dialogue editor (src/text-editor.js): edits of the current language replace text runs as
-// they are shown. E on a keyboard, or the shell's button, opens it on the page being read.
+// The dialogue editor (src/text-editor.js): the language's text-edits.json in the game data (kgk
+// port-data, port-data-ko) replaces text runs as they are shown, the same on every device. E on a keyboard, or the shell's button, opens it on the page being read.
 let textEdits = null;
 async function loadTextEdits() {
-  textEdits = await new TextEdits(language).load();
+  textEdits = await new TextEdits(language).load(languageAssets(language));
   vm.textEdits = textEdits.map();
 }
 await loadTextEdits();

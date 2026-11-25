@@ -2,8 +2,8 @@
 // An edit replaces one text run (the bytes of one 00 opcode, keyed "bank:offset" by vm.textKey)
 // only when it is shown, so the script, its rows and every save position stay the cartridge's.
 //
-// Edits are kept per language in text-edits-<lang>.json on the test PC (GET /art/..., PUT /edit/...,
-// served by serve.cjs) and, when the PC cannot be written to, in this browser until then.
+// Edits are part of the game data: text-edits.json per language (see TextEdits), written through
+// the test PC's server, so the PC and phones show the same text.
 //
 // In the edit box the text is plain Korean or Japanese; the cartridge's control codes appear as
 // {r} (new line), {p} (wait), {g} (next page), {o}, {@}, {n31} (a name) and so on, and must stay.
@@ -109,28 +109,17 @@ export class TextCodec {
 const hex = (bytes) => Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
 const unhex = (text) => Uint8Array.from(text.match(/../g) ?? [], (h) => parseInt(h, 16));
 
-// Stored form: { "<bank>:<offset>": { "text": "<box text>", "bytes": "<hex>" } }.
+// Stored form, in the game data next to the script (kgk port-data/text-edits.json for Japanese,
+// port-data-ko/text-edits.json for Korean), so every device reads the same edits:
+// { "<bank>:<offset>": { "text": "<box text>", "bytes": "<hex>" } }.
 export class TextEdits {
   constructor(lang) {
     this.lang = lang;
     this.entries = {};
-    this.local = false; // some edits live only in this browser (the PC could not be written)
   }
 
-  get storageKey() {
-    return `kamaitachi-gba.text-edits.${this.lang}`;
-  }
-
-  async load() {
-    let server = {};
-    try {
-      const response = await fetch(`/art/text-edits-${this.lang}.json`, { cache: "no-cache" });
-      if (response.ok) server = await response.json();
-    } catch {}
-    let local = {};
-    try { local = JSON.parse(localStorage.getItem(this.storageKey) ?? "{}"); } catch {}
-    this.local = Object.keys(local).length > 0;
-    this.entries = { ...server, ...local };
+  async load(assets) {
+    try { this.entries = await assets.json(`text-edits.json?v=${Date.now()}`); } catch { this.entries = {}; }
     return this;
   }
 
@@ -143,7 +132,7 @@ export class TextEdits {
     else this.entries[key] = { text, bytes: hex(bytes) };
   }
 
-  // To the PC first; what it does not take stays in this browser (and is sent again next time).
+  // The test PC writes it into the game data (serve.cjs); true when it took it.
   async save() {
     try {
       const response = await fetch(`/edit/text-edits-${this.lang}.json`, {
@@ -151,15 +140,10 @@ export class TextEdits {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(this.entries),
       });
-      if (response.ok) {
-        try { localStorage.removeItem(this.storageKey); } catch {}
-        this.local = false;
-        return "pc";
-      }
-    } catch {}
-    try { localStorage.setItem(this.storageKey, JSON.stringify(this.entries)); } catch {}
-    this.local = true;
-    return "browser";
+      return response.ok;
+    } catch {
+      return false;
+    }
   }
 
   download() {
@@ -236,7 +220,6 @@ export function openTextEditor(game) {
   });
   const actions = Object.assign(document.createElement("div"), { className: "row" });
   const status = Object.assign(document.createElement("span"), { className: "status" });
-  if (edits.local) status.textContent = "PC에 아직 저장되지 않은 수정이 이 기기에 있어요.";
   const download = Object.assign(document.createElement("button"), { textContent: "수정 목록 내려받기" });
   const close = Object.assign(document.createElement("button"), { textContent: "닫기" });
   const save = Object.assign(document.createElement("button"), { className: "main", textContent: "저장하고 다시 보기" });
@@ -258,11 +241,16 @@ export function openTextEditor(game) {
     }
     save.disabled = true;
     status.textContent = "저장 중…";
-    const where = await edits.save();
+    const saved = await edits.save();
+    save.disabled = false;
+    if (!saved) {
+      status.textContent = "저장하지 못했어요. 잠시 뒤 다시 눌러 주세요. (수정 목록 내려받기로 보관할 수 있어요)";
+      return;
+    }
     vm.textEdits = edits.map();
     game.restartPage();
-    status.textContent = where === "pc" ? "PC에 저장했어요." : "PC에 저장하지 못해 이 기기에만 저장했어요.";
-    setTimeout(done, where === "pc" ? 300 : 1500);
+    status.textContent = "저장했어요. 모든 기기에 같은 대사가 나와요.";
+    setTimeout(done, 600);
   });
   document.body.append(back);
   fields[0]?.area.focus();
