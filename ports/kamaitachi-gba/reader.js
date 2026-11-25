@@ -94,8 +94,21 @@ let extendedLoading = null;
 //   crop  where the part shown across sits, 0 (left edge) to 100 (right edge); otherwise automatic
 let edits = {};
 let editVersion = 0;
-fetch("/art/portrait-edits.json", { cache: "no-cache" }).then((r) => (r.ok ? r.json() : {}))
-  .then((value) => { edits = value && typeof value === "object" ? value : {}; editVersion++; }).catch(() => {});
+// Read again whenever the picture changes, so a value saved in the editor shows without reloading
+// the player (the editor's own preview sends its values instead).
+const PREVIEW = new URLSearchParams(location.search).has("preview");
+let editsText = "";
+function loadEdits() {
+  fetch("/art/portrait-edits.json", { cache: "no-cache" }).then((r) => (r.ok ? r.text() : "{}"))
+    .then((text) => {
+      if (text === editsText) return;
+      editsText = text;
+      const value = JSON.parse(text);
+      edits = value && typeof value === "object" ? value : {};
+      editVersion++;
+    }).catch(() => {});
+}
+loadEdits();
 let currentId = null;
 const editFor = (id) => (id === null || id === undefined ? null : edits[id] ?? null);
 function pictureId(game) {
@@ -180,6 +193,7 @@ function silhouetteCut(layer) {
   return { top: count(0) > 3, bottom: count(159) > 3 };
 }
 const CUT_MS = 400;
+let pendingLayer = null; // the scene's silhouette buffer (020117C8), shown or not yet
 const cutLevels = new Map(); // canvas context -> { top, bottom, time }
 let cutEasing = false; // set while a margin is still moving toward framed or open
 function cutLevel(ctx, cut) {
@@ -187,7 +201,12 @@ function cutLevel(ctx, cut) {
   const state = cutLevels.get(ctx) ?? { top: cut.top ? 1 : 0, bottom: cut.bottom ? 1 : 0, time: now };
   // Once a figure has stood on the bottom edge, the picture stays lowered until the picture itself
   // changes, so silhouettes changing within the scene don't move the background (태우 2026-11-26).
-  if (state.picture !== currentId) { state.picture = currentId; state.held = false; state.bottom = cut.bottom ? 1 : 0; }
+  // A figure already waiting in the layer's buffer (29 comes before the picture and its blind) puts
+  // the picture in its lowered place from the start, so it doesn't slide down when the figure shows.
+  if (state.picture !== currentId) {
+    const waiting = silhouetteCut(pendingLayer ? { vram: pendingLayer } : null).bottom;
+    state.picture = currentId; state.held = waiting; state.bottom = cut.bottom || waiting ? 1 : 0;
+  }
   if (cut.bottom) state.held = true;
   cut = { top: cut.top, bottom: cut.bottom || state.held };
   const step = Math.min(1, (now - state.time) / CUT_MS);
@@ -270,7 +289,9 @@ function paintSharp(ctx, entry, base, width, height, layer) {
   }
   // Moved by the editor (portrait-edits.json: shift, in GBA rows, + down) and for a figure standing
   // on the bottom edge.
-  const drop = Math.round((level.bottom * DROP + (editFor(currentId)?.shift ?? 0)) * scale);
+  // A shift set in the editor is the picture's place; the automatic drop is only for pictures without one.
+  const shift = editFor(currentId)?.shift;
+  const drop = Math.round((Number.isFinite(shift) ? shift : level.bottom * DROP) * scale);
   if (drop) shiftPicture(ctx, width, height, drop, scale);
 }
 // Moves the whole picture down (drop > 0) or up; the side left open is filled with that edge's rows,
@@ -499,7 +520,10 @@ function drawPicture(game) {
   const size = { width: reader.clientWidth, height: reader.clientHeight };
   if (!base || !size.height) return;
   extendedLoading ??= loadExtended(game).then(() => { shownBase = null; });
-  currentId = pictureId(game);
+  const id = pictureId(game);
+  if (id !== currentId && !PREVIEW) loadEdits();
+  currentId = id;
+  pendingLayer = game.vm?.scene?.layerBuffer ?? null;
   const edit = editFor(currentId);
   if (base !== shownBase || cutEasing || editVersion !== shownEdit) {
     const edited = editVersion !== shownEdit;
