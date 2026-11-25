@@ -1,0 +1,8 @@
+{
+  "kind": "soundnovel-backup",
+  "format": 1,
+  "exportedAt": "2026-11-25T11:00:00Z",
+  "saves": [
+    { "format": 1, "gameId": "kamaitachi-gba", "slot": "book-0", "schema": 1, "dataVersion": 1, "edition": "ko", "revision": 7, "savedAt": "2026-11-25T10:30:00Z", "deviceId": "dev-3f9a1c", "label": "ゲレンデにて", "payload": { "_note": "예시" } }
+  ]
+}
