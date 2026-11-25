@@ -42,7 +42,7 @@ let pathCount = 0;
 let totalSteps = 0;
 let truncated = false;
 
-const hex = (value, width = 2) => value.toString(16).padStart(width, "0");
+const hex = (value, width = 2) => value === undefined ? "past-end" : value.toString(16).padStart(width, "0");
 const bytesHex = (values) => Buffer.from(values).toString("hex");
 const rowAt = (vm, bank, offset) => {
   const starts = vm.rows[bank] ?? [];

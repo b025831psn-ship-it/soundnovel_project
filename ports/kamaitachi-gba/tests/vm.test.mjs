@@ -28,8 +28,8 @@ test("required opcode table retains native handler evidence", () => {
   assert.ok(required.every((opcode) => HANDLERS[opcode]));
 });
 
-test("choice suppression table covers all 48 reviewed handlers and consumes arguments", () => {
-  assert.equal(Object.keys(SUPPRESSION).length, 48);
+test("choice suppression table covers all 52 reviewed handlers and consumes arguments", () => {
+  assert.equal(Object.keys(SUPPRESSION).length, 52);
   const calls = [];
   for (const [opcodeText, [gate, shape]] of Object.entries(SUPPRESSION)) {
     if (gate === "sets-77e" || gate === "78e-or-choice-return") continue;
@@ -635,4 +635,18 @@ test("the page after a p g page records its start (bookmark page-start hook)", (
   vm.resume();
   while (vm.step());
   assert.deepEqual(starts, [vm.rows[27][0], vm.rows[27][1]]);
+});
+
+// 2B (080065A8), 3F (0800516C skips seven bytes unless 続ける was chosen) and 64 (music stop).
+test("2B sets a brightness maximum, 3F skips seven bytes, 64 stops the music", () => {
+  const stops = [];
+  const vm = new VM({ banks: { 27: bank([[0x2b, 0x80, 0x00, 1, 0x3f, 0, 1, 2, 3, 4, 5, 6, 7, 0x64, 0x03]]) } });
+  vm.sound.stop = (speed) => stops.push(speed);
+  vm.step();
+  assert.equal(vm.ram.brightness[1].maximum, 0x8000);
+  assert.equal(vm.ram.brightness[1].current, 0x4000);
+  vm.step();
+  assert.equal(vm.offset, vm.rows[27][0] + 4 + 2 + 7);
+  vm.step();
+  assert.deepEqual(stops, [0]);
 });
