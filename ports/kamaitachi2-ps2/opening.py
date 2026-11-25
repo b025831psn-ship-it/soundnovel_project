@@ -5,6 +5,34 @@ import re
 import struct
 
 from PIL import Image
+
+
+# SLPS_251.32 command-constructor dispatch entries used by the opening path.
+# Operand sizes exclude the opcode itself; "sized" begins with a one-byte size.
+SN4_COMMANDS = {
+    0x02: (0x0010F620, "cp932 text terminated by 03"),
+    0x04: (0x0010F640, "none"),
+    0x09: (0x0010F660, "none"),
+    0x0D: (0x0010F6E0, "none"),
+    0x0E: (0x0010F6E0, "none"),
+    0x12: (0x0010FC40, "none"),
+    0x13: (0x0010FC40, "none"),
+    0x40: (0x0010F7C0, "u8"),
+    0x46: (0x0010F940, "u8"),
+    0x4C: (0x0010F8C0, "u8, u8"),
+    0x50: (0x0010FA00, "be32"),
+    0x55: (0x0010F880, "be32"),
+    0x65: (0x0010F960, "be32"),
+    0x6A: (0x0010F6A0, "typed NUL-terminated label"),
+    0x6B: (0x0010F6A0, "typed NUL-terminated label"),
+    0x6C: (0x0010F6C0, "sized selection payload"),
+    0x6F: (0x0010F780, "sized wipe payload"),
+    0x70: (0x0010FAE0, "sized condition payload"),
+    0x72: (0x0010F7E0, "sized ASCII resource name"),
+    0x73: (0x0010F820, "sized ASCII resource name"),
+    0x74: (0x0010F800, "sized ASCII resource name"),
+    0x75: (0x0010F920, "03, r, g, b"),
+}
 from disc import Extent, SECTOR
 
 
@@ -320,17 +348,44 @@ def scenario_strings(data):
     return story
 
 
+def select_destinations(block):
+    """Decode a two-target CommandSelect without assuming concrete label names."""
+    command = re.search(rb"\x6c(.)(\x01\x02\x00\x00[\x0c\x0d])", block, re.DOTALL)
+    if command is None:
+        raise ValueError("Missing two-destination CommandSelect")
+    size = command[1][0]
+    payload = block[command.start() + 2:command.start() + 2 + size]
+    if len(payload) != size or payload[:4] != b"\x01\x02\x00\x00":
+        raise ValueError("Invalid CommandSelect header or size")
+    pos = 4
+    targets = []
+    for index in range(2):
+        if pos >= len(payload) or payload[pos] not in (0x0C, 0x0D):
+            raise ValueError("Invalid CommandSelect target type")
+        pos += 1
+        end = payload.find(b"\0", pos)
+        if end < 0:
+            raise ValueError("Unterminated CommandSelect target")
+        targets.append(payload[pos:end])
+        pos = end + 1
+        if index == 0:
+            if pos >= len(payload) or payload[pos] != 0:
+                raise ValueError("Missing CommandSelect target separator")
+            pos += 1
+    if pos != len(payload):
+        raise ValueError("Trailing CommandSelect payload")
+    return targets
+
+
 def scenario_choice(data, source):
     """Resolve CommandSelect destinations in script order and read their first lines."""
     label = rb"\x85[\x0b\x0c][\x0c\x0d](myb?0[12]_[0-9]{4})\x00\x22"
     labels = list(re.finditer(label, data))
     blocks = {a[1]: data[a.end():b.start()] for a, b in zip(labels, labels[1:])}
-    command = re.search(rb"\x6c[\x1b-\x1d]\x01\x02\x00\x00[\x0c\x0d](myb?0[12]_\d{4})\x00\x00"
-                        rb"[\x0c\x0d](myb?0[12]_\d{4})\x00", blocks[source])
-    if command is None:
-        raise ValueError(f"Missing two-destination CommandSelect in {source!r}")
     choices = []
-    for target in command.groups():
+    for target in select_destinations(blocks[source]):
+        if target not in blocks:
+            raise ValueError(f"Unknown CommandSelect target {target!r} in {source!r}")
         lines, _ = answer_header(blocks[target])
         choices.append({"target": target.decode("ascii"), "text": "\n".join(lines)})
     return choices

@@ -100,6 +100,13 @@ public class OpeningChecks extends GhidraScript {
             if (getInt(va(0x2196b0 + 4 * 7)) != 0x101528 ||
                 getInt(va(0x2196b0 + 4 * 12)) != 0x101538)
                 throw new Exception("Unexpected equality or inequality dispatch");
+            // Title and selection widgets use the same system cue call. a0 is the
+            // cue ID and a1 is the integer volume (60); a2-a4 are zero.
+            directCall(0x108bb4, 0x1bda78);
+            directCall(0x108c78, 0x1bda78);
+            if (getInt(va(0x108ba4)) != 0x24040002 || getInt(va(0x108ba8)) != 0x2405003c ||
+                getInt(va(0x108c68)) != 0x24040004 || getInt(va(0x108c6c)) != 0x2405003c)
+                throw new Exception("Unexpected title selection cue IDs or volume");
         } finally {
             decompiler.dispose();
         }
