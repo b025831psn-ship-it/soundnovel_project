@@ -48,8 +48,14 @@ SRAM erased value를 `$FF`로 바꾸고 `STA long,X`에 잘못 붙인 internal c
 제거했다. 쓰기 전부와 port별 값이 바뀐 read만 남기는 `semantic` 대조에서 boot
 구간의 VM 30,021행은 모두 기준과 일치하고 최대 master delta는 1,430이다.
 
-frame 5700 전체 관통은 아직 완료되지 않았다. 기준의 다음 행인 frame 48
-`w port1=10`을 VM이 만들지 않아 여기서 처음 갈라진다. 이후 VM은 불완전한 PPU
-상태 때문에 frame 477에 잘못된 handler table index로 진입한다. 따라서 다음
-작업은 frame 48 sound-stream command를 만드는 PPU/NMI 상태를 native trace와
-맞추는 것이며, 현재 결과를 frame 5700 일치로 해석하면 안 된다.
+frame 48 분기는 PPU read가 아니라 두 CPU 모델 차이였다. 짧은 DMA마다
+`DMACPUSync=18`과 channel setup 8 master를 반영하고, VBlank 중 `$4200` NMI-enable
+rising edge를 opcode boundary에서 처리한다. 또한 8-bit `LSR A`가 숨은 B byte까지
+shift해 scheduler mask `$0200`을 `$0001`로 바꾸던 오류를 수정했다. 이 변경으로
+frame 48 sound-stream command와 이후 semantic port sequence가 다시 일치한다.
+
+frame 5700 runner 자체는 끝까지 실행된다. 현재 semantic 대조는 VM의 56,600행
+전부가 기준 prefix와 일치하지만, 기준 frame 454의 다음 `r port0=40`이 VM에는
+없어 거기서 중단된다. 마지막 공통 의미 행은 기준 frame 271/VM frame 174이고,
+누적 timing drift 때문에 max master delta는 41,028,468이다. 따라서 다음 작업은
+frame 174 이후 CPU/PPU 진행 분기와 장기 master timing을 맞추는 것이다.

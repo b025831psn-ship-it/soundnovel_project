@@ -18,6 +18,9 @@ if (iplPath) apu.cpu.loadIplImage(fs.readFileSync(iplPath));
 const output = fs.createWriteStream(outputPath);
 output.write('frame\tcpu_cycle\tdir(w/r)\tport\tvalue\n');
 let frame = 0;
+let inVblank = false;
+let pendingNmiAt = Infinity;
+let cpu;
 const bus = new SfcBus(fs.readFileSync(romPath), {
   apu,
   eventLimit: 0,
@@ -25,8 +28,11 @@ const bus = new SfcBus(fs.readFileSync(romPath), {
   onApuAccess: (event) => output.write(
     `${frame}\t${event.masterCycle}\t${event.direction}\t${event.port}\t${event.value.toString(16).padStart(2, '0').toUpperCase()}\n`,
   ),
+  onNmiEnable: (master) => {
+    if (inVblank) pendingNmiAt = Math.min(pendingNmiAt, master + 12);
+  },
 });
-const cpu = new Cpu65816(bus, { traceLimit: 0 });
+cpu = new Cpu65816(bus, { traceLimit: 0 });
 const targetFrame = Number(targetArg);
 const instructionLimit = Number(limitArg);
 let nextFrame = 1_368;
@@ -39,14 +45,20 @@ try {
     cpu.step();
     while (cpu.masterCycle >= nextFrame) {
       frame++;
+      inVblank = false;
       nextFrame += frameLength;
       frameLength = frameLength === 357_368 ? 357_360 : 357_368;
     }
     while (cpu.masterCycle >= nextNmi) {
+      inVblank = true;
       const buttons = frame > 300 && frame % 90 < 2 ? 0x0080 : 0;
       bus.setController1(buttons);
       if (bus.io[0x4200 - 0x2000] & 0x80) cpu.nmi();
       nextNmi += frameLength;
+    }
+    if (cpu.masterCycle >= pendingNmiAt) {
+      pendingNmiAt = Infinity;
+      cpu.nmi();
     }
   }
 } catch (error) {

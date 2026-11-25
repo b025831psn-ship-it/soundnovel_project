@@ -4,7 +4,7 @@ import { MasterLink } from '../ports/kamaitachi-sfc/sound/master-link.js';
 export class SfcBus {
   constructor(rom, {
     eventLimit = Infinity, apu = null, masterLink = null,
-    apuTraceLimit = Infinity, onApuAccess = null,
+    apuTraceLimit = Infinity, onApuAccess = null, onNmiEnable = null,
   } = {}) {
     this.rom = normalizeRom(rom);
     this.wram = new Uint8Array(128 * 1024);
@@ -31,6 +31,7 @@ export class SfcBus {
     this.apuTrace = [];
     this.apuTraceLimit = apuTraceLimit;
     this.onApuAccess = onApuAccess;
+    this.onNmiEnable = onNmiEnable;
     this.apuAccessCount = 0;
     this.dmaStats = {};
     this.pendingDmaMasterCycles = 0;
@@ -129,8 +130,11 @@ export class SfcBus {
         this.apuPorts.fill(0);
     }
     else if ((bank & 0x40) === 0 && word >= 0x2000 && word < 0x8000) {
+      const previous = this.io[word - 0x2000];
       this.io[word - 0x2000] = value;
       this.recordEvent({ kind: 'io-write', address, value });
+      if (word === 0x4200 && !(previous & 0x80) && (value & 0x80))
+        this.onNmiEnable?.(masterCycle);
       this.writeIo(word, value);
     }
   }
@@ -176,6 +180,10 @@ export class SfcBus {
 
   runDma(mask, masterCycle = 0) {
     const patterns = [[0], [0, 1], [0, 0], [0, 0, 1, 1], [0, 1, 2, 3], [0, 1, 0, 1], [0, 0], [0, 0, 1, 1]];
+    // Snes9x models the console's CPU/DMA synchronization as a fixed 18
+    // master clocks, followed by 8 clocks of setup for each selected channel.
+    // The previous bus-alignment approximation undercounted every short DMA.
+    if (mask) this.pendingDmaMasterCycles += 18;
     for (let channel = 0; channel < 8; channel++) {
       if (!(mask & (1 << channel))) continue;
       const base = 0x4300 + channel * 0x10;
@@ -186,8 +194,7 @@ export class SfcBus {
       const sourceStart = source;
       let size = reg(5) | (reg(6) << 8);
       if (size === 0) size = 0x10000;
-      const alignment = 8 - ((masterCycle + this.pendingDmaMasterCycles) & 7);
-      this.pendingDmaMasterCycles += alignment + size * 8;
+      this.pendingDmaMasterCycles += 8 + size * 8;
       const pattern = patterns[dmap & 7];
       let nonzeroBytes = 0;
       for (let index = 0; index < size; index++) {

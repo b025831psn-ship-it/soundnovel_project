@@ -122,6 +122,18 @@ test('charges memory-speed and internal master cycles per CPU bus transaction', 
   assert.equal(cpu.masterCycle, 182 + 8 + 8 + 8 + 6);
 });
 
+test('8-bit LSR A does not shift the hidden B accumulator into A', () => {
+  const rom = fixture();
+  rom.set([0x4a, 0x4a, 0x4a, 0xa8], 0); // LSR A x3; TAY
+  const cpu = new Cpu65816(new SfcBus(rom));
+  cpu.e = false;
+  cpu.p |= 0x20 | 0x10; // 8-bit A and index registers
+  cpu.a = 0x014a;
+  cpu.run(4);
+  assert.equal(cpu.a, 0x0109);
+  assert.equal(cpu.y, 0x09);
+});
+
 test('enters the native NMI vector with a restorable interrupt frame', () => {
   const rom = fixture();
   rom[0x7fea] = 0x34;
@@ -161,6 +173,16 @@ test('DMA mode 1 writes source bytes through the VRAM data ports', () => {
     transfers: 1, bytes: 4, nonzeroBytes: 4,
     last: { channel: 0, dmap: 1, source: 0x7e0100, bytes: 4 },
   });
+  assert.equal(bus.takeDmaMasterCycles(), 18 + 8 + 4 * 8);
+});
+
+test('reports an NMI-enable rising edge at its bus transaction', () => {
+  const enables = [];
+  const bus = new SfcBus(fixture(), { onNmiEnable: (master) => enables.push(master) });
+  bus.write8(0x4200, 0x01, 100);
+  bus.write8(0x4200, 0x81, 200);
+  bus.write8(0x4200, 0x81, 300);
+  assert.deepEqual(enables, [200]);
 });
 
 test('NMI latches the standard auto-joypad result', () => {
