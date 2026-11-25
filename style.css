@@ -224,6 +224,8 @@ a.edition[aria-current] { background: var(--raised); box-shadow: inset 2px 0 0 v
 
 /* While playing the side column steps back a little; theatre mode removes it. */
 body.playing .side { opacity: .6 }
+/* While playing, the controls come first so the menu key is in view without scrolling. */
+body.playing .guide { order: -1 }
 body.playing .side:hover, body.playing .side:focus-within { opacity: 1 }
 body.playing .platform { visibility: hidden }
 body.theatre-mode { overflow: hidden }
