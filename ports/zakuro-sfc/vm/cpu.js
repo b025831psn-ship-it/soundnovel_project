@@ -1801,11 +1801,11 @@ export class CPU {
       // STA
       case 0x85: // STA dp
         if (this.P.M) this.write(this.addr_dp(), this.A & 0xFF); else { const addr=this.addr_dp(); this.write(addr, this.A & 0xFF); this.write(addr+1, (this.A>>8) & 0xFF); }
-        this.cycles += (this.P.M ? 3 : 4) + ((this.DP & 0xFF) ? 1 : 0);
+        this.cycles += (this.P.M ? 2 : 3) + ((this.DP & 0xFF) ? 1 : 0);
         break;
       case 0x95: // STA dp,x
         if (this.P.M) this.write(this.addr_dp_x(), this.A & 0xFF); else { const addr=this.addr_dp_x(); this.write(addr, this.A & 0xFF); this.write(addr+1, (this.A>>8) & 0xFF); }
-        this.cycles += (this.P.M ? 4 : 5) + ((this.DP & 0xFF) ? 1 : 0);
+        this.cycles += (this.P.M ? 3 : 4) + ((this.DP & 0xFF) ? 1 : 0);
         break;
       case 0x8D: // STA abs
         if (this.P.M) this.write(this.addr_abs(), this.A & 0xFF); else { const addr=this.addr_abs(); this.write(addr, this.A & 0xFF); this.write(addr+1, (this.A>>8) & 0xFF); } this.cycles += this.P.M ? 3 : 4;
@@ -1818,86 +1818,86 @@ export class CPU {
         break;
       case 0x81: // STA (dp,x)
         if (this.P.M) this.write(this.addr_dp_ind_x(), this.A & 0xFF); else { const addr=this.addr_dp_ind_x(); this.write(addr, this.A & 0xFF); this.write(addr+1, (this.A>>8) & 0xFF); }
-        this.cycles += (this.P.M ? 6 : 7) + ((this.DP & 0xFF) ? 1 : 0);
+        this.cycles += (this.P.M ? 5 : 6) + ((this.DP & 0xFF) ? 1 : 0);
         break;
       case 0x91: // STA (dp),y
         if (this.P.M) this.write(this.addr_dp_ind_y(), this.A & 0xFF); else { const addr=this.addr_dp_ind_y(); this.write(addr, this.A & 0xFF); this.write(addr+1, (this.A>>8) & 0xFF); }
-        this.cycles += (this.P.M ? 6 : 7) + ((this.DP & 0xFF) ? 1 : 0);
+        this.cycles += (this.P.M ? 5 : 6) + ((this.DP & 0xFF) ? 1 : 0);
         break;
       case 0x92: // STA (dp)
         if (this.P.M) this.write(this.addr_dp_ind(), this.A & 0xFF); else { const addr=this.addr_dp_ind(); this.write(addr, this.A & 0xFF); this.write(addr+1, (this.A>>8) & 0xFF); }
-        this.cycles += (this.P.M ? 5 : 6) + ((this.DP & 0xFF) ? 1 : 0);
+        this.cycles += (this.P.M ? 4 : 5) + ((this.DP & 0xFF) ? 1 : 0);
         break;
       case 0x87: // STA [dp]
         if (this.P.M) this.write(this.addr_dp_ind_long(), this.A & 0xFF); else { const addr=this.addr_dp_ind_long(); this.write(addr, this.A & 0xFF); this.write(addr+1, (this.A>>8) & 0xFF); }
-        this.cycles += (this.P.M ? 6 : 7) + ((this.DP & 0xFF) ? 1 : 0);
+        this.cycles += (this.P.M ? 5 : 6) + ((this.DP & 0xFF) ? 1 : 0);
         break;
       case 0x97: // STA [dp],y
         if (this.P.M) this.write(this.addr_dp_ind_long_y(), this.A & 0xFF); else { const addr=this.addr_dp_ind_long_y(); this.write(addr, this.A & 0xFF); this.write(addr+1, (this.A>>8) & 0xFF); }
-        this.cycles += (this.P.M ? 6 : 7) + ((this.DP & 0xFF) ? 1 : 0);
+        this.cycles += (this.P.M ? 5 : 6) + ((this.DP & 0xFF) ? 1 : 0);
         break;
       case 0x83: // STA sr,s
         if (this.P.M) this.write(this.addr_sr(), this.A & 0xFF); else { const addr=this.addr_sr(); this.write(addr, this.A & 0xFF); this.write(addr+1, (this.A>>8) & 0xFF); }
-        this.cycles += this.P.M ? 4 : 5;
+        this.cycles += this.P.M ? 3 : 4;
         break;
       case 0x93: // STA (sr,s),y
         if (this.P.M) this.write(this.addr_sr_ind_y(), this.A & 0xFF); else { const addr=this.addr_sr_ind_y(); this.write(addr, this.A & 0xFF); this.write(addr+1, (this.A>>8) & 0xFF); }
-        this.cycles += this.P.M ? 7 : 8;
+        this.cycles += this.P.M ? 6 : 7;
         break;
       case 0x8F: // STA abs long
         if (this.P.M) this.write(this.addr_absl(), this.A & 0xFF); else { const addr=this.addr_absl(); this.write(addr, this.A & 0xFF); this.write(addr+1, (this.A>>8) & 0xFF); }
-        this.cycles += this.P.M ? 5 : 6;
+        this.cycles += this.P.M ? 4 : 5;
         break;
       case 0x9F: // STA abs long,x
-        { const addr = (this.addr_absl() + this.X) & 0xFFFFFF; if (this.P.M) this.write(addr, this.A & 0xFF); else { this.write(addr, this.A & 0xFF); this.write(addr+1, (this.A>>8) & 0xFF); } this.cycles += this.P.M ? 5 : 6; }
+        { const addr = (this.addr_absl() + this.X) & 0xFFFFFF; if (this.P.M) this.write(addr, this.A & 0xFF); else { this.write(addr, this.A & 0xFF); this.write(addr+1, (this.A>>8) & 0xFF); } this.cycles += this.P.M ? 4 : 5; }
         break;
 
       // STX Direct Page
       case 0x86:
         if (this.P.X) this.write(this.addr_dp(), this.X & 0xFF); else { const addr=this.addr_dp(); this.write(addr, this.X & 0xFF); this.write(addr+1, (this.X>>8) & 0xFF); }
-        this.cycles += (this.P.X ? 3 : 4) + ((this.DP & 0xFF) ? 1 : 0);
+        this.cycles += (this.P.X ? 2 : 3) + ((this.DP & 0xFF) ? 1 : 0);
         break;
       case 0x96: // STX dp,y
         if (this.P.X) this.write(this.addr_dp_y(), this.X & 0xFF); else { const addr=this.addr_dp_y(); this.write(addr, this.X & 0xFF); this.write(addr+1, (this.X>>8) & 0xFF); }
-        this.cycles += (this.P.X ? 4 : 5) + ((this.DP & 0xFF) ? 1 : 0);
+        this.cycles += (this.P.X ? 3 : 4) + ((this.DP & 0xFF) ? 1 : 0);
         break;
       case 0x8E: // STX abs
         if (this.P.X) this.write(this.addr_abs(), this.X & 0xFF); else { const addr=this.addr_abs(); this.write(addr, this.X & 0xFF); this.write(addr+1, (this.X>>8) & 0xFF); }
-        this.cycles += this.P.X ? 4 : 5;
+        this.cycles += this.P.X ? 3 : 4;
         break;
 
       // STY Direct Page
       case 0x84:
         if (this.P.X) this.write(this.addr_dp(), this.Y & 0xFF); else { const addr=this.addr_dp(); this.write(addr, this.Y & 0xFF); this.write(addr+1, (this.Y>>8) & 0xFF); }
-        this.cycles += (this.P.X ? 3 : 4) + ((this.DP & 0xFF) ? 1 : 0);
+        this.cycles += (this.P.X ? 2 : 3) + ((this.DP & 0xFF) ? 1 : 0);
         break;
       case 0x94: // STY dp,x
         if (this.P.X) this.write(this.addr_dp_x(), this.Y & 0xFF); else { const addr=this.addr_dp_x(); this.write(addr, this.Y & 0xFF); this.write(addr+1, (this.Y>>8) & 0xFF); }
-        this.cycles += (this.P.X ? 4 : 5) + ((this.DP & 0xFF) ? 1 : 0);
+        this.cycles += (this.P.X ? 3 : 4) + ((this.DP & 0xFF) ? 1 : 0);
         break;
       case 0x8C: // STY abs
         if (this.P.X) this.write(this.addr_abs(), this.Y & 0xFF); else { const addr=this.addr_abs(); this.write(addr, this.Y & 0xFF); this.write(addr+1, (this.Y>>8) & 0xFF); }
-        this.cycles += this.P.X ? 4 : 5;
+        this.cycles += this.P.X ? 3 : 4;
         break;
 
       // STZ Direct Page
       case 0x64:
         if (this.P.M) this.write(this.addr_dp(), 0); else { const addr=this.addr_dp(); this.write(addr, 0); this.write(addr+1, 0); }
-        this.cycles += (this.P.M ? 3 : 4) + ((this.DP & 0xFF) ? 1 : 0);
+        this.cycles += (this.P.M ? 2 : 3) + ((this.DP & 0xFF) ? 1 : 0);
         break;
       case 0x74: // STZ dp,x
         if (this.P.M) this.write(this.addr_dp_x(), 0); else { const addr=this.addr_dp_x(); this.write(addr, 0); this.write(addr+1, 0); }
-        this.cycles += (this.P.M ? 4 : 5) + ((this.DP & 0xFF) ? 1 : 0);
+        this.cycles += (this.P.M ? 3 : 4) + ((this.DP & 0xFF) ? 1 : 0);
         break;
 
        // STZ Absolute (Store Zero)
        case 0x9C:
         if (this.P.M) this.write(this.addr_abs(), 0); else { const addr=this.addr_abs(); this.write(addr, 0); this.write(addr+1, 0); }
-        this.cycles += this.P.M ? 4 : 5;
+        this.cycles += this.P.M ? 3 : 4;
         break;
        case 0x9E: // STZ abs,x
         if (this.P.M) this.write(this.addr_abs_x(), 0); else { const addr=this.addr_abs_x(); this.write(addr, 0); this.write(addr+1, 0); }
-        this.cycles += this.P.M ? 5 : 6;
+        this.cycles += this.P.M ? 4 : 5;
         break;
 
       // --- Branches ---

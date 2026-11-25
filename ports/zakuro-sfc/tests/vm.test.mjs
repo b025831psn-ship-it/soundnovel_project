@@ -15,8 +15,8 @@ test('master clock uses integer SNES bus access costs', () => {
   assert.equal(accessCycles(0x7e1234), 8);
   assert.equal(accessCycles(0x808000, true), 6);
   const c = new MasterClock(0, { refresh: false }); c.charge(0x2140); c.idle(12); assert.equal(c.master, 18);
-  const wallClock = new MasterClock(530); wallClock.idle(8); assert.equal(wallClock.master, 538);
-  const refreshed = new MasterClock(530, { refresh: true }); refreshed.idle(8); assert.equal(refreshed.master, 578);
+  const refreshed = new MasterClock(530); refreshed.idle(8); assert.equal(refreshed.master, 578);
+  const wallClock = new MasterClock(530, { refresh: false }); wallClock.idle(8); assert.equal(wallClock.master, 538);
 });
 
 test('PPU fields alternate 357368/357364 master cycles', () => {
@@ -46,6 +46,20 @@ test('65C816 reset executes LoROM and routes $2140 through MasterLink', () => {
   assert.equal(calls.length, 1);
   assert.deepEqual({ port: calls[0].port, value: calls[0].value }, { port: 0, value: 0x5a });
   assert.ok(Number.isSafeInteger(calls[0].master));
+});
+
+test('65C816 store opcodes report total cycles without double-counting fetch', () => {
+  // LDA #$5a; STA $00; STX $01; STZ $02; STA $2000
+  const vm = new ZakuroVM({
+    rom: fixtureRom([0xa9, 0x5a, 0x85, 0x00, 0x86, 0x01, 0x64, 0x02, 0x8d, 0x00, 0x20]),
+    masterLink: { read: () => 0, write() {} },
+  });
+  vm.reset();
+  assert.equal(vm.cpu.step(), 2);
+  assert.equal(vm.cpu.step(), 3);
+  assert.equal(vm.cpu.step(), 3);
+  assert.equal(vm.cpu.step(), 3);
+  assert.equal(vm.cpu.step(), 4);
 });
 
 test('$420B DMA halts the CPU for setup, channel, and byte clocks', () => {

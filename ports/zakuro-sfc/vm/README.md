@@ -24,14 +24,15 @@ halts. DMA now also performs mode-specific B-bus transfers and implements the
 `$2180-$2183` WRAM data/address ports. This fixes the missing 5,006-byte
 ROM-to-WRAM boot transfer: the post-DMA path now executes the same instruction
 count as the native trace instead of skipping about 15,600 instructions. The
-automatic scanline DRAM-refresh injection was removed from the VM wall clock:
-the CPU's calibrated instruction totals already account for those elapsed
-cycles, so adding another 40 clocks per line caused the critical wait to miss a
-field boundary. That change reduces the first-upload error from 357,396 to 236
-master cycles and raises the matching prefix from 20 to 23 rows. Explicit
-refresh-steal modeling remains available as `new MasterClock(..., { refresh:
-true })` for isolated timing tests. The next work is the residual CPU/APUIO
-read-loop phasing. The comparator intentionally fails at the first semantic
-mismatch so timing cannot be hidden by resynchronizing the trace.
+native/VM instruction tracing over 190,649 matching instructions showed that
+the remaining apparent refresh conflict was actually a store-cycle bug: most
+STA/STX/STY/STZ modes added their documented total on top of the common opcode
+fetch cycle. Correcting that one-cycle overcharge removes 60,088 master clocks
+in the critical interval while keeping the hardware's 40-clock-per-scanline
+DRAM refresh enabled. Against private trace commit e286471, the matching APUIO
+prefix is now 110 rows and the maximum error is 40 master cycles. The next work
+is the single-refresh phase difference at upload byte 0b. The comparator
+intentionally fails at the first semantic mismatch so timing cannot be hidden
+by resynchronizing the trace.
 
 The CPU core provenance and license are in `THIRD_PARTY_NOTICES.md`.

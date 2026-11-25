@@ -1,4 +1,5 @@
 import { readFile } from 'node:fs/promises';
+import { createWriteStream } from 'node:fs';
 import { ApuTraceComparator, createApuLink, readApuPorts, ZakuroVM } from '../vm/index.js';
 
 const [romPath, tracePath, iplPath] = process.argv.slice(2);
@@ -29,14 +30,22 @@ vm.reset();
 
 const maxInstructions = Number(process.env.ZAKURO_VM_MAX_INSTRUCTIONS ?? 20_000_000);
 let instructions = 0;
+const instructionTrace = process.env.ZAKURO_VM_INSTRUCTION_TRACE
+  ? createWriteStream(process.env.ZAKURO_VM_INSTRUCTION_TRACE) : null;
+instructionTrace?.write('instruction\tmaster_cycle\tpc\topcode\n');
 const milestones = {};
 while (!mismatch && !vm.cpu.stopped && instructions < maxInstructions) {
   const pc = (vm.cpu.PB << 16) | vm.cpu.PC;
+  if (instructionTrace && vm.bus.clock.master >= 4_200_000 && vm.bus.clock.master <= 9_300_000) {
+    const opcode = vm.bus.readMapped(pc);
+    instructionTrace.write(`${instructions}\t${vm.bus.clock.master}\t${pc.toString(16).padStart(6, '0')}\t${opcode.toString(16).padStart(2, '0')}\n`);
+  }
   if (pc === 0x00938e && milestones.nmiEnable == null) milestones.nmiEnable = vm.bus.clock.master;
   if (pc === 0x009326 && milestones.state0 == null) milestones.state0 = vm.bus.clock.master;
   if (pc === 0x3086ca && milestones.iplUpload == null) milestones.iplUpload = vm.bus.clock.master;
   vm.step(); instructions++;
 }
+instructionTrace?.end();
 
 const result = {
   instructions,
