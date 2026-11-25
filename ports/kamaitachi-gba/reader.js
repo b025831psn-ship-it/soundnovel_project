@@ -90,7 +90,7 @@ function compose(screen, base) {
   if (!entry) { sizeTo(160); sourceCtx.putImageData(new ImageData(new Uint8ClampedArray(base), 240, 160), 0, 0); }
   else {
     sizeTo(EXTENDED_HEIGHT);
-    if (entry.hd) { paintSharp(pictureCtx, entry, base, picture.width, picture.height); return EXTENDED_TOP; }
+    if (entry.hd) { paintSharp(pictureCtx, entry, base, picture.width, picture.height, screen.silhouette); return EXTENDED_TOP; }
     sourceCtx.putImageData(new ImageData(extendedPixels(entry, base), 240, EXTENDED_HEIGHT), 0, 0);
   }
   pictureCtx.drawImage(source, 0, 0, picture.width, picture.height);
@@ -101,7 +101,20 @@ function compose(screen, base) {
 // fading into the picture.
 const middle = Object.assign(document.createElement("canvas"), { width: 240, height: 160 });
 const middleCtx = middle.getContext("2d");
-function paintSharp(ctx, entry, base, width, height) {
+// Whether a silhouette runs into the picture's top or bottom edge (cut by the frame in the original).
+function silhouetteCut(layer) {
+  if (!layer?.vram) return { top: false, bottom: false };
+  const count = (y) => {
+    let n = 0;
+    for (let x = 0; x < 240; x++) {
+      const byte = layer.vram[((y >> 3) * 30 + (x >> 3)) * 32 + (y & 7) * 4 + ((x & 7) >> 1)];
+      if ((x & 1 ? byte >> 4 : byte & 15) !== 0) n++;
+    }
+    return n;
+  };
+  return { top: count(0) > 3, bottom: count(159) > 3 };
+}
+function paintSharp(ctx, entry, base, width, height, layer) {
   const live = [0, 0, 0];
   for (let i = 0; i < base.length; i += 4) { live[0] += base[i]; live[1] += base[i + 1]; live[2] += base[i + 2]; }
   const gain = [0, 1, 2].map((c) => (entry.raw.sums[c] ? live[c] / entry.raw.sums[c] : 1));
@@ -117,11 +130,21 @@ function paintSharp(ctx, entry, base, width, height) {
   const over = Math.max(...gain) - 1;
   if (over > 0.01) { ctx.globalCompositeOperation = "lighter"; ctx.globalAlpha = Math.min(1, over); ctx.drawImage(entry.hd, 0, 0, width, height); }
   ctx.restore();
+  // Where a silhouette is cut by the frame, that side keeps the frame: the margin there is dimmed and
+  // the picture's edge stays hard, so the cut reads as the picture's border instead of a broken figure.
+  const cut = silhouetteCut(layer);
+  const scale0 = width / 240;
+  ctx.save();
+  ctx.fillStyle = "rgba(0, 0, 0, .7)";
+  if (cut.top) ctx.fillRect(0, 0, width, EXTENDED_TOP * scale0);
+  if (cut.bottom) ctx.fillRect(0, (EXTENDED_TOP + 160) * scale0, width, height - (EXTENDED_TOP + 160) * scale0);
+  ctx.restore();
   const FEATHER = 14;
   const rows = new Uint8ClampedArray(base);
   for (let y = 0; y < 160; y++) {
     const d = Math.min(y, 159 - y);
     if (d >= FEATHER) continue;
+    if ((y < 80 && cut.top) || (y >= 80 && cut.bottom)) continue;
     let t = (d + 0.5) / FEATHER; t = t * t * (3 - 2 * t);
     for (let x = 0; x < 240; x++) rows[4 * (y * 240 + x) + 3] = Math.round(255 * t);
   }
@@ -225,7 +248,7 @@ function drawExtend(game) {
   if (screen.base === extendBase) return;
   extendBase = screen.base;
   const pixels = extendedPixels(entry, screen.base);
-  if (entry.hd) paintSharp(extendCtx, entry, screen.base, extend.width, extend.height);
+  if (entry.hd) paintSharp(extendCtx, entry, screen.base, extend.width, extend.height, screen.silhouette);
   else {
     const flatSource = Object.assign(document.createElement("canvas"), { width: 240, height: EXTENDED_HEIGHT });
     flatSource.getContext("2d").putImageData(new ImageData(pixels, 240, EXTENDED_HEIGHT), 0, 0);
