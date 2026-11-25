@@ -1,4 +1,4 @@
-import { MasterClock, SCANLINE_MASTER_CYCLES, inAutoJoypadRead, inVblank } from './master-clock.js';
+import { MasterClock, inAutoJoypadRead, inVblank, scanlineTiming } from './master-clock.js';
 
 function normalizeRom(bytes) {
   let rom = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
@@ -46,8 +46,9 @@ export class ZakuroBus {
       const value = this.nmiFlag ? 0x80 : 0; this.nmiFlag = false; return value;
     }
     if ((bank & 0x40) === 0 && offset === 0x4212) {
-      const inLine = master % SCANLINE_MASTER_CYCLES;
-      return (inVblank(master) ? 0x80 : 0) | (inLine >= 1096 ? 0x40 : 0)
+      const timing = scanlineTiming(master);
+      const inLine = master - timing.start;
+      return (inVblank(master) ? 0x80 : 0) | (inLine < 4 || inLine >= 1096 ? 0x40 : 0)
         | (inAutoJoypadRead(master) ? 0x01 : 0);
     }
     if ((bank & 0x40) === 0 && offset === 0x4016) return this.readJoy1();

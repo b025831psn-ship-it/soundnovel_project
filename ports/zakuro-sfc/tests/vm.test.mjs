@@ -32,6 +32,20 @@ test('PPU fields alternate 357368/357364 master cycles', () => {
   assert.equal(inAutoJoypadRead(306900 + 4092), false);
 });
 
+test('$4212 HBlank uses the current short scanline start and Snes9x edges', () => {
+  const clock = new MasterClock(0, { refresh: false });
+  const bus = new ZakuroBus({ rom: fixtureRom([]), masterLink: { read: () => 0, write() {} }, clock });
+  const readAt = master => { clock.master = master - 6; return bus.read(0x4212) & 0x40; };
+  const line = 1364;
+  assert.equal(readAt(line), 0x40);
+  assert.equal(readAt(line + 4), 0);
+  assert.equal(readAt(line + 1095), 0);
+  assert.equal(readAt(line + 1096), 0x40);
+  const shortLine = scanlineTiming(357368 + 240 * 1364);
+  assert.equal(readAt(shortLine.start + 2), 0x40);
+  assert.equal(readAt(shortLine.start + shortLine.length - 1), 0x40);
+});
+
 test('DRAM refresh follows alternating H positions across the short scanline', () => {
   assert.deepEqual(scanlineTiming(0), { field: 0, line: 0, start: 0, length: 1364, refresh: 538 });
   assert.equal(scanlineTiming(1364).refresh, 534);
