@@ -208,9 +208,13 @@ export class SPC700 {
   step() {
     if (this.stopped) { this.tick(2); return 2; }
     this.dspDone = 0; this.timerDone = 0;
+    const inIpl = this.ipl !== null && this.pc >= 0xffc0 && (this.control & 0x80);
     const op = this.fetch();
     this.curOp = op;
     let extra = this.exec(op);
+    // The IPL's final JMP [!abs+X] into the uploaded program takes one clock more than the
+    // same opcode in RAM (measured: reset-to-frame-5700 CPU reads and PCM, see apu.js).
+    if (inIpl && op === 0x1f) extra += 1;
     const clocks = CYCLES[op] + extra;
     this.tick(clocks);
     return clocks;

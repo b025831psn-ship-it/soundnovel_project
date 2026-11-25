@@ -10,7 +10,8 @@ import { MasterLink } from '../sound/master-link.js';
 import { readIplRecords } from './rom.mjs';
 import { parseTsv, findIplEnd } from './replay-trace.mjs';
 
-export function replayLink({ records, ports, dsp, apu = new APU(), progress = false, portLog = null, lags = {} }) {
+export function replayLink({ records, ports, dsp, apu = new APU(), progress = false, portLog = null, lags = {}, ipl = null, limit = Infinity }) {
+  if (ipl) return replayFromReset({ ports, apu, ipl, portLog, lags, progress, limit });
   let first = null;
   if (portLog) apu.cpu.onPortWrite = (t, p, v) => portLog.push([t, p, v]);
   apu.cpu.onDspWrite = (t) => { if (first === null) first = t; };
@@ -39,13 +40,35 @@ export function replayLink({ records, ports, dsp, apu = new APU(), progress = fa
   return { offset, reads, bad, firstBad };
 }
 
+// With a local 64-byte IPL image, runs from reset: the SPC executes the IPL and the CPU's
+// whole upload goes through the link, so the IPL transfer timing is checked too.
+function replayFromReset({ ports, apu, ipl, portLog, lags, progress, limit }) {
+  const dspLog = [];
+  if (portLog) apu.cpu.onPortWrite = (t, p, v) => portLog.push([t, p, v]);
+  apu.cpu.onDspWrite = (t, r, v) => { if (dspLog.length < 4) dspLog.push([t, r, v]); };
+  apu.powerOn(ipl);
+  const link = new MasterLink(apu, lags);
+  let reads = 0, bad = 0, firstBad = null;
+  const n = Math.min(ports.length, limit);
+  for (let i = 0; i < n; i++) {
+    const [frame, master, dir, port, value] = ports[i];
+    const m = Number(master), p = Number(port), v = parseInt(value, 16);
+    if (dir === 'w') { link.write(m, p, v); continue; }
+    reads++;
+    const got = link.read(m, p);
+    if (got !== v) { bad++; firstBad ??= { row: i, frame: Number(frame), master: m, port: p, want: v, got }; }
+    if (progress && i % 500000 === 0) console.error(`${i}/${ports.length} bad=${bad}`);
+  }
+  return { reads, bad, firstBad, firstDsp: dspLog[0] ? [dspLog[0][0] + apu.coreDelay, dspLog[0][1], dspLog[0][2]] : null };
+}
+
 if (import.meta.url === `file://${process.argv[1]}`) {
   const [rom, portsPath, dspPath] = process.argv.slice(2);
   const r = replayLink({
     records: readIplRecords(readFileSync(rom)),
     ports: parseTsv(readFileSync(portsPath, 'utf8')),
     dsp: parseTsv(readFileSync(dspPath, 'utf8')),
-    progress: !!process.env.PROGRESS, lags: process.env.LAGS ? JSON.parse(process.env.LAGS) : {},
+    progress: !!process.env.PROGRESS, ipl: process.env.IPL ? readFileSync(process.env.IPL) : null, lags: process.env.LAGS ? JSON.parse(process.env.LAGS) : {},
   });
   console.log(JSON.stringify(r));
 }

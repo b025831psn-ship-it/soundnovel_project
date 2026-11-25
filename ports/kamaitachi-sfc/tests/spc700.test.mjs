@@ -122,3 +122,13 @@ test('timer reads see ticks up to two clocks before the read cycle', () => {
   assert.equal(readY(127), 1);
   assert.equal(readY(126), 0);
 });
+
+test('JMP [!abs+X] from the IPL region takes one clock more than from RAM', () => {
+  const img = new Uint8Array(64); img.set([0x1f, 0x00, 0x00], 0); img[0x3e] = 0xc0; img[0x3f] = 0xff; // own test image
+  const cpu = new SPC700(); cpu.loadIplImage(img);
+  cpu.ram[0] = 0x00; cpu.ram[1] = 0x04; cpu.x = 0;
+  assert.equal(cpu.step(), 7);
+  assert.equal(cpu.pc, 0x0400);
+  cpu.ram.set([0x1f, 0x00, 0x00], 0x0400);
+  assert.equal(cpu.step(), 6);
+});

@@ -54,3 +54,12 @@ test('a CPU write reaches an SPC port read by its opcode read point', () => {
   assert.equal(run(0x65, m(3) - 1), false);  // T < 3: seen, so A=0 != 5A, Z clear
   assert.equal(run(0x65, m(3.01)), true);    // T > 3: still old 0, Z set
 });
+
+test('power-on phases: DSP from 0, timers from 1, SPC700 core from 3', () => {
+  const img = new Uint8Array(64); img.set([0x2f, 0xfe], 0); img[0x3e] = 0xc0; img[0x3f] = 0xff; // BRA self
+  const apu = new APU(); apu.powerOn(img);
+  assert.equal(apu.coreDelay, 3);
+  for (const t of apu.cpu.timers) assert.equal(t.phase, 2);
+  const link = new MasterLink(apu);
+  assert.equal(link.target, -3);
+});

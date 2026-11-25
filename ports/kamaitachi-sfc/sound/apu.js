@@ -26,6 +26,21 @@ export class APU {
     return this.cpu.uploadRecords(records);
   }
 
+  // Power-on with a local 64-byte IPL image: the CPU's own upload then runs through the
+  // ports. Measured on the Snes9x trace with master clock 0 = SPC time 0: the S-DSP runs
+  // from 0, the timer dividers from 1 and the SPC700 core from 3 (`coreDelay`, which
+  // MasterLink applies). With this, every CPU read from reset to frame 5700 and the PCM
+  // capture match, and the driver starts at SPC time 621,677 as `boot()` assumes.
+  powerOn(ipl) {
+    this.cpu.loadIplImage(ipl);
+    const cb = this.dsp.onSample; this.dsp.onSample = null;
+    this.dsp.tick(APU.CORE_DELAY);
+    this.dsp.onSample = cb;
+    for (const t of this.cpu.timers) t.phase = (APU.CORE_DELAY - 1) % t.period;
+    this.coreDelay = APU.CORE_DELAY;
+  }
+  static CORE_DELAY = 3;
+
   cpuWrite(port, value) { this.cpu.portIn[port & 3] = value & 0xff; }
   cpuRead(port) { return this.cpu.portOut[port & 3]; }
   run(clocks) { this.cpu.run(clocks); }
