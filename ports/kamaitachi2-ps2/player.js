@@ -23,7 +23,7 @@ let saved = readSave();
 let data, screen, groups, editor, pages, sn4;
 let sn4Mode = false, sn4Event, sn4WaitUntil = 0;
 const sn4Style = {speed:1, spacing:0, position:null, marginLeft:null, marginTop:null,
-  rubies:[], scene:null, scenePack:null, caption:null};
+  positions:[], rubies:[], scene:null, scenePack:null, caption:null, retainMovie:false};
 let scene = 'loading', index = 0, role = 0, page = 0, revealed = 0;
 let names = [], autosave = false, slot = 0, entered = 0, lastFrame, userNotice = '';
 let idleMovie = 'opening';
@@ -77,12 +77,17 @@ function enter(next, selected = 0) {
 function announce() {
   const story = ['story','complete','choice-wait'].includes(scene);
   const choices = sn4Mode && sn4Event?.type === 'choice'
-    ? sn4Event.targets.map(target => data.prologueChoice.find(route => route.target === target))
+    ? sn4Event.targets.map(choiceRoute)
     : pages?.[page]?.choice;
   const label = scene === 'choice' ? choices[index].text : story ? storyText() : editor && ['name','confirm'].includes(scene)
     ? (role === 0 ? '주인공 ' : '여자친구 ') + editor.value : scene;
   canvas.setAttribute('aria-label', label);
   status.textContent = userNotice || label;
+}
+
+function choiceRoute(target) {
+  return [data.prologueChoice, data.summerChoice, data.followupChoice,
+    data.culpritChoice, data.captainChoice].flat().find(route => route.target === target);
 }
 
 function playMusic(file, options) {
@@ -91,6 +96,16 @@ function playMusic(file, options) {
 
 function applyScenePack(name) {
   const command = data.scenePack?.[name];
+  if (name === 'my0003_00') {
+    sn4Style.retainMovie = true;
+    playMovie('my0003-1', () => playMovie('my0003-2', null, true));
+  } else if (name === 'my0005_00') {
+    sn4Style.retainMovie = true;
+    playMovie('my0005-1', () => playMovie('my0005-2', null, true));
+  } else if (name === 'my0006_00') {
+    sn4Style.retainMovie = true;
+    playMovie('my0006', null, true);
+  }
   if (!command) return 0;
   if (command.image) sn4Style.scene = command.image;
   if (command.music?.operation === 0x14) {
@@ -351,24 +366,6 @@ function makePages(s) {
       retainMovie:true, append:i > 0, end:i === lines.length - 1, book:i === lines.length - 1,
       text: () => lines.slice(0, i + 1).join('\n'),
     })),
-    { target:'my01_0085-cont', background:'my0000', positioned:s.my02_0010.lines, autoAdvance:true,
-      speeds:[{offset:0, speed:s.my02_0010.speed}],
-      waits: () => [{offset:0, remaining:s.my02_0010.waitBefore * 1000 / 59.94},
-        {offset:s.my02_0010.lines.reduce((size,line) => size + line.text.length, 0), remaining:s.my02_0010.waitAfter * 1000 / 59.94}],
-      text: () => s.my02_0010.lines.map(run => run.text).join('') },
-    { movie:'my0003-1', loopMovie:'my0003-2', music:'k2h003.ogg', autoAdvance:true,
-      waits: () => [{offset:0, remaining:(s.my02_0015.introWaits[0] + s.my02_0015.introWaits[1]) * 1000 / 59.94}],
-      text: () => '' },
-    ...summerDialogue(s.my02_0015),
-    ...reunionPages,
-    ...narrationPages(s.my02_0035, false),
-    ...narrationPages(s.my02_0040, false),
-    ...narrationPages(s.my02_0075, false),
-    ...narrationPages(s.my02_0080, false),
-    ...narrationPages(s.my02_0083, false),
-    ...narrationPages(s.my02_0085, false),
-    ...narrationPages(s.my02_0090, false),
-    ...reaction,
     ...data.summerChoice.flatMap(route => {
       const pages = narrationPages(s[route.target], true);
       pages[0].target = route.target;
@@ -498,7 +495,12 @@ function step(key) {
     } else if (key === 'circle') {
       if (sn4Mode) {
         cue('confirm');
-        showSn4(sn4.choose(index));
+        const target = sn4Event.targets[index];
+        if (!sn4.hasLabel(target)) {
+          sn4Mode = false;
+          page = pages.findIndex(block => block.target === target);
+          printPage();
+        } else showSn4(sn4.choose(index));
         return;
       }
       const target = pages[page].choice[index].target;
@@ -580,8 +582,20 @@ function drawStory(time) {
     }
     return;
   }
+  if (sn4Mode && sn4Style.positions.length) {
+    if (!sn4Style.retainMovie) screen.background(background, false, time);
+    for (let i = 0; i < sn4Style.positions.length; i++) {
+      const run = sn4Style.positions[i];
+      const end = sn4Style.positions[i + 1]?.offset ?? storyText().length;
+      if (revealed <= run.offset) break;
+      const value = storyText().slice(run.offset, Math.min(end, Math.floor(revealed)));
+      screen.text(value, run.value >>> 16, run.value & 0xffff, {spacing:sn4Style.spacing, widthScale:1, scale:.91});
+    }
+    return;
+  }
   if (block.movie && !text) return;
-  if (!block.movie && !block.retainMovie) screen.background(background, background === 'my0645', time);
+  const retainMovie = block.retainMovie || (sn4Mode && sn4Style.retainMovie);
+  if (!block.movie && !retainMovie) screen.background(background, background === 'my0645', time);
   const vmPosition = sn4Style.position === null ? null : {x:sn4Style.position >>> 16, y:sn4Style.position & 0xffff};
   const vmMargins = sn4Mode && (sn4Style.marginLeft !== null || sn4Style.marginTop !== null)
     ? {x:sn4Style.marginLeft ?? 32, y:sn4Style.marginTop ?? 31} : null;
@@ -638,7 +652,7 @@ function frame(now) {
     if (now - entered >= pages[page].choiceWait * 1000 / 59.94) enter('choice');
   } else if (scene === 'choice') {
     if (!pages[page].retainMovie) screen.background('my0645', true, time);
-    const choices = sn4Mode ? sn4Event.targets.map(target => data.prologueChoice.find(route => route.target === target)) : pages[page].choice;
+    const choices = sn4Mode ? sn4Event.targets.map(choiceRoute) : pages[page].choice;
     choices.forEach((route, i) => {
       const y = 60 + 64 * i;
       if (i === index) screen.rect(24, y - 4, 592, 49);
@@ -761,10 +775,15 @@ try {
   sn4 = new Sn4Vm(sn4Program, {
     speed:value => { sn4Style.speed = value; },
     spacing:value => { sn4Style.spacing = value; },
-    position:value => { sn4Style.position = value; },
+    position:(value, offset) => {
+      sn4Style.position = value;
+      if (!sn4Style.positions.some(run => run.offset === offset && run.value === value))
+        sn4Style.positions.push({value, offset});
+    },
     marginLeft:value => { sn4Style.marginLeft = value; },
     marginTop:value => { sn4Style.marginTop = value; },
     ruby:(word, readings) => { sn4Style.rubies.push({word, readings}); },
+    clearText:() => { sn4Style.position = null; sn4Style.positions = []; sn4Style.rubies = []; },
     scene:value => { sn4Style.scenePack = value; },
     caption:value => { sn4Style.caption = value; return applyScenePack(value); },
   });

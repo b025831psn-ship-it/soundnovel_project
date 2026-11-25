@@ -486,6 +486,13 @@ def first_choice_program(data):
                             "args": [int.from_bytes(payload[:4], "big"),
                                      *[n for (n,) in struct.iter_unpack(">I", payload[5:])]]})
                 pos += size + 1
+            elif op == 0x7B:
+                size = block[pos]
+                payload = block[pos + 1:pos + 1 + size]
+                if len(payload) != size:
+                    raise ValueError(f"Invalid sized command 0x7B in {name} at {offset:#x}")
+                ops.append({"op": op, "offset": offset, "args": [payload.hex()]})
+                pos += size + 1
             elif op == 0x70:
                 size = block[pos]
                 payload = block[pos + 1:pos + 1 + size]
@@ -519,6 +526,13 @@ def first_choice_program(data):
         if current["label"] != "my01_0082":
             current["next"] = following["label"]
     decoded.extend(branch + continuation)
+    summer_names = ("my02_0010", "my02_0015", "my02_0030", "my02_0035", "my02_0040",
+                    "my02_0075", "my02_0080", "my02_0083", "my02_0085", "my02_0090", "my02_0100")
+    summer = [decode(name, stop_at_choice=name == "my02_0100") for name in summer_names]
+    for current, following in zip(summer, summer[1:]):
+        current["next"] = following["label"]
+    continuation[-1]["next"] = summer[0]["label"]
+    decoded.extend(summer)
     decoded.append(decode("my01_0073", first_text_only=True, stop_jump=True))
     return {"entry": names[0], "labels": decoded}
 
@@ -622,9 +636,10 @@ def opening_assets(disc, out, encode):
     scenario = asset("SCENARIO/scenario.sn4")
     scene_pack = asset("SCENARIO/scene_pk.spk")
     music_pattern = re.compile(rb"\x14\x00\x27\x00([^\0]+\.ogg)\x00\x2f\x00(.{2})"
-                               rb"\x2e\x00(.{2})\x2b\x00(.{2})\x07\x00", re.S)
+                               rb"\x2e\x00(.{2})\x2b\x00(.{2})", re.S)
     volume_pattern = re.compile(rb"\x17\x00\x2f\x00(.{2})\x2b\x00(.{2})"
-                                rb"\x2e\x00(.{2})\x0a\x00", re.S)
+                                 rb"\x2e\x00(.{2})", re.S)
+    stop_pattern = re.compile(rb"\x15\x00\x2b\x00(.{2})\x2e\x00(.{2})", re.S)
     scene_pack_opening = {}
     for name, offset in {"my0002b_00": 0x72217, "my0002c_00": 0x7227B,
                          "my0002d_00": 0x722DF,
@@ -658,6 +673,12 @@ def opening_assets(disc, out, encode):
         "my0002f_00": (0x2D1, 0x34F), "my0002g_00": (0x34F, 0x37F),
         "my0002g_10": (0x37F, 0x39D), "my0002g_35": (0x39D, 0x3BB),
         "my0002g_40": (0x3BB, 0x3E9), "my0002h_00": (0x3E9, 0x408),
+        "my0002i_00": (0x408, 0x427), "my0002i_10": (0x427, 0x47D),
+        "my0003_00": (0x47D, 0x501), "my0005_00": (0x501, 0x58B),
+        "my0006_00": (0x58B, 0x5CF), "my0006_20": (0x5CF, 0x5F9),
+        "my0006_30": (0x5F9, 0x60F), "my0006_40": (0x60F, 0x627),
+        "my0006_50": (0x627, 0x63D), "my0006b_00": (0x63D, 0x6E9),
+        "my0006c_00": (0x6E9, 0x76D),
     }
     for name, (start, end) in later_entries.items():
         command = scene_pack[0x72110 + start:0x72110 + end]
@@ -675,6 +696,10 @@ def opening_assets(disc, out, encode):
                               "volume": int.from_bytes(volume[1], "little"),
                               "fadeFrames": int.from_bytes(volume[2], "little"),
                               "wait": int.from_bytes(volume[3], "little")}
+        elif stop := stop_pattern.search(command):
+            entry["music"] = {"operation": 0x15, "command": 0x07,
+                              "fadeFrames": int.from_bytes(stop[1], "little"),
+                              "wait": int.from_bytes(stop[2], "little")}
         if entry:
             scene_pack_opening[name] = entry
     config = {

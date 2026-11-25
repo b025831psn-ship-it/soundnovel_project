@@ -53,8 +53,10 @@ try {
     early.volume(20);
     while (!early.voice) await new Promise(r => setTimeout(r, 20));
     const earlyLevel = early.voice.gain.gain.value;
+    early.play('k2h002.ogg', {volume:100, fadeFrames:60});
+    const repeatedLevel = early.voice.gain.gain.value;
     early.stop();
-    return {results, started, fading, playing: music.playing, earlyLevel};
+    return {results, started, fading, playing: music.playing, earlyLevel, repeatedLevel};
   });
   for (const r of seams.results) {
     assert.equal(r.comment, r.loop, r.file + ' L= comment');
@@ -63,15 +65,17 @@ try {
   }
   assert.equal(seams.started.loop, true);
   assert.ok(Math.abs(seams.started.loopStart - 1017889 / 48000) < 1e-9);
-  assert.equal(seams.started.initial, 0);
   const volume50 = 63 / 127;
+  assert.ok(seams.started.initial >= 0 && seams.started.initial < volume50,
+    'fade-in starts below its target');
   assert.ok(Math.abs(seams.started.after - volume50) < 1e-6, 'fade-in reaches quantized volume 50');
   const volume20 = 25 / 127;
   assert.ok(Math.abs(seams.started.changed - volume20) < 1e-6, 'volume change reaches quantized volume 20');
   assert.ok(seams.fading > 0 && seams.fading < volume20, 'fade-out in progress');
   assert.equal(seams.playing, false);
   assert.ok(Math.abs(seams.earlyLevel - volume20) < 1e-6, 'volume change during decode is kept');
-  console.log('PASS music: 6 loop seams sample-exact at L=, EE volume quantization/change, fade-in/fade-out');
+  assert.ok(Math.abs(seams.repeatedLevel - volume20) < 1e-6, 'same-file 0x14 is a no-op');
+  console.log('PASS music: 6 loop seams sample-exact at L=, EE volume/fade and same-file no-op');
 } finally {
   await browser.close();
 }

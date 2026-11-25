@@ -73,7 +73,7 @@ try {
       vm.hooks.caption = value => { captions.push(value); return 0; };
       event = vm.choose(index);
       const texts = [];
-      while (event.type !== 'end') {
+      while (!['end', 'choice'].includes(event.type)) {
         if (event.text) texts.push(event.text);
         if (!['pause', 'wait'].includes(event.type)) throw new Error('Unexpected branch event ' + event.type);
         event = vm.run();
@@ -85,11 +85,13 @@ try {
   assert.deepEqual(vmBranches.map(branch => branch.targets), [
     ['my01_0075', 'my01_0073'], ['my01_0075', 'my01_0073'],
   ]);
-  assert.deepEqual(vmBranches.map(branch => branch.label), ['my01_0085', 'my01_0073']);
+  assert.deepEqual(vmBranches.map(branch => branch.label), ['my02_0100', 'my01_0073']);
   assert.ok(vmBranches.every(branch => branch.text.length > 0 || branch.texts.some(Boolean)));
   assert.deepEqual(vmBranches[0].captions, [
     'my0002e_10', 'my0002f_00', 'my0002g_00', 'my0002g_10',
-    'my0002g_35', 'my0002g_40', 'my0002h_00',
+    'my0002g_35', 'my0002g_40', 'my0002h_00', 'my0002i_00', 'my0002i_10',
+    'my0003_00', 'my0005_00', 'my0006_00', 'my0006_20', 'my0006_30',
+    'my0006_40', 'my0006_50', 'my0006b_00', 'my0006c_00',
   ]);
   assert.deepEqual(vmBranches[1].captions, []);
   assert.ok(vmBranches[0].texts.some(text => text.includes('北海道に引っ越してしまった')));
@@ -293,6 +295,7 @@ try {
   for (let i=0; i<30 && !(await label()).includes('会えるかもしれない'); i++) {
     authorPages.add(await label());
     await key('Enter'); await page.waitForTimeout(100);
+    authorPages.add(await label());
   }
   assert.ok([...authorPages].some(text => text.startsWith('この『我孫子武丸』')));
   assert.ok([...authorPages].some(text => text.endsWith('出会ったことがないからだ。')));
@@ -312,7 +315,7 @@ try {
   assert.match(await label(), /真理？ひさしぶりだね……」$/);
   await key('Enter');
   await key('Enter');
-  await page.waitForFunction(() => document.querySelector('canvas').getAttribute('aria-label') === '八月十五日正午');
+  await page.waitForFunction(() => document.querySelector('canvas').getAttribute('aria-label') === '八月十五日\n正午');
   await page.waitForFunction(() => {
     const ctx = document.querySelector('canvas').getContext('2d');
     return [[220,150],[270,230]].every(([x,y]) => {
@@ -331,11 +334,12 @@ try {
     'え？','「だって、すがすがしいじゃない」','「・・・・・・そ、そうだよね」'];
   for (const line of summerLines) {
     const previous = await label();
-    for (let i=0; i<20 && await label() === previous; i++) {
+    const expected = previous + '\n' + line;
+    for (let i=0; i<40 && await label() !== expected; i++) {
       await key('Enter');
       await page.waitForTimeout(80);
     }
-    assert.equal(await label(), previous + '\n' + line);
+    assert.equal(await label(), expected);
   }
   for (let i=0; i<40 && !(await label()).endsWith('またきれいになっていた。'); i++) {
     await key('Enter');

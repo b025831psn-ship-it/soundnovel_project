@@ -22,6 +22,10 @@ export class Sn4Vm {
     this.names = [...names];
   }
 
+  hasLabel(label) {
+    return this.labels.has(label);
+  }
+
   jump(label) {
     if (!this.labels.has(label)) throw new Error(`Unknown SN4 jump target ${label}`);
     this.label = label;
@@ -48,6 +52,7 @@ export class Sn4Vm {
   run() {
     if (this.clearBeforeRun) {
       this.text = '';
+      this.hooks.clearText?.();
       this.clearBeforeRun = false;
     }
     while (true) {
@@ -94,7 +99,7 @@ export class Sn4Vm {
         case 0x5c: this.hooks.command5c?.(args[0]); break;
         case 0x5d: this.hooks.marginLeft?.(args[0]); break;
         case 0x61: this.hooks.marginTop?.(args[0]); break;
-        case 0x65: this.hooks.position?.(args[0]); break;
+        case 0x65: this.hooks.position?.(args[0], this.text.length); break;
         case 0x6a:
         case 0x6b: this.jump(args[0]); break;
         case 0x6c:
@@ -107,7 +112,13 @@ export class Sn4Vm {
           break;
         }
         case 0x72: this.hooks.prepareScene?.(args[0]); break;
-        case 0x73: this.hooks.scene?.(args[0]); break;
+        case 0x73:
+          // Loading a scene replaces the previous message layer. The following
+          // caption may wait for media, so clear before yielding from it.
+          this.text = '';
+          this.hooks.clearText?.();
+          this.hooks.scene?.(args[0]);
+          break;
         case 0x74: {
           const ticks = this.hooks.caption?.(args[0]) ?? 0;
           if (ticks > 0) return {type:'wait', reason:'music', label:this.label,
@@ -115,6 +126,7 @@ export class Sn4Vm {
           break;
         }
         case 0x75: this.hooks.color?.(...args); break;
+        case 0x7b: this.hooks.command7b?.(args[0]); break;
         case 0x106: this.hooks.ruby?.(...args); break;
         default:
           throw new Error(`Unsupported SN4 opcode 0x${command.op.toString(16).padStart(2, '0')} at ${this.label}+0x${command.offset.toString(16)}`);

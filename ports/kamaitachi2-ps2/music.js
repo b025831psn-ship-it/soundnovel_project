@@ -38,7 +38,10 @@ export class LoopingMusic {
   // volume: 0-100 as in the ScenePack command; fadeFrames: 59.94 Hz frames.
   play(file, { volume = 100, fadeFrames = 0 } = {}) {
     const level = Math.floor(Math.min(100, Math.max(0, volume)) * 127 / 100) / 127;
-    if (this.file === file) return this.retarget(level, fadeFrames);
+    // EE bgm_play compares the requested filename with the current one and
+    // returns before enqueueing anything when they are equal. In particular,
+    // a repeated 0x14 neither restarts the stream nor changes its volume.
+    if (this.file === file) return 0;
     this.stop();
     this.file = file;
     this.target = { level, fadeFrames };
