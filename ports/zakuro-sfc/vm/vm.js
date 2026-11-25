@@ -17,6 +17,7 @@ export class ZakuroVM {
     this.bus.onNmi = () => { this.nmiTriggerMaster = this.bus.clock.master + 6; };
   }
   reset() { this.nmiTriggerMaster = null; this.bus.clock.idle(RESET_MASTER_CYCLES); this.cpu.reset(); }
+  setJoypad(mask) { this.bus.setJoypad(mask); }
   step() {
     if (this.nmiTriggerMaster != null && this.bus.clock.master >= this.nmiTriggerMaster) {
       this.cpu.nmiPending = true;

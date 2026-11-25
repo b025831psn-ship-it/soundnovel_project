@@ -66,6 +66,12 @@ VBlank is active. Adding the VBlank condition removes that extra interrupt.
 The private `port-data/trace/input.tsv` contains all 3,713 native controller
 frames through the first choice. `readInputTrace()` feeds each VBlank sample to
 the `$4218/$4219` auto-joypad registers and the `$4016/$4017` serial interface.
+The browser may call `vm.setJoypad(mask)` to override `input.tsv` once at the
+next auto-joypad sample; later fields return to recorded input unless another
+mask is queued. Choice-mode WRAM uses `$007F` as the active flag, `$0081` as the
+cursor, `$0082` as the last option index, and `$0083/$0085/$0087/$0089` as the
+four target block IDs. Save/load uses selected slot `$0348` (0-2); exact menu
+row hit boxes still need PPU/text-row observation.
 With that input, `tools/vm-full-run.mjs` reaches the end without a stop or CPU
 error and finds all 252,918 reference CPU writes. The former extra idle-clear
 triplets at reference frames 422, 760, and 1798 are gone, and the write sequence

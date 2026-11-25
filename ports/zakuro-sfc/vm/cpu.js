@@ -29,6 +29,7 @@ export class CPU {
     this.stopped = false;
     this.waiting = false;
     this.interruptMasterAdjustment = 0;
+    this.inNmi = false;
     this.onNmi = null;
 
     // Ring buffer of recently executed instructions, used to print a trace
@@ -140,6 +141,7 @@ export class CPU {
     this.nmiPending = false;
     this.irqPending = false;
     this.interruptMasterAdjustment = 0;
+    this.inNmi = false;
     this.stopped = false;
     this.waiting = false;
     this.A = 0; this.X = 0; this.Y = 0;
@@ -149,6 +151,7 @@ export class CPU {
   
   nmi() {
       this.onNmi?.();
+      this.inNmi = true;
       // NMI Logic
       // console.log(`[CPU] NMI Triggered at ${this.PB.toString(16).padStart(2,'0')}:${this.PC.toString(16).padStart(4,'0')}`);
       
@@ -968,6 +971,7 @@ export class CPU {
             if (!this.P.E) {
                 this.PB = this.pop();
             }
+          this.inNmi = false;
           this.cycles += this.P.E ? 5 : 6;
         }
         break;

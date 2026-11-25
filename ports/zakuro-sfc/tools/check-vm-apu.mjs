@@ -65,6 +65,13 @@ const wramWriteTrace = process.env.ZAKURO_VM_WRAM_WRITE_TRACE
   ? createWriteStream(process.env.ZAKURO_VM_WRAM_WRITE_TRACE) : null;
 const watchedWram = new Set((process.env.ZAKURO_VM_WRAM_WATCH ?? '').split(',').filter(Boolean).map((v) => Number.parseInt(v, 16)));
 wramWriteTrace?.write('field\tmaster_cycle\taddress\tpc\tvalue\tinside_nmi\n');
+const dmaTrace = process.env.ZAKURO_VM_DMA_TRACE
+  ? createWriteStream(process.env.ZAKURO_VM_DMA_TRACE) : null;
+dmaTrace?.write('field\tstart_master\tend_master\tmask\tchannels\tbytes\tinside_nmi\n');
+vm.bus.onDma = (dma) => {
+  const field = scanlineTiming(dma.startMaster).field;
+  dmaTrace?.write(`${field}\t${dma.startMaster}\t${dma.endMaster}\t${dma.mask.toString(16).padStart(2, '0')}\t${dma.channels}\t${dma.bytes}\t${insideNmi ? 1 : 0}\n`);
+};
 vm.cpu.onNmi = () => {
   insideNmi = true;
   const field = scanlineTiming(vm.bus.clock.master).field;
@@ -126,7 +133,8 @@ nmiTrace?.end();
 accessTrace?.end();
 spcTrace?.end();
 wramWriteTrace?.end();
-await Promise.all([instructionTrace, stateTrace, nmiTrace, accessTrace, spcTrace, wramWriteTrace].filter(Boolean).map(stream => finished(stream)));
+dmaTrace?.end();
+await Promise.all([instructionTrace, stateTrace, nmiTrace, accessTrace, spcTrace, wramWriteTrace, dmaTrace].filter(Boolean).map(stream => finished(stream)));
 
 const result = {
   instructions,

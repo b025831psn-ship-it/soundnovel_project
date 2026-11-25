@@ -13,14 +13,14 @@ export class ZakuroBus {
     if (!rom && !program) throw new TypeError('rom or program is required');
     this.rom = rom ? normalizeRom(rom) : null; this.program = program;
     this.onProgramRead = onProgramRead; this.masterLink = masterLink; this.clock = clock;
-    this.ppu = ppu; this.trace = trace; this.onNmi = null; this.wram = new Uint8Array(128 * 1024);
+    this.ppu = ppu; this.trace = trace; this.onNmi = null; this.onDma = null; this.wram = new Uint8Array(128 * 1024);
     // The native reference core powers WRAM on with the Snes9x 0x55 pattern.
     // Zakuro reads untouched $01EC during its first enabled NMI, so this is
     // observable state rather than an interchangeable debugging default.
     this.wram.fill(wramFill & 0xff);
     this.io = new Uint8Array(0x6000); this.fastRom = false; this.accessCount = 0;
     this.nmiFlag = false;
-    this.inputFrames = inputFrames;
+    this.inputFrames = inputFrames; this.pendingJoypad = null;
     this.inputFrameOffset = inputFrameOffset;
     this.joy1 = 0; this.joyStrobe = 0; this.joySerialBit = 0;
     this.wramAddress = 0;
@@ -87,10 +87,16 @@ export class ZakuroBus {
 
   setInputField(field) {
     // Native frame F ends at VBlank ordinal F-1 after the initial reset frame.
-    this.joy1 = this.inputFrames?.[field + this.inputFrameOffset] ?? 0;
+    this.joy1 = this.pendingJoypad ?? this.inputFrames?.[field + this.inputFrameOffset] ?? 0;
+    this.pendingJoypad = null;
     this.io[0x4218] = this.joy1 & 0xff;
     this.io[0x4219] = this.joy1 >>> 8;
     this.joySerialBit = 0;
+  }
+
+  setJoypad(mask) {
+    if (!Number.isInteger(mask) || mask < 0 || mask > 0xffff) throw new RangeError('invalid joypad mask');
+    this.pendingJoypad = mask;
   }
 
   readJoy1() {
@@ -148,6 +154,7 @@ export class ZakuroBus {
   }
 
   runDma(mask) {
+    const startMaster = this.clock.master;
     let channels = 0, bytes = 0;
     for (let channel = 0; channel < 8; channel++) {
       if (!(mask & (1 << channel))) continue;
@@ -182,5 +189,6 @@ export class ZakuroBus {
     this.dmaBytes += bytes; this.dmaMasterCycles += masterCycles;
     this.dmaTransfers++; this.dmaChannels += channels;
     this.clock.idle(masterCycles);
+    this.onDma?.({ startMaster, endMaster: this.clock.master, mask, channels, bytes });
   }
 }

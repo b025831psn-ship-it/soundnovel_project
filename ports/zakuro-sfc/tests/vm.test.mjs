@@ -102,6 +102,18 @@ test('recorded joypad frames feed auto-joypad registers and serial reads', () =>
   assert.equal(bus.read(0x4219), 0x00);
 });
 
+test('setJoypad overrides input.tsv once on the next auto-joypad sample', () => {
+  const vm = new ZakuroVM({
+    rom: fixtureRom([]), masterLink: { read: () => 0, write() {} }, inputFrames: [0, 0x1000, 0x0080],
+  });
+  vm.setJoypad(0x8000);
+  vm.bus.setInputField(0);
+  assert.equal(vm.bus.joy1, 0x8000);
+  vm.bus.setInputField(1);
+  assert.equal(vm.bus.joy1, 0x0080);
+  assert.throws(() => vm.setJoypad(0x10000), /invalid joypad mask/);
+});
+
 test('65C816 store opcodes report total cycles without double-counting fetch', () => {
   // LDA #$5a; STA $00; STX $01; STZ $02; STA $2000
   const vm = new ZakuroVM({
