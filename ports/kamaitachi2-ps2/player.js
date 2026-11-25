@@ -2,6 +2,7 @@ import { DirectionRepeat, NameEditor, keyboardGroups } from './names.js';
 import { Screen } from './render.js';
 import { Sn4Vm } from './sn4.js';
 import { LoopingMusic } from './music.js';
+import { SePlayer } from './se-player.js';
 
 const canvas = document.querySelector('canvas');
 const movie = document.querySelector('#movie');
@@ -20,6 +21,19 @@ const loopFrames = {
 const music = new LoopingMusic({
   asset, loopFrames, onBlocked: () => { status.textContent = '오디오를 재생하려면 화면을 눌러 주세요.'; },
 });
+let se = null, seStarting = null;
+const pendingSe = [];
+async function unlockAudio() {
+  music.unlock();
+  if (!seStarting) seStarting = (async () => {
+    const context = new AudioContext({sampleRate:48000});
+    await context.resume();
+    se = await SePlayer.create(context, name => asset('se/' + name));
+    for (const command of pendingSe.splice(0)) se.command(command);
+    return se;
+  })().catch(error => { console.warn('SE unavailable', error); seStarting = null; });
+  return seStarting;
+}
 const cues = Object.fromEntries(['confirm','cancel','move'].map(name => [name, new Audio(asset(name + '.wav'))]));
 const saveKey = 'soundnovel.slps25132.opening.v1';
 let saved = readSave();
@@ -27,8 +41,9 @@ let data, screen, groups, editor, pages, sn4;
 let sn4Mode = false, sn4Event, sn4WaitUntil = 0;
 // EE 0x112610: one character every max(1, speed) frames; CommandSpeed stores speed at +0x2a4.
 let sn4SpeedMarks = [], sn4Shown = '';
-const sn4Style = {speed:1, spacing:0, position:null, marginLeft:null, marginTop:null,
-  positions:[], centers:[], rubies:[], scene:null, scenePack:null, caption:null, retainMovie:false,
+const sn4Style = {speed:1, letterSpacing:0, lineSpacing:7, fontType:0, fontSize:33,
+  marginLeft:32, marginRight:32, marginTop:32, marginBottom:32,
+  moves:[], lines:[], styles:[], effects:[], centers:[], rubies:[], scene:null, scenePack:null, caption:null, retainMovie:false,
   sceneCommands:[], unknown:[]};
 let scene = 'loading', index = 0, role = 0, page = 0, revealed = 0;
 let names = [], autosave = false, slot = 0, entered = 0, lastFrame, userNotice = '';
@@ -173,9 +188,9 @@ function applyScenePack(name) {
       case 0x17:
         music.volume(command.volume ?? 100, {fadeFrames:command.fadeFrames ?? 0});
         break;
-      // Sound effects remain records until their SE bank IDs are mapped.
       case 0x0c: case 0x0d: case 0x0f: case 0x10: case 0x11:
-        sn4Style.unknown.push({name, command, kind:'sound'}); break;
+        if (se) se.command(command); else pendingSe.push(command);
+        break;
       // Preserve all non-audio effects in source order and continue. Renderer
       // hooks can consume these records as their EE semantics are confirmed.
       case 0x05: case 0x08: case 0x09: case 0x0a: case 0x0b:
@@ -235,6 +250,8 @@ function opening(attract = false) {
 }
 
 function title(animate) {
+  pendingSe.length = 0;
+  se?.stop(null);
   playMusic(data.titleMusic);
   if (animate) {
     enter('title-entry');
@@ -655,24 +672,11 @@ function drawStory(time) {
     }
     return;
   }
-  if (sn4Mode && sn4Style.positions.length) {
-    if (!sn4Style.retainMovie) screen.background(background, false, time);
-    for (let i = 0; i < sn4Style.positions.length; i++) {
-      const run = sn4Style.positions[i];
-      const end = sn4Style.positions[i + 1]?.offset ?? storyText().length;
-      if (revealed <= run.offset) break;
-      const value = storyText().slice(run.offset, Math.min(end, Math.floor(revealed)));
-      screen.text(value, run.value >>> 16, run.value & 0xffff, {spacing:sn4Style.spacing, widthScale:1, scale:.91});
-    }
-    return;
-  }
   if (block.movie && !text) return;
   const retainMovie = block.retainMovie || (sn4Mode && sn4Style.retainMovie);
   if (!block.movie && !retainMovie) screen.background(background, background === 'my0645', time);
-  const vmPosition = sn4Style.position === null ? null : {x:sn4Style.position >>> 16, y:sn4Style.position & 0xffff};
-  const vmMargins = sn4Mode && (sn4Style.marginLeft !== null || sn4Style.marginTop !== null)
-    ? {x:sn4Style.marginLeft ?? 32, y:sn4Style.marginTop ?? 31} : null;
-  const origin = vmPosition ?? vmMargins ?? (block.background === 'my0000' ? data.invitationOrigin : {x:32, y:31});
+  const origin = sn4Mode ? {x:sn4Style.marginLeft, y:sn4Style.marginTop}
+    : (block.background === 'my0000' ? data.invitationOrigin : {x:32, y:31});
   const scale = block.center || (background === 'my0645' && !block.movie && !block.retainMovie) ? .96 : .91;
   const y = block.center ? 192 : origin.y;
   const x = block.center ? (640 - screen.width(storyText(), scale)) / 2 : origin.x;
@@ -686,18 +690,28 @@ function drawStory(time) {
   if (!block.movie && !block.retainMovie && ['my0007', 'my0645'].includes(background)) {
     screen.c.filter = 'brightness(86%)';
   }
-  const metrics = sn4Mode ? {spacing:sn4Style.spacing, widthScale:1}
+  const metrics = sn4Mode ? {spacing:sn4Style.letterSpacing, widthScale:1}
     : block.nativeGlyphWidth ? {spacing:0, widthScale:1} : {};
-  const max = Math.min(580, 640 - x);
+  const right = sn4Mode ? 640 - sn4Style.marginRight : 640;
+  const max = right - x;
   const full = storyText();
+  const styleAt = sn4Mode ? offset => {
+    const style = sn4Style.styles.findLast(mark => mark.offset <= offset) ?? sn4Style;
+    const ratio = style.fontSize / 33;
+    return {scale:scale * ratio, widthScale:ratio, spacing:style.letterSpacing,
+      leading:style.fontSize + style.lineSpacing};
+  } : undefined;
   const lineStart = sn4Mode && sn4Style.centers.length ? offset => {
     if (!sn4Style.centers.includes(offset)) return undefined;
     const line = full.slice(offset).split('\n')[0];
-    const width = Array.from(line).reduce((w, ch) =>
-      w + ((data.font[ch] ?? data.font['�'])[2] + metrics.spacing) * metrics.widthScale, 0);
+    const width = Array.from(line).reduce((w, ch, index) => {
+      const style = styleAt(offset + index);
+      return w + ((data.font[ch] ?? data.font['�'])[2] + style.spacing) * style.widthScale;
+    }, 0);
     return width < max ? x + (max - width) / 2 : x;
   } : undefined;
-  const end = screen.text(text, x, y, {...metrics, scale, max, readings, colors:textColors, lineStart});
+  const end = screen.text(text, x, y, {...metrics, scale, max, readings, colors:textColors,
+    lineStart, styleAt, moves:sn4Mode ? sn4Style.moves : [], lines:sn4Mode ? sn4Style.lines : []});
   screen.c.restore();
   if (revealed >= storyText().length) {
     const tick = Math.floor(time * 6);
@@ -814,7 +828,7 @@ function fail(message) {
 
 const keys = {ArrowLeft:'left',ArrowRight:'right',ArrowUp:'up',ArrowDown:'down',Enter:'circle',
   Space:'start',KeyX:'circle',KeyZ:'cross',Escape:'cross',KeyA:'square',KeyS:'triangle',KeyQ:'l1',KeyW:'r1',Digit2:'l2'};
-for (const type of ['pointerdown', 'keydown']) addEventListener(type, () => music.unlock(), {capture:true});
+for (const type of ['pointerdown', 'keydown']) addEventListener(type, unlockAudio, {capture:true, once:true});
 document.addEventListener('keydown', e => {
   const action = keys[e.code];
   if (!action || e.altKey || e.ctrlKey || e.metaKey || scene === 'loading' || scene === 'error') return;
@@ -946,24 +960,48 @@ try {
     const image = new Image(); image.src = asset(name + '.png'); await image.decode(); images[name] = image;
   }));
   groups = keyboardGroups(data.rows);
+  const signed16 = value => (value << 16) >> 16;
+  const point = value => ({x:value >> 16, y:signed16(value)});
+  const markStyle = offset => sn4Style.styles.push({offset,
+    fontType:sn4Style.fontType, fontSize:sn4Style.fontSize,
+    letterSpacing:sn4Style.letterSpacing, lineSpacing:sn4Style.lineSpacing});
   sn4 = new Sn4Vm(sn4Program, {
     speed:value => { sn4Style.speed = value; sn4SpeedMarks.push({offset:sn4.text.trimEnd().length, speed:value}); },
-    spacing:value => { sn4Style.spacing = value; },
-    position:(value, offset) => {
-      sn4Style.position = value;
-      if (!sn4Style.positions.some(run => run.offset === offset && run.value === value))
-        sn4Style.positions.push({value, offset});
-    },
+    moveX:(value, offset) => sn4Style.moves.push({offset, x:value, y:0}),
+    font:(type, size, offset) => { sn4Style.fontType = type; sn4Style.fontSize = size || 33; markStyle(offset); },
+    letterSpacing:(value, offset) => { sn4Style.letterSpacing = value; markStyle(offset); },
+    lineSpacing:(value, offset) => { sn4Style.lineSpacing = value; markStyle(offset); },
+    // CommandLine::Execute checks the requested width against window +0x1c,
+    // starts a new line when necessary, then emits the rule at the cursor.
+    line:(type, width, offset) => sn4Style.lines.push({type, width, offset}),
+    position:(value, offset) => sn4Style.moves.push({offset, ...point(value)}),
+    absolutePosition:(value, offset) => sn4Style.moves.push({offset, ...point(value), absolute:true}),
     marginLeft:value => { sn4Style.marginLeft = value; },
+    marginRight:value => { sn4Style.marginRight = value; },
     marginTop:value => { sn4Style.marginTop = value; },
+    marginBottom:value => { sn4Style.marginBottom = value; },
+    command5a:value => sn4Style.effects.push({name:'MojiAfterParam2', value, offset:sn4.text.length}),
+    command5c:value => sn4Style.effects.push({name:'MojiAllInOutParam', value, offset:sn4.text.length}),
     ruby:(word, readings) => { sn4Style.rubies.push({word, readings}); },
-    clearText:() => { sn4Shown = ''; sn4Style.position = null; sn4Style.positions = []; sn4Style.centers = []; sn4Style.rubies = []; },
+    clearText:() => {
+      sn4Shown = ''; sn4Style.moves = []; sn4Style.lines = []; sn4Style.styles = []; sn4Style.effects = [];
+      sn4Style.centers = []; sn4Style.rubies = []; markStyle(0);
+    },
     scene:value => { sn4Style.scenePack = value; },
     caption:value => { sn4Style.caption = value; return applyScenePack(value); },
     command:(name, args, context) => {
       sn4Style.sceneCommands.push({kind:'sn4', name, args, ...context});
       // EE 0x136f30: measure the rest of the line and move the cursor by half the free width.
       if (name === 'Center') sn4Style.centers.push(sn4.text.length);
+      else if (name === 'Default') {
+        const value = args[0] ?? 32;
+        if (context.op === 0x5e) sn4Style.marginLeft = value;
+        else if (context.op === 0x60) sn4Style.marginRight = value;
+        else if (context.op === 0x62) sn4Style.marginTop = value;
+        else if (context.op === 0x64) sn4Style.marginBottom = value;
+      } else if (['MojiInOut','MojiInOutParam','MojiAfter','MojiAfterParam','MojiAllInOut'].includes(name)) {
+        sn4Style.effects.push({name, value:args[0] ?? 0, offset:sn4.text.length});
+      }
       return 0;
     },
   });

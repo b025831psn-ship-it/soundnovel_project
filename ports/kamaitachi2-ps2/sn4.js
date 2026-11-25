@@ -142,16 +142,20 @@ export class Sn4Vm {
           this.pending = {type:'name', role:command.op - 0x12};
           return {...this.pending, label:this.label, offset:command.offset, text:this.text};
         case 0x40: this.hooks.speed?.(args[0]); break;
-        case 0x46: this.hooks.spacing?.(args[0]); break;
-        case 0x4c: this.hooks.font?.(...args); break;
+        case 0x46: this.hooks.moveX?.(args[0], this.text.length); break;
+        case 0x4c: this.hooks.font?.(args[0], args[1], this.text.length); break;
         case 0x50:
           return {type:'wait', label:this.label, offset:command.offset, ticks:args[0], text:this.text};
-        case 0x55: this.hooks.lineSpacing?.(args[0]); break;
+        case 0x53: this.hooks.letterSpacing?.(args[0], this.text.length); break;
+        case 0x55: this.hooks.lineSpacing?.(args[0], this.text.length); break;
         case 0x5a: this.hooks.command5a?.(args[0]); break;
         case 0x5c: this.hooks.command5c?.(args[0]); break;
         case 0x5d: this.hooks.marginLeft?.(args[0]); break;
+        case 0x5f: this.hooks.marginRight?.(args[0]); break;
         case 0x61: this.hooks.marginTop?.(args[0]); break;
+        case 0x63: this.hooks.marginBottom?.(args[0]); break;
         case 0x65: this.hooks.position?.(args[0], this.text.length); break;
+        case 0x66: this.hooks.absolutePosition?.(args[0], this.text.length); break;
         case 0x6a:
         case 0x6b: this.jump(args[0]); break;
         case 0x6c:
@@ -236,11 +240,10 @@ export class Sn4Vm {
           invoke('Default'); break;
         case 0x47: invoke('MiniGameParam'); break;
         case 0x48: invoke('EventBox'); break;
-        case 0x4d: invoke('Line'); break;
+        case 0x4d: this.hooks.line?.(args[0], args[1], this.text.length); break;
         case 0x51:
           return {type:'wait', reason:'cancelable', label:this.label,
             offset:command.offset, ticks:args[0], text:this.text};
-        case 0x53: invoke('LetterSpace'); break;
         case 0x57: invoke('MojiInOutParam'); break;
         case 0x59: invoke('MojiAfterParam'); break;
         case 0x5b: invoke('MojiAllInOut'); break;

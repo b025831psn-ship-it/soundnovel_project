@@ -58,9 +58,10 @@ if (wavId) {
   process.exit(0);
 }
 
-const pack = JSON.parse(fs.readFileSync(packPath, 'utf8'));
+const source = JSON.parse(fs.readFileSync(packPath, 'utf8'));
+const pack = source.scenePack ?? source;
 const uses = new Map();
-for (const [name, entry] of Object.entries(pack)) for (const c of entry.commands)
+for (const [name, entry] of Object.entries(pack)) for (const c of entry.commands ?? [])
   if (c.op === 0x0c) uses.set(c.id, uses.get(c.id) || name);
 const failures = [], summary = {ids: uses.size, ended: 0, looping: 0, silent: 0};
 for (const [id, scene] of uses) {

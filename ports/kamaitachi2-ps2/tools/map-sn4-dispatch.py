@@ -38,6 +38,13 @@ def installed_vtable(va):
                 if value in vtables or value - 8 in vtables:
                     return vtables.get(value, vtables.get(value - 8))
 
+def execute_of(name):
+    address = next(address for address, candidate in vtables.items() if candidate == name)
+    thunk, = struct.unpack("<I", at(address + 12, 4))
+    words = struct.unpack("<4I", at(thunk, 16))
+    jump = next((word for word in reversed(words) if word >> 26 == 2), None)
+    return (thunk & 0xf0000000) | ((jump & 0x03ffffff) << 2) if jump else thunk
+
 for opcode in range(2, 0x85):
     handler, = struct.unpack("<I", at(0x21A240 + 4 * (opcode - 2), 4))
     found = None
@@ -49,4 +56,5 @@ for opcode in range(2, 0x85):
         found = installed_vtable(target)
         if found:
             break
-    print(f"0x{opcode:02x}\t0x{handler:08x}\t{found or '?'}")
+    execute = execute_of(found) if found else 0
+    print(f"0x{opcode:02x}\t0x{handler:08x}\t{found or '?'}\t{execute:#010x}")

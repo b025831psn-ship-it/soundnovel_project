@@ -54,24 +54,51 @@ export class Screen {
     return tile;
   }
 
-  text(str, x, y, { scale = 1, max = Infinity, leading = 40, spacing = 1, widthScale = scale, readings, colors, tint, lineStart } = {}) {
+  text(str, x, y, { scale = 1, max = Infinity, leading = 40, spacing = 1, widthScale = scale,
+    readings, colors, tint, lineStart, styleAt, moves = [], lines = [] } = {}) {
     // lineStart(offset) may move the first glyph of a line (SN4 CommandCenter).
     let px = lineStart?.(0) ?? x, py = y, offset = 0;
-    for (const ch of str) {
+    const noStart = new Set('、。？！＿ヽヾゝゞ々仝〃ー’”）〕］〉」』】＞ぁぃぅぇぉっゃゅょゎァィゥェォッャュョヮ');
+    const noEnd = new Set('（〔［〈「『＜');
+    const chars = Array.from(str);
+    for (let at = 0; at < chars.length; at++) {
+      const ch = chars[at];
+      for (const move of moves.filter(item => item.offset === offset)) {
+        if (move.absolute) { px = move.x; py = move.y; }
+        else { px += move.x; py += move.y; }
+      }
+      for (const line of lines.filter(item => item.offset === offset)) {
+        const width = Math.max(0, line.width ?? 0);
+        const lineHeight = styleAt?.(offset)?.leading ?? leading;
+        if (px !== x && px + width > x + max) { px = lineStart?.(offset) ?? x; py += lineHeight; }
+        this.c.fillStyle = tint ? `rgb(${tint.join(',')})` : '#fff';
+        this.c.fillRect(Math.round(px), Math.round(py + Math.max(1, (line.type ?? 0))), width, 1);
+        px += width;
+      }
       const rgb = colors?.get(offset);
       if (rgb) tint = rgb.every(channel => channel === 128) ? undefined : rgb;
       const glyph = this.data.font[ch] ?? this.data.font['�'];
-      const advance = (glyph[2] + spacing) * widthScale;
-      if (ch === '\n' || px + advance > x + max) { px = x; py += leading; }
+      const style = styleAt?.(offset) ?? {scale, widthScale, spacing, leading};
+      const glyphScale = style.scale ?? scale;
+      const glyphWidthScale = style.widthScale ?? widthScale;
+      const glyphSpacing = style.spacing ?? spacing;
+      const lineHeight = style.leading ?? leading;
+      const advance = (glyph[2] + glyphSpacing) * glyphWidthScale;
+      const next = chars[at + 1];
+      const nextGlyph = next ? this.data.font[next] ?? this.data.font['�'] : null;
+      const nextAdvance = nextGlyph ? (nextGlyph[2] + glyphSpacing) * glyphWidthScale : 0;
+      const wrap = px + advance > x + max && !noStart.has(ch);
+      const pushOpening = noEnd.has(ch) && next && px + advance + nextAdvance > x + max;
+      if (ch === '\n' || wrap || pushOpening) { px = lineStart?.(offset) ?? x; py += lineHeight; }
       const reading = readings?.get(offset);
       offset += ch.length;
       if (ch === '\n') { px = lineStart?.(offset) ?? px; continue; }
       if (reading) this.centered(reading, px + advance / 2, py - 10, .38);
       if (glyph) {
         const [gx, gy, w, h, top] = glyph;
-        const x = Math.round(px), y = Math.round(py + top * scale);
-        if (tint && w && h) this.c.drawImage(this.tintedGlyph(ch, tint, gx, gy, w, h), x, y, w * widthScale, h * scale);
-        else this.sprite('font', gx, gy, w, h, x, y, w * widthScale, h * scale);
+        const x = Math.round(px), y = Math.round(py + top * glyphScale);
+        if (tint && w && h) this.c.drawImage(this.tintedGlyph(ch, tint, gx, gy, w, h), x, y, w * glyphWidthScale, h * glyphScale);
+        else this.sprite('font', gx, gy, w, h, x, y, w * glyphWidthScale, h * glyphScale);
       }
       px += advance;
     }

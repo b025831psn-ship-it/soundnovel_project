@@ -95,13 +95,33 @@ function makeVm() {
       if (name === 'caption') { music(vm, args[0]); return 0; }
       if (name === 'unknown') { report('unknown-op', hex(args[0]), where(vm)); return undefined; }
       // Layout state, mirrored from player.js so every page can be laid out without a browser.
-      const L = vm.layout ??= {spacing: 0, marginLeft: null, marginTop: null, positions: [], centers: []};
-      if (name === 'spacing') L.spacing = args[0];
+      const L = vm.layout ??= {letterSpacing:0, lineSpacing:7, fontSize:33,
+        marginLeft:32, marginRight:32, marginTop:32, marginBottom:32,
+        moves:[], lines:[], styles:[], centers:[]};
+      const mark = offset => L.styles.push({offset, letterSpacing:L.letterSpacing,
+        lineSpacing:L.lineSpacing, fontSize:L.fontSize});
+      const signed16 = value => (value << 16) >> 16;
+      const point = value => ({x:value >> 16, y:signed16(value)});
+      if (name === 'moveX') L.moves.push({offset:args[1], x:args[0], y:0});
+      else if (name === 'font') { L.fontSize = args[1] || 33; mark(args[2]); }
+      else if (name === 'letterSpacing') { L.letterSpacing = args[0]; mark(args[1]); }
+      else if (name === 'lineSpacing') { L.lineSpacing = args[0]; mark(args[1]); }
       else if (name === 'marginLeft') L.marginLeft = args[0];
+      else if (name === 'marginRight') L.marginRight = args[0];
       else if (name === 'marginTop') L.marginTop = args[0];
-      else if (name === 'position') L.positions.push({value: args[0], offset: args[1]});
-      else if (name === 'clearText') { L.positions = []; L.centers = []; }
+      else if (name === 'marginBottom') L.marginBottom = args[0];
+      else if (name === 'position') L.moves.push({offset:args[1], ...point(args[0])});
+      else if (name === 'absolutePosition') L.moves.push({offset:args[1], ...point(args[0]), absolute:true});
+      else if (name === 'line') L.lines.push({type:args[0], width:args[1], offset:args[2]});
+      else if (name === 'clearText') { L.moves = []; L.lines = []; L.styles = []; L.centers = []; mark(0); }
       else if (name === 'command' && args[0] === 'Center') L.centers.push(vm.text.length);
+      else if (name === 'command' && args[0] === 'Default') {
+        const value = args[1][0] ?? 32, op = args[2].op;
+        if (op === 0x5e) L.marginLeft = value;
+        else if (op === 0x60) L.marginRight = value;
+        else if (op === 0x62) L.marginTop = value;
+        else if (op === 0x64) L.marginBottom = value;
+      }
       if (name === 'command') return 0;
       return undefined;
     },
@@ -129,42 +149,48 @@ function music(vm, name) {
 // Lay out a page like player.js drawStory()/render.text() and flag what the
 // original would not show: lines past the screen, automatic wraps that start a
 // line with a closing mark, centered lines wider than the text box.
-const KINSOKU = new Set([...'ー。、」』）！？…・ぁぃぅぇぉっゃゅょァィゥェォッャュョ']);
-const advance = (ch, spacing) => (opening.font?.[ch] ?? opening.font?.['�'] ?? [0, 0, 32])[2] + spacing;
+const NO_START = new Set([...'、。？！＿ヽヾゝゞ々仝〃ー’”）〕］〉」』】＞ぁぃぅぇぉっゃゅょゎァィゥェォッャュョヮ']);
+const NO_END = new Set([...'（〔［〈「『＜']);
 function checkLayout(vm, raw) {
   const text = raw.trimEnd();
   if (!text.trim()) return;
-  const L = vm.layout ?? {spacing: 0, marginLeft: null, marginTop: null, positions: [], centers: []};
+  const L = vm.layout ?? {letterSpacing:0, lineSpacing:7, fontSize:33,
+    marginLeft:32, marginRight:32, marginTop:32, marginBottom:32, moves:[], lines:[], styles:[], centers:[]};
   const at = where(vm);
-  if (L.positions.length) {
-    L.positions.forEach((run, i) => {
-      const value = text.slice(run.offset, L.positions[i + 1]?.offset ?? text.length);
-      const w = Array.from(value).reduce((a, ch) => a + advance(ch, L.spacing), 0);
-      if ((run.value >>> 16) + w > 640) report('layout-positioned-past-right', value.slice(0, 20), at);
-    });
-    return;
-  }
-  const x = L.marginLeft ?? 32, y = L.marginTop ?? 31, max = Math.min(580, 640 - x);
+  const x = L.marginLeft, y = L.marginTop, right = 640 - L.marginRight, bottom = 448 - L.marginBottom;
   let px = x, py = y, offset = 0, lineStart = true;
+  const styleAt = o => L.styles.findLast(mark => mark.offset <= o) ?? L;
+  const advance = (ch, o) => {
+    const s = styleAt(o), ratio = s.fontSize / 33;
+    return ((opening.font?.[ch] ?? opening.font?.['�'] ?? [0, 0, 32])[2] + s.letterSpacing) * ratio;
+  };
   const centerAt = o => {
     if (!L.centers.includes(o)) return x;
     const line = text.slice(o).split('\n')[0];
-    const w = Array.from(line).reduce((a, ch) => a + advance(ch, L.spacing), 0);
-    if (w >= max) report('layout-center-too-wide', line.slice(0, 24), at);
-    return w < max ? x + (max - w) / 2 : x;
+    let p = o, w = 0; for (const ch of line) { w += advance(ch, p); p += ch.length; }
+    if (w >= right - x) report('layout-center-too-wide', line.slice(0, 24), at);
+    return w < right - x ? x + (right - x - w) / 2 : x;
   };
   px = centerAt(0);
-  for (const ch of text) {
-    const a = advance(ch, L.spacing);
-    if (ch === '\n') { offset += ch.length; px = centerAt(offset); py += 40; continue; }
-    if (px + a > x + max) {
-      px = x; py += 40;
-      if (KINSOKU.has(ch)) report('layout-wrap-starts-with-closing-mark', text.slice(Math.max(0, offset - 8), offset + 4).replace(/\n/g, '/'), at);
-      else report('info-layout-autowrap', vm.label, at);
+  const chars = Array.from(text);
+  for (let i = 0; i < chars.length; i++) {
+    const ch = chars[i], style = styleAt(offset), leading = style.fontSize + style.lineSpacing;
+    for (const move of L.moves.filter(item => item.offset === offset)) {
+      if (move.absolute) { px = move.x; py = move.y; } else { px += move.x; py += move.y; }
     }
+    for (const line of L.lines.filter(item => item.offset === offset)) {
+      if (px !== x && px + line.width > right) { px = centerAt(offset); py += leading; }
+      px += line.width;
+    }
+    const a = advance(ch, offset), next = chars[i + 1], nextA = next ? advance(next, offset + ch.length) : 0;
+    const wrap = px + a > right && !NO_START.has(ch);
+    const pushOpening = NO_END.has(ch) && next && px + a + nextA > right;
+    if (ch === '\n' || wrap || pushOpening) { px = centerAt(offset); py += leading; }
+    if (ch === '\n') { offset += ch.length; px = centerAt(offset); continue; }
     px += a; offset += ch.length;
   }
-  if (py + 32 > 448) report('layout-past-bottom', `${vm.label} (${Math.round(py)}px)`, at);
+  if (px > right + 1) report('layout-positioned-past-right', `${vm.label} (${Math.round(px)}px)`, at);
+  if (py + styleAt(offset).fontSize > bottom) report('layout-past-bottom', `${vm.label} (${Math.round(py)}px)`, at);
 }
 
 function checkText(vm, text) {
