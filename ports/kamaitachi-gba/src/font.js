@@ -85,6 +85,14 @@ export class TextWindow {
     this.afterWait = false;
   }
 
+  // 080080C4 after a choice: an empty page.
+  clearPage() {
+    this.pendingClear = false;
+    this.fragments = [];
+    this.pageRaw = [];
+    this.afterWait = false;
+  }
+
   feed(raw) {
     this.resumed();
     this.pageRaw.push(raw);

@@ -237,6 +237,13 @@ export class Boot {
     restoreData(this.vm, state);
     Object.assign(this.names, state.names ?? {});
     if (state.picture !== null && state.picture !== undefined) this.vm.scene?.load?.(state.picture);
+    // The silhouettes of the page (02000728) are put back on the layer.
+    const scene = this.vm.scene;
+    if (scene?.silhouetteClear) {
+      scene.silhouetteClear();
+      for (const id of this.vm.ram.silhouettes ?? []) if (id !== 0xffff) scene.silhouetteAdd(id);
+      scene.silhouetteShow(0, this.vm.tint());
+    }
     if (state.song !== undefined && state.song !== -1 && state.song !== 0xffff) this.vm.sound?.play?.(state.song, 0);
     if (state.picture !== null && state.picture !== undefined) this.fadeIn(0x0a, 1);
     this.fadeIn(0x0a, 5);
@@ -946,6 +953,9 @@ export class Boot {
     ram.flowMask = 0; // 0800DBE4: 02004640 = 0
     this.layer = null;
     this.screen.background = null;
+    // The scene starts again without silhouettes (02000728 emptied, the layer off).
+    this.vm.scene?.silhouetteClear?.();
+    ram.silhouettes?.fill(0xffff);
     this.vm.text?.resumed?.();
     if (this.vm.text) { this.vm.text.fragments = []; this.vm.text.pageRaw = []; }
     ram.node = node;
@@ -962,6 +972,10 @@ export class Boot {
     this.fadeOut(1, 1);
     this.fadeOut(1, 5);
     yield* this.waitFade(1);
+    // 0800C37E: 080015DC(1) takes the silhouette layer down while the menu is open; it is back
+    // over the story when the menu closes (mGBA).
+    const silhouette = this.screen.silhouette;
+    this.screen.silhouette = null;
     this.showPicture(MENU_PICTURE);
     let selected = 0;
     // 0800C97C: the flowchart page of the current scene behind the menu (0800D9A0 with 0), then
@@ -1026,6 +1040,7 @@ export class Boot {
     yield* this.waitFade(1);
     this.layer = null;
     this.screen.background = story;
+    this.screen.silhouette = silhouette;
     this.fadeIn(1, 1);
     this.fadeIn(1, 5);
     yield;
