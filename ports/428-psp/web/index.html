@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>428 PSP 시제품</title>
+<style>
+  :root { --bg: #0b0b0d; --fg: #d8d4cc; --accent: #b3262d; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--fg); font-family: 'Noto Serif KR', serif; }
+  main { display: grid; place-items: center; min-height: 100%; }
+  canvas { image-rendering: pixelated; background: #000; outline: 1px solid #222; touch-action: manipulation; }
+  #status { position: fixed; left: 8px; bottom: 6px; font: 12px monospace; color: #777; }
+</style>
+</head>
+<body>
+<main><canvas id="screen" width="480" height="272"></canvas></main>
+<div id="status"></div>
+<script type="module" src="player.js"></script>
+</body>
+</html>

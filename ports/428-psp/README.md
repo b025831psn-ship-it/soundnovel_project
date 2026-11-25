@@ -19,3 +19,8 @@
 - `node test/sns-walk.mjs to.sns` — 34개 스크립트 전체 동기, 점프 대상 누락 검사
 
 VM 구조와 명령 메모는 [OPCODES.md](OPCODES.md).
+
+## 웹 시제품 (`web/`)
+- `web/index.html?assets=<자산 폴더>&label=<시작 라벨>` — 기본 시작 라벨 `K01A_0010_01_RESTART`, `&debug`는 현재 라벨 표시.
+- 자산 폴더(저장소에 넣지 않음): `to.sns`, `to.flo`, `ids.json`(CPK별 파일 ID → 이름, `tools/cpk.py -l`로 생성), `png/<cpk>/*.png`, `snd/<cpk>/*.ogg`, `font/font_0_50.{png,json}`(`tools/gsf_atlas.py gsffont.gsf gsffont.has font 0:50`).
+- 표시 명령 해석은 임시(OPCODES.md). 글자 간격·창 위치·페이드 농도는 원작 화면과 대조해 확정한다.
