@@ -4,7 +4,7 @@
 // (08002FB8); fades use the same brightness slots the scenario VM steps every VBlank.
 import { ObjTextSurface } from "./obj-text.js";
 import { NameEntry, NAME_PICTURES } from "./name-entry.js";
-import { Books, pageState, restoreState } from "./save.js";
+import { Books, pageState, restoreData, restorePosition } from "./save.js";
 
 // Image ids passed to 08003878. 08000DC4 maps 0x2329-0x2331 to picture id - 0x2328 + 0xE7 and
 // 0x238C-0x2422 through the signed byte table at 08019400 (+0xE7).
@@ -88,6 +88,8 @@ const GAME_MENU_BOX = [0xa6, 0x28, 0x4a, 0x60];
 const MENU_POINTER = 0x8484;
 // 0800C97C: the in-game menu shows picture 0xDE (the owl) behind its boxes.
 const MENU_PICTURE = 0xde;
+// 1D 66 with a book being read: from the exit fade's first step to the book's fade-in (mGBA 1804 -> 1932).
+const LOAD_FRAMES = 128;
 
 export class Boot {
   constructor({ vm, screen, assets, font, sound }) {
@@ -158,9 +160,18 @@ export class Boot {
     this.ram = ram;
     // 1D 67 (08009858): the game proper starts (0200078D = 1, R opens the menu). After 本を読む
     // the scenario carries on from the book's page instead.
+    // 1D 66 (08009838) after the welcome's exit fade (19:3DC: 08 28 00 on slots 1 and 5, then
+    // 0B waits for both): with a book being read, 0800AEA4 reads it back here. mGBA (save1):
+    // the press on では、ごゆっくり… is frame 1800, the screen is black from 1815 and the
+    // book's picture comes up from 1932 (LOAD_FRAMES covers the 0B waits and the flash read).
+    if (command === 0x66) {
+      if (!this.loading) return undefined;
+      this.vm.waitFrames = LOAD_FRAMES;
+      return { waiting: "delay" };
+    }
     if (command === 0x67) {
       ram.inGame = 1;
-      if (this.loading) this.resume(this.loading);
+      if (this.loading) { this.restore(this.loading); this.resume(this.loading); }
       this.loading = null;
       return undefined;
     }
@@ -192,23 +203,24 @@ export class Boot {
     return true;
   }
 
-  // A book's page state goes back into the VM at 1D 67 (0800AEA4 restored it before the welcome).
-  resume(book) {
+  // 0800AEA4: the book's RAM, names, picture and music come back and the picture fades in over
+  // 0x0A frames (080063F4 on slots 1..4 where a picture is set, then 5). Slots 2..4 and 8 are
+  // not drawn by this port.
+  restore(book) {
     const state = book.state;
-    restoreState(this.vm, state);
+    restoreData(this.vm, state);
     Object.assign(this.names, state.names ?? {});
-    this.vm.text?.resumed?.();
-    if (this.vm.text) { this.vm.text.fragments = []; this.vm.text.pageRaw = []; }
     if (state.picture !== null && state.picture !== undefined) this.vm.scene?.load?.(state.picture);
     if (state.song !== undefined && state.song !== -1 && state.song !== 0xffff) this.vm.sound?.play?.(state.song, 0);
-    // The page comes up out of black.
-    for (const slot of [1, 5]) {
-      const effect = this.vm.ram.brightness[slot];
-      effect.current = 0;
-      effect.target = 0x8000;
-      effect.duration = 17;
-      effect.delta = Math.trunc(0x8000 / 16);
-    }
+    if (state.picture !== null && state.picture !== undefined) this.fadeIn(0x0a, 1);
+    this.fadeIn(0x0a, 5);
+  }
+
+  // 1D 67 after 本を読む: the scenario moves to the book's page start, on a clean page.
+  resume(book) {
+    restorePosition(this.vm, book.state);
+    this.vm.text?.resumed?.();
+    if (this.vm.text) { this.vm.text.fragments = []; this.vm.text.pageRaw = []; }
   }
 
   // 02028B8C: the flowchart's scene titles. 0800B8A0 keeps what follows '：' and drops the
