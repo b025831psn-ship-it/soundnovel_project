@@ -57,7 +57,13 @@ async function loadExtended(game) {
   if (!outpaint) return;
   let ids = [];
   try { ids = await (await fetch("/art/outpaint/index.json")).json(); } catch { return; }
-  for (const id of ids) {
+  // Pictures the game shows first load first (title, bookmarks, characters, then the story in play
+  // order), a few at a time, so the title never waits behind the whole list.
+  const rank = (id) => { const at = FIRST_SHOWN.indexOf(id); return at < 0 ? FIRST_SHOWN.length + id : at; };
+  const queue = ids.slice().sort((a, b) => rank(a) - rank(b));
+  const worker = async () => { for (let id; (id = queue.shift()) !== undefined;) await loadOne(id); };
+  await Promise.all(Array.from({ length: 4 }, worker));
+  async function loadOne(id) {
     try {
       const name = String(id).padStart(3, "0");
       const [tiles, palette] = await Promise.all([game.assets.bin(`bg/${name}.bin`), game.assets.bin(`palette/${name}.bin`)]);
@@ -71,6 +77,8 @@ async function loadExtended(game) {
     } catch { /* not served: the picture is cut from the original only */ }
   }
 }
+const FIRST_SHOWN = [259, 256, 257, 258, 222, 285, 286, 287, 288, 289, 290, 291, 292, 293, 294, 295, 296, 297,
+  200, 74, 1, 2, 3, 209, 9, 12, 6, 17, 11, 7, 23, 22, 24, 8, 10];
 let extendedLoading = null;
 const extendedFor = (screen) => screen.background?.tiles && extended.get(signature(screen.background.tiles));
 function compose(screen, base) {
