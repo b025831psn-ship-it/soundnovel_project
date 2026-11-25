@@ -33,23 +33,29 @@ let nextFrame = 1_368;
 let nextNmi = 306_904;
 let frameLength = 357_368;
 
-for (let index = 0; index < instructionLimit && frame < targetFrame; index++) {
-  cpu.step();
-  while (cpu.masterCycle >= nextFrame) {
-    frame++;
-    nextFrame += frameLength;
-    frameLength = frameLength === 357_368 ? 357_360 : 357_368;
+let failure = null;
+try {
+  for (let index = 0; index < instructionLimit && frame < targetFrame; index++) {
+    cpu.step();
+    while (cpu.masterCycle >= nextFrame) {
+      frame++;
+      nextFrame += frameLength;
+      frameLength = frameLength === 357_368 ? 357_360 : 357_368;
+    }
+    while (cpu.masterCycle >= nextNmi) {
+      const buttons = frame > 300 && frame % 90 < 2 ? 0x0080 : 0;
+      bus.setController1(buttons);
+      if (bus.io[0x4200 - 0x2000] & 0x80) cpu.nmi();
+      nextNmi += frameLength;
+    }
   }
-  while (cpu.masterCycle >= nextNmi) {
-    const buttons = frame > 300 && frame % 90 < 2 ? 0x0080 : 0;
-    bus.setController1(buttons);
-    if (bus.io[0x4200 - 0x2000] & 0x80) cpu.nmi();
-    nextNmi += frameLength;
-  }
+} catch (error) {
+  failure = error instanceof Error ? error.message : String(error);
 }
 
 await new Promise((resolve, reject) => output.end((error) => error ? reject(error) : resolve()));
 console.log(JSON.stringify({
   frame, executed: cpu.executed, masterCycle: cpu.masterCycle,
-  apuAccesses: bus.apuAccessCount, address: cpu.address(),
+  apuAccesses: bus.apuAccessCount, address: cpu.address(), failure,
 }, null, 2));
+if (failure) process.exitCode = 1;

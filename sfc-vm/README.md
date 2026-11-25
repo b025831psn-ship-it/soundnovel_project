@@ -15,6 +15,7 @@ node sfc-vm/tools/trace-boot.mjs path/to/original.sfc 2000000 1,60,120 /tmp/kama
 node sfc-vm/tools/render-snapshot.mjs /tmp/kamai/frame.60 /tmp/kamai/frame.60.ppm
 node sfc-vm/tools/trace-apu.mjs original.sfc /path/to/sound/apu.js /tmp/vm-apu.tsv 25 2000000 /path/to/spc-ipl.bin
 node sfc-vm/tools/compare-apu-trace.mjs /path/to/apu-ports.tsv /tmp/vm-apu.tsv 25
+node sfc-vm/tools/compare-apu-trace.mjs /path/to/apu-ports.tsv /tmp/vm-apu.tsv 5700 semantic
 ```
 
 초기 구현은 reset 직후의 CPU 모드 전환, WRAM 상태 비교, PPU/DMA 레지스터 설정과
@@ -41,10 +42,14 @@ operand/stack access, internal cycle, WRAM refresh stall과 DMA byte 시간을 �
 shim을 fallback으로 유지한다.
 
 `trace-apu.mjs`의 APU module과 64-byte SPC IPL은 로컬 소유 입력이다. ROM, IPL,
-생성 trace는 커밋하지 않는다. 현재 native boot 대조에서는 첫 17개 APUIO 행의
-방향·port·값이 일치한다. 첫 불일치는 IPL이 `$CC`를 내보내는 polling 횟수이며,
-첫 행의 VM master clock은 기준보다 469,274 이르다. 업로드 뒤 `CHUN` 4-port
-write는 기준 frame 37/master 13,024,472, VM frame 36/master 12,555,036에서
-동일한 `43 68 75 6E` 순서로 성립했다(469,436 master-clock 조기). 따라서 frame
-5700 행 단위 완전 일치는 아직 주장하지 않으며, 남은 작업은 HDMA/NMI event
-timing 및 미구현 65c816 dummy/page-cross cycle을 기준 trace에 맞추는 것이다.
+생성 trace는 커밋하지 않는다. 초기 469k 고정 offset은 새 SRAM을 `$00`으로 만든
+탓에 reset의 1 KiB save-block clear loop 5회 중 4회를 건너뛴 것이 원인이었다.
+SRAM erased value를 `$FF`로 바꾸고 `STA long,X`에 잘못 붙인 internal cycle을
+제거했다. 쓰기 전부와 port별 값이 바뀐 read만 남기는 `semantic` 대조에서 boot
+구간의 VM 30,021행은 모두 기준과 일치하고 최대 master delta는 1,430이다.
+
+frame 5700 전체 관통은 아직 완료되지 않았다. 기준의 다음 행인 frame 48
+`w port1=10`을 VM이 만들지 않아 여기서 처음 갈라진다. 이후 VM은 불완전한 PPU
+상태 때문에 frame 477에 잘못된 handler table index로 진입한다. 따라서 다음
+작업은 frame 48 sound-stream command를 만드는 PPU/NMI 상태를 native trace와
+맞추는 것이며, 현재 결과를 frame 5700 일치로 해석하면 안 된다.

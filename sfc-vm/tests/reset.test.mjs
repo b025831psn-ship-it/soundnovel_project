@@ -65,6 +65,7 @@ test('executes the reset table comparison loop with native-width flags', () => {
 
 test('maps the cartridge SRAM window used by the reset checksum', () => {
   const bus = new SfcBus(fixture());
+  assert.equal(bus.read8(0x700000), 0xff, 'fresh SRAM is erased');
   bus.write16(0x700800, 0x1234);
   assert.equal(bus.read16(0x700800), 0x1234);
   assert.equal(bus.read16(0xf00800), 0x1234, 'high-bank SRAM mirror');

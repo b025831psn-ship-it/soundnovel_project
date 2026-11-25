@@ -9,7 +9,10 @@ export class SfcBus {
     this.rom = normalizeRom(rom);
     this.wram = new Uint8Array(128 * 1024);
     // Internal header SRAM size code $03: 2^(3 + 10) = 8 KiB.
-    this.sram = new Uint8Array(8 * 1024);
+    // A fresh cartridge save RAM reads as erased ($FF). The reset path checks
+    // and clears all five save blocks; zero-filling here skipped four of those
+    // loops and moved the first APUIO transaction ~469k master clocks early.
+    this.sram = new Uint8Array(8 * 1024).fill(0xff);
     this.io = new Uint8Array(0x6000);
     // Minimal SPC700 IPL port state. The IPL announces $BBAA and acknowledges
     // each CPU token on port 0; the full SPC700 core will replace this shim.
