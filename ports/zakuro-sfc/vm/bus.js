@@ -8,10 +8,14 @@ function normalizeRom(bytes) {
 }
 
 export class ZakuroBus {
-  constructor({ rom, masterLink, clock = new MasterClock(), ppu = null, trace = null } = {}) {
+  constructor({ rom, masterLink, clock = new MasterClock(), ppu = null, trace = null, wramFill = 0x55 } = {}) {
     if (!masterLink) throw new TypeError('masterLink is required');
     this.rom = normalizeRom(rom); this.masterLink = masterLink; this.clock = clock;
     this.ppu = ppu; this.trace = trace; this.onNmi = null; this.wram = new Uint8Array(128 * 1024);
+    // The native reference core powers WRAM on with the Snes9x 0x55 pattern.
+    // Zakuro reads untouched $01EC during its first enabled NMI, so this is
+    // observable state rather than an interchangeable debugging default.
+    this.wram.fill(wramFill & 0xff);
     this.io = new Uint8Array(0x6000); this.fastRom = false; this.accessCount = 0;
     this.nmiFlag = false;
     this.wramAddress = 0;

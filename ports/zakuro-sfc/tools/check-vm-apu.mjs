@@ -1,6 +1,7 @@
 import { readFile } from 'node:fs/promises';
 import { createWriteStream } from 'node:fs';
-import { ApuTraceComparator, createApuLink, readApuPorts, ZakuroVM } from '../vm/index.js';
+import { finished } from 'node:stream/promises';
+import { ApuTraceComparator, createApuLink, readApuPorts, scanlineTiming, ZakuroVM } from '../vm/index.js';
 
 const [romPath, tracePath, iplPath] = process.argv.slice(2);
 if (!romPath || !tracePath) {
@@ -28,24 +29,59 @@ const vm = new ZakuroVM({
 });
 vm.reset();
 
+const stateTrace = process.env.ZAKURO_VM_STATE_TRACE
+  ? createWriteStream(process.env.ZAKURO_VM_STATE_TRACE) : null;
+const nmiTrace = process.env.ZAKURO_VM_NMI_TRACE
+  ? createWriteStream(process.env.ZAKURO_VM_NMI_TRACE) : null;
+stateTrace?.write('field\tmaster_cycle\tpc\tvalue\tinside_nmi\n');
+nmiTrace?.write('field\tmaster_cycle\tpc\n');
+let insideNmi = false;
+if (stateTrace) {
+  const busWrite = vm.bus.write.bind(vm.bus);
+  vm.bus.write = (address, value) => {
+    busWrite(address, value);
+    const target = address & 0xffffff;
+    const field = scanlineTiming(vm.bus.clock.master).field;
+    const bank = target >>> 16;
+    if ((((bank & 0x40) === 0) && (target & 0xffff) === 0x01ec) || target === 0x7e01ec) {
+      const pc = (vm.cpu._opPB << 16) | vm.cpu._opPC;
+      stateTrace.write(`${field}\t${vm.bus.clock.master}\t${pc.toString(16).padStart(6, '0')}\t${(value & 0xff).toString(16).padStart(2, '0')}\t${insideNmi ? 1 : 0}\n`);
+    }
+  };
+}
+
 const maxInstructions = Number(process.env.ZAKURO_VM_MAX_INSTRUCTIONS ?? 20_000_000);
+const stopMaster = Number(process.env.ZAKURO_VM_STOP_MASTER ?? Number.MAX_SAFE_INTEGER);
+const keepRunning = process.env.ZAKURO_VM_KEEP_RUNNING === '1';
 let instructions = 0;
 const instructionTrace = process.env.ZAKURO_VM_INSTRUCTION_TRACE
   ? createWriteStream(process.env.ZAKURO_VM_INSTRUCTION_TRACE) : null;
 instructionTrace?.write('instruction\tmaster_cycle\tpc\topcode\n');
 const milestones = {};
-while (!mismatch && !vm.cpu.stopped && instructions < maxInstructions) {
+while ((!mismatch || keepRunning) && !vm.cpu.stopped && instructions < maxInstructions
+  && vm.bus.clock.master < stopMaster) {
   const pc = (vm.cpu.PB << 16) | vm.cpu.PC;
+  const opcode = vm.bus.readMapped(pc);
+  if (pc === 0x008cd8) {
+    insideNmi = true;
+    if (nmiTrace) {
+      const field = scanlineTiming(vm.bus.clock.master).field;
+      if (field >= 71 && field <= 204) nmiTrace.write(`${field}\t${vm.bus.clock.master}\t${pc.toString(16).padStart(6, '0')}\n`);
+    }
+  }
   if (instructionTrace && vm.bus.clock.master >= 25_000_000 && vm.bus.clock.master <= 73_000_000) {
-    const opcode = vm.bus.readMapped(pc);
     instructionTrace.write(`${instructions}\t${vm.bus.clock.master}\t${pc.toString(16).padStart(6, '0')}\t${opcode.toString(16).padStart(2, '0')}\n`);
   }
   if (pc === 0x00938e && milestones.nmiEnable == null) milestones.nmiEnable = vm.bus.clock.master;
   if (pc === 0x009326 && milestones.state0 == null) milestones.state0 = vm.bus.clock.master;
   if (pc === 0x3086ca && milestones.iplUpload == null) milestones.iplUpload = vm.bus.clock.master;
   vm.step(); instructions++;
+  if (insideNmi && opcode === 0x40) insideNmi = false;
 }
 instructionTrace?.end();
+stateTrace?.end();
+nmiTrace?.end();
+await Promise.all([instructionTrace, stateTrace, nmiTrace].filter(Boolean).map(stream => finished(stream)));
 
 const result = {
   instructions,

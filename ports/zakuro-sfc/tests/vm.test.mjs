@@ -57,6 +57,13 @@ test('65C816 reset executes LoROM and routes $2140 through MasterLink', () => {
   assert.ok(Number.isSafeInteger(calls[0].master));
 });
 
+test('power-on WRAM uses the native reference pattern across low-bank mirrors', () => {
+  const bus = new ZakuroBus({ rom: fixtureRom([]), masterLink: { read: () => 0, write() {} } });
+  assert.equal(bus.readMapped(0x0001ec), 0x55);
+  assert.equal(bus.readMapped(0x3001ec), 0x55);
+  assert.equal(bus.readMapped(0x7e01ec), 0x55);
+});
+
 test('65C816 store opcodes report total cycles without double-counting fetch', () => {
   // LDA #$5a; STA $00; STX $01; STZ $02; STA $2000
   const vm = new ZakuroVM({

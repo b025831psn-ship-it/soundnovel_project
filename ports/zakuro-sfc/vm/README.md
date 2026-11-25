@@ -32,9 +32,16 @@ in the critical interval while keeping the hardware's 40-clock-per-scanline
 DRAM refresh enabled. Refresh timing now follows the real PPU scanline grid:
 H=538/H=534 alternate, odd-field V=240 is 1360 clocks, and that short line does
 not toggle the refresh phase. Against private trace commit e286471, the matching
-APUIO prefix is now 24,613 rows; the greeting and initial upload begin with zero
-cycle error. The next mismatch is a new one-field state transition after NMI is
-enabled near 72.5M master cycles. The comparator intentionally fails at the
-first semantic mismatch so timing cannot be hidden by resynchronizing the trace.
+APUIO prefix is now 66,425 rows; the greeting and initial upload begin with zero
+cycle error. The one-field mismatch at row 24,614 came from observable power-on
+WRAM: the native reference fills untouched WRAM with `$55`, while a fresh
+`Uint8Array` had supplied `$00`. Zakuro reads the never-written `$01EC` byte in
+its first enabled NMI and branches on it. Matching the native WRAM pattern gets
+past that transition; the next mismatch is row 66,426 at 112,960,322 master
+cycles, with a 40-cycle current delta and 80-cycle maximum. Optional
+`ZAKURO_VM_STATE_TRACE`, `ZAKURO_VM_NMI_TRACE`, `ZAKURO_VM_KEEP_RUNNING`, and
+`ZAKURO_VM_STOP_MASTER` settings let the checker capture state across a mismatch.
+The comparator still fails at the first semantic mismatch by default so timing
+cannot be hidden by resynchronizing the trace.
 
 The CPU core provenance and license are in `THIRD_PARTY_NOTICES.md`.
