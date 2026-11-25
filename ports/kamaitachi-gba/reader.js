@@ -90,7 +90,7 @@ function compose(screen, base) {
   if (!entry) { sizeTo(160); sourceCtx.putImageData(new ImageData(new Uint8ClampedArray(base), 240, 160), 0, 0); }
   else {
     sizeTo(EXTENDED_HEIGHT);
-    if (entry.hd) { paintSharp(pictureCtx, entry, base, picture.width, picture.height, screen.silhouette); return EXTENDED_TOP; }
+    if (entry.hd) { paintSharp(pictureCtx, entry, base, picture.width, picture.height); return EXTENDED_TOP; }
     sourceCtx.putImageData(new ImageData(extendedPixels(entry, base), 240, EXTENDED_HEIGHT), 0, 0);
   }
   pictureCtx.drawImage(source, 0, 0, picture.width, picture.height);
@@ -101,18 +101,7 @@ function compose(screen, base) {
 // fading into the picture.
 const middle = Object.assign(document.createElement("canvas"), { width: 240, height: 160 });
 const middleCtx = middle.getContext("2d");
-// Silhouette pixels (BG1 4bpp tiles, 30 per row) as a 240x160 mask, or null.
-function silhouetteMask(layer) {
-  if (!layer?.vram) return null;
-  const mask = new Uint8Array(240 * 160);
-  let any = false;
-  for (let y = 0; y < 160; y++) for (let x = 0; x < 240; x++) {
-    const byte = layer.vram[((y >> 3) * 30 + (x >> 3)) * 32 + (y & 7) * 4 + ((x & 7) >> 1)];
-    if ((x & 1 ? byte >> 4 : byte & 15) !== 0) { mask[y * 240 + x] = 1; any = true; }
-  }
-  return any ? mask : null;
-}
-function paintSharp(ctx, entry, base, width, height, layer) {
+function paintSharp(ctx, entry, base, width, height) {
   const live = [0, 0, 0];
   for (let i = 0; i < base.length; i += 4) { live[0] += base[i]; live[1] += base[i + 1]; live[2] += base[i + 2]; }
   const gain = [0, 1, 2].map((c) => (entry.raw.sums[c] ? live[c] / entry.raw.sums[c] : 1));
@@ -129,56 +118,15 @@ function paintSharp(ctx, entry, base, width, height, layer) {
   if (over > 0.01) { ctx.globalCompositeOperation = "lighter"; ctx.globalAlpha = Math.min(1, over); ctx.drawImage(entry.hd, 0, 0, width, height); }
   ctx.restore();
   const FEATHER = 14;
-  const mask = silhouetteMask(layer);
   const rows = new Uint8ClampedArray(base);
   for (let y = 0; y < 160; y++) {
     const d = Math.min(y, 159 - y);
     if (d >= FEATHER) continue;
     let t = (d + 0.5) / FEATHER; t = t * t * (3 - 2 * t);
-    // A silhouette stays whole up to the picture's edge; only the picture under it fades.
-    for (let x = 0; x < 240; x++) rows[4 * (y * 240 + x) + 3] = mask?.[y * 240 + x] ? 255 : Math.round(255 * t);
+    for (let x = 0; x < 240; x++) rows[4 * (y * 240 + x) + 3] = Math.round(255 * t);
   }
   middleCtx.putImageData(new ImageData(rows, 240, 160), 0, 0);
   const scale = width / 240;
-  // Where a silhouette meets the picture's bottom edge (a body cut by the frame), it carries on down
-  // into the margin in its own color (averaged over its last rows, so the picture under it doesn't
-  // streak), fading out toward the bottom of the screen.
-  if (mask) {
-    const color = new Float32Array(240 * 3), count = new Float32Array(240);
-    for (let y = 150; y < 160; y++) for (let x = 0; x < 240; x++) {
-      if (!mask[y * 240 + x]) continue;
-      for (let k = Math.max(0, x - 6); k <= Math.min(239, x + 6); k++) {
-        for (let c = 0; c < 3; c++) color[k * 3 + c] += base[4 * (y * 240 + x) + c];
-        count[k]++;
-      }
-    }
-    const tail = (EXTENDED_HEIGHT - EXTENDED_TOP - 160);
-    const strip = new ImageData(240, tail);
-    // Only body-wide runs carry on; thin ones (ski poles, an arm's edge) stop at the frame.
-    const body = new Uint8Array(240);
-    for (let x = 0; x < 240;) {
-      if (!mask[159 * 240 + x]) { x++; continue; }
-      let end = x;
-      while (end < 240 && mask[159 * 240 + end]) end++;
-      if (end - x >= 12) body.fill(1, x, end);
-      x = end;
-    }
-    for (let x = 0; x < 240; x++) {
-      if (!body[x] || !count[x]) continue;
-      for (let y = 0; y < tail; y++) {
-        const at = 4 * (y * 240 + x);
-        for (let c = 0; c < 3; c++) strip.data[at + c] = color[x * 3 + c] / count[x];
-        const fade = 1 - Math.max(0, (y - tail * 0.45) / (tail * 0.55));
-        strip.data[at + 3] = Math.round(255 * fade);
-      }
-    }
-    const stripCanvas = Object.assign(document.createElement("canvas"), { width: 240, height: tail });
-    stripCanvas.getContext("2d").putImageData(strip, 0, 0);
-    ctx.save();
-    ctx.imageSmoothingEnabled = false;
-    ctx.drawImage(stripCanvas, 0, (EXTENDED_TOP + 160) * scale, width, tail * scale);
-    ctx.restore();
-  }
   ctx.save();
   ctx.imageSmoothingEnabled = false;
   ctx.drawImage(middle, 0, EXTENDED_TOP * scale, width, 160 * scale);
@@ -277,7 +225,7 @@ function drawExtend(game) {
   if (screen.base === extendBase) return;
   extendBase = screen.base;
   const pixels = extendedPixels(entry, screen.base);
-  if (entry.hd) paintSharp(extendCtx, entry, screen.base, extend.width, extend.height, screen.silhouette);
+  if (entry.hd) paintSharp(extendCtx, entry, screen.base, extend.width, extend.height);
   else {
     const flatSource = Object.assign(document.createElement("canvas"), { width: 240, height: EXTENDED_HEIGHT });
     flatSource.getContext("2d").putImageData(new ImageData(pixels, 240, EXTENDED_HEIGHT), 0, 0);

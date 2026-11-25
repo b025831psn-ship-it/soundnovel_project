@@ -41,12 +41,24 @@ whenReady(({ input, sound }) => {
   const unlock = () => sound.resume?.();
   for (const type of ["touchend", "click", "keydown"]) addEventListener(type, unlock, { capture: true, passive: true });
 
-  // The blurred scene behind the screen (the sides of a wide window) follows it a few times a second.
+  // The blurred scene behind the screen (the sides of a wide window) follows the picture, not the
+  // text on it (glyphs appearing used to make it pulse), easing toward each new picture.
   const glow = $("glow").getContext("2d");
   glow.imageSmoothingEnabled = true;
-  let tick = 0;
+  const plain = Object.assign(document.createElement("canvas"), { width: 240, height: 160 });
+  const plainCtx = plain.getContext("2d");
+  let tick = 0, lastBase = null;
   (function follow() {
-    if (tick++ % 8 === 0) glow.drawImage(canvas, 0, 0, 24, 16);
+    if (tick++ % 4 === 0) {
+      const base = window.kamaitachi?.screen?.base;
+      let source = canvas;
+      if (base && base.length === 240 * 160 * 4) {
+        if (base !== lastBase) { plainCtx.putImageData(new ImageData(new Uint8ClampedArray(base), 240, 160), 0, 0); lastBase = base; }
+        source = plain;
+      }
+      glow.globalAlpha = 0.25;
+      glow.drawImage(source, 0, 0, 24, 16);
+    }
     requestAnimationFrame(follow);
   })();
 
