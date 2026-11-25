@@ -1,4 +1,4 @@
-import { MasterClock } from './master-clock.js';
+import { FRAME_MASTER_CYCLES, MasterClock, SCANLINE_MASTER_CYCLES, VBLANK_START_MASTER } from './master-clock.js';
 
 function normalizeRom(bytes) {
   let rom = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
@@ -11,9 +11,11 @@ export class ZakuroBus {
   constructor({ rom, masterLink, clock = new MasterClock(), ppu = null, trace = null } = {}) {
     if (!masterLink) throw new TypeError('masterLink is required');
     this.rom = normalizeRom(rom); this.masterLink = masterLink; this.clock = clock;
-    this.ppu = ppu; this.trace = trace; this.wram = new Uint8Array(128 * 1024);
+    this.ppu = ppu; this.trace = trace; this.onNmi = null; this.wram = new Uint8Array(128 * 1024);
     this.io = new Uint8Array(0x6000); this.fastRom = false; this.accessCount = 0;
     this.nmiFlag = false;
+    this.dmaBytes = 0; this.dmaMasterCycles = 0; this.dmaTransfers = 0; this.dmaChannels = 0;
+    this.hdmaMask = 0; this.hdmaEvents = [];
   }
   read(address) {
     const a = address & 0xffffff, master = this.clock.charge(a, this.fastRom); this.accessCount++;
@@ -29,8 +31,9 @@ export class ZakuroBus {
       const value = this.nmiFlag ? 0x80 : 0; this.nmiFlag = false; return value;
     }
     if ((bank & 0x40) === 0 && offset === 0x4212) {
-      const inFrame = master % 357368, inLine = inFrame % 1364;
-      return (inFrame >= 225 * 1364 ? 0x80 : 0) | (inLine >= 1096 ? 0x40 : 0);
+      const inFrame = master % FRAME_MASTER_CYCLES, inLine = inFrame % SCANLINE_MASTER_CYCLES;
+      const vblank = inFrame >= VBLANK_START_MASTER;
+      return (vblank ? 0x80 : 0) | (inLine >= 1096 ? 0x40 : 0);
     }
     if ((bank & 0x40) === 0 && offset >= 0x2000 && offset < 0x6000) return this.io[offset];
     if (offset >= 0x8000) return this.rom[((bank & 0x7f) * 0x8000 + (offset & 0x7fff)) % this.rom.length];
@@ -47,7 +50,29 @@ export class ZakuroBus {
     }
     if ((bank & 0x40) === 0 && offset >= 0x2100 && offset <= 0x213f && this.ppu) { this.ppu.write?.(offset, v, master); return; }
     if ((bank & 0x40) === 0 && offset >= 0x2000 && offset < 0x6000) {
+      const old = this.io[offset];
       this.io[offset] = v; if (offset === 0x420d) this.fastRom = !!(v & 1);
+      if (offset === 0x420b && v) this.runDma(v);
+      if (offset === 0x420c) { this.hdmaMask = v; this.hdmaEvents.push([master, v]); }
+      // NMITIMEN low->high during VBlank triggers NMI if RDNMI has not been read.
+      if (offset === 0x4200 && (v & 0x80) && !(old & 0x80) && this.nmiFlag) this.onNmi?.();
     }
+  }
+
+  runDma(mask) {
+    let channels = 0, bytes = 0;
+    for (let channel = 0; channel < 8; channel++) {
+      if (!(mask & (1 << channel))) continue;
+      channels++;
+      const base = 0x4300 + channel * 0x10;
+      const size = this.io[base + 5] | (this.io[base + 6] << 8);
+      bytes += size || 0x10000;
+      this.io[base + 5] = 0; this.io[base + 6] = 0;
+    }
+    // One global startup byte-time, one per active channel, then one per byte.
+    const masterCycles = 8 * (1 + channels + bytes);
+    this.dmaBytes += bytes; this.dmaMasterCycles += masterCycles;
+    this.dmaTransfers++; this.dmaChannels += channels;
+    this.clock.idle(masterCycles);
   }
 }

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { ApuTraceComparator, MasterClock, ZakuroVM, accessCycles, createApuLink } from '../vm/index.js';
+import { ApuTraceComparator, MasterClock, ZakuroBus, ZakuroVM, accessCycles, createApuLink } from '../vm/index.js';
 import { LINK_TIMING, POWER_ON } from '../tools/rom.mjs';
 
 function fixtureRom(program) {
@@ -11,9 +11,11 @@ function fixtureRom(program) {
 
 test('master clock uses integer SNES bus access costs', () => {
   assert.equal(accessCycles(0x002140), 6);
+  assert.equal(accessCycles(0x004016), 12);
   assert.equal(accessCycles(0x7e1234), 8);
   assert.equal(accessCycles(0x808000, true), 6);
-  const c = new MasterClock(); c.charge(0x2140); c.idle(12); assert.equal(c.master, 18);
+  const c = new MasterClock(0, { refresh: false }); c.charge(0x2140); c.idle(12); assert.equal(c.master, 18);
+  const refreshed = new MasterClock(530); refreshed.idle(8); assert.equal(refreshed.master, 578);
 });
 
 test('65C816 reset executes LoROM and routes $2140 through MasterLink', () => {
@@ -30,6 +32,15 @@ test('65C816 reset executes LoROM and routes $2140 through MasterLink', () => {
   assert.equal(calls.length, 1);
   assert.deepEqual({ port: calls[0].port, value: calls[0].value }, { port: 0, value: 0x5a });
   assert.ok(Number.isSafeInteger(calls[0].master));
+});
+
+test('$420B DMA halts the CPU for setup, channel, and byte clocks', () => {
+  const clock = new MasterClock(0, { refresh: false });
+  const bus = new ZakuroBus({ rom: fixtureRom([]), masterLink: { read: () => 0, write() {} }, clock });
+  bus.write(0x4305, 3); bus.write(0x4306, 0);
+  const before = clock.master; bus.write(0x420b, 1);
+  assert.equal(clock.master - before, 6 + 8 * (1 + 1 + 3));
+  assert.equal(bus.dmaBytes, 3); assert.equal(bus.dmaTransfers, 1);
 });
 
 test('APUIO comparator checks order/value and reports maximum master delta', () => {

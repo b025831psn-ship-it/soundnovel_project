@@ -16,12 +16,13 @@ constructs `new MasterLink(apu, LINK_TIMING)`. Without an IPL argument it uses
 the high-level `APU.boot(readBootRecords(rom), APU_TIMING)` fallback.
 
 Current bring-up status (2026-11-25): the real cartridge reaches the SPC IPL
-handshake through scanline-derived HVBJOY/NMI scheduling. With `LINK_TIMING`
-and `POWER_ON`, the first 29 APUIO rows match in order and value. The next
-mismatch is IPL port 0 still reading `cc` where the reference first reads `00`;
-the CPU timeline is 1,433,944 master cycles early at that point. The next
-timing work is per-cycle 65C816 bus phasing and
-DMA/PPU register timing; the comparator intentionally fails at the first
+handshake through scanline-derived HVBJOY/NMI scheduling. The master clock now
+includes the 176-cycle reset sequencer, 6/8/12-cycle bus regions, 40-cycle DRAM
+refresh steals, and `$420B` DMA CPU halts. This reduced the first IPL polling
+timeline error from 1,433,944 to 357,240 master cycles; the four power-on APUIO
+writes now have zero cycle error. The first 22 APUIO rows match in order and
+value before IPL port 0 changes to `cc` one frame early. The next timing work
+is PPU field phase and per-cycle 65C816 bus phasing; the comparator intentionally fails at the first
 semantic mismatch so timing cannot be hidden by resynchronizing the trace.
 
 The CPU core provenance and license are in `THIRD_PARTY_NOTICES.md`.

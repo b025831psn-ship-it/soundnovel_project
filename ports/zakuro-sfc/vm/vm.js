@@ -1,12 +1,19 @@
 import { CPU } from './cpu.js';
 import { ZakuroBus } from './bus.js';
+import { FRAME_MASTER_CYCLES, VBLANK_START_MASTER } from './master-clock.js';
+
+// Measured reset release -> first CPU bus cycle offset in the reference trace.
+// The CPU core begins at vector fetch, so the VM supplies the preceding S-CPU
+// reset sequencer time here.
+export const RESET_MASTER_CYCLES = 176;
 
 export class ZakuroVM {
   constructor(options) {
     this.bus = new ZakuroBus(options);
     this.cpu = new CPU(this.bus);
+    this.bus.onNmi = () => { this.cpu.nmiPending = true; };
   }
-  reset() { this.cpu.reset(); }
+  reset() { this.bus.clock.idle(RESET_MASTER_CYCLES); this.cpu.reset(); }
   step() {
     const beforeMaster = this.bus.clock.master;
     const accesses = this.bus.accessCount;
@@ -14,9 +21,8 @@ export class ZakuroVM {
     const internalCycles = Math.max(0, cpuCycles - (this.bus.accessCount - accesses));
     this.bus.clock.idle(internalCycles * 6);
     const afterMaster = this.bus.clock.master;
-    const frameCycles = 357368, vblankStart = 225 * 1364;
-    const beforeVblank = Math.floor((beforeMaster - vblankStart) / frameCycles);
-    const afterVblank = Math.floor((afterMaster - vblankStart) / frameCycles);
+    const beforeVblank = Math.floor((beforeMaster - VBLANK_START_MASTER) / FRAME_MASTER_CYCLES);
+    const afterVblank = Math.floor((afterMaster - VBLANK_START_MASTER) / FRAME_MASTER_CYCLES);
     if (afterVblank > beforeVblank) {
       this.bus.nmiFlag = true;
       if (this.bus.io[0x4200] & 0x80) this.cpu.nmiPending = true;
