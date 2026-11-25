@@ -49,6 +49,12 @@
   - S-DSP rate 0은 절대 발생하지 않는다(카운터 주기 30,721). 기존 표는 30,720이라 카운터가 한 바퀴 돌 때 rate 0 엔벨로프가 한 번 움직였다(`sdsp.js`).
 - 카마이타치(d07f1ef)는 기본값(`timerLead -1`, `dspAccessOffset 0`) 그대로 이 수정본에서도 포트·DSP 쓰기와 PCM 512,331 샘플이 완전히 일치한다.
 
+### VM 연결 (`sound/master-link.js`, `tools/replay-cpu.mjs`)
+
+- `master-link.js`와 `spc700.js`의 `onPortRead`는 카마이타치 포트(5cf35c6)와 같다. `writeHold` 인수만 더했다(기본 3, 동작 같음).
+- `replay-cpu.mjs <rom> <port-data> --link`: 기준 실행의 CPU `$2140-$2143` 접근 1,253,625건을 master clock 그대로 `MasterLink`에 넣는다. VM이 할 일과 같다. CPU 읽기 982,716건이 모두 같은 값을 받고, 그 결과 DSP 쓰기 264,389건도 모두 같다.
+- 석류의 맛 드라이버용 시각 규칙은 `tools/rom.mjs`의 `LINK_TIMING`이다(측정값과 근거는 주석). 드라이버가 포트를 `!abs` 주소로만 접근해서 카마이타치(`dp` 주소)와 값이 다르다.
+
 ### 전송 확인 (2026-11-25)
 
 - 44개 요청 모두 전송 규약 통과, 전송 후 ARAM 범위 일치. 요청 29는 5초 무음, 37은 5초 안에 소리 없음(Codex 기록과 같음: 29는 의도된 무음, 37은 긴 도입부).

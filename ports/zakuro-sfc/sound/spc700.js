@@ -97,7 +97,9 @@ export class SPC700 {
     switch (addr) {
       case 0xf2: return this.dspAddr;
       case 0xf3: this.syncDsp(); return this.dsp.read(this.dspAddr & 0x7f);
-      case 0xf4: case 0xf5: case 0xf6: case 0xf7: return this.portIn[addr - 0xf4];
+      case 0xf4: case 0xf5: case 0xf6: case 0xf7:
+        if (this.onPortRead) this.onPortRead(this.clock, this.curOp);
+        return this.portIn[addr - 0xf4];
       case 0xfd: case 0xfe: case 0xff: {
         this.syncTimers();
         const t = this.timers[addr - 0xfd]; const v = t.out; t.out = 0; return v;
