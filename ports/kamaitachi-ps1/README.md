@@ -94,8 +94,12 @@ The sweep command reports `fresh` and `unlock` results. Fresh play keeps
 blank-card-only unlock branches on their fallthrough. Unlock uses an explicit
 `both` policy for opcodes `54`, `55`, and `5d`, explores both cursor writes,
 and reports that coverage separately. Opcodes `0e`, `0f`, `24`, `25`, `40`,
-`45`, `54`, `55`, and `5d` preserve their handler-proven current-resource
-offset encoding; variable tables `78` and `bc` expose every consumed target.
+`54`, `55`, `5d`, and `5e` resolve their handler words as decimal labels, as do the
+`57` scenario destinations (for example `27003`, `15000`, and `21000` in the
+common resource-27 hub). Opcode `45` is the distinct current-resource offset
+form. Variable handlers `78` and `bc` enumerate resource-load labels but do not
+write the scenario cursor, so they remain executable `resource-table` commands
+rather than false control-flow edges.
 Opcode `4b` schedules the next resource, opcode `03` performs the retail call-
 stack pop, and the real `44` title return resumes through the common `27:0`
 hub without treating resource fall-off as an ending.

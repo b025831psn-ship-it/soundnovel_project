@@ -71,10 +71,16 @@ test("conditional families keep their distinct target encodings", () => {
   { label: 27065, resourceId: 27, recordId: 65 });
   assert.deepEqual(vm.run(Uint8Array.of(0x5e, 5, 0x42, 0x4a, 0x96, 0),
     { resourceId: 27, recordId: 76 }).at(-1).target,
-  { resourceId: 27, recordId: 150, offset: 0 });
+  { label: 19010, resourceId: 19, recordId: 10 });
   const table = vm.run(Uint8Array.of(0x57, 1, 0x3e, 0x11, 0, 0xed, 0, 0x1c, 0, 0xee, 0),
     { resourceId: 0, recordId: 16 }).at(-1);
-  assert.deepEqual(table.options.map((option) => option.target.recordId), [237, 238]);
+  assert.deepEqual(table.options.map((option) => [option.target.resourceId, option.target.recordId]), [[0, 17], [0, 28]]);
+  const hub = vm.run(Uint8Array.of(0x57, 1, 0x11, 0x7e, 0x69, 2, 0, 0x98, 0x3a, 8, 0),
+    { resourceId: 27, recordId: 5 }).at(-1);
+  assert.deepEqual(hub.options.map((option) => option.target), [
+    { label: 27006, resourceId: 27, recordId: 6 },
+    { label: 15000, resourceId: 15, recordId: 0 },
+  ]);
 });
 
 test("remaining retail cursor writers expose branches and unlock-only paths", () => {
@@ -86,13 +92,13 @@ test("remaining retail cursor writers expose branches and unlock-only paths", ()
   for (const opcode of [0x0e, 0x0f, 0x24, 0x25]) {
     const branch = vm.run(Uint8Array.of(opcode, 7, 0xee, 5), { resourceId: 27, recordId: 2 }).at(-1);
     assert.equal(branch.kind, "branch");
-    assert.equal(branch.target.resourceOffset, 1518);
+    assert.deepEqual(branch.target, { label: 1518, resourceId: 1, recordId: 518 });
   }
   assert.equal(vm.run(Uint8Array.of(0x40, 7, 3, 0xee, 5),
-    { resourceId: 27, recordId: 2 }).at(-1).target.resourceOffset, 1518);
+    { resourceId: 27, recordId: 2 }).at(-1).target.label, 1518);
   for (const opcode of [0x54, 0x55, 0x5d]) {
     const branch = vm.run(Uint8Array.of(opcode, 7, 0xee, 5, 9, 0), { resourceId: 27, recordId: 2 }).at(-1);
-    assert.equal(branch.target.resourceOffset, 1518);
+    assert.equal(branch.target.label, 1518);
     assert.equal(branch.unlockRequired, true);
     assert.deepEqual(branch.unlockFlag.encoded, [9, 0]);
   }
@@ -108,8 +114,12 @@ test("variable dispatch tables and chapter transitions stay executable", () => {
   assert.equal(vm.run(Uint8Array.of(0x03), { resourceId: 27, recordId: 1 }).at(-1).kind, "return");
   assert.deepEqual(vm.run(Uint8Array.of(0x44), { resourceId: 31, recordId: 11 }).at(-1).resume,
     { resourceId: 27, recordId: 0, offset: 0 });
-  const table78 = vm.run(Uint8Array.of(0x78, 1, 0, 0xee, 5, 0xef, 5), { resourceId: 27, recordId: 1 }).at(-1);
-  assert.deepEqual(table78.options.map((row) => row.target.resourceOffset), [1518, 1519]);
-  const tableBc = vm.run(Uint8Array.of(0xbc, 1, 0, 0xee, 5, 1, 0, 2, 0, 0xef, 5), { resourceId: 27, recordId: 1 }).at(-1);
-  assert.deepEqual(tableBc.options.map((row) => row.target.resourceOffset), [1518, 1519]);
+  const table78 = vm.run(Uint8Array.of(0x78, 1, 0, 0xee, 5, 0xef, 5),
+    { resourceId: 27, recordId: 1 }).find((event) => event.kind === "resource-table");
+  assert.equal(table78.kind, "resource-table");
+  assert.deepEqual(table78.entries.map((row) => row.target.label), [1518, 1519]);
+  const tableBc = vm.run(Uint8Array.of(0xbc, 1, 0, 0xee, 5, 1, 0, 2, 0, 0xef, 5),
+    { resourceId: 27, recordId: 1 }).find((event) => event.kind === "resource-table");
+  assert.equal(tableBc.kind, "resource-table");
+  assert.deepEqual(tableBc.entries.map((row) => row.target.label), [1518, 1519]);
 });
