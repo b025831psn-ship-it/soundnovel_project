@@ -99,6 +99,7 @@ whenReady(({ input, sound }) => {
     shell.classList.toggle("pad-on", on);
     padToggle.setAttribute("aria-pressed", String(on));
     padToggle.setAttribute("aria-label", on ? "게임 버튼 숨기기" : "게임 버튼 보이기");
+    if (embedded) parent.postMessage({ type: "pad", on }, location.origin); // the hub sizes its frame
     fit();
   };
   showPad(store.get("kamaitachi.pad", "0") === "1");

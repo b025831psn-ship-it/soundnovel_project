@@ -41,6 +41,8 @@ function portRoute(url) {
     // SFC port (sound only so far): its page and the cartridge sound data and trace it plays back.
     ['/ports/kamaitachi-sfc/', path.join(__dirname, 'ports', 'kamaitachi-sfc'), ['.html', '.js']],
     ['/kamaitachi-sfc-kor/port-data/', path.join(__dirname, 'kamaitachi-sfc-kor', 'port-data'), ['.bin', '.tsv']],
+    // Code shared by every port (save store and sync client); its tests and the reference server stay out.
+    ['/shared/', path.join(__dirname, 'shared'), ['.js']],
   ]) {
     if (!url.startsWith(prefix)) continue;
     const file = path.join(dir, decodeURIComponent(url.slice(prefix.length)) || 'index.html');
