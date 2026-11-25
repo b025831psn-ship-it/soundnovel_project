@@ -28,6 +28,8 @@ export class SfcBus {
     this.bgHofs = new Uint16Array(4);
     this.bgVofs = new Uint16Array(4);
     this.ppuScrollLatch = 0;
+    this.ppuMode7Latch = 0;
+    this.mode7 = new Int16Array(6);
     this.fixedColor = 0;
     this.controller1 = 0;
     this.events = [];
@@ -177,6 +179,13 @@ export class SfcBus {
         break;
       }
       case 0x2115: this.vmain = value; break;
+      case 0x211b: case 0x211c: case 0x211d: case 0x211e:
+      case 0x211f: case 0x2120: {
+        const register = address - 0x211b;
+        this.mode7[register] = (value << 8) | this.ppuMode7Latch;
+        this.ppuMode7Latch = value;
+        break;
+      }
       case 0x2116: this.vramAddress = (this.vramAddress & 0xff00) | value; break;
       case 0x2117: this.vramAddress = (value << 8) | (this.vramAddress & 0xff); break;
       case 0x2118:

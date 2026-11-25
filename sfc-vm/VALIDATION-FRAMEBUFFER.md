@@ -28,12 +28,22 @@ add/subtract/half color math.  Unchanged PPU state reuses the previous frame.
 
 Native RGB output is normalized to the same RGBA format before FNV-1a hashing.
 The two outputs agree while both are forced blank (NMI 1–18), then first differ
-at NMI 19.  Mode 7 and scanline-accurate HDMA/window/subscreen color math are
-not complete, so the framebuffer hash result is a failure inventory rather
-than a pixel-accuracy claim.
+at NMI 19.  The compositor now includes Mode 7, separate main/sub screens,
+CGWSEL clipping and math prevention, CGADSUB add/subtract/half, and both-window
+OR/AND/XOR/XNOR logic.  Rendering still consumes the register state at the
+frame boundary; scanline HDMA register history and exact per-mode priority are
+not complete, so the framebuffer hash result remains a failure inventory
+rather than a pixel-accuracy claim.
 
 The recorded-input 5,700-NMI framebuffer run has 5,593 mismatches in four
 intervals.  The corrected 20,000-NMI state-only rerun completes without an
 exception; its remaining mismatch counts are WRAM 19,881 (one interval, first
 NMI 121), VRAM 19,473 (two), CGRAM 241 (27), OAM 22 (20), NMI PC 3,005 (460),
 raw APUIO 19,839 (one), and semantic APUIO 19,416 (16).
+
+After adding the full main/sub colour path, the recorded-input rerun still has
+5,593 framebuffer mismatches in the same intervals (19–329, 371–502, 514–591,
+629–5700).  This shows that the name-confirmation colour defect is no longer a
+missing CGWSEL/CGADSUB code path, but hash equality is still blocked by the
+frame-boundary renderer and the state divergence beginning at NMI 121.  No
+claim of native name-screen hash equality is made yet.

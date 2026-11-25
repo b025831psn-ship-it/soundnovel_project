@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { SfcBus } from '../bus.js';
 import { Cpu65816 } from '../cpu.js';
-import { decodeTilePixel, renderMode3Bg1 } from '../ppu.js';
+import { decodeTilePixel, renderFrame, renderMode3Bg1 } from '../ppu.js';
 import { MasterLink, READ_POINT } from '../../ports/kamaitachi-sfc/sound/master-link.js';
 
 // Real reset sequence bytes from the verified ROM. Keeping only this short
@@ -425,4 +425,44 @@ test('decodes and composites mode 3 BG1 from PPU memory', () => {
   assert.equal(decodeTilePixel(bus.vram, 0x2040, 0, 7, 8), 1);
   const frame = renderMode3Bg1(bus, 8, 8);
   assert.deepEqual([...frame.slice((7 * 8) * 4, (7 * 8) * 4 + 4)], [255, 0, 0, 255]);
+});
+
+test('composites the subscreen through CGWSEL and CGADSUB', () => {
+  const bus = new SfcBus(new Uint8Array(0x8000));
+  bus.io[0x2100 - 0x2000] = 15;
+  bus.io[0x2105 - 0x2000] = 0;
+  bus.io[0x212c - 0x2000] = 0;
+  bus.io[0x212d - 0x2000] = 0;
+  bus.io[0x2130 - 0x2000] = 2;
+  bus.io[0x2131 - 0x2000] = 0x20 | 0x40;
+  // Backdrop participates in math on both screens. Half addition must retain
+  // the backdrop instead of incorrectly using the fixed colour register.
+  bus.cgram[0] = 0x1f;
+  const frame = renderFrame(bus, 1, 1);
+  assert.deepEqual([...frame], [255, 0, 0, 255]);
+});
+
+test('applies both colour-window logic and clip/prevent modes', () => {
+  const bus = new SfcBus(new Uint8Array(0x8000));
+  bus.io[0x2100 - 0x2000] = 15;
+  bus.cgram[0] = 0x1f;
+  bus.io[0x2125 - 0x2000] = 0x20; // colour window 1 enabled, not inverted
+  bus.io[0x2126 - 0x2000] = 0;
+  bus.io[0x2127 - 0x2000] = 0;
+  bus.io[0x2130 - 0x2000] = 0x80; // clip inside the colour window
+  assert.deepEqual([...renderFrame(bus, 1, 1)], [0, 0, 0, 255]);
+});
+
+test('renders mode 7 through the affine matrix and interleaved VRAM', () => {
+  const bus = new SfcBus(new Uint8Array(0x8000));
+  bus.io[0x2100 - 0x2000] = 15;
+  bus.io[0x2105 - 0x2000] = 7;
+  bus.io[0x212c - 0x2000] = 1;
+  bus.mode7[0] = 0x100;
+  bus.mode7[3] = 0x100;
+  bus.vram[0] = 0;
+  bus.vram[1] = 1;
+  bus.cgram[2] = 0xe0;
+  bus.cgram[3] = 0x03;
+  assert.deepEqual([...renderFrame(bus, 1, 1)], [0, 255, 0, 255]);
 });
