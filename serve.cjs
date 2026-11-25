@@ -43,6 +43,8 @@ function portRoute(url) {
     // SFC port (sound only so far): its page and the cartridge sound data and trace it plays back.
     ['/ports/kamaitachi-sfc/', path.join(__dirname, 'ports', 'kamaitachi-sfc'), ['.html', '.js']],
     ['/kamaitachi-sfc-kor/port-data/', path.join(__dirname, 'kamaitachi-sfc-kor', 'port-data'), ['.bin', '.tsv']],
+    // The SFC screen VM (Codex, feat/20): the machine the SFC port's VM page imports; its tests stay out.
+    ['/sfc-vm/', path.join(__dirname, 'sfc-vm'), ['.js']],
     // Code shared by every port (save store and sync client); its tests and the reference server stay out.
     ['/shared/', path.join(__dirname, 'shared'), ['.js']],
   ]) {
@@ -61,7 +63,12 @@ function portRoute(url) {
 const password = (process.env.SOUNDNOVEL_PASSWORD ?? (() => {
   try { return fs.readFileSync(path.join(__dirname, 'serve.password'), 'utf8'); } catch { return ''; }
 })()).trim();
-const cartridges = new Set(['/AGB-AHZJ.gba', '/AGB-AKZJ.gba']);
+// The SFC VM page reads the cartridge at this address; the file's location on this PC is in a local,
+// uncommitted serve.sfcrom (one line, a path). Like the GBA cartridges it is never served through a tunnel.
+const SFC_GAME = '/kamaitachi-sfc-kor/port-data/game/kamaitachi.sfc';
+const sfcRom = (() => { try { return fs.readFileSync(path.join(__dirname, 'serve.sfcrom'), 'utf8').trim(); } catch { return ''; } })();
+if (sfcRom) routes.set(SFC_GAME, [path.resolve(__dirname, sfcRom), 'application/octet-stream']);
+const cartridges = new Set(['/AGB-AHZJ.gba', '/AGB-AKZJ.gba', SFC_GAME]);
 function allowedFromOutside(request, response, url) {
   if (!['cf-connecting-ip', 'x-forwarded-for', 'x-forwarded-host'].some(name => name in request.headers)) return true;
   if (!password) { response.writeHead(503).end('No test password is set on this server.'); return false; }
