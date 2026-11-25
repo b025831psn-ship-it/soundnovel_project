@@ -67,6 +67,9 @@ const page = new PageText(screen, font, text);
 // Bookmarks live in the shared SaveStore (IndexedDB), opened before the game starts.
 const books = await openBooks();
 const boot = await new Boot({ vm, screen, assets, font, sound: vm.sound, books }).load();
+// The shell's save dialog (sync-ui.js) reaches the store and the title through this.
+globalThis.soundnovelSave = { store: books.store, boot, gameId: "kamaitachi-gba" };
+globalThis.dispatchEvent?.(new Event("soundnovel-save-ready"));
 // The cartridge's loading pauses (black while a picture decodes or the flash is read) are cut
 // in the web version; ?timing=original keeps them for frame comparisons with mGBA.
 boot.originalLoadTiming = new URLSearchParams(location.search).get("timing") === "original";
