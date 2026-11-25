@@ -75,14 +75,18 @@ export class TextWindow {
     this.choiceRaw[index]?.push(raw);
   }
 
+  // The click wait is over (02024DFA released): a page that ended in a lone 'p' + 'g' is cleared
+  // now, even when other opcodes run before the next text.
+  resumed() {
+    if (!this.pendingClear) return;
+    this.pendingClear = false;
+    this.fragments = [];
+    this.pageRaw = [];
+    this.afterWait = false;
+  }
+
   feed(raw) {
-    // A page that ended in a lone 'p' (+ 'g') is cleared once its click wait is over.
-    if (this.pendingClear) {
-      this.pendingClear = false;
-      this.fragments = [];
-      this.pageRaw = [];
-      this.afterWait = false;
-    }
+    this.resumed();
     this.pageRaw.push(raw);
     this.wait = "none";
     for (let pos = 0; pos < raw.length; pos++) {

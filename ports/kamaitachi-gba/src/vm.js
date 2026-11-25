@@ -277,6 +277,7 @@ export class VM {
       // 080040A0 also sets 0200077E: the 14/00/02/17/15 that follow collect the labels and
       // opcode 16 waits (19:15F welcome menu). 1D 1C makes 16 take the preset entry instead.
       this.ram.choiceActive = 1;
+      this.ram.effectDisabled = 1; // 080040D6-080040DA write 0200077E, as 57 does
       this.text?.beginChoices?.(entries.length);
     }
     return [
@@ -944,6 +945,7 @@ export class VM {
       return;
     }
     this.waiting = "none";
+    this.text?.resumed?.();
   }
 
   moveChoice(delta) {

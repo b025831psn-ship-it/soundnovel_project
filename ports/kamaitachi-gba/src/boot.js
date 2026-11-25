@@ -287,8 +287,13 @@ export class Boot {
       yield* this.logo();
       returning = true;
     }
-    yield; // 08002FB8 after 08003658(0, 1)
+    // 0800EDE4: the first frame wait, then two frames of clearing (mGBA 488 -> 491), the audio
+    // fade with the slot 1/5 tail fade, and one more frame (08006630) before 1D 00 returns at 492.
+    for (let n = 0; n < 3; n++) yield;
     this.sound.fade(0x58, 0x19);
+    this.fadeOut(0x19, 1);
+    this.fadeOut(0x19, 5);
+    yield;
     this.ram.vars[0] = 1;
   }
 
@@ -412,6 +417,8 @@ export class Boot {
       yield;
       this.layer = null; // 08009BF8 drops the header bar as the screen goes black (mGBA 885)
       yield* this.waitFade(1);
+      // 0800E4AC returns four frames after the exit fade starts (Codex trace 484 -> 488).
+      for (let n = 0; n < 2; n++) yield;
       return true;
     }
   }
