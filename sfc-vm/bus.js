@@ -5,14 +5,15 @@ export class SfcBus {
   constructor(rom, {
     eventLimit = Infinity, apu = null, masterLink = null,
     apuTraceLimit = Infinity, onApuAccess = null, onNmiEnable = null,
+    wramInitialValue = 0,
   } = {}) {
     this.rom = normalizeRom(rom);
-    this.wram = new Uint8Array(128 * 1024);
+    this.wram = new Uint8Array(128 * 1024).fill(wramInitialValue & 0xff);
     // Internal header SRAM size code $03: 2^(3 + 10) = 8 KiB.
-    // A fresh cartridge save RAM reads as erased ($FF). The reset path checks
-    // and clears all five save blocks; zero-filling here skipped four of those
-    // loops and moved the first APUIO transaction ~469k master clocks early.
-    this.sram = new Uint8Array(8 * 1024).fill(0xff);
+    // Match the Snes9x reference probe's fresh-SRAM pattern.  The game XORs
+    // three save blocks into scheduler countdown $03D7; using $FF here made
+    // that counter wrap at frame 98 instead of following the native schedule.
+    this.sram = new Uint8Array(8 * 1024).fill(0x60);
     this.io = new Uint8Array(0x6000);
     // Minimal SPC700 IPL port state. The IPL announces $BBAA and acknowledges
     // each CPU token on port 0; the full SPC700 core will replace this shim.

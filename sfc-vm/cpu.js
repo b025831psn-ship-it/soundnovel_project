@@ -69,10 +69,11 @@ export class Cpu65816 {
     this.p = 0x34;
     this.e = true;
     this.pbr = 0;
-    // The first post-reset opcode fetch starts at master 166.  Snes9x's
-    // APUIO bus trace records the access point before the bus cycle advances;
-    // using 182 here put every pre-IPL CPU access 16 master clocks late.
-    this.masterCycle = 166;
+    // Snes9x reports the first post-reset opcode at master 198.  The previous
+    // 166 origin was accidentally hidden by an erased-$FF SRAM path that cost
+    // 32 extra masters; the probe's fresh SRAM pattern ($60) exposes the real
+    // reset origin directly.
+    this.masterCycle = 198;
     this.nextWramRefresh = 538;
     this.refreshPosition = 538;
     this.refreshScanline = 0;
@@ -173,6 +174,7 @@ export class Cpu65816 {
     }
     if (opcode === 0x82) this.internalCycle();
     if (opcode === 0xeb) this.internalCycle();
+    if (opcode === 0x44 || opcode === 0x54) this.internalCycle(2);
 
     if (INDEXED_DP_OPS.has(opcode)) this.internalCycle();
     if (DIRECT_PAGE_OPS.has(opcode) && (this.d & 0xff)) this.internalCycle();
@@ -283,7 +285,14 @@ export class Cpu65816 {
         this.a = this.a8() ? (this.a & 0xff00) | this.setNZ(v, true) : this.setNZ(v, false);
         break;
       }
-      case 0x8d: { name = 'STA abs'; const a = this.fetch16(); this.a8() ? this.bus.write8(a, this.a) : this.bus.write16(a, this.a); break; }
+      case 0x8d: { name = 'STA abs'; const a = (this.dbr << 16) | this.fetch16(); this.a8() ? this.bus.write8(a, this.a) : this.bus.write16(a, this.a); break; }
+      case 0x91: {
+        name = 'STA (dp),Y';
+        const pointer = (this.d + this.fetch8()) & 0xffff;
+        const address = (this.dbr << 16) | ((this.bus.read16(pointer) + this.y) & 0xffff);
+        this.a8() ? this.bus.write8(address, this.a) : this.bus.write16(address, this.a);
+        break;
+      }
       case 0x9d: {
         name = 'STA abs,X';
         const address = (this.fetch16() + this.x) & 0xffff;
@@ -435,9 +444,9 @@ export class Cpu65816 {
         this.a8() ? this.bus.write8(address, value) : this.bus.write16(address, value);
         break;
       }
-      case 0x8e: { name = 'STX abs'; const a = this.fetch16(); this.x8() ? this.bus.write8(a, this.x) : this.bus.write16(a, this.x); break; }
-      case 0x8c: { name = 'STY abs'; const a = this.fetch16(); this.x8() ? this.bus.write8(a, this.y) : this.bus.write16(a, this.y); break; }
-      case 0x9c: { name = 'STZ abs'; const a = this.fetch16(); this.a8() ? this.bus.write8(a, 0) : this.bus.write16(a, 0); break; }
+      case 0x8e: { name = 'STX abs'; const a = (this.dbr << 16) | this.fetch16(); this.x8() ? this.bus.write8(a, this.x) : this.bus.write16(a, this.x); break; }
+      case 0x8c: { name = 'STY abs'; const a = (this.dbr << 16) | this.fetch16(); this.x8() ? this.bus.write8(a, this.y) : this.bus.write16(a, this.y); break; }
+      case 0x9c: { name = 'STZ abs'; const a = (this.dbr << 16) | this.fetch16(); this.a8() ? this.bus.write8(a, 0) : this.bus.write16(a, 0); break; }
       case 0x9e: {
         name = 'STZ abs,X';
         const address = (this.fetch16() + this.x) & 0xffff;
@@ -670,6 +679,26 @@ export class Cpu65816 {
           : this.setNZ(this.a & value, false);
         break;
       }
+      case 0x3f: {
+        name = 'AND long,X';
+        const address = (this.fetch24() + this.x) & 0xffffff;
+        const value = this.a8() ? this.bus.read8(address) : this.bus.read16(address);
+        this.a = this.a8()
+          ? (this.a & 0xff00) | this.setNZ(this.a & value, true)
+          : this.setNZ(this.a & value, false);
+        break;
+      }
+      case 0x37: {
+        name = 'AND [dp],Y';
+        const pointer = (this.d + this.fetch8()) & 0xffff;
+        const address = (this.bus.read16(pointer)
+          | (this.bus.read8((pointer + 2) & 0xffff) << 16)) + this.y & 0xffffff;
+        const value = this.a8() ? this.bus.read8(address) : this.bus.read16(address);
+        this.a = this.a8()
+          ? (this.a & 0xff00) | this.setNZ(this.a & value, true)
+          : this.setNZ(this.a & value, false);
+        break;
+      }
       case 0x29: {
         name = 'AND #';
         const value = this.a8() ? this.fetch8() : this.fetch16();
@@ -716,6 +745,25 @@ export class Cpu65816 {
       case 0x0f: {
         name = 'ORA long';
         const address = this.fetch24();
+        const value = this.a8() ? this.bus.read8(address) : this.bus.read16(address);
+        this.a = this.a8()
+          ? (this.a & 0xff00) | this.setNZ(this.a | value, true)
+          : this.setNZ(this.a | value, false);
+        break;
+      }
+      case 0x1f: {
+        name = 'ORA long,X';
+        const address = (this.fetch24() + this.x) & 0xffffff;
+        const value = this.a8() ? this.bus.read8(address) : this.bus.read16(address);
+        this.a = this.a8()
+          ? (this.a & 0xff00) | this.setNZ(this.a | value, true)
+          : this.setNZ(this.a | value, false);
+        break;
+      }
+      case 0x11: {
+        name = 'ORA (dp),Y';
+        const pointer = (this.d + this.fetch8()) & 0xffff;
+        const address = (this.dbr << 16) | ((this.bus.read16(pointer) + this.y) & 0xffff);
         const value = this.a8() ? this.bus.read8(address) : this.bus.read16(address);
         this.a = this.a8()
           ? (this.a & 0xff00) | this.setNZ(this.a | value, true)
@@ -923,6 +971,16 @@ export class Cpu65816 {
         this.setNZ((left - value) & mask, this.a8());
         break;
       }
+      case 0xc3: {
+        name = 'CMP sr,S';
+        const address = (this.s + this.fetch8()) & 0xffff;
+        const value = this.a8() ? this.bus.read8(address) : this.bus.read16(address);
+        const mask = this.a8() ? 0xff : 0xffff;
+        const left = this.a & mask;
+        this.p = left >= value ? this.p | C : this.p & ~C;
+        this.setNZ((left - value) & mask, this.a8());
+        break;
+      }
       case 0xd2: {
         name = 'CMP (dp)';
         const pointer = (this.d + this.fetch8()) & 0xffff;
@@ -958,6 +1016,16 @@ export class Cpu65816 {
       case 0xdf: {
         name = 'CMP long,X';
         const address = (this.fetch24() + this.x) & 0xffffff;
+        const value = this.a8() ? this.bus.read8(address) : this.bus.read16(address);
+        const mask = this.a8() ? 0xff : 0xffff;
+        const left = this.a & mask;
+        this.p = left >= value ? this.p | C : this.p & ~C;
+        this.setNZ((left - value) & mask, this.a8());
+        break;
+      }
+      case 0xcf: {
+        name = 'CMP long';
+        const address = this.fetch24();
         const value = this.a8() ? this.bus.read8(address) : this.bus.read16(address);
         const mask = this.a8() ? 0xff : 0xffff;
         const left = this.a & mask;
@@ -1232,6 +1300,51 @@ export class Cpu65816 {
         this.a = eight ? (this.a & 0xff00) | value : value;
         break;
       }
+      case 0x7d: {
+        name = 'ADC abs,X';
+        const eight = this.a8();
+        const mask = eight ? 0xff : 0xffff;
+        const sign = eight ? 0x80 : 0x8000;
+        const address = (this.dbr << 16) | ((this.fetch16() + this.x) & 0xffff);
+        const left = this.a & mask;
+        const right = eight ? this.bus.read8(address) : this.bus.read16(address);
+        const result = left + right + (this.p & C ? 1 : 0);
+        this.p = result > mask ? this.p | C : this.p & ~C;
+        this.p = (~(left ^ right) & (left ^ result) & sign) ? this.p | V : this.p & ~V;
+        const value = this.setNZ(result, eight);
+        this.a = eight ? (this.a & 0xff00) | value : value;
+        break;
+      }
+      case 0x6d: {
+        name = 'ADC abs';
+        const eight = this.a8();
+        const mask = eight ? 0xff : 0xffff;
+        const sign = eight ? 0x80 : 0x8000;
+        const address = (this.dbr << 16) | this.fetch16();
+        const left = this.a & mask;
+        const right = eight ? this.bus.read8(address) : this.bus.read16(address);
+        const result = left + right + (this.p & C ? 1 : 0);
+        this.p = result > mask ? this.p | C : this.p & ~C;
+        this.p = (~(left ^ right) & (left ^ result) & sign) ? this.p | V : this.p & ~V;
+        const value = this.setNZ(result, eight);
+        this.a = eight ? (this.a & 0xff00) | value : value;
+        break;
+      }
+      case 0x79: {
+        name = 'ADC abs,Y';
+        const eight = this.a8();
+        const mask = eight ? 0xff : 0xffff;
+        const sign = eight ? 0x80 : 0x8000;
+        const address = (this.dbr << 16) | ((this.fetch16() + this.y) & 0xffff);
+        const left = this.a & mask;
+        const right = eight ? this.bus.read8(address) : this.bus.read16(address);
+        const result = left + right + (this.p & C ? 1 : 0);
+        this.p = result > mask ? this.p | C : this.p & ~C;
+        this.p = (~(left ^ right) & (left ^ result) & sign) ? this.p | V : this.p & ~V;
+        const value = this.setNZ(result, eight);
+        this.a = eight ? (this.a & 0xff00) | value : value;
+        break;
+      }
       case 0xe9: {
         name = 'SBC #';
         const eight = this.a8();
@@ -1239,6 +1352,21 @@ export class Cpu65816 {
         const sign = eight ? 0x80 : 0x8000;
         const left = this.a & mask;
         const right = eight ? this.fetch8() : this.fetch16();
+        const result = left - right - (this.p & C ? 0 : 1);
+        this.p = result >= 0 ? this.p | C : this.p & ~C;
+        this.p = ((left ^ right) & (left ^ result) & sign) ? this.p | V : this.p & ~V;
+        const value = this.setNZ(result, eight);
+        this.a = eight ? (this.a & 0xff00) | value : value;
+        break;
+      }
+      case 0xed: {
+        name = 'SBC abs';
+        const eight = this.a8();
+        const mask = eight ? 0xff : 0xffff;
+        const sign = eight ? 0x80 : 0x8000;
+        const address = (this.dbr << 16) | this.fetch16();
+        const left = this.a & mask;
+        const right = eight ? this.bus.read8(address) : this.bus.read16(address);
         const result = left - right - (this.p & C ? 0 : 1);
         this.p = result >= 0 ? this.p | C : this.p & ~C;
         this.p = ((left ^ right) & (left ^ result) & sign) ? this.p | V : this.p & ~V;
@@ -1261,12 +1389,57 @@ export class Cpu65816 {
         this.a = eight ? (this.a & 0xff00) | value : value;
         break;
       }
+      case 0xfd: {
+        name = 'SBC abs,X';
+        const eight = this.a8();
+        const mask = eight ? 0xff : 0xffff;
+        const sign = eight ? 0x80 : 0x8000;
+        const address = (this.dbr << 16) | ((this.fetch16() + this.x) & 0xffff);
+        const left = this.a & mask;
+        const right = eight ? this.bus.read8(address) : this.bus.read16(address);
+        const result = left - right - (this.p & C ? 0 : 1);
+        this.p = result >= 0 ? this.p | C : this.p & ~C;
+        this.p = ((left ^ right) & (left ^ result) & sign) ? this.p | V : this.p & ~V;
+        const value = this.setNZ(result, eight);
+        this.a = eight ? (this.a & 0xff00) | value : value;
+        break;
+      }
+      case 0xf9: {
+        name = 'SBC abs,Y';
+        const eight = this.a8();
+        const mask = eight ? 0xff : 0xffff;
+        const sign = eight ? 0x80 : 0x8000;
+        const address = (this.dbr << 16) | ((this.fetch16() + this.y) & 0xffff);
+        const left = this.a & mask;
+        const right = eight ? this.bus.read8(address) : this.bus.read16(address);
+        const result = left - right - (this.p & C ? 0 : 1);
+        this.p = result >= 0 ? this.p | C : this.p & ~C;
+        this.p = ((left ^ right) & (left ^ result) & sign) ? this.p | V : this.p & ~V;
+        const value = this.setNZ(result, eight);
+        this.a = eight ? (this.a & 0xff00) | value : value;
+        break;
+      }
       case 0xe5: {
         name = 'SBC dp';
         const eight = this.a8();
         const mask = eight ? 0xff : 0xffff;
         const sign = eight ? 0x80 : 0x8000;
         const address = (this.d + this.fetch8()) & 0xffff;
+        const left = this.a & mask;
+        const right = eight ? this.bus.read8(address) : this.bus.read16(address);
+        const result = left - right - (this.p & C ? 0 : 1);
+        this.p = result >= 0 ? this.p | C : this.p & ~C;
+        this.p = ((left ^ right) & (left ^ result) & sign) ? this.p | V : this.p & ~V;
+        const value = this.setNZ(result, eight);
+        this.a = eight ? (this.a & 0xff00) | value : value;
+        break;
+      }
+      case 0xe3: {
+        name = 'SBC sr,S';
+        const eight = this.a8();
+        const mask = eight ? 0xff : 0xffff;
+        const sign = eight ? 0x80 : 0x8000;
+        const address = (this.s + this.fetch8()) & 0xffff;
         const left = this.a & mask;
         const right = eight ? this.bus.read8(address) : this.bus.read16(address);
         const result = left - right - (this.p & C ? 0 : 1);
@@ -1401,12 +1574,34 @@ export class Cpu65816 {
         eight ? this.bus.write8(address, value) : this.bus.write16(address, value);
         break;
       }
+      case 0x4e: {
+        name = 'LSR abs';
+        const eight = this.a8();
+        const address = (this.dbr << 16) | this.fetch16();
+        const memory = eight ? this.bus.read8(address) : this.bus.read16(address);
+        this.p = memory & 1 ? this.p | C : this.p & ~C;
+        const value = this.setNZ(memory >>> 1, eight);
+        eight ? this.bus.write8(address, value) : this.bus.write16(address, value);
+        break;
+      }
       case 0x66: {
         name = 'ROR dp';
         const eight = this.a8();
         const mask = eight ? 0xff : 0xffff;
         const sign = eight ? 0x80 : 0x8000;
         const address = (this.d + this.fetch8()) & 0xffff;
+        const memory = eight ? this.bus.read8(address) : this.bus.read16(address);
+        const value = this.setNZ(((this.p & C ? sign : 0) | (memory >>> 1)) & mask, eight);
+        this.p = memory & 1 ? this.p | C : this.p & ~C;
+        eight ? this.bus.write8(address, value) : this.bus.write16(address, value);
+        break;
+      }
+      case 0x76: {
+        name = 'ROR dp,X';
+        const eight = this.a8();
+        const mask = eight ? 0xff : 0xffff;
+        const sign = eight ? 0x80 : 0x8000;
+        const address = (this.d + this.fetch8() + this.x) & 0xffff;
         const memory = eight ? this.bus.read8(address) : this.bus.read16(address);
         const value = this.setNZ(((this.p & C ? sign : 0) | (memory >>> 1)) & mask, eight);
         this.p = memory & 1 ? this.p | C : this.p & ~C;
@@ -1476,6 +1671,21 @@ export class Cpu65816 {
         this.p = (this.a & memory & mask) === 0 ? this.p | Z : this.p & ~Z;
         const value = memory | (this.a & mask);
         this.a8() ? this.bus.write8(address, value) : this.bus.write16(address, value);
+        break;
+      }
+      case 0x54:
+      case 0x44: {
+        name = op === 0x54 ? 'MVN' : 'MVP';
+        const destinationBank = this.fetch8();
+        const sourceBank = this.fetch8();
+        const value = this.bus.read8((sourceBank << 16) | this.x);
+        this.bus.write8((destinationBank << 16) | this.y, value);
+        this.dbr = destinationBank;
+        const delta = op === 0x54 ? 1 : -1;
+        this.x = (this.x + delta) & 0xffff;
+        this.y = (this.y + delta) & 0xffff;
+        this.a = (this.a - 1) & 0xffff;
+        if (this.a !== 0xffff) this.pc = (this.pc - 3) & 0xffff;
         break;
       }
       case 0xca: name = 'DEX'; this.x = this.setNZ(this.x - 1, this.x8()); break;

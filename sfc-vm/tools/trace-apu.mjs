@@ -9,10 +9,10 @@ const [
   limitArg = '200000000', iplPath = '', joypadPath = '', snapshotDir = '',
   semanticSnapshotRowArg = '-1', watchWramArg = '', probePcArg = '',
   instructionTracePath = '', instructionTraceStartArg = 'Infinity', instructionTraceEndArg = '-1',
-  spcPortTracePath = '', dspTracePath = '',
+  spcPortTracePath = '', dspTracePath = '', wramFillArg = '00',
 ] = process.argv.slice(2);
 if (!romPath || !apuModulePath || !outputPath) throw new Error(
-  'usage: trace-apu.mjs ROM.sfc APU-MODULE output.tsv [target-frame] [instruction-limit] [spc-ipl.bin] [joypad.tsv] [snapshot-dir] [semantic-row] [watch-wram-hex-csv] [probe-pc-hex-csv] [instruction-trace.tsv] [trace-start-master] [trace-end-master] [spc-port-trace.tsv] [dsp-trace.tsv]',
+  'usage: trace-apu.mjs ROM.sfc APU-MODULE output.tsv [target-frame] [instruction-limit] [spc-ipl.bin] [joypad.tsv] [snapshot-dir] [semantic-row] [watch-wram-hex-csv] [probe-pc-hex-csv] [instruction-trace.tsv] [trace-start-master] [trace-end-master] [spc-port-trace.tsv] [dsp-trace.tsv] [wram-fill-hex]',
 );
 
 const { APU } = await import(pathToFileURL(apuModulePath));
@@ -71,6 +71,7 @@ const bus = new SfcBus(fs.readFileSync(romPath), {
   onNmiEnable: (master) => {
     if (inVblank) pendingNmiAt = Math.min(pendingNmiAt, master + 12);
   },
+  wramInitialValue: Number.parseInt(wramFillArg, 16),
 });
 cpu = new Cpu65816(bus, { traceLimit: 0 });
 const targetFrame = Number(targetArg);
@@ -87,6 +88,10 @@ const probePcs = new Set(parseHexCsv(probePcArg));
 const watchedValues = new Map(watchedWram.map((address) => [address, bus.wram[address]]));
 const watchedWriters = new Map();
 const pcProbes = [];
+const pcDistribution = {};
+const distributionFrames = new Set([94, 95, 96, 97, 98, 99, 100, 205, 206, 207, 208, 209, 210]);
+const nmiSnapshotFrames = new Set([94, 95, 96, 97, 98, 99, 100]);
+const savedNmiFrames = new Set();
 const instructionTraceStart = Number(instructionTraceStartArg);
 const instructionTraceEnd = Number(instructionTraceEndArg);
 const instructionTrace = [];
@@ -95,6 +100,15 @@ let failure = null;
 try {
   for (let index = 0; index < instructionLimit && frame < targetFrame; index++) {
     const instructionAddress = cpu.address();
+    if (distributionFrames.has(frame)) {
+      const stat = pcDistribution[frame] ??= { total: 0, decompress: 0, e1xx: 0, dbE0: 0, scheduler: 0, other: 0 };
+      stat.total++;
+      if (instructionAddress >= 0x029a00 && instructionAddress <= 0x029fff) stat.decompress++;
+      else if (instructionAddress >= 0x02e100 && instructionAddress <= 0x02e1ff) stat.e1xx++;
+      else if (instructionAddress >= 0x02db00 && instructionAddress <= 0x02e0ff) stat.dbE0++;
+      else if (instructionAddress >= 0x008000 && instructionAddress <= 0x008fff) stat.scheduler++;
+      else stat.other++;
+    }
     if (cpu.masterCycle >= instructionTraceStart && cpu.masterCycle <= instructionTraceEnd)
       instructionTrace.push([cpu.masterCycle, frame, instructionAddress, bus.read8(instructionAddress),
         cpu.a, cpu.x, cpu.y, cpu.s, cpu.d, cpu.dbr, cpu.p].join('\t'));
@@ -125,7 +139,12 @@ try {
       const buttons = joypadPath ? (joypad.get(frame) ?? 0)
         : (frame > 300 && frame % 90 < 2 ? 0x0080 : 0);
       bus.setController1(buttons);
-      if (bus.io[0x4200 - 0x2000] & 0x80) cpu.nmi();
+      if (bus.io[0x4200 - 0x2000] & 0x80) {
+        if (nmiSnapshotFrames.has(frame) && !savedNmiFrames.has(frame)) {
+          saveSnapshot(`nmi-frame-${frame}`); savedNmiFrames.add(frame);
+        }
+        cpu.nmi();
+      }
       nextNmi += nmiFrameLength;
       nmiFrameLength = nmiFrameLength === 357_368 ? 357_364 : 357_368;
     }
@@ -150,6 +169,6 @@ if (dspTracePath) fs.writeFileSync(dspTracePath,
 console.log(JSON.stringify({
   frame, executed: cpu.executed, masterCycle: cpu.masterCycle,
   apuAccesses: bus.apuAccessCount, address: cpu.address(), failure,
-  semanticRows, semanticSnapshot, frameStats, e1xxInstructions, pcProbes,
+  semanticRows, semanticSnapshot, frameStats, e1xxInstructions, pcProbes, pcDistribution,
 }, null, 2));
 if (failure) process.exitCode = 1;

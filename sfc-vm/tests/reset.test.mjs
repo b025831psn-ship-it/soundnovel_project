@@ -65,11 +65,27 @@ test('executes the reset table comparison loop with native-width flags', () => {
 
 test('maps the cartridge SRAM window used by the reset checksum', () => {
   const bus = new SfcBus(fixture());
-  assert.equal(bus.read8(0x700000), 0xff, 'fresh SRAM is erased');
+  assert.equal(bus.read8(0x700000), 0x60, 'fresh SRAM matches the Snes9x probe pattern');
   bus.write16(0x700800, 0x1234);
   assert.equal(bus.read16(0x700800), 0x1234);
   assert.equal(bus.read16(0xf00800), 0x1234, 'high-bank SRAM mirror');
   assert.equal(bus.events.length, 0, 'SRAM writes are not I/O events');
+});
+
+test('absolute stores use the data bank register', () => {
+  for (const [opcode, value, target] of [
+    [0x8d, 0x1234, 'a'], [0x8e, 0x1234, 'x'], [0x8c, 0x1234, 'y'], [0x9c, 0, null],
+  ]) {
+    const rom = fixture();
+    rom.set([opcode, 0xe3, 0xf6]);
+    const bus = new SfcBus(rom);
+    const cpu = new Cpu65816(bus);
+    cpu.e = false; cpu.p &= ~(0x20 | 0x10); cpu.dbr = 0x7e;
+    if (target) cpu[target] = value;
+    cpu.step();
+    assert.equal(bus.read16(0x7ef6e3), value, `opcode $${opcode.toString(16)}`);
+    assert.equal(bus.read16(0x00f6e3), 0, 'bank zero is untouched');
+  }
 });
 
 test('exposes the SPC700 IPL ready word and echoes transfer tokens', () => {
@@ -120,15 +136,15 @@ test('charges memory-speed and internal master cycles per CPU bus transaction', 
   const cpu = new Cpu65816(bus);
   cpu.step();
   assert.deepEqual(bus.apuTrace[0], {
-    masterCycle: 166 + 8 + 8 + 8,
+    masterCycle: 198 + 8 + 8 + 8,
     direction: 'r', port: 0, value: 0xaa,
   });
-  assert.equal(cpu.masterCycle, 166 + 8 + 8 + 8 + 6);
+  assert.equal(cpu.masterCycle, 198 + 8 + 8 + 8 + 6);
 });
 
 test('alternates 5A22-v2 WRAM refresh between H=538 and H=534', () => {
   const cpu = new Cpu65816(new SfcBus(fixture()));
-  cpu.advanceMaster(372); // 166 -> 538, including the 40-master refresh stall
+  cpu.advanceMaster(340); // 198 -> 538, including the 40-master refresh stall
   assert.equal(cpu.masterCycle, 578);
   assert.equal(cpu.nextWramRefresh, 1898);
   assert.equal(cpu.refreshPosition, 534);
@@ -148,10 +164,10 @@ test('places the 16-bit absolute-index penalty before the data bus read', () => 
   cpu.x = 3;
   cpu.step();
   assert.deepEqual(bus.apuTrace[0], {
-    masterCycle: 166 + 8 + 8 + 8 + 6,
+    masterCycle: 198 + 8 + 8 + 8 + 6,
     direction: 'r', port: 3, value: 0,
   });
-  assert.equal(cpu.masterCycle, 166 + 8 + 8 + 8 + 6 + 6);
+  assert.equal(cpu.masterCycle, 198 + 8 + 8 + 8 + 6 + 6);
 });
 
 test('8-bit LSR A does not shift the hidden B accumulator into A', () => {
