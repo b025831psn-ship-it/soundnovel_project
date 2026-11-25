@@ -279,14 +279,14 @@ test("2D loads its native effect id without introducing a wait", () => {
   const calls = [];
   const vm = new VM({
     banks: { 27: bank([[0x2d, 0x00, 0x00, 0x20, 0x3e]]) },
-    scene: { overlay: (request) => calls.push(request) },
+    scene: { silhouetteRemove: (request) => calls.push(request) },
   });
-  vm.ram.overlayMasks.set([0x2000, 13, 7, 0]);
+  vm.ram.silhouettes.set([0x2000, 13, 7, 0]);
   vm.step();
   assert.deepEqual(calls, [0x2000]);
   assert.equal(vm.waiting, "none");
-  assert.equal(vm.ram.overlayActive, 1);
-  assert.deepEqual([...vm.ram.overlayMasks], [0xffff, 13, 7, 0]);
+  assert.equal(vm.ram.silhouetteMode, 1);
+  assert.deepEqual([...vm.ram.silhouettes], [0xffff, 13, 7, 0]);
   vm.step();
   assert.equal(vm.halted, false);
 });
@@ -295,7 +295,7 @@ test("2D combines its high byte with the little-endian effect word", () => {
   const calls = [];
   const vm = new VM({
     banks: { 27: bank([[0x2d, 0x12, 0x56, 0x34]]) },
-    scene: { overlay: (request) => calls.push(request) },
+    scene: { silhouetteRemove: (request) => calls.push(request) },
   });
   vm.step();
   assert.deepEqual(calls, [0x4656]);
@@ -306,15 +306,15 @@ test("2D bypass conditions set only the shared update flag", () => {
     const calls = [];
     const vm = new VM({
       banks: { 27: bank([[0x2d, 0, 0x20, 0]]) },
-      scene: { overlay: (request) => calls.push(request) },
+      scene: { silhouetteRemove: (request) => calls.push(request) },
     });
     vm.ram[field] = 1;
-    vm.ram.overlayMasks[0] = 0x2000;
+    vm.ram.silhouettes[0] = 0x2000;
     vm.step();
     assert.deepEqual(calls, []);
     assert.equal(vm.ram.updatePending, 1);
-    assert.equal(vm.ram.overlayActive, 0);
-    assert.equal(vm.ram.overlayMasks[0], 0x2000);
+    assert.equal(vm.ram.silhouetteMode, 0);
+    assert.equal(vm.ram.silhouettes[0], 0x2000);
   }
 });
 
@@ -322,9 +322,18 @@ test("2D compares the native mask entries as signed halfwords", () => {
   const vm = new VM({
     banks: { 27: bank([[0x2d, 0, 0, 0x80]]) },
   });
-  vm.ram.overlayMasks[0] = 0x8000;
+  vm.ram.silhouettes[0] = 0x8000;
   vm.step();
-  assert.equal(vm.ram.overlayMasks[0], 0x8000);
+  assert.equal(vm.ram.silhouettes[0], 0x8000);
+});
+
+test("2D clears only the removed silhouette's pixels (080014DC)", async () => {
+  const { mergeSilhouette, removeSilhouette } = await import("../src/silhouette.js");
+  const buffer = new Uint8Array(4);
+  mergeSilhouette(buffer, Uint8Array.from([0x11, 0x10, 0, 0]));
+  mergeSilhouette(buffer, Uint8Array.from([0, 0x02, 0x22, 0]));
+  removeSilhouette(buffer, Uint8Array.from([0x11, 0x10, 0, 0]));
+  assert.deepEqual([...buffer], [0, 0x02, 0x22, 0]);
 });
 
 test("2F reads a little-endian request and stops the current one (0800A4CC with speed 0)", () => {
