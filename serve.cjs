@@ -75,6 +75,7 @@ const sfcRom = (() => { try { return fs.readFileSync(path.join(__dirname, 'serve
 if (sfcRom) routes.set(SFC_GAME, [path.resolve(__dirname, sfcRom), 'application/octet-stream']);
 const EDITS = path.join(__dirname, 'portrait-edits.json');
 const OUTPAINT = path.join(__dirname, 'kamaitachi-gba-kor', 'assets', 'outpaint', 'portrait');
+const OUTPAINT_CANDIDATES = path.join(__dirname, 'kamaitachi-gba-kor', 'assets', 'outpaint', 'candidates');
 const cartridges = new Set(['/AGB-AHZJ.gba', '/AGB-AKZJ.gba', SFC_GAME]);
 // Open beta: while a local, uncommitted serve.open file exists (or SOUNDNOVEL_OPEN=1), tunnel visitors
 // need no password for the hub and the GBA player (and its data and saves). Everything else (PS2 build,
@@ -191,6 +192,22 @@ http.createServer((request, response) => {
     response.writeHead(200, {'Content-Type': 'application/json'}).end(JSON.stringify(ids));
     return;
   }
+  // Other extended versions to pick from in the editor (assets/outpaint/candidates/NNN-x.png, -hd/NNN-x.webp).
+  if (url === '/art/outpaint/candidates.json') {
+    const list = {};
+    try {
+      for (const f of fs.readdirSync(OUTPAINT_CANDIDATES)) {
+        const m = /^(\d{3})-([a-z])\.png$/.exec(f);
+        if (m) (list[Number(m[1])] ??= []).push(m[2]);
+      }
+    } catch {}
+    response.writeHead(200, {'Content-Type': 'application/json', 'Cache-Control': 'no-cache'}).end(JSON.stringify(list));
+    return;
+  }
+  const candidate = /^\/art\/outpaint\/cand\/(\d{3}-[a-z]\.png)$/.exec(url);
+  if (candidate) routes.set(url, [path.join(OUTPAINT_CANDIDATES, candidate[1]), 'image/png']);
+  const candidateSharp = /^\/art\/outpaint\/cand-hd\/(\d{3}-[a-z]\.webp)$/.exec(url);
+  if (candidateSharp) routes.set(url, [path.join(OUTPAINT_CANDIDATES + '-hd', candidateSharp[1]), 'image/webp']);
   const extended = /^\/art\/outpaint\/(\d{3}\.png)$/.exec(url);
   if (extended) routes.set(url, [path.join(OUTPAINT, extended[1]), 'image/png']);
   const sharp = /^\/art\/outpaint\/hd\/(\d{3}\.webp)$/.exec(url);

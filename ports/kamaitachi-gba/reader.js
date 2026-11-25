@@ -90,6 +90,7 @@ let extendedLoading = null;
 //         the screen) or "frame" (the original whole, over a blurred enlargement of itself)
 //   shift GBA rows the picture moves (+ down) in "ai" and "frame"
 //   zoom  enlargement, 1 to 3 (cut evenly above and below)
+//   candidate  another extended version ("a", "b", ...) in "ai"
 //   crop  where the part shown across sits, 0 (left edge) to 100 (right edge); otherwise automatic
 let edits = {};
 let editVersion = 0;
@@ -118,7 +119,35 @@ function paintFrame(ctx, base, width, height) {
   const shift = Math.round((editFor(currentId)?.shift ?? 0) * scale);
   if (shift) shiftPicture(ctx, width, height, shift, scale);
 }
-const extendedFor = (screen) => screen.background?.tiles && extended.get(signature(screen.background.tiles));
+// Other extended versions of a picture (kamaitachi-gba-kor assets/outpaint/candidates, NNN-x.png with
+// candidates-hd NNN-x.webp), picked in the editor (edit.candidate = "x"); loaded when first wanted.
+const candidates = new Map(); // "id-x" -> entry, or null while loading / when missing
+function candidateFor(id, pick) {
+  const key = `${id}-${pick}`;
+  if (candidates.has(key)) return candidates.get(key);
+  candidates.set(key, null);
+  const game = window.kamaitachi;
+  const name = String(id).padStart(3, "0");
+  Promise.all([game.assets.bin(`bg/${name}.bin`), game.assets.bin(`palette/${name}.bin`)]).then(async ([tiles, palette]) => {
+    const image = new Image();
+    image.src = `/art/outpaint/cand/${name}-${pick}.png`;
+    await image.decode();
+    const canvas = Object.assign(document.createElement("canvas"), { width: 240, height: EXTENDED_HEIGHT });
+    const ctx = canvas.getContext("2d");
+    ctx.drawImage(image, 0, 0);
+    const hd = new Image();
+    hd.src = `/art/outpaint/cand-hd/${name}-${pick}.webp`;
+    const sharp = await hd.decode().then(() => hd, () => null);
+    candidates.set(key, { pixels: ctx.getImageData(0, 0, 240, EXTENDED_HEIGHT).data, raw: untoned(tiles, palette), hd: sharp });
+    editVersion++;
+  }).catch(() => {});
+  return null;
+}
+const extendedFor = (screen) => {
+  if (!screen.background?.tiles) return undefined;
+  const pick = editFor(currentId)?.candidate;
+  return (pick && candidateFor(currentId, pick)) || extended.get(signature(screen.background.tiles));
+};
 function compose(screen, base) {
   const mode = editFor(currentId)?.mode;
   if (mode === "frame") { sizeTo(EXTENDED_HEIGHT); paintFrame(pictureCtx, base, picture.width, picture.height); return EXTENDED_TOP; }
