@@ -17,11 +17,11 @@ function operandLength(row, bytes, pc) {
   const fixed = fixedLength(row); if (fixed != null) return fixed;
   const u8 = (index) => bytes[pc + index];
   switch (row?.lengthRule) {
-    case "2+2*u8(0)": return u8(0) == null ? null : 2 + 2 * u8(0);
+    case "4+2*u8(0)": return u8(0) == null ? null : 4 + 2 * u8(0);
     case "u8(0)==0?2:1": return u8(0) == null ? null : u8(0) === 0 ? 2 : 1;
     case "2+(u8(2)!=0)": return u8(2) == null ? null : 2 + Number(u8(2) !== 0);
     case "4+(u8(4)!=0)": return u8(4) == null ? null : 4 + Number(u8(4) !== 0);
-    case "2+4*u8(0)": return u8(0) == null ? null : 2 + 4 * u8(0);
+    case "6+4*u8(0)": return u8(0) == null ? null : 6 + 4 * u8(0);
     default: return null;
   }
 }
@@ -68,6 +68,14 @@ export class ScenarioVM {
         throw new ScenarioFault("unknown-operand-length", stopped, events);
       }
       const operands = [...bytes.slice(pc, pc + length)]; pc += length;
+      if (opcode === 0x13) {
+        const options = [];
+        for (let index = 2; index + 1 < operands.length; index += 2)
+          options.push({ index: options.length, target: (operands[index] << 8) | operands[index + 1] });
+        events.push({ ...event, status: "implemented", kind: "choice", optionCount: options.length,
+          mode: operands[0], flags: operands[1], options, target: null, operandLength: length, operands });
+        continue;
+      }
       events.push({ ...event, status: TOP_COMMANDS.has(opcode) ? "decoded" : "stub", kind: "command", operandLength: length, operands });
     }
     events.push({ ...base, offset: pc, kind: "terminal", reason: "record-end" }); return events;
@@ -78,7 +86,7 @@ export function opcodeStatus(primaryHandlers, sub1dHandlers, primaryLengths = []
   return {
     primary: primaryHandlers.map((handler, opcode) => ({ opcode: hex(opcode), handler,
       operandLength: fixedLength(primaryLengths[opcode]), lengthRule: primaryLengths[opcode]?.lengthRule,
-      status: opcode === 0x00 || opcode === 0x1d ? "implemented" : TOP_COMMANDS.has(opcode) ? "decoded" : "stub" })),
+      status: opcode === 0x00 || opcode === 0x1d || opcode === 0x13 ? "implemented" : TOP_COMMANDS.has(opcode) ? "decoded" : "stub" })),
     sub1d: sub1dHandlers.map((handler, opcode) => ({ opcode: hex(opcode), handler,
       operandLength: fixedLength(sub1dLengths[opcode]), lengthRule: sub1dLengths[opcode]?.lengthRule,
       status: opcode === 0x03 ? "implemented" : "stub" })),

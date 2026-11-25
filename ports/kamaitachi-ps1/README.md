@@ -39,3 +39,12 @@ record. Opcode `00` text and `1d 03` name entry are implemented. The ten most
 frequent blockers are identified separately as decoded commands until their
 state/rendering effects have native trace parity; a guessed semantic name is
 not treated as an implementation.
+
+`run()` advances through consecutive records in the selected SCE resource and
+stops when it emits a choice. Opcode `13` is decoded from handler `0x8001e3c0`
+as a choice header plus `(count + 1)` byte-swapped branch labels. Fresh play
+`run(25, 7, "enumerate")` therefore reaches the first two-option choice in
+record 8. These labels belong to the retail global SCE address space; they are
+not presented as record IDs until loader-base reverse mapping proves that
+relationship. `run-all` uses isolated-record mode so every one of the 3,912
+records is still scanned exactly once.

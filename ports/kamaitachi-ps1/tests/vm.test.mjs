@@ -24,11 +24,13 @@ test("unknown primary and sub opcodes cite handlers and stop", () => {
 test("fixed and handler-proven variable lengths let stubs continue", () => {
   const primaryLengths = Array(256);
   primaryLengths[0x0c] = { classification: "fixed", operandLength: 2 };
-  primaryLengths[0x13] = { classification: "variable", lengthRule: "2+2*u8(0)" };
+  primaryLengths[0x13] = { classification: "variable", lengthRule: "4+2*u8(0)" };
   const events = new ScenarioVM({ primaryHandlers: primary, sub1dHandlers: sub1d, primaryLengths })
-    .run(Uint8Array.of(0x0c, 1, 2, 0x13, 2, 9, 8, 7, 6, 5, 0x00, 0x00),
+    .run(Uint8Array.of(0x0c, 1, 2, 0x13, 1, 9, 8, 7, 6, 5, 0x00, 0x00),
       { resourceId: 1, recordId: 2 });
-  assert.deepEqual(events.filter((event) => event.kind === "command").map((event) => event.operandLength), [2, 6]);
+  assert.deepEqual(events.filter((event) => ["command", "choice"].includes(event.kind)).map((event) => event.operandLength), [2, 6]);
+  assert.deepEqual(events.find((event) => event.kind === "choice").options,
+    [{ index: 0, target: 0x0807 }, { index: 1, target: 0x0605 }]);
   assert.equal(events.at(-1).reason, "record-end");
 });
 
@@ -36,6 +38,6 @@ test("opcode report covers every primary and 1d sub-dispatch slot", () => {
   const report = opcodeStatus(primary, sub1d);
   assert.equal(report.primary.length, 256);
   assert.equal(report.sub1d.length, 108);
-  assert.equal(report.primary.filter((row) => row.status === "implemented").length, 2);
+  assert.equal(report.primary.filter((row) => row.status === "implemented").length, 3);
   assert.equal(report.sub1d.filter((row) => row.status === "implemented").length, 1);
 });
