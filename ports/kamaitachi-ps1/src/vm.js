@@ -1,6 +1,11 @@
 const hex = (value, width = 2) => `0x${value.toString(16).padStart(width, "0")}`;
 
 const TOP_COMMANDS = new Set([0x0c, 0x08, 0x15, 0x31, 0x53, 0x1c, 0x2f, 0x2d, 0x17]);
+const CONDITIONAL_TRANSFERS = new Set([0x0e, 0x0f, 0x24, 0x25, 0x40, 0x45, 0x54, 0x55, 0x56, 0x5d, 0x5e]);
+const labelTarget = (operands) => {
+  const label = (operands[1] << 8) | operands[0];
+  return { label, resourceId: Math.floor(label / 1000), recordId: label % 1000 };
+};
 
 export class ScenarioFault extends Error {
   constructor(reason, event, events = []) {
@@ -27,7 +32,9 @@ function operandLength(row, bytes, pc, primaryLengths = []) {
 }
 
 function nestedLength(bytes, opcodePc, primaryLengths, prefix) {
-  const opcode = bytes[opcodePc]; if (opcode == null) return null;
+  // A wrapper may end exactly at a record boundary; the nested opcode then
+  // starts the following record and the wrapper itself consumed only prefix.
+  const opcode = bytes[opcodePc]; if (opcode == null) return prefix;
   if (opcode === 0x00 || opcode === 0x17) {
     const payload = opcodePc + (opcode === 0x17 ? 2 : 1);
     let end = payload; while (end < bytes.length && bytes[end] !== 0) end++;
@@ -46,8 +53,8 @@ export class ScenarioVM {
     this.choicePolicy = choicePolicy; this.maxSteps = maxSteps;
   }
 
-  run(bytes, { resourceId, recordId }) {
-    const events = []; let pc = 0; let steps = 0; const base = { resourceId, recordId };
+  run(bytes, { resourceId, recordId, offset: startOffset = 0 }) {
+    const events = []; let pc = startOffset; let steps = 0; const base = { resourceId, recordId };
     while (pc < bytes.length) {
       if (++steps > this.maxSteps) throw new ScenarioFault("step-limit", { ...base, offset: pc, handler: "n/a" }, events);
       const offset = pc; const opcode = bytes[pc++]; const handler = this.primaryHandlers[opcode];
@@ -98,16 +105,72 @@ export class ScenarioVM {
         throw new ScenarioFault("unknown-operand-length", stopped, events);
       }
       const operands = [...bytes.slice(pc, pc + length)]; pc += length;
+      if (opcode === 0x01 || opcode === 0x02) {
+        const target = labelTarget(operands);
+        events.push({ ...event, status: "implemented", kind: opcode === 0x01 ? "jump" : "call",
+          target, returnTo: opcode === 0x02 ? { resourceId, recordId, offset: pc } : null,
+          operandLength: length, operands });
+        return events;
+      }
+      if (opcode === 0x03) {
+        events.push({ ...event, status: "implemented", kind: "jump",
+          target: { kind: "next-resource", recordId: 0 }, operandLength: length, operands });
+        return events;
+      }
+      if (opcode === 0x15) {
+        events.push({ ...event, status: "implemented", kind: "return", target: null,
+          operandLength: length, operands });
+        return events;
+      }
+      if (opcode === 0x1e) {
+        const target = labelTarget(operands);
+        events.push({ ...event, status: "implemented", kind: "branch", target,
+          fallthrough: { resourceId, recordId, offset: pc },
+          condition: { kind: "retail-condition-latch-equals", address: "0x80079296" },
+          operandLength: length, operands });
+        return events;
+      }
+      if (CONDITIONAL_TRANSFERS.has(opcode)) {
+        const target = labelTarget(operands.slice(-2));
+        events.push({ ...event, status: "implemented", kind: "branch", target,
+          fallthrough: { resourceId, recordId, offset: pc },
+          condition: { kind: "retail-flag-expression", opcode: hex(opcode),
+            operands: operands.slice(0, -2) }, operandLength: length, operands });
+        return events;
+      }
+      if (opcode === 0x3c) {
+        events.push({ ...event, status: "implemented", kind: "flag-store",
+          flag: `condition:${operands[1]}`, value: operands[0], operandLength: length, operands });
+        continue;
+      }
+      if (opcode === 0x4b) {
+        const label = labelTarget(operands);
+        events.push({ ...event, status: "implemented", kind: "flag-store",
+          flag: "next-resource", value: label.resourceId, label: label.label,
+          operandLength: length, operands });
+        continue;
+      }
       if (opcode === 0x13) {
         const options = [];
         for (let index = 2; index + 1 < operands.length; index += 2) {
-          const label = (operands[index + 1] << 8) | operands[index];
-          options.push({ index: options.length, label, target: {
-            resourceId: Math.floor(label / 1000), recordId: label % 1000,
-          } });
+          const target = labelTarget(operands.slice(index, index + 2));
+          options.push({ index: options.length, label: target.label,
+            target: { resourceId: target.resourceId, recordId: target.recordId } });
         }
         events.push({ ...event, status: "implemented", kind: "choice", optionCount: options.length,
           mode: operands[0], flags: operands[1], options, target: null, operandLength: length, operands });
+        return events;
+      }
+      if (opcode === 0x57 || opcode === 0x78 || opcode === 0xbc) {
+        const options = [];
+        const start = opcode === 0x78 ? 2 : 4;
+        for (let index = start; index + 1 < operands.length; index += 2) {
+          const target = labelTarget(operands.slice(index, index + 2));
+          options.push({ index: options.length, label: target.label,
+            target: { resourceId: target.resourceId, recordId: target.recordId } });
+        }
+        events.push({ ...event, status: "implemented", kind: "choice-table", options,
+          fallthrough: { resourceId, recordId, offset: pc }, operandLength: length, operands });
         return events;
       }
       events.push({ ...event, status: TOP_COMMANDS.has(opcode) ? "decoded" : "stub", kind: "command", operandLength: length, operands });

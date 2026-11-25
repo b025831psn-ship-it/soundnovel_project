@@ -62,3 +62,27 @@ parser causes: opcodes `30`/`32` execute a nested command (not merely an
 optional byte), and a resource-terminal zero is a boundary rather than a new
 empty text command. Handler-aware nested lengths and terminal text handling
 reduce that count to zero without inventing terminators.
+
+## Control-flow sweep
+
+The VM emits executable `jump`, `call`, `return`, `branch`, `flag-store`,
+`choice`, and `ending` records. Opcodes `01`, `02`, and `15` model the retail
+jump/call-stack/conditional-return path; the cursor-writing conditional family
+(`0e`, `0f`, `1e`, `24`, `25`, `40`, `45`, `54`–`56`, `5d`, `5e`) exposes both
+the label target and fallthrough. Opcodes `13`, `57`, `78`, and `bc` expose
+their branch tables. Wrapper commands `30`/`32` may place their nested opcode
+in the following record, which is a valid zero-extra-byte boundary rather than
+an unknown width.
+
+```sh
+npm run sweep -- /private/port-data
+```
+
+The exhaustive analysis mode starts at fresh play and also includes every SCE
+resource entry and every byte-swapped label that resolves to an existing
+`resource:record`. This represents load/save/unlock entry states without
+starting arbitrary non-label records. On the verified extraction it executes
+3,718 of 3,912 records (95.04%), emits 19 terminal ending markers, and does not
+truncate the work queue. Fresh-play-only coverage remains separately
+distinguishable through the sweep options; the 95% figure must not be reported
+as a single clean-card playthrough.

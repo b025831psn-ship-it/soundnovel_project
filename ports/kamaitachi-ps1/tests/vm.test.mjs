@@ -42,3 +42,16 @@ test("opcode report covers every primary and 1d sub-dispatch slot", () => {
   assert.equal(report.primary.filter((row) => row.status === "implemented").length, 3);
   assert.equal(report.sub1d.filter((row) => row.status === "implemented").length, 1);
 });
+
+test("control transfers expose resolved labels and return locations", () => {
+  const lengths = Array(256);
+  for (const opcode of [0x01, 0x02, 0x1e]) lengths[opcode] = { classification: "fixed", operandLength: 2 };
+  lengths[0x15] = { classification: "fixed", operandLength: 0 };
+  const vm = new ScenarioVM({ primaryHandlers: primary, sub1dHandlers: sub1d, primaryLengths: lengths });
+  const jump = vm.run(Uint8Array.of(0x01, 0xb2, 0x61), { resourceId: 25, recordId: 8 }).at(-1);
+  assert.deepEqual(jump.target, { label: 25010, resourceId: 25, recordId: 10 });
+  const call = vm.run(Uint8Array.of(0x02, 0xb1, 0x61), { resourceId: 25, recordId: 8 }).at(-1);
+  assert.deepEqual(call.returnTo, { resourceId: 25, recordId: 8, offset: 3 });
+  assert.equal(vm.run(Uint8Array.of(0x15), { resourceId: 25, recordId: 9 }).at(-1).kind, "return");
+  assert.equal(vm.run(Uint8Array.of(0x1e, 0xb2, 0x61), { resourceId: 25, recordId: 8 }).at(-1).kind, "branch");
+});
