@@ -37,7 +37,7 @@ export function createServer({ dir, maxBody = MAX_BODY, maxSlots = MAX_SLOTS, no
   const vaultFile = (id) => path.join(dir, `${id}.json`);
   const load = (id) => { try { return JSON.parse(fs.readFileSync(vaultFile(id), "utf8")); } catch { return null; } };
   const store = (id, v) => { const f = vaultFile(id); fs.writeFileSync(f + ".tmp", JSON.stringify(v)); fs.renameSync(f + ".tmp", f); };
-  const send = (res, code, body) => { res.writeHead(code, { "content-type": "application/json", "access-control-allow-origin": "*", "access-control-allow-headers": "authorization,content-type,if-match", "access-control-allow-methods": "GET,PUT,DELETE,OPTIONS" }); res.end(body === undefined ? "" : JSON.stringify(body)); };
+  const send = (res, code, body) => { res.writeHead(code, { "content-type": "application/json", "access-control-allow-origin": "*", "access-control-allow-headers": "authorization,content-type,if-match,x-vault-id", "access-control-allow-methods": "GET,PUT,DELETE,OPTIONS" }); res.end(body === undefined ? "" : JSON.stringify(body)); };
   const readBody = (req) => new Promise((resolve, reject) => {
     let n = 0; const chunks = [];
     req.on("data", (c) => { n += c.length; if (n > maxBody) { reject(Object.assign(new Error("too large"), { code: 413 })); req.destroy(); } else chunks.push(c); });
