@@ -25,7 +25,7 @@
     <!-- Before a game starts: the selected work's title card over a still from the game. -->
     <div class="marquee" id="marquee">
       <div class="still" aria-hidden="true"><img src="/art/kamaitachi-still.png" alt="" onerror="this.remove()"></div>
-      <div class="snow" aria-hidden="true"><i></i><i></i><i></i></div>
+      <canvas class="snow" id="snow" aria-hidden="true"></canvas>
       <div class="card">
         <p class="kicker"><span>GAME BOY ADVANCE</span><span>2002</span><span>춘소프트</span></p>
         <h1 class="logo" lang="ja">
@@ -142,6 +142,58 @@
     if (event.key === 't' || event.key === 'T') setTheatre(!document.body.classList.contains('theatre-mode'));
     if (event.key === 'Escape') setTheatre(false);
   });
+  // Snowfall on the title card: three depths of flakes that sway as they fall.
+  // Far flakes are small and slow, near ones large, soft and quick. Stops while a game is shown.
+  (function snowfall() {
+    const canvas = document.querySelector('#snow');
+    const ctx = canvas.getContext('2d');
+    const still = matchMedia('(prefers-reduced-motion: reduce)');
+    const layers = [
+      { share: .55, size: [1, 2.2], speed: [22, 40], alpha: [.45, .8], blur: 0 },
+      { share: .33, size: [2.2, 3.6], speed: [45, 75], alpha: [.7, .95], blur: 0 },
+      { share: .12, size: [4, 7], speed: [85, 130], alpha: [.5, .8], blur: 3 },
+    ];
+    const rand = (a, b) => a + Math.random() * (b - a);
+    let flakes = [], w = 0, h = 0, ratio = 1, last = 0, frame = 0;
+    function make(layer, y) {
+      return { layer, x: Math.random() * w, y: y ?? rand(-h, h), r: rand(...layer.size), v: rand(...layer.speed),
+        a: rand(...layer.alpha), phase: Math.random() * 6.28, sway: rand(.4, 1.4), drift: rand(8, 26) };
+    }
+    function resize() {
+      ratio = Math.min(devicePixelRatio || 1, 2);
+      w = canvas.clientWidth; h = canvas.clientHeight;
+      canvas.width = Math.round(w * ratio); canvas.height = Math.round(h * ratio);
+      const count = Math.round(Math.min(420, w * h / 2600));
+      flakes = layers.flatMap(layer => Array.from({ length: Math.round(count * layer.share) }, () => make(layer)));
+      if (still.matches) draw(0);
+    }
+    function draw(dt) {
+      ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
+      ctx.clearRect(0, 0, w, h);
+      const wind = 14;
+      for (const f of flakes) {
+        f.phase += dt * f.sway;
+        f.y += f.v * dt;
+        f.x += (wind + Math.sin(f.phase) * f.drift) * dt;
+        if (f.y - f.r > h) Object.assign(f, make(f.layer, -f.r * 2));
+        if (f.x > w + 10) f.x -= w + 20;
+        ctx.globalAlpha = f.a;
+        ctx.fillStyle = '#f4f6fb';
+        ctx.shadowColor = 'rgba(255,255,255,.9)';
+        ctx.shadowBlur = f.layer.blur;
+        ctx.beginPath(); ctx.arc(f.x, f.y, f.r, 0, 6.2832); ctx.fill();
+      }
+      ctx.globalAlpha = 1; ctx.shadowBlur = 0;
+    }
+    function tick(now) {
+      const dt = Math.min((now - (last || now)) / 1000, .05);
+      last = now;
+      if (!canvas.closest('[hidden]') && !still.matches) draw(dt);
+      frame = requestAnimationFrame(tick);
+    }
+    new ResizeObserver(resize).observe(canvas);
+    frame = requestAnimationFrame(tick);
+  })();
   window.addEventListener('hashchange', showSelection);
   showSelection();
 </script>
