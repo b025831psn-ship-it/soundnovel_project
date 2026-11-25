@@ -81,3 +81,17 @@ test("registering a code needs a token, and a code cannot be taken over", async 
   assert.equal(r.status, 401);
   t.close();
 });
+
+test("vault creation is capped per client and in total", async () => {
+  const t = await setup({ maxVaultsPerClientPerHour: 2 });
+  const make = async () => { const k = await deriveKeys(newSecret()); return (await fetch(`${t.baseUrl}/v1/vaults/${k.vaultId}`, { method: "PUT", headers: { authorization: `Bearer ${k.authToken}` } })).status; };
+  assert.equal(await make(), 201); assert.equal(await make(), 201);
+  assert.equal(await make(), 429);
+  t.clock.advance(3600_000 + 1);
+  assert.equal(await make(), 201);
+  t.close();
+  const full = await setup({ maxVaults: 1 });
+  assert.equal(await (async () => { const k = await deriveKeys(newSecret()); return (await fetch(`${full.baseUrl}/v1/vaults/${k.vaultId}`, { method: "PUT", headers: { authorization: `Bearer ${k.authToken}` } })).status; })(), 201);
+  assert.equal(await (async () => { const k = await deriveKeys(newSecret()); return (await fetch(`${full.baseUrl}/v1/vaults/${k.vaultId}`, { method: "PUT", headers: { authorization: `Bearer ${k.authToken}` } })).status; })(), 429);
+  full.close();
+});
