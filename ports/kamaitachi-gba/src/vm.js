@@ -121,6 +121,8 @@ export const SUPPRESSION = Object.freeze({
   0x62: ["77e-or-78e", "u16"],
 });
 
+export const textKey = (bank, offset) => `${bank.toString(16).padStart(2, "0")}:${offset.toString(16).padStart(4, "0")}`;
+
 export class VM {
   constructor({
     banks = {},
@@ -157,6 +159,8 @@ export class VM {
     this.skipAudioFrame = false;
     this.skipAudioIrq = false;
     this.halted = false;
+    this.pageRuns = []; // the text runs of the page being read (bank, offset of the 00, bytes)
+    this.textEdits = null; // Map textKey -> replacement bytes (text-editor.js)
     this.waiting = "none";
     this.unimplemented = new Set();
     this.ram = {
@@ -253,15 +257,25 @@ export class VM {
   // opcode 00 through the native handler table before continuing audio work.
   followingText() {
     if (this.banks[this.bank][this.offset] !== 0x00) return "none";
+    const runBank = this.bank, runOffset = this.offset;
     this.offset++;
-    const raw = this.textBytes();
+    const original = this.textBytes();
+    const raw = this.textRun(runBank, runOffset, original);
     if (this.ram.choiceActive && this.collectingChoice !== undefined) {
       this.text?.collectChoice?.(this.collectingChoice, raw);
       return "none";
     }
     if (this.choiceLabel(raw)) return "none";
     this.writes.push(`inline-text=${raw.length}`);
+    if (!this.text?.fragments?.length) this.pageRuns = [];
+    this.pageRuns.push({ bank: runBank, offset: runOffset, raw: original });
     return this.text?.feed?.(raw) ?? "none";
+  }
+
+  // A text run as shown: the text editor's replacement for the run at bank:offset (the 00 opcode),
+  // if there is one; the script's bytes and offsets are unchanged either way.
+  textRun(bank, offset, raw) {
+    return this.textEdits?.get(textKey(bank, offset)) ?? raw;
   }
 
   // While a choice collects its entries, a text run that opens with 'v' n selects entry n's
@@ -362,8 +376,9 @@ export class VM {
     this.writes = [];
     switch (opcode) {
       case 0x00: {
-        const raw = this.textBytes();
-        args.push(...raw);
+        const original = this.textBytes();
+        args.push(...original);
+        const raw = this.textRun(startBank, startOffset, original);
         if (this.ram.choiceActive && this.collectingChoice !== undefined)
           this.text?.collectChoice?.(this.collectingChoice, raw);
         else if (this.choiceLabel(raw)) {
@@ -373,7 +388,8 @@ export class VM {
           // A page's first text: what a bookmark records (0800A838 keeps the page start).
           // A page that ended in 'p' + 'g' is only cleared here, so clear it before the check.
           this.text?.resumed?.();
-          if (!this.text?.fragments?.length) this.onPageStart?.(startBank, startOffset);
+          if (!this.text?.fragments?.length) { this.onPageStart?.(startBank, startOffset); this.pageRuns = []; }
+          this.pageRuns.push({ bank: startBank, offset: startOffset, raw: original });
           this.waiting = this.text?.feed(raw) ?? "none";
         }
         break;
