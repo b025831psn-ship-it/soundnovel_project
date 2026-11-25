@@ -108,6 +108,8 @@ export const SUPPRESSION = Object.freeze({
   0x2f: ["77e-or-78e", "u16"], 0x30: ["77e-or-78e", "u16"], 0x31: ["77e-or-78e", "u16,u16"],
   0x32: ["77e-or-78e", "u16,u16"], 0x34: ["77e-or-78e", "u16"], 0x35: ["77e-or-78e", "u8,u16"],
   0x37: ["77e-or-78e", "u16"], 0x46: ["78e", "u8"], 0x47: ["78e", "u8"], 0x48: ["78e", "u8"],
+  0x2b: ["77e-or-78e", "u16,u8"], 0x3f: ["77e-or-78e", "u8"], 0x50: ["77e-or-78e", "u16"],
+  0x64: ["77e-or-78e", ""],
   0x4d: ["77e-or-78e", "u8"], 0x51: ["77e-or-78e", "u8,u16"],
   0x52: ["77e-or-78e", ""], 0x53: ["77e-or-78e", "u16"],
   0x54: ["77e", "u8,u16,u16"], 0x55: ["77e", "u8,u16,u16"],
@@ -873,6 +875,43 @@ export class VM {
         args.push(this.word());
         break;
       case 0x4c:
+        break;
+      case 0x2b: {
+        // 080049A0 -> 080065A8: the slot's brightness maximum becomes level << 8 (level at most
+        // 0xFF) and the slot stands at half of it at once.
+        const level = Math.min(this.word(), 0xff);
+        const slot = this.byte();
+        args.push(level, slot);
+        if (this.suppressed(opcode)) break;
+        const effect = this.ram.brightness[slot];
+        if (effect) {
+          effect.maximum = level << 8;
+          effect.current = effect.target = level << 7;
+          effect.duration = 0;
+          this.scene?.brightness?.(slot, effect.current, effect.maximum);
+        }
+        this.ram.updatePending = 1;
+        break;
+      }
+      case 0x3f: {
+        // 0800516C: unless 02000380 is set (続ける on the screen after an ending, 0800562C), the
+        // seven bytes after the operand are skipped; the flag is cleared either way.
+        args.push(this.byte());
+        if (this.suppressed(opcode)) break;
+        if (!this.ram.continueChosen) this.offset += 7;
+        this.ram.continueChosen = 0;
+        break;
+      }
+      case 0x50:
+        // 08005880: one word and no effect outside the suppressed path.
+        args.push(this.word());
+        this.suppressed(opcode);
+        break;
+      case 0x64:
+        // 08005F68 -> 0800A384: the music stops.
+        if (this.suppressed(opcode)) break;
+        this.sound.stop?.(0);
+        this.syncAudio();
         break;
       case 0x4d: {
         // 080057EC: 020007A5, whether 2E (set) or 09 (clear) shows the silhouette layer.
