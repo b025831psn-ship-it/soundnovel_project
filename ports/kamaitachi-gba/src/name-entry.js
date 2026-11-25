@@ -88,7 +88,9 @@ export class NameEntry {
     // The screen is off while the picture decodes and the grid is built.
     boot.layer = null;
     boot.blank = true;
-    for (let n = 0; n < BUILD_FRAMES; n++) yield;
+    // The web version skips this loading pause unless asked for the original timing.
+    const build = boot.originalLoadTiming === false ? 1 : BUILD_FRAMES;
+    for (let n = 0; n < build; n++) yield;
     boot.showPicture(NAME_PICTURES[mode === 2 ? 1 : 0]);
     boot.setBrightness(1, 0x8000); // 080065A8(1, 0x100)
     boot.blank = false;
