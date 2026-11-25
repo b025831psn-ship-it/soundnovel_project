@@ -22,8 +22,8 @@ const routes = new Map([
   ['/art/kamaitachi-still.png', [path.join(__dirname, 'kamaitachi-gba-kor/assets/bg/002.png'), 'image/png']],
   // Title logo: the official clear logo traced to vector paths and laid out on one line (kamaitachi-gba-kor/assets/hub).
   ['/art/kamaitachi-logo.svg', [path.join(__dirname, 'kamaitachi-gba-kor/assets/hub/logo-row.svg'), 'image/svg+xml']],
-  // Outpainting pilot: five opening pictures extended to 240x360 for upright phones (kamaitachi-gba-kor assets/outpaint-pilot/v2).
-  ...['001', '002', '009', '201', '202'].map((id) => ['/art/outpaint/' + id + '.png', [path.join(__dirname, 'kamaitachi-gba-kor', 'assets', 'outpaint-pilot', 'v2', id + '-portrait.png'), 'image/png']]),
+  // Outpainting pilot: five opening pictures extended to 240x360 for upright phones (kamaitachi-gba-kor assets/outpaint-pilot/v3).
+  ...['001', '002', '009', '201', '202'].map((id) => ['/art/outpaint/' + id + '.png', [path.join(__dirname, 'kamaitachi-gba-kor', 'assets', 'outpaint-pilot', 'v3', id + '-portrait.png'), 'image/png']]),
   // Cover art for the works list: each work's package front, cropped to 3:2 (kamaitachi-gba-kor/assets/hub/covers).
   ...['higanbana', 'otogirisou', 'machi', 'majo', 'yakouchuu', 'yakouchuu2', 'zakuro', 'anubis'].map(slug =>
     ['/art/covers/' + slug + '.jpg', [path.join(__dirname, 'kamaitachi-gba-kor', 'assets', 'hub', 'covers', slug + '.jpg'), 'image/jpeg']]),
