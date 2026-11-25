@@ -28,6 +28,7 @@ export class CPU {
     this.cycles = 0;
     this.stopped = false;
     this.waiting = false;
+    this.interruptMasterAdjustment = 0;
 
     // Ring buffer of recently executed instructions, used to print a trace
     // when the CPU hits an unrecoverable error (e.g. invalid BRK vector).
@@ -137,6 +138,7 @@ export class CPU {
     // Clear pending interrupts and state flags
     this.nmiPending = false;
     this.irqPending = false;
+    this.interruptMasterAdjustment = 0;
     this.stopped = false;
     this.waiting = false;
     this.A = 0; this.X = 0; this.Y = 0;
@@ -197,6 +199,10 @@ export class CPU {
       this.nmiPending = false;
       this.waiting = false; // Wake up from WAI
       this.cycles += this.P.E ? 7 : 8;
+      // IRQ/NMI start with an opcode-fetch-style I/O cycle: MemSpeed (8)
+      // plus one internal CPU cycle (6). The integer CPU-cycle total accounts
+      // for 12 of those master clocks, leaving a two-master-clock adjustment.
+      this.interruptMasterAdjustment += 2;
   }
   
   irq() {
@@ -253,6 +259,7 @@ export class CPU {
       this.irqPending = false;
       this.waiting = false; 
         this.cycles += this.P.E ? 7 : 8;
+        this.interruptMasterAdjustment += 2;
   }
 
   checkInterrupts() {
@@ -291,6 +298,15 @@ export class CPU {
             return 1; // Consume 1 cycle while waiting
         }
     }
+
+    // Interrupt entry is its own instruction boundary. The hardware samples a
+    // pending NMI before fetching the next opcode; do not execute that opcode
+    // and append the interrupt sequence to its cycles. This also matches the
+    // Snes9x main loop, which calls S9xOpcode_NMI before S9xTrace/the fetch.
+    if (this.nmiPending || (this.irqPending && !this.P.I)) {
+        this.checkInterrupts();
+        return this.cycles - prevCycles;
+    }
     
     // Handle Stop State (STP)
     if (this.stopped) {
@@ -298,8 +314,6 @@ export class CPU {
       return this.cycles - prevCycles; // Stuck strictly, but time still advances
     }
     
-    // Interrupts are checked after execute() below (65816: NMI sampled at END of instruction)
-
     // this.debugTrace(); // Uncomment if needed
 
     const opPC = this.PC;
@@ -400,9 +414,6 @@ export class CPU {
     this.cycles++; 
 
     this.execute(opcode, opPC, opPB);
-
-    // Check interrupts AFTER instruction completes (65816: NMI edge-triggered, sampled at end of instruction)
-    this.checkInterrupts();
 
     return this.cycles - prevCycles;
   }

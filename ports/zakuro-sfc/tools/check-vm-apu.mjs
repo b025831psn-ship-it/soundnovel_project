@@ -88,7 +88,7 @@ while ((!mismatch || keepRunning) && !vm.cpu.stopped && instructions < maxInstru
     insideNmi = true;
     if (nmiTrace) {
       const field = scanlineTiming(vm.bus.clock.master).field;
-      if (field >= 71 && field <= 204) nmiTrace.write(`${field}\t${vm.bus.clock.master}\t${pc.toString(16).padStart(6, '0')}\n`);
+      if (field >= 71 && field <= 316) nmiTrace.write(`${field}\t${vm.bus.clock.master}\t${pc.toString(16).padStart(6, '0')}\n`);
     }
   }
   if (instructionTrace && vm.bus.clock.master >= instructionTraceStart && vm.bus.clock.master <= instructionTraceEnd) {

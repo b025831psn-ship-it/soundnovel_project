@@ -51,7 +51,14 @@ cycles, with a 40-cycle current delta and 80-cycle maximum. Optional
 `ZAKURO_VM_STATE_TRACE`, `ZAKURO_VM_NMI_TRACE`, `ZAKURO_VM_KEEP_RUNNING`, and
 `ZAKURO_VM_STOP_MASTER` settings let the checker capture state across a mismatch.
 The comparator still fails at the first semantic mismatch by default so timing
-cannot be hidden by resynchronizing the trace.
+cannot be hidden by resynchronizing the trace. A field-by-field NMI comparison
+then exposed a two-master-clock interrupt-entry shortfall: the native CPU's
+first interrupt I/O cycle is an 8-master opcode fetch plus a 6-master internal
+cycle, while the VM's integer CPU-cycle accounting had supplied only 12 master
+clocks. NMI/IRQ now enter at a separately scheduled opcode boundary (VBlank
+HC=12, NMITIMEN edge +6) and carry the remaining two master clocks. This gets
+past row 66,428 and raises the strict prefix to 523,770 rows; the next mismatch
+is the known one-field transition at reference frame 403.
 
 The private `port-data/trace/input.tsv` contains all 3,713 native controller
 frames through the first choice. `readInputTrace()` feeds each VBlank sample to
