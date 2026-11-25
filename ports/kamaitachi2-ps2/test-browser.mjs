@@ -20,7 +20,7 @@ await page.route('**/*', route => {
   requests.add(url.href);
   const local = url.origin === site.origin && url.pathname.startsWith(site.pathname);
   const relative = url.pathname.slice(site.pathname.length);
-  const resource = /^(?:|index\.html|player\.css|(?:player|render|names|sn4)\.js|favicon\.ico|assets\/[\w.-]+\.(?:json|png|mp4|ogg|wav))$/.test(relative);
+  const resource = /^(?:|index\.html|player\.css|(?:player|render|names|sn4|music)\.js|favicon\.ico|assets\/[\w.-]+\.(?:json|png|mp4|ogg|wav))$/.test(relative);
   if (local && resource) return route.continue();
   unexpected.push(url.href);
   return route.abort();

@@ -167,7 +167,7 @@ def prepare(image, output):
         for file in stage.iterdir():
             if file.suffix in {".mp4", ".png", ".ogg", ".json"} or file.name in {"move.wav", "confirm.wav", "cancel.wav"}:
                 os.replace(file, assets / file.name)
-    for filename in ("index.html", "player.css", "player.js", "render.js", "names.js", "sn4.js"):
+    for filename in ("index.html", "player.css", "player.js", "render.js", "names.js", "sn4.js", "music.js"):
         shutil.copyfile(Path(__file__).with_name(filename), output / filename)
 
 

@@ -1,6 +1,7 @@
 import { DirectionRepeat, NameEditor, keyboardGroups } from './names.js';
 import { Screen } from './render.js';
 import { Sn4Vm } from './sn4.js';
+import { LoopingMusic } from './music.js';
 
 const canvas = document.querySelector('canvas');
 const movie = document.querySelector('#movie');
@@ -8,12 +9,14 @@ const cover = document.querySelector('#cover');
 const start = document.querySelector('#start');
 const status = document.querySelector('#status');
 const asset = name => new URL('assets/' + name, import.meta.url).href;
-const music = new Audio();
 // L= comments in the Special Box Vorbis tracks, in 48 kHz PCM frames.
 const loopFrames = {
   'k1a001.ogg': 1017889, 'k1a004.ogg': 36359, 'k2h002.ogg': 461348,
   'k2h003.ogg': 863143, 'k2h017.ogg': 863622, 'k2t002.ogg': 475399,
 };
+const music = new LoopingMusic({
+  asset, loopFrames, onBlocked: () => { status.textContent = '오디오를 재생하려면 화면을 눌러 주세요.'; },
+});
 const cues = Object.fromEntries(['confirm','cancel','move'].map(name => [name, new Audio(asset(name + '.wav'))]));
 const saveKey = 'soundnovel.slps25132.opening.v1';
 let saved = readSave();
@@ -81,15 +84,8 @@ function announce() {
   status.textContent = userNotice || label;
 }
 
-function playMusic(file) {
-  if (music.src === asset(file) && !music.paused) return;
-  music.src = asset(file);
-  music.onended = () => {
-    if (!music.ended) return;
-    music.currentTime = (loopFrames[file] ?? 0) / 48000;
-    music.play().catch(() => { status.textContent = '오디오를 재생하려면 화면을 눌러 주세요.'; });
-  };
-  music.play().catch(() => { status.textContent = '오디오를 재생하려면 화면을 눌러 주세요.'; });
+function playMusic(file, options) {
+  music.play(file, options);
 }
 
 function applyScenePack(name) {
@@ -97,14 +93,13 @@ function applyScenePack(name) {
   if (!command) return;
   if (command.image) sn4Style.scene = command.image;
   if (command.music?.operation === 0x14) {
-    music.volume = command.music.volume / 100;
-    playMusic(command.music.file);
-  } else if (command.music?.operation === 0x15) stopMusic();
+    const { file, volume, fadeFrames } = command.music;
+    playMusic(file, {volume, fadeFrames});
+  } else if (command.music?.operation === 0x15) stopMusic({fadeFrames:command.music.fadeFrames});
 }
 
-function stopMusic() {
-  music.onended = null;
-  music.pause();
+function stopMusic(options) {
+  music.stop(options);
 }
 
 function cue(name) {
@@ -730,6 +725,7 @@ function fail(message) {
 
 const keys = {ArrowLeft:'left',ArrowRight:'right',ArrowUp:'up',ArrowDown:'down',Enter:'circle',
   Space:'start',KeyX:'circle',KeyZ:'cross',Escape:'cross',KeyA:'square',KeyS:'triangle',KeyQ:'l1',KeyW:'r1',Digit2:'l2'};
+for (const type of ['pointerdown', 'keydown']) addEventListener(type, () => music.unlock(), {capture:true});
 document.addEventListener('keydown', e => {
   const action = keys[e.code];
   if (!action || e.altKey || e.ctrlKey || e.metaKey || scene === 'loading' || scene === 'error') return;
