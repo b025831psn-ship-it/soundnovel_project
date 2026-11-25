@@ -76,11 +76,14 @@ if (sfcRom) routes.set(SFC_GAME, [path.resolve(__dirname, sfcRom), 'application/
 const OUTPAINT = path.join(__dirname, 'kamaitachi-gba-kor', 'assets', 'outpaint', 'portrait');
 const cartridges = new Set(['/AGB-AHZJ.gba', '/AGB-AKZJ.gba', SFC_GAME]);
 // Open beta: while a local, uncommitted serve.open file exists (or SOUNDNOVEL_OPEN=1), tunnel visitors
-// need no password. Cartridges stay blocked and pages ask search engines not to index them.
+// need no password for the hub and the GBA player (and its data and saves). Everything else (PS2 build,
+// SFC pages) keeps the password, cartridges stay blocked, and pages ask search engines not to index them.
 const openBeta = () => process.env.SOUNDNOVEL_OPEN === '1' || fs.existsSync(path.join(__dirname, 'serve.open'));
+const OPEN_PREFIXES = ['/ports/kamaitachi-gba/', '/kamaitachi-gba-kor/', '/shared/', '/art/', '/play/'];
+const openPath = (url) => ['/', '/style.css', '/games.js', '/index.html'].includes(url) || OPEN_PREFIXES.some(prefix => url.startsWith(prefix));
 function allowedFromOutside(request, response, url) {
   if (!['cf-connecting-ip', 'x-forwarded-for', 'x-forwarded-host'].some(name => name in request.headers)) return true;
-  if (openBeta()) {
+  if (openBeta() && openPath(url)) {
     if (cartridges.has(url)) { response.writeHead(404).end(); return false; }
     response.setHeader('X-Robots-Tag', 'noindex, nofollow');
     return true;
