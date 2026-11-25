@@ -120,15 +120,9 @@ export function normalizeStory(raw) {
     ? [n.question, ...n.options.map((o) => o.label)]
     : n.pages.flat()).some((t) => t.ja));
 
-  // Optional, data-driven name slots. The runtime owns no game-specific names.
-  // String values remain compatible with schema v1; labels and limits may be
-  // supplied separately without embedding original game data in the player.
-  const labels = raw.nameLabels && typeof raw.nameLabels === 'object' ? raw.nameLabels : {};
-  const limits = raw.nameMaxLength && typeof raw.nameMaxLength === 'object' ? raw.nameMaxLength : {};
+  // Optional default names shown on the new-game screen, e.g. { "hero": "토오루", "heroine": "마리" }.
   const names = raw.names && typeof raw.names === 'object'
-    ? Object.entries(raw.names).flatMap(([id, value]) => (typeof value === 'string' && value
-      ? [{ id, label: String(labels[id] || id), value, maxLength: Math.max(1, Number(limits[id]) || 8) }]
-      : []))
+    ? Object.values(raw.names).filter((v) => typeof v === 'string' && v)
     : [];
 
   return {

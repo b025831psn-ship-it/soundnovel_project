@@ -3,7 +3,7 @@
 //   Without an argument it uses data/sample.ko.json.
 //   Requires Playwright (`npm i -D playwright` or a global install).
 import http from 'node:http';
-import { access, readFile } from 'node:fs/promises';
+import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createRequire } from 'node:module';
@@ -59,11 +59,7 @@ const logItems = () => page.locator('.wp-log-list li').allTextContents();
 let failures = 0;
 const check = (ok, msg) => { console.log(`${ok ? 'PASS' : 'FAIL'} ${msg}`); if (!ok) failures++; };
 
-let executablePath = process.env.PLAYWRIGHT_CHROMIUM_PATH;
-if (!executablePath) {
-  try { await access('/usr/bin/chromium'); executablePath = '/usr/bin/chromium'; } catch { /* use Playwright's browser */ }
-}
-const browser = await chromium.launch(executablePath ? { executablePath } : {});
+const browser = await chromium.launch();
 const page = await browser.newPage();
 const texts = () => page.locator('.wp-text p').allTextContents();
 const scene = () => page.locator('.wp-scene').textContent();
@@ -134,9 +130,7 @@ for (const [i, how] of [[0, 'click'], [1, 'keys']]) {
       check(await langBtn.isHidden(), '원문이 없는 데이터에서는 언어 전환 버튼을 숨김');
     }
     const saved = await page.evaluate((k) => JSON.parse(localStorage.getItem(k)), `soundnovel.webPlayer.${story.gameId}`);
-    check(saved && saved.gameId === story.gameId && saved.schemaVersion === story.schemaVersion && saved.node === opts[1].to
-      && saved.page * 1000 + saved.line > 0 && Object.keys(saved.names || {}).length === Object.keys(story.names || {}).length,
-    `저장 내용에 이름 상태 포함: ${JSON.stringify(saved)}`);
+    check(saved && saved.gameId === story.gameId && saved.schemaVersion === story.schemaVersion && saved.node === opts[1].to && saved.page * 1000 + saved.line > 0, `저장 내용: ${JSON.stringify(saved)}`);
     // Save slots: save here to slot 1, move on, then load slot 1 back.
     await page.locator('.wp-saves-open').click();
     check(await page.locator('.wp-slot').count() === 3 && await page.locator('.wp-slot-load').first().isDisabled(), '저장 칸 3개, 빈 칸은 불러오기 비활성');
@@ -203,16 +197,8 @@ for (const [i, how] of [[0, 'click'], [1, 'keys']]) {
   await page.locator('.wp-menu-item', { hasText: '새 게임' }).click();
   const names = Object.values(story.names || {}).filter((v) => typeof v === 'string' && v);
   if (names.length) {
-    const inputs = [];
-    for (let i = 0; i < names.length; i++) {
-      const input = page.locator('.wp-name-input');
-      inputs.push(await input.inputValue());
-      await input.fill(`${names[i]}${i + 1}`);
-      await page.locator('.wp-menu-item', { hasText: i + 1 < names.length ? '다음' : '결정' }).click();
-    }
-    check(JSON.stringify(inputs) === JSON.stringify(names), `새 게임: 이름 기본값을 순서대로 편집 (${inputs.join(' / ')})`);
-    const savedNames = await page.evaluate((k) => JSON.parse(localStorage.getItem(k)).names, `soundnovel.webPlayer.${story.gameId}`);
-    check(JSON.stringify(Object.values(savedNames)) === JSON.stringify(names.map((n, i) => `${n}${i + 1}`)), '주인공과 파트너 이름이 진행 상태에 저장됨');
+    check((await page.locator('.wp-menu-names').textContent()) === names.join(' · '), `새 게임: 기본 이름 표시 (${names.join(' · ')})`);
+    await page.locator('.wp-menu-item', { hasText: '기본 이름으로 시작' }).click();
   }
   check((await page.locator('.wp-question').textContent()) === question && await page.evaluate(() => document.activeElement?.classList.contains('wp-option')), '새 게임은 첫 선택지부터, 첫 선택지에 포커스');
 }
