@@ -82,7 +82,14 @@ canvas.addEventListener("pointerdown", (event) => {
   event.stopImmediatePropagation(); // the shell's "tap = A" must not also fire
   sound.resume();
 }, { capture: true });
-window.kamaitachi = { vm, screen, assets, font, input, sound, page, boot, tap };
+// The player's menu icon (touch screens have no R key): the same as pressing R, taken on the next
+// frame. `menuAvailable` and the "kamaitachi:menu" event (detail.available) tell the icon when R
+// would open the menu: in the game proper, at a finished page waiting for A.
+let menuRequested = false;
+let menuAvailable = false;
+const openMenu = () => { if (!menuAvailable) return false; menuRequested = true; sound.resume(); return true; };
+window.kamaitachi = { vm, screen, assets, font, input, sound, page, boot, tap, openMenu,
+  get menuAvailable() { return menuAvailable; } };
 
 let last = performance.now();
 let accumulated = 0;
@@ -95,7 +102,8 @@ function loop(now) {
     if (pressed("UP")) vm.moveChoice(-1);
     if (pressed("DOWN")) vm.moveChoice(1);
     // R at a page wait opens the in-game menu (0800C9xx): 移動, オプション, セーブ.
-    if (pressed("R") && vm.waiting === "click" && !page.typing) boot.openMenu();
+    if ((pressed("R") || menuRequested) && vm.waiting === "click" && !page.typing) boot.openMenu();
+    menuRequested = false;
     if (pressed("A") && ((vm.waiting === "click" && !page.typing) || vm.waiting === "choice")) vm.resume();
     // KEYINPUT bits newly pressed this frame, for the native screens (020006E4).
     let trigger = 0;
@@ -112,6 +120,11 @@ function loop(now) {
       if (input.pressed(key) || (key === "A" && tapA)) previous.add(key); else previous.delete(key);
     }
     tapA = false;
+    const available = Boolean(vm.ram.inGame) && vm.waiting === "click" && !page.typing && !boot.active;
+    if (available !== menuAvailable) {
+      menuAvailable = available;
+      window.dispatchEvent(new CustomEvent("kamaitachi:menu", { detail: { available } }));
+    }
     accumulated -= 1000 / 60;
   }
   requestAnimationFrame(loop);
