@@ -6,7 +6,9 @@ export async function createSound(dataDir) {
     fetch(new URL('m4a.json', dataDir)).then((r) => r.json()),
     fetch(new URL('m4a.bin', dataDir)).then((r) => r.arrayBuffer()),
   ]);
-  const ctx = new AudioContext();
+  // 'playback' asks for larger output buffers: the game's sound is timed by its own frames, and a
+  // few more milliseconds of latency keep a busy phone from running dry (heard as crackling).
+  const ctx = new AudioContext({ latencyHint: 'playback' });
   await ctx.audioWorklet.addModule(new URL('./worklet.js', import.meta.url));
   const node = new AudioWorkletNode(ctx, 'm4a-player', { outputChannelCount: [2] });
   // Player volume outside the game (the cartridge's own mixing is untouched inside the worklet).
