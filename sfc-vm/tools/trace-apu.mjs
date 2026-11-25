@@ -76,8 +76,9 @@ cpu = new Cpu65816(bus, { traceLimit: 0 });
 const targetFrame = Number(targetArg);
 const instructionLimit = Number(limitArg);
 let nextFrame = 1_368;
-let nextNmi = 306_904;
+let nextNmi = 306_912; // line 225 plus Snes9x NMITriggerPos 6+6
 let frameLength = 357_368;
+let nmiFrameLength = 357_368;
 let e1xxInstructions = 0;
 const frameStats = {};
 const parseHexCsv = (text) => text ? text.split(',').map((value) => Number.parseInt(value, 16)) : [];
@@ -125,7 +126,8 @@ try {
         : (frame > 300 && frame % 90 < 2 ? 0x0080 : 0);
       bus.setController1(buttons);
       if (bus.io[0x4200 - 0x2000] & 0x80) cpu.nmi();
-      nextNmi += frameLength;
+      nextNmi += nmiFrameLength;
+      nmiFrameLength = nmiFrameLength === 357_368 ? 357_364 : 357_368;
     }
     if (cpu.masterCycle >= pendingNmiAt) {
       pendingNmiAt = Infinity;
