@@ -2,6 +2,7 @@
 // through four ports. `cpuWrite/cpuRead` are the $2140-$2143 view.
 import { SPC700 } from './spc700.js';
 import { SDSP } from './sdsp.js';
+import { IplHle } from './ipl-hle.js';
 
 export const SPC_CLOCK_HZ = 1024000;
 export const SAMPLE_RATE = 32000;
@@ -26,13 +27,14 @@ export class APU {
     return this.cpu.uploadRecords(records);
   }
 
-  // Power-on with a local 64-byte IPL image: the CPU's own upload then runs through the
-  // ports. Measured on the Snes9x trace with master clock 0 = SPC time 0: the S-DSP runs
+  // Power-on; the CPU's own upload then runs through the ports. With a local 64-byte IPL
+  // image the SPC700 runs it; without one (the web build) ipl-hle.js stands in for it. Measured on the Snes9x trace with master clock 0 = SPC time 0: the S-DSP runs
   // from 0, the timer dividers from 1 and the SPC700 core from 3 (`coreDelay`, which
   // MasterLink applies). With this, every CPU read from reset to frame 5700 and the PCM
   // capture match, and the driver starts at SPC time 621,677 as `boot()` assumes.
-  powerOn(ipl) {
-    this.cpu.loadIplImage(ipl);
+  powerOn(ipl = null) {
+    if (ipl) this.cpu.loadIplImage(ipl);
+    else { this.cpu.hle = new IplHle(); this.cpu.reset(); }
     const cb = this.dsp.onSample; this.dsp.onSample = null;
     this.dsp.tick(APU.CORE_DELAY);
     this.dsp.onSample = cb;

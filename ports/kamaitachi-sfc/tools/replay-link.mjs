@@ -46,7 +46,7 @@ function replayFromReset({ ports, apu, ipl, portLog, lags, progress, limit }) {
   const dspLog = [];
   if (portLog) apu.cpu.onPortWrite = (t, p, v) => portLog.push([t, p, v]);
   apu.cpu.onDspWrite = (t, r, v) => { if (dspLog.length < 4) dspLog.push([t, r, v]); };
-  apu.powerOn(ipl);
+  apu.powerOn(ipl === 'hle' ? null : ipl);
   const link = new MasterLink(apu, lags);
   let reads = 0, bad = 0, firstBad = null;
   const n = Math.min(ports.length, limit);
@@ -68,7 +68,7 @@ if (import.meta.url === `file://${process.argv[1]}`) {
     records: readIplRecords(readFileSync(rom)),
     ports: parseTsv(readFileSync(portsPath, 'utf8')),
     dsp: parseTsv(readFileSync(dspPath, 'utf8')),
-    progress: !!process.env.PROGRESS, ipl: process.env.IPL ? readFileSync(process.env.IPL) : null, lags: process.env.LAGS ? JSON.parse(process.env.LAGS) : {},
+    progress: !!process.env.PROGRESS, ipl: process.env.IPL === 'hle' ? 'hle' : process.env.IPL ? readFileSync(process.env.IPL) : null, lags: process.env.LAGS ? JSON.parse(process.env.LAGS) : {},
   });
   console.log(JSON.stringify(r));
 }

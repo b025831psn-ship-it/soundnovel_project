@@ -41,6 +41,7 @@ export class SPC700 {
   constructor({ dsp = new DspRegisters(), onDspWrite = null, onPortWrite = null } = {}) {
     this.ram = new Uint8Array(0x10000);
     this.ipl = null;            // 64 bytes when a local image is loaded
+    this.hle = null;            // boot ROM stand-in (ipl-hle.js) when there is no image
     this.dsp = dsp;
     this.onDspWrite = onDspWrite;   // (clock, reg, value) for trace comparison
     this.onPortWrite = onPortWrite; // (clock, port, value)
@@ -208,6 +209,7 @@ export class SPC700 {
   step() {
     if (this.stopped) { this.tick(2); return 2; }
     this.dspDone = 0; this.timerDone = 0;
+    if (this.hle && !this.hle.done) { const c = this.hle.step(this); this.tick(c); return c; }
     const inIpl = this.ipl !== null && this.pc >= 0xffc0 && (this.control & 0x80);
     const op = this.fetch();
     this.curOp = op;
