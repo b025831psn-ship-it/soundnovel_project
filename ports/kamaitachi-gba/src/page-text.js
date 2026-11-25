@@ -6,7 +6,9 @@ import { ObjTextSurface } from "./obj-text.js";
 
 // Shift-JIS for the default names {name:1} and {name:2}.
 const NAMES = { 1: [0x93, 0xa7], 2: [0x90, 0x5e, 0x97, 0x9d] };
-const COLORS = { 1: [0, 0, 0], 2: [255, 255, 255] };
+// OBJ colors: 1 outline, 2 white text, 4 the light blue of C4 (measured on mGBA as BGR555 22,22,31).
+const COLORS = { 1: [0, 0, 0], 2: [255, 255, 255], 4: [181, 181, 255] };
+const TEXT_COLOR = { 0: 2, 4: 4 };
 
 export class PageText {
   constructor(screen, font, text) {
@@ -23,17 +25,19 @@ export class PageText {
   // Glyph positions for the page collected so far.
   place(fragments) {
     const glyphs = [];
-    let x = 8, y = 11;
+    let x = 8, y = 11, color = 2;
     const put = (encoded) => {
       const index = this.font.find(encoded);
       const width = index < 0 ? 8 : this.font.glyph(index).width;
-      const advance = encoded === 0x8141 || encoded === 0x8142 ? 8 : width;
+      // 、。 advance 8; the ideographic space advances 2 (mGBA: 「は　　　透」 leaves 6 pixels).
+      const advance = encoded === 0x8141 || encoded === 0x8142 ? 8 : encoded === 0x8140 ? 2 : width;
       if (x >= 220) { x = 8; y += 14; }
-      glyphs.push({ encoded, x, y });
+      glyphs.push({ encoded, x, y, color });
       x += advance;
     };
     for (const fragment of fragments) {
       if (fragment === "\n") { x = 8; y += 14; continue; }
+      if (fragment.color !== undefined) { color = TEXT_COLOR[fragment.color] ?? 2; continue; }
       if (typeof fragment === "string") {
         // TextWindow gives the name, or {name:n} with n the raw argument byte ('1' = 0x31).
         let id = Number(fragment.match(/^\{name:(\d+)\}$/)?.[1] ?? Object.keys(this.text.names).find((k) => this.text.names[k] === fragment));
@@ -68,7 +72,7 @@ export class PageText {
     this.base = screen.base;
     this.drawn = this.shown;
     const surface = new ObjTextSurface();
-    for (const glyph of this.layout.slice(0, this.shown)) surface.glyph(this.font, glyph.encoded, glyph.x, glyph.y, 2);
+    for (const glyph of this.layout.slice(0, this.shown)) surface.glyph(this.font, glyph.encoded, glyph.x, glyph.y, glyph.color);
     const data = screen.image.data;
     data.set(screen.base);
     for (let pixel = 0; pixel < surface.pixels.length; pixel++) {
