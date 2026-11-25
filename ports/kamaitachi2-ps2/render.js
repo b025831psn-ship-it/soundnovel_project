@@ -103,7 +103,8 @@ export class Screen {
   title(index, hasSave) {
     for (let i = 0; i < 3; i++) {
       const sx = i === 1 ? 128 : 0;
-      const sy = (i === 2 ? 32 : 0) + (i === index ? 64 : 0);
+      // The selected Continue label starts one row lower in the PS2 atlas.
+      const sy = i === index ? [64, 65, 96][i] : [0, 0, 32][i];
       this.c.globalAlpha = i === 1 && !hasSave ? .5 : 1;
       this.sprite('title_00', sx, sy, 128, 32, 103 + i * 152, i === 0 ? 383 : 384);
     }
