@@ -73,7 +73,9 @@ const password = (process.env.SOUNDNOVEL_PASSWORD ?? (() => {
 const SFC_GAME = '/kamaitachi-sfc-kor/port-data/game/kamaitachi.sfc';
 const sfcRom = (() => { try { return fs.readFileSync(path.join(__dirname, 'serve.sfcrom'), 'utf8').trim(); } catch { return ''; } })();
 if (sfcRom) routes.set(SFC_GAME, [path.resolve(__dirname, sfcRom), 'application/octet-stream']);
-const EDITS = path.join(__dirname, 'portrait-edits.json');
+// portrait-edits-2.json since the AI-extended margins were given up (2026-11-26): the old
+// portrait-edits.json was tuned for those margins and stays on the PC untouched.
+const EDITS = path.join(__dirname, 'portrait-edits-2.json');
 const OUTPAINT = path.join(__dirname, 'kamaitachi-gba-kor', 'assets', 'outpaint', 'portrait');
 const OUTPAINT_CANDIDATES = path.join(__dirname, 'kamaitachi-gba-kor', 'assets', 'outpaint', 'candidates');
 const cartridges = new Set(['/AGB-AHZJ.gba', '/AGB-AKZJ.gba', SFC_GAME]);

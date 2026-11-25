@@ -46,7 +46,6 @@
 <section class="list">
   <div class="filters" id="filters">
     <button data-filter="all" aria-pressed="true">전체</button>
-    <button data-filter="ai" aria-pressed="false">AI 확장 있음</button>
     <button data-filter="edited" aria-pressed="false">편집함</button>
   </div>
   <div class="grid" id="grid"></div>
@@ -57,12 +56,10 @@
   <div>
     <h2>표시 방식</h2>
     <div class="modes" id="modes">
-      <button data-mode="">기본(자동)</button>
-      <button data-mode="ai">AI 확장</button>
+      <button data-mode="">기본 (원본 + 흐린 배경)</button>
       <button data-mode="fill">꽉 채워 자르기</button>
-      <button data-mode="frame">원본 + 흐린 배경</button>
     </div>
-    <p class="hint">기본은 AI 확장이 있으면 AI 확장, 없으면 꽉 채워 자르기예요.</p>
+    <p class="hint">기본은 원본 + 흐린 배경, 확대 120%, 좌우 가운데예요.</p>
   </div>
   <div id="candBox" hidden>
     <h2>AI 확장 후보</h2>
@@ -79,7 +76,7 @@
   </div>
   <div id="cropBox">
     <h2>좌우 위치 (0 왼쪽 끝, 100 오른쪽 끝)</h2>
-    <div class="row"><label><input type="checkbox" id="cropAuto" checked> 자동</label></div>
+    <div class="row"><label><input type="checkbox" id="cropAuto" checked> 기본 (가운데)</label></div>
     <div class="row"><input type="range" id="crop" min="0" max="100" step="1" value="50" disabled><output id="cropOut">자동</output></div>
   </div>
   <div class="actions">
@@ -106,7 +103,7 @@ edits = savedEdits ?? {};
 ai = new Set(aiIds);
 
 function tags(id) {
-  return [ai.has(id) ? "AI" : "", candidates[id]?.length ? `후보 ${candidates[id].length}` : "", edits[id] ? "편집" : ""].filter(Boolean).join(" · ");
+  return [edits[id] ? "편집" : ""].filter(Boolean).join(" · ");
 }
 function renderGrid() {
   const grid = $("grid");
@@ -124,13 +121,13 @@ function syncControls() {
   const edit = edits[current] ?? {};
   $("title").textContent = current === null ? "그림을 고르세요" : `그림 ${pad(current)}`;
   for (const button of $("modes").children) {
-    button.setAttribute("aria-pressed", String((edit.mode ?? "") === button.dataset.mode));
+    button.setAttribute("aria-pressed", String((edit.mode === "fill" ? "fill" : "") === button.dataset.mode));
     button.disabled = button.dataset.mode === "ai" && !ai.has(current);
   }
-  const mode = edit.mode ?? (ai.has(current) ? "ai" : "fill");
+  const mode = edit.mode === "fill" ? "fill" : "frame";
   $("shiftBox").hidden = mode === "fill";
   const picks = candidates[current] ?? [];
-  $("candBox").hidden = mode !== "ai" || !picks.length;
+  $("candBox").hidden = true; // AI-extended candidates are given up (2026-11-26)
   $("cands").replaceChildren(...["", ...picks].map((pick) => {
     const button = document.createElement("button");
     button.dataset.pick = pick;
@@ -139,15 +136,15 @@ function syncControls() {
     button.innerHTML = `<img alt="" src="${src}"><span>${pick ? pick.toUpperCase() : "지금 것"}</span>`;
     return button;
   }));
-  $("zoom").value = Math.round((edit.zoom ?? 1) * 100);
-  $("zoomOut").textContent = `${Math.round((edit.zoom ?? 1) * 100)}%`;
+  $("zoom").value = Math.round((edit.zoom ?? 1.2) * 100);
+  $("zoomOut").textContent = `${Math.round((edit.zoom ?? 1.2) * 100)}%`;
   $("shift").value = edit.shift ?? 0;
   $("shiftOut").textContent = edit.shift ?? 0;
   const auto = !Number.isFinite(edit.crop);
   $("cropAuto").checked = auto;
   $("crop").disabled = auto;
   if (!auto) $("crop").value = edit.crop;
-  $("cropOut").textContent = auto ? "자동" : edit.crop;
+  $("cropOut").textContent = auto ? "50" : edit.crop;
 }
 // The preview player answers once it has the picture on screen; until then the message is repeated
 // (the player may still be loading).
@@ -176,7 +173,7 @@ function change(patch) {
   const edit = { ...(edits[current] ?? {}), ...patch };
   for (const key of Object.keys(edit)) if (edit[key] === undefined || edit[key] === "" || edit[key] === null) delete edit[key];
   if (edit.shift === 0) delete edit.shift;
-  if (edit.zoom === 1) delete edit.zoom;
+  if (edit.zoom === 1.2) delete edit.zoom;
   if (Object.keys(edit).length) edits[current] = edit; else delete edits[current];
   dirty = true;
   $("status").textContent = "저장하지 않은 변경이 있어요.";

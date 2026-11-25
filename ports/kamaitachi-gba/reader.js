@@ -113,7 +113,17 @@ loadEdits();
 // shows on it too
 if (!PREVIEW) setInterval(() => { if (document.visibilityState === "visible") loadEdits(); }, 3000);
 let currentId = null;
-const editFor = (id) => (id === null || id === undefined ? null : edits[id] ?? null);
+// Every picture: the original whole over a blurred backdrop of itself, at 120%, centred (태우 2026-11-26;
+// the AI-extended margins are given up). The editor's values for a picture go on top; an old "ai" mode
+// or candidate is ignored.
+const DEFAULT_EDIT = { mode: "frame", zoom: 1.2, crop: 50 };
+const editFor = (id) => {
+  if (id === null || id === undefined) return null;
+  const { candidate, ...own } = edits[id] ?? {};
+  const edit = { ...DEFAULT_EDIT, ...own };
+  if (edit.mode === "ai" || !edit.mode) edit.mode = "frame";
+  return edit;
+};
 function pictureId(game) {
   const scene = game.vm?.scene;
   if (!scene || scene.current === undefined || scene.current === null) return null;
@@ -520,7 +530,6 @@ function drawPicture(game) {
   const base = screen.base;
   const size = { width: reader.clientWidth, height: reader.clientHeight };
   if (!base || !size.height) return;
-  extendedLoading ??= loadExtended(game).then(() => { shownBase = null; });
   const id = pictureId(game);
   if (id !== currentId && !PREVIEW) loadEdits();
   currentId = id;
@@ -742,7 +751,7 @@ function frame() {
   shell.classList.toggle("reading", reading);
   if (reading) { drawPicture(game); drawText(game); }
   else crop = -1;
-  if (wanted && game && !reading) { extendedLoading ??= loadExtended(game); drawExtend(game); }
+  if (wanted && game && !reading) drawExtend(game);
   else shell.classList.remove("extended");
   requestAnimationFrame(frame);
 }
