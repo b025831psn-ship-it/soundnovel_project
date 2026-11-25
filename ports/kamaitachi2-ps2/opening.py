@@ -677,8 +677,8 @@ def opening_assets(disc, out, encode):
         "my0003_00": (0x47D, 0x501), "my0005_00": (0x501, 0x58B),
         "my0006_00": (0x58B, 0x5CF), "my0006_20": (0x5CF, 0x5F9),
         "my0006_30": (0x5F9, 0x60F), "my0006_40": (0x60F, 0x627),
-        "my0006_50": (0x627, 0x63D), "my0006b_00": (0x63D, 0x6E9),
-        "my0006c_00": (0x6E9, 0x76D),
+        "my0006_50": (0x627, 0x63D), "my0006b_00": (0x63D, 0x66D),
+        "my0006c_00": (0x66D, 0x69D),
     }
     for name, (start, end) in later_entries.items():
         command = scene_pack[0x72110 + start:0x72110 + end]
