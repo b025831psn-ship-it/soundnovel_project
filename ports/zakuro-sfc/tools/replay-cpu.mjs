@@ -2,6 +2,8 @@
 // this APU and checks every CPU read against what the APU returns at that moment.
 // Usage: node tools/replay-cpu.mjs <rom.sfc> <port-data> [--link | --map | --lead-spc n]
 //   --link: through sound/master-link.js with this driver's LINK_TIMING (what the VM will use)
+//   --snapshot (then no <rom.sfc>): start from boot-aram.bin instead of the ROM's upload (what the player does)
+//   --sync-every n: with --link, also call MasterLink.sync() every n master clocks (as a player does per frame)
 //   --ipl ipl.bin: run the real 64-byte IPL from power-on through the link (local file only)
 //   <port-data>/trace/apu-ports.tsv : frame  master_cycle  dir(w|r)  port  value
 //   <port-data>/sound/boot-dsp.bin  : power-on DSP registers of the same run
@@ -16,6 +18,7 @@ import { APU } from '../sound/apu.js';
 import { SPC_NUM, SPC_DEN, MasterLink } from '../sound/master-link.js';
 import { APU_TIMING, LINK_TIMING, POWER_ON, checkRom, readBootRecords } from './rom.mjs';
 import { parseTsv } from './replay-spc.mjs';
+import { bootFromSnapshot } from '../sound/snapshot.js';
 
 export function clockMapper(map) {
   const m = map.map(([, a, b]) => [Number(a), Number(b)]);
@@ -27,17 +30,20 @@ export function clockMapper(map) {
   };
 }
 
-export function replayCpu({ records, ports, toSpc, bootDsp = null, iplPorts = [0, 0xbb, 0, 0], lead = 0, timing = APU_TIMING, link = null, dsp = null, ipl = null }) {
+export function replayCpu({ records, ports, toSpc, bootDsp = null, iplPorts = [0, 0xbb, 0, 0], lead = 0, timing = APU_TIMING, link = null, dsp = null, ipl = null, snapshot = null, syncEvery = 0 }) {
   const apu = new APU();
   if (bootDsp) apu.dsp.regs.set(bootDsp);
   apu.cpu.dspAccessOffset = timing.dspAccessOffset;
   if (ipl) return replayFromPowerOn({ apu, ipl, ports, link, dsp });
-  apu.boot(records, { iplClocks: timing.iplClocks, timerLead: timing.timerLead });
-  apu.cpu.ram[0] = records.at(-1).dest & 0xff; apu.cpu.ram[1] = records.at(-1).dest >> 8;
-  // The IPL leaves its outputs on the ports: $BB on port 1 (from its $BBAA greeting) and
-  // its last echo on port 0. The driver does not touch port 1 until its first runtime
-  // transfer, so the CPU still reads $BB there.
-  iplPorts.forEach((v, i) => { apu.cpu.portOut[i] = v; });
+  if (snapshot) bootFromSnapshot(apu, { aram: snapshot, dsp: bootDsp, iplClocks: timing.iplClocks, timerLead: timing.timerLead, dspAccessOffset: timing.dspAccessOffset });
+  else {
+    apu.boot(records, { iplClocks: timing.iplClocks, timerLead: timing.timerLead });
+    apu.cpu.ram[0] = records.at(-1).dest & 0xff; apu.cpu.ram[1] = records.at(-1).dest >> 8;
+    // The IPL leaves its outputs on the ports: $BB on port 1 (from its $BBAA greeting) and
+    // its last echo on port 0. The driver does not touch port 1 until its first runtime
+    // transfer, so the CPU still reads $BB there.
+    iplPorts.forEach((v, i) => { apu.cpu.portOut[i] = v; });
+  }
   const entry = timing.iplClocks;
   // With `link`, accesses go through the VM link (master clock, port timing rules);
   // otherwise through `toSpc` with the APU stepped to each access.
@@ -45,10 +51,12 @@ export function replayCpu({ records, ports, toSpc, bootDsp = null, iplPorts = [0
   apu.cpu.onDspWrite = (t, r, v) => dspGot.push([t + timing.iplClocks, r, v]);
   const ml = link ? new MasterLink(apu, link === true ? LINK_TIMING : link) : null;
   if (ml) ml.target = -entry; // cpu.clock counts from the driver entry
-  let reads = 0, writes = 0, mismatches = 0, first = null, skipped = 0;
+  let reads = 0, writes = 0, mismatches = 0, first = null, skipped = 0, nextSync = syncEvery;
   const bad = [];
   for (const [frame, master, dir, port, value] of ports) {
     const m = Number(master), t = toSpc(m) - entry, p = Number(port) & 3, v = parseInt(value, 16);
+    // A player also runs the APU between accesses (ml.sync once per video frame).
+    if (ml && syncEvery && t >= 0) for (; nextSync < m; nextSync += syncEvery) if (nextSync > ml.master) ml.sync(nextSync);
     if (t < 0) { if (dir === 'w') apu.cpuWrite(p, v); skipped++; if (ml) ml.advanceTo(m); continue; }
     if (dir === 'w') { if (ml) ml.write(m, p, v); else { while (apu.cpu.clock < t + lead) apu.cpu.step(); apu.cpuWrite(p, v); } writes++; continue; }
     reads++;
@@ -99,15 +107,16 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   const args = process.argv.slice(2);
   const flag = (name) => { const i = args.indexOf(name); return i < 0 ? false : (args.splice(i, 1), true); };
   const opt = (name, d) => { const i = args.indexOf(name); return i < 0 ? d : args.splice(i, 2)[1]; };
-  const iplPath = opt('--ipl', null);
+  const iplPath = opt('--ipl', null), syncEvery = Number(opt('--sync-every', 0));
   const useMap = flag('--map'), useLink = flag('--link'), lead = Number(opt('--lead-spc', 0));
-  const [romPath, dataDir] = args;
-  const rom = readFileSync(romPath); checkRom(rom);
+  const useSnapshot = flag('--snapshot');
+  const [romPath, dataDir] = useSnapshot ? [null, args[0]] : args;
+  const rom = useSnapshot ? null : readFileSync(romPath); if (rom) checkRom(rom);
   const read = (p) => readFileSync(path.join(dataDir, p));
   const toSpc = useMap ? clockMapper(parseTsv(read('trace/clock-map.tsv').toString()))
     : (master) => Math.floor((master * SPC_NUM) / SPC_DEN);
   const aram = read('sound/boot-aram.bin');
-  const r = replayCpu({ records: readBootRecords(rom), ports: parseTsv(read('trace/apu-ports.tsv').toString()), toSpc, bootDsp: read('sound/boot-dsp.bin'), iplPorts: [...aram.subarray(0xf4, 0xf8)], lead, link: useLink, dsp: parseTsv(read('trace/dsp-writes.tsv').toString()),
+  const r = replayCpu({ records: rom && readBootRecords(rom), snapshot: useSnapshot ? aram : null, syncEvery, ports: parseTsv(read('trace/apu-ports.tsv').toString()), toSpc, bootDsp: read('sound/boot-dsp.bin'), iplPorts: [...aram.subarray(0xf4, 0xf8)], lead, link: useLink, dsp: parseTsv(read('trace/dsp-writes.tsv').toString()),
     ipl: iplPath ? readFileSync(iplPath) : null });
   console.log(JSON.stringify(r));
   process.exitCode = r.mismatches ? 1 : 0;

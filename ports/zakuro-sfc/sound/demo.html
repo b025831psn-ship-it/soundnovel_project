@@ -1,0 +1,87 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>석류의 맛 사운드</title>
+<style>
+  :root { --bg: #0d0d0f; --fg: #e8e4dc; --muted: #8a857c; --accent: #b3262d; }
+  body { margin: 0; background: var(--bg); color: var(--fg); font: 15px/1.6 "Noto Serif KR", serif; }
+  main { max-width: 640px; margin: 0 auto; padding: 32px 16px; }
+  h1 { font-size: 20px; font-weight: 600; margin: 0 0 8px; }
+  p { color: var(--muted); margin: 0 0 20px; }
+  button { background: none; color: var(--fg); border: 1px solid var(--accent); padding: 8px 18px; font: inherit; cursor: pointer; margin-right: 8px; }
+  button:disabled { opacity: .4; cursor: default; }
+  #stat { margin-top: 20px; font: 13px/1.6 ui-monospace, monospace; color: var(--muted); white-space: pre-wrap; }
+  progress { width: 100%; accent-color: var(--accent); margin-top: 16px; }
+</style>
+<main>
+  <h1>석류의 맛 SFC · 사운드 재생 확인</h1>
+  <p>원작 사운드 드라이버를 SPC700·S-DSP로 실행하고, 에뮬레이터에 기록된 메인 CPU의 사운드 포트 접근을 원래 시각 그대로 넣어 전원 투입부터 첫 선택지까지 재생합니다. CPU가 읽는 값은 기록과 하나씩 대조합니다. ROM은 쓰지 않습니다.</p>
+  <button id="play" disabled>불러오는 중…</button><button id="mute" disabled>음소거</button>
+  <progress id="prog" max="1" value="0"></progress>
+  <div id="stat"></div>
+</main>
+<script type="module">
+  // Data: private zakuro-sfc-kor port-data (?data=URL to override):
+  //   sound/boot-aram.bin, sound/boot-dsp.bin, sound/dsp-gauss.bin, trace/apu-ports.tsv
+  import { APU } from './apu.js';
+  import { MasterLink } from './master-link.js';
+  import { createAudioOut } from './output.js';
+  import { bootFromSnapshot } from './snapshot.js';
+  import { APU_TIMING, LINK_TIMING } from './zakuro-timing.js';
+
+  const base = new URL(new URLSearchParams(location.search).get('data') ?? '../../../zakuro-sfc-kor/port-data/', location.href);
+  const MASTER_HZ = 21477272.727, SPC_NUM = 15664, SPC_DEN = 328125;
+  const $ = (id) => document.getElementById(id);
+  const get = (p) => fetch(new URL(p, base)).then((r) => { if (!r.ok) throw new Error(`${p}: HTTP ${r.status}`); return r; });
+  let aram, dsp, gauss, rows;
+  try {
+    const [a, d, g, tsv] = await Promise.all([
+      get('sound/boot-aram.bin').then((r) => r.arrayBuffer()), get('sound/boot-dsp.bin').then((r) => r.arrayBuffer()),
+      get('sound/dsp-gauss.bin').then((r) => r.arrayBuffer()), get('trace/apu-ports.tsv').then((r) => r.text())]);
+    aram = new Uint8Array(a); dsp = new Uint8Array(d); gauss = new Int16Array(g);
+    rows = [];
+    for (const l of tsv.split('\n')) {
+      if (!l || /^[a-z_]/i.test(l)) continue;
+      const [frame, m, dir, p, v] = l.split('\t');
+      rows.push([Number(m), dir === 'w', Number(p) & 3, parseInt(v, 16), Number(frame)]);
+    }
+    $('play').textContent = '재생'; $('play').disabled = false;
+  } catch (e) { $('play').textContent = '자료 없음'; $('stat').textContent = String(e); }
+
+  let running = false, muted = false;
+  $('play').onclick = async () => {
+    if (running) return; running = true; $('play').disabled = true; $('mute').disabled = false;
+    const out = await createAudioOut(); await out.resume();
+    $('mute').onclick = () => { muted = !muted; out.setMuted(muted); $('mute').textContent = muted ? '소리 켜기' : '음소거'; };
+    const apu = new APU({ gauss });
+    bootFromSnapshot(apu, { aram, dsp, iplClocks: APU_TIMING.iplClocks, timerLead: APU_TIMING.timerLead, dspAccessOffset: APU_TIMING.dspAccessOffset });
+    // Accesses before the driver's first instruction belong to the IPL upload that the
+    // snapshot stands in for: they only set the port latches.
+    const entry = APU_TIMING.iplClocks;
+    const ml = new MasterLink(apu, LINK_TIMING); ml.target = -entry;
+    apu.dsp.onSample = out.sample;
+    const end = rows.at(-1)[0] + MASTER_HZ; // one second past the last access
+    let k = 0, reads = 0, bad = 0, frame = 0, silent = 0, t0 = null;
+    const step = (now) => {
+      t0 ??= now - 80; // start with ~80 ms buffered
+      const master = Math.min(end, Math.floor(((now - t0) / 1000) * MASTER_HZ));
+      for (; k < rows.length && rows[k][0] <= master; k++) {
+        const [m, w, p, v, f] = rows[k]; frame = f;
+        if (Math.floor((m * SPC_NUM) / SPC_DEN) < entry) { if (w) apu.cpuWrite(p, v); ml.advanceTo(m); continue; }
+        if (w) ml.write(m, p, v); else { reads++; if (ml.read(m, p) !== v) bad++; }
+      }
+      // The S-DSP is silent through the IPL stage that the snapshot skips; play that
+      // silence so the driver's first sample comes out at its original time.
+      const spc = Math.floor((master * SPC_NUM) / SPC_DEN);
+      for (; silent < Math.min(spc, entry) >> 5; silent++) out.sample(0, 0);
+      ml.sync(master); out.flush();
+      $('prog').value = master / end;
+      const s = out.stats();
+      $('stat').textContent = `${(master / MASTER_HZ).toFixed(1)}초 · 기록 frame ${frame}\n`
+        + `CPU 포트 읽기 ${reads.toLocaleString()}건 · 기록과 다름 ${bad.toLocaleString()}건\n`
+        + `출력 ${out.context.sampleRate} Hz` + (s ? ` · 버퍼 ${s.fill} · 부족 ${s.underruns}` : '');
+      if (master < end) requestAnimationFrame(step); else $('play').textContent = '끝';
+    };
+    requestAnimationFrame(step);
+  };
+</script>

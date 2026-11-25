@@ -62,6 +62,15 @@
 - 44개 요청 모두 전송 규약 통과, 전송 후 ARAM 범위 일치. 요청 29는 5초 무음, 37은 5초 안에 소리 없음(Codex 기록과 같음: 29는 의도된 무음, 37은 긴 도입부).
 - CPU 쪽 시각은 모형화하지 않았다. 65c816 VM이 붙으면 VM이 직접 전송한다.
 
+### 브라우저 재생 (`sound/demo.html`)
+
+- ROM 없이 비공개 `zakuro-sfc-kor/port-data`의 `sound/boot-aram.bin`·`boot-dsp.bin`·`dsp-gauss.bin`(f65e114)과 `trace/apu-ports.tsv`만 읽는다. 기본 경로는 저장소 루트의 `zakuro-sfc-kor/`이고 `?data=URL`로 바꿀 수 있다.
+- `sound/snapshot.js`의 `bootFromSnapshot()`이 드라이버 첫 명령 시점 ARAM에서 시작한다(ROM 업로드와 같은 결과). 기록된 CPU 포트 접근을 실제 시각(master clock)대로 `MasterLink`에 넣고, 매 화면 `sync()`로 APU를 진행해 소리를 낸다. CPU가 읽은 값은 기록과 하나씩 대조해 화면에 표시한다.
+- `MasterLink.sync()`는 `writeHold` 클록 앞에서 멈추고 대기 중인 쓰기를 넘기지 않는다. 바로 VM 시각까지 돌리면 직후 접근의 포트 시각 규칙이 깨진다(브라우저 25초 재생에서 25건 불일치 → 수정 후 0건).
+- `replay-cpu.mjs <port-data> --snapshot --link [--sync-every n]`: 같은 경로를 Node에서 확인한다. `--sync-every` 357366·35791·1001 모두 CPU 읽기 982,716건과 DSP 264,389건이 같다.
+- 시각 상수는 브라우저에서도 읽도록 `sound/zakuro-timing.js`로 옮겼다(`tools/rom.mjs`가 다시 내보낸다).
+- 헤드리스 Chromium에서 25초 재생: 포트 읽기 714,198건 중 불일치 0, 실시간 유지.
+
 ## 테스트
 
-`npm test` (직접 조립한 프로그램만 사용, 23개).
+`npm test` (직접 조립한 프로그램만 사용, 24개).
