@@ -152,6 +152,11 @@ export class VM {
       flags: new Uint8Array(256),
       node: 0, // 02004608: current flowchart node (opcode 53)
       visited: new Uint8Array(0x12c), // 0200293C: flowchart nodes seen
+      edges: new Uint8Array(0x200), // 02002B94: flowchart links taken (jump and choice keys)
+      seenNodes: new Uint8Array(0x12c), // 02002A68: 0200293C as of the last opcode 53 (the map)
+      seenEdges: new Uint8Array(0x200), // 02002D94: 02002B94 as of the last opcode 53 (the map)
+      tried: new Uint8Array(0x12c), // 02002F94: per node, 2 bits per choice entry taken (0800D084)
+      seenTried: new Uint8Array(0x12c), // 020030C0: 02002F94 as of the last opcode 53
       inGame: 0, // 0200078D: set by 1D 67, lets R open the in-game menu
       vars: new Uint8Array(256),
       bits: new Uint8Array(256),
@@ -841,6 +846,9 @@ export class VM {
         if (node !== 0x105) {
           this.ram.node = node;
           this.ram.visited[node] = 3;
+          this.ram.seenEdges.set(this.ram.edges);
+          this.ram.seenNodes.set(this.ram.visited);
+          this.ram.seenTried.set(this.ram.tried);
         }
         if (node === 0x84 && this.banks[this.bank][this.offset] === 0x0a) this.offset += 2;
         break;
@@ -850,6 +858,8 @@ export class VM {
         const key = this.word();
         args.push(row, key);
         this.branch(row);
+        // 08005B1C: the key is the flowchart link taken (02002B94), unless 0200078E is set.
+        if (this.ram.effectBypass !== 1) this.ram.edges[key] = 3;
         break;
       }
       case 0x5e: {
@@ -858,12 +868,14 @@ export class VM {
         const key = this.word();
         args.push(index, row, key);
         if (this.suppressed(opcode)) break;
-        if (this.ram.bits[index]) this.branch(row);
+        if (this.ram.bits[index]) { this.branch(row); this.ram.edges[key] = 3; }
         break;
       }
       case 0x5f: {
-        args.push(this.word());
-        this.suppressed(opcode);
+        const node = this.word();
+        args.push(node);
+        // 080059C0: marks a flowchart node seen (0200293C) without making it current.
+        if (!this.suppressed(opcode)) this.ram.visited[node] = 3;
         break;
       }
       case 0x61: {
@@ -888,8 +900,10 @@ export class VM {
         // 08005F38: invokes 080135C0(0); no scenario operands.
         break;
       case 0x58: {
-        args.push(this.word());
-        this.suppressed(opcode);
+        const key = this.word();
+        args.push(key);
+        // 08005C30: marks a flowchart link taken (02002B94).
+        if (!this.suppressed(opcode)) this.ram.edges[key] = 3;
         break;
       }
       case 0x59:
@@ -954,7 +968,12 @@ export class VM {
   resume(rowIndex = null) {
     if (this.waiting === "choice") {
       if (rowIndex === null) rowIndex = this.choiceSelection;
-      const row = this.choiceState.entries[rowIndex]?.row;
+      const { row, key } = this.choiceState.entries[rowIndex] ?? {};
+      // 080043F0: the chosen entry's key is the flowchart link taken (02002B94).
+      if (key !== undefined) this.ram.edges[key] = 3;
+      // 0800D084: the entry is marked taken at the current node, unless the choice's index is 0xBC.
+      if (this.choiceState.opcode === 0x57 && this.choiceState.index !== 0xbc)
+        this.ram.tried[this.ram.node] |= 3 << (rowIndex * 2);
       this.waiting = "none";
       this.ram.choiceActive = 0;
       this.ram.effectDisabled = 0;

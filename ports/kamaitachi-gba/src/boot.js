@@ -5,6 +5,7 @@
 import { ObjTextSurface } from "./obj-text.js";
 import { NameEntry, NAME_PICTURES } from "./name-entry.js";
 import { Books, pageState, restoreData, restorePosition } from "./save.js";
+import { FlowMap, MapSurface, FLOW_COLUMNS, FLOW_ROWS, flowScaleX } from "./flow-map.js";
 
 // Image ids passed to 08003878. 08000DC4 maps 0x2329-0x2331 to picture id - 0x2328 + 0xE7 and
 // 0x238C-0x2422 through the signed byte table at 08019400 (+0xE7).
@@ -47,7 +48,13 @@ const CURSOR_HIDDEN = 2;
 
 // Palette bank 15 colors (BGR555) the title menu uses: BG1 box 0x0E, OBJ outline 1, white 2, grey 3.
 const BOX = 0x15d9;
-const OBJ_COLORS = { 1: 0x0000, 2: 0x7fff, 3: 0x56b5, 5: 0x03e0 };
+// OBJ palette 15 (mGBA, the 移動 screen): text, gray, pink links, page map colors, box colors.
+const OBJ_COLORS = {
+  1: 0x0000, 2: 0x7fff, 3: 0x56b5, 4: 0x6dff, 5: 0x03e0, 6: 0x7ed6, 7: 0x3fff, 8: 0x7fff,
+  9: 0x7fff, 10: 0x7fff, 11: 0x7fff, 12: 0x001f, 13: 0x2fff, 14: 0x03e0, 15: 0x7c00,
+};
+// 08001960: the 移動 cursor's corners pulse by this table at (03000BE0 >> 2) & 7 (08019504).
+const MAP_PULSE = [0, 1, 2, 3, 3, 2, 1, 0];
 // BLDCNT 0x3146 / BLDALPHA 0x070D: BG1 and semi-transparent OBJs blend over BG0 at 13/16 + 7/16.
 const EVA = 13;
 const EVB = 7;
@@ -84,7 +91,8 @@ const SJIS = {
 const BOOK_MENU_BOX = [60, 35, 120, 65];
 const SAVE_BOX = [75, 49, 93, 22];
 const LOAD_BOX = [0x12, 0x31, 0xcc, 0x16];
-const GAME_MENU_BOX = [0xa6, 0x28, 0x4a, 0x60];
+// The menu box as mGBA shows it (0800CA02 builds 0xA8, 0x48 wide; 28..93 on screen).
+const GAME_MENU_BOX = [0xa8, 28, 0x48, 66];
 const MENU_POINTER = 0x8484;
 // 0800C97C: the in-game menu shows picture 0xDE (the owl) behind its boxes.
 const MENU_PICTURE = 0xde;
@@ -135,6 +143,10 @@ export class Boot {
     this.nameTable = await this.assets.bin("ui/name-table.bin");
     this.nameEntry = new NameEntry({ boot: this, font: this.font, table: this.nameTable });
     try { this.flow = await this.assets.bin("ui/flow-map.bin"); } catch { this.flow = null; }
+    try {
+      const [glyphs, titles] = await Promise.all([this.assets.bin("ui/map-glyphs.bin"), this.assets.bin("ui/map-titles.bin")]);
+      if (this.flow) this.flowMap = new FlowMap({ flow: this.flow, glyphs, titles });
+    } catch { this.flowMap = null; }
     for (const id of [LOGO, COPYRIGHT, TITLE, ...BOOKS, ...NAME_PICTURES, MENU_PICTURE]) {
       const name = String(pictureIndex(id, this.pictureMap)).padStart(3, "0");
       const [tiles, palette] = await Promise.all([
@@ -268,6 +280,7 @@ export class Boot {
     // 020006E4 is latched in the VBlank interrupt, so the routine sees a press one frame later.
     trigger |= this.injected;
     this.injected = 0;
+    this.heldKeys = held;
     this.trigger = this.latched;
     this.latched = trigger;
     this.hits = [];
@@ -276,6 +289,12 @@ export class Boot {
     this.draw();
     if (done) {
       this.run = null;
+      if (this.jumped) {
+        // 移動 chose a scene: the scenario starts there on a clean screen.
+        this.jumped = false;
+        this.resumeWaiting = null;
+        this.onMenuClosed?.();
+      }
       if (this.resumeWaiting) {
         // Back from the in-game menu: the story picture and page come back as they were.
         this.vm.waiting = this.resumeWaiting;
@@ -307,6 +326,10 @@ export class Boot {
 
   pressed(mask) {
     return (this.trigger & mask) !== 0;
+  }
+
+  held(mask) {
+    return (this.heldKeys & mask) !== 0;
   }
 
   // 08003878 -> 08000DC4: decode a picture into BG0. The LZ77 copy costs `lag` frames.
@@ -749,6 +772,143 @@ export class Boot {
   }
 
   // 0800C9xx: the in-game menu (R). 移動 and オプション are not ported yet.
+  // 0800D9A0 with 0 (the menu's background) or 1 (移動): the map state for the page under the
+  // cursor, which starts on the current scene.
+  openMap() {
+    const map = this.flowMap;
+    const ram = this.vm.ram;
+    const { pages, cursor } = map.survey(ram);
+    const surface = new MapSurface();
+    const state = { map, ram, pages, cursor: { ...cursor }, surface, page: null, scene: null, title: [] };
+    this.drawMap(state);
+    return state;
+  }
+
+  // The page (when it changed) and the header title of the scene under the cursor.
+  drawMap(state) {
+    const { map, ram, cursor, surface } = state;
+    const page = { column: Math.trunc(cursor.x / 6), row: Math.trunc(cursor.y / 6) };
+    if (!state.page || state.page.column !== page.column || state.page.row !== page.row) {
+      map.drawPage(surface, ram, page);
+      state.page = page;
+    }
+    state.scene = map.sceneAt(ram, cursor);
+    surface.fill(0, 8, 0xf0, 0x17, 0);
+    state.title = state.scene ? map.title(state.scene.id) : [];
+  }
+
+  mapGlyphs(state) {
+    const glyphs = [];
+    this.text(glyphs, state.title, 7, 0x0c, 2, true);
+    return glyphs;
+  }
+
+  // 0800DF4C: the cursor's four corners and the page marker, every frame.
+  mapSprites(state) {
+    const { cursor, page } = state;
+    const x = flowScaleX((cursor.x % 6) * 36 + 12) - 4;
+    const y = Math.trunc((((cursor.y % 6) * 28 + 0x2f) * 160) / 240);
+    const d = MAP_PULSE[(this.tick >> 2) & 7];
+    const cursors = [[x - d, y - d], [x + d, y - d], [x - d, y + 4 + d], [x + d, y + 4 + d]]
+      .map(([cx, cy]) => ({ x: cx, y: cy, w: 32, h: 16 }));
+    const marker = { x: 0xc8 + 5 * page.column, y: 0x26 + 5 * page.row, w: 4, h: 4, color: 2 };
+    return { cursors, sprites: [marker] };
+  }
+
+  // 移動 (0800D9A0 with 1). Returns true when a scene was chosen (the scenario now starts there).
+  *flowChart() {
+    const state = this.openMap();
+    const { map, ram, surface } = state;
+    map.drawPageMap(surface, state.pages);
+    this.repeat = true; // 0800A114
+    const show = () => {
+      this.layer = { boxes: [HEADER], glyphs: this.mapGlyphs(state), surface: surface.pixels, ...this.mapSprites(state) };
+      // Touch: a scene box moves the cursor there (a second tap reads it), a page on the page map
+      // shows that page.
+      const here = state.page;
+      const hits = [];
+      for (const entry of map.entries(here.row * FLOW_COLUMNS + here.column)) {
+        if (!map.nodeState(ram, entry.id) || map.locked(ram, entry.kind, entry.id)) continue;
+        const target = { x: here.column * 6 + entry.x, y: here.row * 6 + entry.y };
+        const current = target.x === state.cursor.x && target.y === state.cursor.y;
+        hits.push({
+          x: flowScaleX(entry.x * 36 + 12), y: Math.trunc(((entry.y * 28 + 0x2f) * 14) / 20), w: 0x16, h: 14, current,
+          select: () => { this.effect(3); state.cursor = target; this.drawMap(state); },
+        });
+      }
+      for (let row = 0; row < FLOW_ROWS; row++) {
+        for (let column = 0; column < FLOW_COLUMNS; column++) {
+          if (!state.pages[row * FLOW_COLUMNS + column]) continue;
+          hits.push({
+            x: 0xc7 + 5 * column, y: 0x25 + 5 * row, w: 5, h: 5,
+            select: () => {
+              this.effect(3);
+              state.cursor = { x: column * 6 + (state.cursor.x % 6), y: row * 6 + (state.cursor.y % 6) };
+              this.drawMap(state);
+            },
+          });
+        }
+      }
+      this.hits = hits;
+    };
+    while (true) {
+      show();
+      yield;
+      const before = { ...state.cursor };
+      const page = this.held(KEY.R);
+      const c = state.cursor;
+      let moved = false;
+      if (this.pressed(KEY.DOWN)) { if (page ? c.y <= 0x89 : c.y !== 0x8f) { c.y += page ? 6 : 1; moved = true; } }
+      if (this.pressed(KEY.UP)) { if (page ? c.y > 5 : c.y !== 0) { c.y -= page ? 6 : 1; moved = true; } }
+      if (this.pressed(KEY.RIGHT)) { if (page ? c.x <= 0x23 : c.x !== 0x29) { c.x += page ? 6 : 1; moved = true; } }
+      if (this.pressed(KEY.LEFT)) { if (page ? c.x > 5 : c.x !== 0) { c.x -= page ? 6 : 1; moved = true; } }
+      // 0800E0C2: never onto a page with nothing on it.
+      if (moved && !state.pages[Math.trunc(c.y / 6) * FLOW_COLUMNS + Math.trunc(c.x / 6)]) {
+        state.cursor = before;
+        moved = false;
+      }
+      if (moved) { this.effect(3); this.drawMap(state); }
+      if (this.pressed(KEY.B)) {
+        this.effect(1);
+        this.repeat = false;
+        return false;
+      }
+      if (!this.pressed(KEY.A)) continue;
+      const scene = state.scene;
+      if (!scene || scene.kind > 10) { this.effect(4); continue; }
+      yield* this.jumpTo(scene.id);
+      this.repeat = false;
+      return true;
+    }
+  }
+
+  // 0800DB54: back to a scene. The flowchart state of the last scene start comes back, then
+  // everything is marked as seen in an earlier play (0800CFCC) and the scenario restarts at the
+  // scene (08003600: bank 0x27, row node - 1).
+  *jumpTo(node) {
+    const ram = this.vm.ram;
+    ram.edges.set(ram.seenEdges);
+    ram.visited.set(ram.seenNodes);
+    ram.tried?.set?.(ram.seenTried);
+    this.effect(0);
+    for (const slot of [1, 5]) this.fadeOut(0x19, slot);
+    yield* this.waitFade(1);
+    this.sound.stop?.(0); // 0800A1DC / 0800A384
+    for (const table of [ram.visited, ram.seenNodes, ram.edges, ram.seenEdges, ram.tried, ram.seenTried])
+      if (table) for (let i = 0; i < table.length; i++) table[i] &= 1;
+    ram.endingsSeen = 0;
+    this.layer = null;
+    this.screen.background = null;
+    this.vm.text?.resumed?.();
+    if (this.vm.text) { this.vm.text.fragments = []; this.vm.text.pageRaw = []; }
+    ram.node = node;
+    this.vm.gotoRow(39000 + node - 1);
+    this.vm.waiting = "none";
+    this.vm.choiceState = null;
+    this.vm.collectingChoice = undefined;
+    this.jumped = true;
+  }
+
   *gameMenu() {
     const story = this.screen.background;
     this.effect(2);
@@ -757,12 +917,20 @@ export class Boot {
     yield* this.waitFade(1);
     this.showPicture(MENU_PICTURE);
     let selected = 0;
+    // 0800C97C: the flowchart page of the current scene behind the menu (0800D9A0 with 0), then
+    // the menu's area cleared out of it.
+    let map = null;
+    const background = () => {
+      map = this.flowMap ? this.openMap() : null;
+      map?.surface.fill(0xa6, 0x28, 0x4a, 0x60, 0);
+    };
+    background();
     const draw = () => {
-      const glyphs = [];
-      this.text(glyphs, this.nodeTitle(this.vm.ram.node), 7, 0x0c, 2, true);
-      SJIS.gameMenu.forEach((label, i) => this.text(glyphs, label, 0xb8, 0x30 + 0x14 * i, i < 2 ? 3 : 2, true));
+      const glyphs = map ? this.mapGlyphs(map) : this.text([], this.nodeTitle(this.vm.ram.node), 7, 0x0c, 2, true);
+      // The item under the pointer is white, the others gray (mGBA).
+      SJIS.gameMenu.forEach((label, i) => this.text(glyphs, label, 0xb8, 0x30 + 0x14 * i, i === selected ? 2 : 3, true));
       glyphs.push({ ...this.point(0xaa, 0x30 + 0x14 * selected), encoded: MENU_POINTER, color: 2 });
-      this.layer = { boxes: [HEADER, GAME_MENU_BOX], glyphs };
+      this.layer = { boxes: [HEADER, GAME_MENU_BOX], glyphs, surface: map?.surface.pixels };
       this.hits = SJIS.gameMenu.map((_, i) => ({
         x: 0xa6, y: Math.trunc(((0x30 + 0x14 * i) * 14) / 20) - 1, w: 0x4a, h: 14, current: i === selected,
         select: () => { this.effect(3); selected = i; },
@@ -778,6 +946,13 @@ export class Boot {
       if (this.pressed(KEY.DOWN) && selected < 3) { this.effect(3); selected++; continue; }
       if (this.pressed(KEY.B | KEY.R) || (this.pressed(KEY.A) && selected === 3)) { this.effect(1); break; }
       if (!this.pressed(KEY.A)) continue;
+      if (selected === 0 && this.flowMap) {
+        // 0800CBC6: 移動. B comes back to the menu; a chosen scene leaves the menu at once.
+        this.effect(0);
+        if (yield* this.flowChart()) return;
+        background();
+        continue;
+      }
       if (selected === 2) {
         this.effect(0);
         this.fadeOut(1, 1);
@@ -786,6 +961,7 @@ export class Boot {
         this.layer = null;
         yield* this.bookmarks("save");
         this.showPicture(MENU_PICTURE);
+        background();
         this.fadeIn(1, 1);
         this.fadeIn(1, 5);
       }
@@ -846,6 +1022,7 @@ export class Boot {
         for (let px = Math.max(0, s.x); px < Math.min(240, s.x + s.w); px++) text.pixels[py * 240 + px] = s.color;
     };
     for (const s of layer.sprites ?? []) if (s.behind) sprite(s);
+    if (layer.surface) text.pixels.set(layer.surface);
     for (const { x, y, encoded, color } of layer.glyphs) {
       // The name grid's rows overlap by one line; 08006C64 stores whole 4bpp nibbles, so a later
       // glyph's transparent pixels clear what an earlier one left there (mGBA rows 82 and 107).
@@ -858,8 +1035,7 @@ export class Boot {
     for (const [x, y, w, h] of layer.boxes)
       for (let py = y; py < y + h; py++) box.fill(1, py * 240 + x, py * 240 + x + w);
     const cursor = new Uint8Array(240 * 160);
-    if (layer.cursor) {
-      const { x, y, w, h } = layer.cursor;
+    for (const { x, y, w, h } of [layer.cursor, ...(layer.cursors ?? [])].filter(Boolean)) {
       for (let py = Math.max(0, y); py < Math.min(160, y + h); py++)
         cursor.fill(1, py * 240 + Math.max(0, x), py * 240 + Math.min(240, x + w));
     }
