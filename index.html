@@ -81,7 +81,7 @@
       <h2 class="label">전체 작품 <span>8</span></h2>
       <ul>
         <li class="series">
-          <details>
+          <details name="series">
             <summary><span class="mono" lang="ja" style="--tint:#1c2538">か</span><span class="info"><span class="title">카마이타치의 밤</span><span class="sub">판본 6 · <em>GBA판 플레이 가능</em></span></span><svg class="chev" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg></summary>
             <ul class="editions">
               <li><span class="title">카마이타치의 밤</span><span class="sub">SFC · 1994 · 춘소프트</span></li>
@@ -94,7 +94,7 @@
           </details>
         </li>
         <li class="series">
-          <details>
+          <details name="series">
             <summary><span class="mono" lang="ja" style="--tint:#2a1a10">弟</span><span class="info"><span class="title">제절초</span><span class="sub">SFC · PS · 판본 2</span></span><svg class="chev" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg></summary>
             <ul class="editions">
               <li><span class="title">슈퍼 패미컴판</span><span class="sub">SFC · 1992 · 춘소프트</span></li>
@@ -103,7 +103,7 @@
           </details>
         </li>
         <li class="series">
-          <details>
+          <details name="series">
             <summary><span class="mono" lang="ja" style="--tint:#202020">街</span><span class="info"><span class="title">거리 ~운명의 교차로~</span><span class="sub">SS · PS · PSP · 판본 3</span></span><svg class="chev" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg></summary>
             <ul class="editions">
               <li><span class="title">세가새턴판</span><span class="sub">SS · 1998 · 춘소프트</span></li>
@@ -113,11 +113,11 @@
           </details>
         </li>
         <li class="series">
-          <details>
+          <details name="series">
             <summary><span class="mono" lang="ja" style="--tint:#241430">魔</span><span class="info"><span class="title">마녀들의 잠</span><span class="sub">SFC · PS · 판본 2</span></span><svg class="chev" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg></summary>
             <ul class="editions">
               <li><span class="title">슈퍼 패미컴판</span><span class="sub">SFC · 1995 · 팩인비디오</span></li>
-              <li><span class="title">마녀들의 잠 부활제</span><span class="sub">PS</span></li>
+              <li><span class="title">마녀들의 잠 부활제</span><span class="sub">PS · 1999</span></li>
             </ul>
           </details>
         </li>
@@ -245,6 +245,10 @@
     new ResizeObserver(resize).observe(canvas);
     frame = requestAnimationFrame(tick);
   })();
+  // Only one series open at a time (also for browsers without <details name>).
+  for (const d of document.querySelectorAll('.upcoming details')) d.addEventListener('toggle', () => {
+    if (d.open) for (const other of document.querySelectorAll('.upcoming details[open]')) if (other !== d) other.open = false;
+  });
   window.addEventListener('hashchange', showSelection);
   showSelection();
 </script>
