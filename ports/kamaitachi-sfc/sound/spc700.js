@@ -441,7 +441,7 @@ export class SPC700 {
         this.pc = this.read(0xffde) | (this.read(0xffdf) << 8); return 0;
       }
       case 0x1f: { const a = this.aAbsX(); this.pc = this.read(a) | (this.read((a + 1) & 0xffff) << 8); return 0; }
-      case 0x2f: return this.branch(true);
+      case 0x2f: this.branch(true); return 0; // BRA: 4 clocks already include the jump
       case 0x3f: { const a = this.fetch16(); this.push(this.pc >> 8); this.push(this.pc & 0xff); this.pc = a; return 0; }
       case 0x4f: { const u = this.fetch(); this.push(this.pc >> 8); this.push(this.pc & 0xff); this.pc = 0xff00 | u; return 0; }
       case 0x5f: this.pc = this.fetch16(); return 0;

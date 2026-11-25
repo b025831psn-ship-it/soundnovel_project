@@ -37,9 +37,9 @@
 - `tools/boot-driver.mjs <rom>`: 소유 ROM(SHA-256 `3228a3b3…`)에서 IPL 레코드 4개를 읽어 드라이버를 부팅하고, CPU `$00:B7BE`의 부팅 handshake(`"Chun"` 쓰기 → `"SOFT"` 응답 → port 0에 0)를 재생한다. DSP 쓰기를 `clock reg value` TSV로 출력한다. 2026-11-25 확인: SOFT 응답 54,500클록, 드라이버 main loop(`$11C6` receiver) 진입, 첫 1초 DSP 쓰기 237건(대부분 KOFF).
 - `tools/replay-trace.mjs <rom> <apu-ports.tsv> <dsp-writes.tsv>`: 에뮬레이터의 APU 포트 로그를 시간에 맞춰 재생하고, CPU가 읽은 포트 값과 DSP 쓰기 순서(reg, value)를 자동 대조한다. 첫 불일치 위치와 클록 오차 최대값을 출력한다. 로그 형식은 PR #24 댓글 7149110384.
 
-### 대조 결과 (2026-11-25, kamaitachi-sfc-kor 7fbea4c 로그 기준)
+### 대조 결과 (2026-11-25, kamaitachi-sfc-kor d07f1ef 로그 기준)
 
-- 부팅 handshake 직후 ARAM 64 KiB가 `boot-aram.bin`과 완전히 같다. DSP는 드라이버가 쓴 레지스터가 모두 같고, 다른 81개는 드라이버가 쓰지 않은 전원 투입 값이다.
-- reset~첫 선택지 포트 로그 4,426,686행 재생: CPU가 읽은 APU 응답 4,209,120건이 모두 맞는다(새 값이 나타나는 7,958곳에서 동기화, 불일치 0).
-- DSP 쓰기는 레지스터별 값 순서로 비교한다. 곡 시퀀스의 음표 간격은 원본과 같다(예: KON 간격 190,464 대 190,463클록). 첫 불일치는 원본 spc 약 16.0M클록(약 15.6초)에서 곡 정지·페이드 명령이 곡 진행 중 어느 음 뒤에 들어오는지가 한 음 어긋나는 지점이다. 마스터 클록→SPC 클록 대응을 SPC 쪽 포트 기록으로 고정해 확인할 예정이다.
-- 에뮬레이터의 SPC 클록은 마스터 클록 대비 1.024 MHz가 아니라 약 0.048393 SPC/master(≈1.039 MHz 환산)로 측정됐다. `replay-trace.mjs`는 DSP 로그 구간에서 이 비율을 자동으로 맞춘다.
+- 부팅 handshake 직후 ARAM 64 KiB가 `boot-aram.bin`과 완전히 같다. DSP는 드라이버가 쓴 레지스터가 모두 같고, 나머지 81개는 드라이버가 쓰지 않은 전원 투입 값이다.
+- `tools/replay-spc.mjs`: SPC 쪽 포트 로그(`spc-ports.tsv`)의 입력을 원본 SPC 클록에 맞춰 넣으면, reset부터 첫 선택지(frame 5700)까지 SPC가 포트에 쓴 값 37,772건과 DSP 쓰기 53,944건이 순서·값 모두 원본과 같다. DSP 쓰기 시각 차이는 최대 763 SPC 클록(약 0.75 ms)이다.
+- 이 결과를 얻기 전 BRA(`$2F`)에 분기 클록 2를 중복으로 더하던 오류를 고쳤다. 스트리밍 수신 루프가 한 바퀴에 4클록 느려져 전송이 밀렸다.
+- `tools/replay-trace.mjs`는 CPU 쪽 로그(`apu-ports.tsv`) 기준 대조다. CPU가 읽은 APU 응답 4,209,120건이 모두 맞는다.

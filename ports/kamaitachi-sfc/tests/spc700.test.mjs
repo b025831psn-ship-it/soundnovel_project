@@ -103,3 +103,9 @@ test('APU ports and DSP register writes are logged with clocks', () => {
   assert.equal(c.dsp.read(0x4c), 1);
   assert.equal(c.portOut[1], 0xcc);
 });
+
+test('BRA takes 4 clocks including the jump', () => {
+  const cpu = new SPC700();
+  cpu.uploadRecords([{ dest: 0x0400, payload: Uint8Array.of(0x2f, 0x00, 0xff) }, { dest: 0x0400 }]);
+  assert.equal(cpu.step(), 4);
+});
