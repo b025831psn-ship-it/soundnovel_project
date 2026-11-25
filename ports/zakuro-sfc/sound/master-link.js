@@ -62,5 +62,8 @@ export class MasterLink {
     this.pending.push([this.time, port, value]);
   }
   // Runs the APU up to the VM's current time (for audio output between port accesses).
-  sync(master) { this.advanceTo(master); this.runBefore(this.target); this.deliver(this.time); }
+  // It stops `writeHold` clocks short and leaves pending writes queued: an access the VM
+  // makes right after this point must still find the APU as read() and write() expect
+  // (instructions near T not yet run, the old latch value for reads with s + point < T).
+  sync(master) { this.advanceTo(master); this.runBefore(Math.ceil(this.time) - this.writeHold); }
 }

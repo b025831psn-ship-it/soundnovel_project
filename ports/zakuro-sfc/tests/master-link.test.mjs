@@ -10,7 +10,8 @@ test('master clock converts with carried remainder and never runs backwards', ()
   for (let m = 0; m <= 21477270; m += 1361) link.sync(m);
   const exact = Math.floor(link.master * SPC_NUM / SPC_DEN);
   assert.equal(link.target, exact);
-  assert.ok(apu.cpu.clock >= exact && apu.cpu.clock < exact + 8);
+  // sync() stops writeHold (3) clocks short of the VM time.
+  assert.ok(apu.cpu.clock >= exact - 3 && apu.cpu.clock < exact - 3 + 8);
   assert.throws(() => link.advanceTo(0));
 });
 

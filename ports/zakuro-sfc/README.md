@@ -62,6 +62,24 @@
 - 44개 요청 모두 전송 규약 통과, 전송 후 ARAM 범위 일치. 요청 29는 5초 무음, 37은 5초 안에 소리 없음(Codex 기록과 같음: 29는 의도된 무음, 37은 긴 도입부).
 - CPU 쪽 시각은 모형화하지 않았다. 65c816 VM이 붙으면 VM이 직접 전송한다.
 
+### 브라우저 재생 (`sound/demo.html`)
+
+- ROM 없이 비공개 `zakuro-sfc-kor/port-data`의 `sound/boot-aram.bin`·`boot-dsp.bin`·`dsp-gauss.bin`(f65e114)과 `trace/apu-ports.tsv`만 읽는다. 기본 경로는 저장소 루트의 `zakuro-sfc-kor/`이고 `?data=URL`로 바꿀 수 있다.
+- `sound/snapshot.js`의 `bootFromSnapshot()`이 드라이버 첫 명령 시점 ARAM에서 시작한다(ROM 업로드와 같은 결과). 기록된 CPU 포트 접근을 실제 시각(master clock)대로 `MasterLink`에 넣고, 매 화면 `sync()`로 APU를 진행해 소리를 낸다. CPU가 읽은 값은 기록과 하나씩 대조해 화면에 표시한다.
+- `MasterLink.sync()`는 `writeHold` 클록 앞에서 멈추고 대기 중인 쓰기를 넘기지 않는다. 바로 VM 시각까지 돌리면 직후 접근의 포트 시각 규칙이 깨진다(브라우저 25초 재생에서 25건 불일치 → 수정 후 0건).
+- `replay-cpu.mjs <port-data> --snapshot --link [--sync-every n]`: 같은 경로를 Node에서 확인한다. `--sync-every` 357366·35791·1001 모두 CPU 읽기 982,716건과 DSP 264,389건이 같다.
+- 시각 상수는 브라우저에서도 읽도록 `sound/zakuro-timing.js`로 옮겼다(`tools/rom.mjs`가 다시 내보낸다).
+- 헤드리스 Chromium에서 25초 재생: 포트 읽기 714,198건 중 불일치 0, 실시간 유지.
+- `?mode=vm`(VM 입력): Codex의 65c816 VM(`../vm/`, codex/27-zakuro-65c816-vm)이 게임을 실행하고 그 포트 접근이 같은 `MasterLink`로 소리를 낸다. 비공개 `sound/ipl.bin`·`trace/input.tsv`를 쓰고, ROM은 사용자가 고른 로컬 파일을 SHA-256으로 확인해 브라우저 안에서만 읽는다. 화면에 기록과 순서·값이 같은 접근 수와 CPU 쓰기 대조를 표시한다. VM 241cb05로 헤드리스 Chromium 60초 실시간 재생(frame 3610), 엄격 일치 66,427행, 쓰기 252,612건 순서 일치(엄격 비교라 frame 422 등 extra idle-clear 뒤에서 조금 덜 센다). 출력 부족 약 0.5초 분(초기·VM 무거운 구간).
+- VM 입력 모드는 기본으로 비공개 `program/manifest.json`의 추출 범위(Codex 3592d5d, 153개 243,018 bytes, 범위별 SHA-256 확인)와 `vm/browser.js`로 실행한다. VM 540ed03 기준 ROM 없이 헤드리스 Chromium에서 frame 2358까지 같은 대조 결과(엄격 66,427행). 다만 일부 구간에서 실시간보다 느리다(40초에 약 1초 부족). `&rom=pick`은 로컬 ROM으로 같은 화면을 띄우는 대조용이다.
+- VM 입력 모드의 ROM 선택은 개발·대조용이다. 실제 플레이어는 ROM 없이 실행한다(2026-11-24 태우 결정). VM이 읽는 프로그램·자료는 Codex가 소유 ROM에서 비공개 `zakuro-sfc-kor/port-data/`로 추출하고, VM은 그 자료로 버스를 채운다.
+- `APU`는 `ipl` 인수를 받는다(Codex 241cb05와 같은 변경).
+
+### VM 전체 실행 (`tools/vm-full-run.mjs`)
+
+- Codex VM을 기록 끝(frame 3712)까지 첫 불일치에서 멈추지 않고 실행한다. CPU 쪽 포트 쓰기 순서(게임이 정하는 동작)를 기준 기록과 다시 맞춰 가며 비교하고, 어긋나는 구간과 field 단위 시각 차이를 JSON으로 남긴다. 실행 약 50초.
+- 2026-11-25 VM 67318af: 4,850만 명령 동안 정지·예외 없음. 쓰기 252,918건 중 104,841건 일치. frame 403-422에서 한 field 빠르고, frame 685부터 한 field 늦다. frame 689에서 기준은 새 전송을 시작하지만 VM은 끝까지 대기 루프에 머문다(기준 기록의 버튼 입력이 VM에 없음).
+
 ## 테스트
 
-`npm test` (직접 조립한 프로그램만 사용, 23개).
+`npm test` (직접 조립한 프로그램만 사용, 24개).

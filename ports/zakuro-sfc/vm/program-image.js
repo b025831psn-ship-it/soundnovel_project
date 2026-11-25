@@ -2,7 +2,16 @@
 // headerless ROM offsets and may be supplied as Uint8Array data or by a loader.
 export class ProgramImage {
   constructor(ranges) {
-    this.ranges = ranges.map(range => ({ ...range, end: range.offset + range.length }));
+    const size = 4 * 1024 * 1024;
+    this.bytes = new Uint8Array(size);
+    this.mapped = new Uint8Array(size);
+    for (const range of ranges) {
+      if (range.offset < 0 || range.offset + range.length > size || range.data.length !== range.length) {
+        throw new RangeError(`invalid program range at 0x${range.offset.toString(16)}`);
+      }
+      this.bytes.set(range.data, range.offset);
+      this.mapped.fill(1, range.offset, range.offset + range.length);
+    }
   }
 
   static async load(manifest, loadRange) {
@@ -16,8 +25,9 @@ export class ProgramImage {
   }
 
   read(offset) {
-    const range = this.ranges.find(item => offset >= item.offset && offset < item.end);
-    if (!range) throw new RangeError(`unmapped program byte 0x${offset.toString(16)}`);
-    return range.data[offset - range.offset];
+    if (offset < 0 || offset >= this.bytes.length || !this.mapped[offset]) {
+      throw new RangeError(`unmapped program byte 0x${offset.toString(16)}`);
+    }
+    return this.bytes[offset];
   }
 }
