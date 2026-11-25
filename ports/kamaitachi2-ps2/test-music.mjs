@@ -47,7 +47,14 @@ try {
     music.stop({fadeFrames:60});
     await new Promise(r => setTimeout(r, 300));
     const fading = voice.gain.gain.value;
-    return {results, started, fading, playing: music.playing};
+    // A volume change that arrives before decoding finishes must not be lost.
+    const early = new LoopingMusic({asset: name => new URL('assets/' + name, location.href).href, loopFrames});
+    early.play('k2h002.ogg', {volume:50});
+    early.volume(20);
+    while (!early.voice) await new Promise(r => setTimeout(r, 20));
+    const earlyLevel = early.voice.gain.gain.value;
+    early.stop();
+    return {results, started, fading, playing: music.playing, earlyLevel};
   });
   for (const r of seams.results) {
     assert.equal(r.comment, r.loop, r.file + ' L= comment');
@@ -63,6 +70,7 @@ try {
   assert.ok(Math.abs(seams.started.changed - volume20) < 1e-6, 'volume change reaches quantized volume 20');
   assert.ok(seams.fading > 0 && seams.fading < volume20, 'fade-out in progress');
   assert.equal(seams.playing, false);
+  assert.ok(Math.abs(seams.earlyLevel - volume20) < 1e-6, 'volume change during decode is kept');
   console.log('PASS music: 6 loop seams sample-exact at L=, EE volume quantization/change, fade-in/fade-out');
 } finally {
   await browser.close();

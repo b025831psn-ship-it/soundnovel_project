@@ -38,9 +38,10 @@ export class LoopingMusic {
   // volume: 0-100 as in the ScenePack command; fadeFrames: 59.94 Hz frames.
   play(file, { volume = 100, fadeFrames = 0 } = {}) {
     const level = Math.floor(Math.min(100, Math.max(0, volume)) * 127 / 100) / 127;
-    if (this.file === file && this.voice) return this.ramp(this.voice, level, fadeFrames);
+    if (this.file === file) return this.retarget(level, fadeFrames);
     this.stop();
     this.file = file;
+    this.target = { level, fadeFrames };
     const token = ++this.token;
     if (!this.context) return this.playElement(file, level);
     this.context.resume().catch(() => {});
@@ -54,12 +55,14 @@ export class LoopingMusic {
       source.loopEnd = buffer.duration;
       source.connect(gain).connect(this.context.destination);
       this.voice = { source, gain };
-      gain.gain.value = fadeFrames > 0 ? 0 : level;
-      if (fadeFrames > 0) this.ramp(this.voice, level, fadeFrames);
+      // A volume change that arrived while decoding replaces the start level.
+      const target = this.target;
+      gain.gain.value = target.fadeFrames > 0 ? 0 : target.level;
+      if (target.fadeFrames > 0) this.ramp(this.voice, target.level, target.fadeFrames);
       source.start();
       if (this.context.state !== 'running') this.onBlocked();
     }, () => {
-      if (token === this.token) this.playElement(file, level);
+      if (token === this.token) this.playElement(file, this.target.level);
     });
   }
 
@@ -80,8 +83,13 @@ export class LoopingMusic {
   }
 
   volume(volume, { fadeFrames = 0 } = {}) {
-    const level = Math.floor(Math.min(100, Math.max(0, volume)) * 127 / 100) / 127;
+    if (this.file === null) return 0;
+    return this.retarget(Math.floor(Math.min(100, Math.max(0, volume)) * 127 / 100) / 127, fadeFrames);
+  }
+
+  retarget(level, fadeFrames) {
     if (this.voice) return this.ramp(this.voice, level, fadeFrames);
+    this.target = { level, fadeFrames };
     return 0;
   }
 
