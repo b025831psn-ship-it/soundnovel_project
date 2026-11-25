@@ -12,7 +12,16 @@ class M4APlayer extends AudioWorkletProcessor {
     this.pos = 0;
     this.port.onmessage = ({ data }) => {
       if (data.type === 'init') {
-        this.engine = new M4A(new Memory(new Uint8Array(data.bytes), data.config.base), data.config);
+        const bytes = new Uint8Array(data.bytes);
+        // Warm-up: the first frames of a cold engine run several times slower until the JIT has
+        // compiled the sequencer and the mixers, which on a phone ran past the audio deadline and
+        // broke up the first sounds. A throwaway engine plays a few songs silently first.
+        const warm = new M4A(new Memory(bytes, data.config.base), data.config);
+        for (let song = 0; song < Math.min(data.config.songCount, 8); song++) {
+          warm.startSong(song);
+          for (let frame = 0; frame < 40; frame++) warm.vblank();
+        }
+        this.engine = new M4A(new Memory(bytes, data.config.base), data.config);
         this.step = data.config.mixRate / sampleRate;
         this.frameLen = data.config.samplesPerVBlank;
       } else if (this.engine) {
