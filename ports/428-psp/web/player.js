@@ -70,7 +70,7 @@ function advanceOps() {
       case 0x07: case 0x09: { const n = Math.max(1, u32(0)); S.fade.step = -1 / n; if (FAST) S.fade.a = 0; break; } // lighten
       case 0x04: case 0x08: S.fade.a = 0; S.fade.step = 0; break;
       case 0x06: case 0x0a: S.fade.a = 1; S.fade.step = 0; break;
-      case 0x23: if (S.win !== a[0]) S.lines = [[]]; S.win = a[0]; break;           // text block style (2 window, 3 narration)
+      case 0x23: S.win = a[0]; break;                                               // text block style (original keeps the page; only 1F clears)
       case 0x25: break;                                                              // end of text block
       case 0x1e: S.lines.push([]); break;                                            // newline
       case 0x1b: if (!FAST) S.click = 'line'; break;                                 // wait for input
@@ -111,21 +111,22 @@ addEventListener('keydown', ev => { if (ev.key === 'Enter' || ev.key === ' ') cl
 
 // ---- drawing
 // Glyph header (font units): [adv, em, bx, by, bw, bh] horizontal, then full-width and vertical sets.
-// Screen px per unit = bitmap height / em (provisional until compared with the original screen).
-function advance(ch, scale = 1) { const m = fontMeta[ch.codePointAt(0)]; return m ? m[4] * m[3] / m[5] * scale : 10 * scale; }
+// Units are 1280-wide-screen pixels: screen px = unit x 480/1280 (matches the original's line widths).
+function advance(ch, scale = 1) { const m = fontMeta[ch.codePointAt(0)]; return m ? (m[4] * 0.375 + 0.5) * scale : 10 * scale; }
 function drawGlyph(ch, x, y, scale = 1) {
   const m = fontMeta[ch.codePointAt(0)]; if (!m) return advance(ch, scale);
   g.drawImage(fontImg, m[0], m[1], m[2], m[3], x, y, m[2] * scale, m[3] * scale); return advance(ch, scale);
 }
+const OUTLINE = [[-1, 0], [1, 0], [0, -1], [0, 1], [-1, -1], [1, -1], [-1, 1], [1, 1]]; // dark rim seen on the original text
 function drawText() {
   if (!S.win) return;
-  const top = S.win === 3 ? 100 : 176, left = 24;
+  const top = 26, left = 50, PITCH = 27, RIGHT = 430; // measured on the original (PPSSPP capture, K01A_0010)
   let row = 0;
   S.lines.forEach(line => {
-    let x = left; let y = top + row * 24;
+    let x = left; let y = top + row * PITCH;
     for (const seg of line) {
-      if (x + [...seg.text].reduce((w, c) => w + advance(c), 0) > W - left && seg.ruby) { row++; x = left; y = top + row * 24; }
-      const x0 = x; for (const ch of seg.text) { if (x + advance(ch) > W - left) { row++; x = left; y = top + row * 24; } g.globalAlpha = 0.6; g.filter = 'brightness(0)'; drawGlyph(ch, x + 1, y + 1); g.filter = 'none'; g.globalAlpha = 1; x += drawGlyph(ch, x, y); }
+      if (x + [...seg.text].reduce((w, c) => w + advance(c), 0) > RIGHT && seg.ruby) { row++; x = left; y = top + row * PITCH; }
+      const x0 = x; for (const ch of seg.text) { if (x + advance(ch) > RIGHT) { row++; x = left; y = top + row * PITCH; } g.filter = 'brightness(0)'; g.globalAlpha = 0.7; for (const [dx, dy] of OUTLINE) drawGlyph(ch, x + dx, y + dy); g.filter = 'none'; g.globalAlpha = 1; x += drawGlyph(ch, x, y); }
       if (seg.ruby) { const w = x - x0, n = [...seg.ruby].length, step = Math.min(10, w / n); let rx = x0 + (w - step * n) / 2; for (const ch of seg.ruby) { drawGlyph(ch, rx, y - 9, 0.45); rx += step; } }
     }
     row++;
@@ -142,7 +143,7 @@ function frame() {
   if (S.pic?.img) g.drawImage(S.pic.img, 0, 0, W, H);
   if (S.trans.run && S.next?.img) { g.globalAlpha = S.trans.t / S.trans.frames; g.drawImage(S.next.img, 0, 0, W, H); g.globalAlpha = 1; }
   if (S.fade.a) { g.fillStyle = `rgba(0,0,0,${S.fade.a * 0.6})`; g.fillRect(0, 0, W, H); }
-  if (S.win === 2) { g.fillStyle = 'rgba(0,0,0,0.45)'; g.fillRect(0, 166, W, 106); }
+
   drawText();
   if (S.choice) S.choice.options.forEach((o, i) => { g.fillStyle = 'rgba(20,20,24,.85)'; g.fillRect(60, 90 + i * 32, 360, 28); g.fillStyle = '#b3262d'; g.fillRect(60, 90 + i * 32, 3, 28); g.fillStyle = '#ddd'; g.font = '13px serif'; g.fillText(o.label, 72, 108 + i * 32); });
   if (q.has('debug')) status.textContent = `${vm.script.name} ${vm.flow.at(-1) || ''}`;
