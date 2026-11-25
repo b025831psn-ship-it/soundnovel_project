@@ -184,6 +184,28 @@ http.createServer((request, response) => {
     });
     return;
   }
+  // Dialogue edits (ports/kamaitachi-gba/src/text-editor.js): game data in kamaitachi-gba-kor
+  // (port-data/text-edits.json for ja, port-data-ko/text-edits.json for ko), read through the usual
+  // /kamaitachi-gba-kor/ path. Writable from this PC and, with the test password, through the tunnel
+  // (/edit/ is never an open-beta path, so allowedFromOutside has already asked for it).
+  const textEdit = /^\/edit\/text-edits-(ja|ko)\.json$/.exec(url);
+  if (textEdit && request.method === 'PUT') {
+    const file = path.join(__dirname, 'kamaitachi-gba-kor', textEdit[1] === 'ko' ? 'port-data-ko' : 'port-data', 'text-edits.json');
+    const chunks = []; let size = 0, over = false;
+    request.on('data', chunk => { size += chunk.length; if (size > 1024 * 1024) { over = true; request.destroy(); } else chunks.push(chunk); });
+    request.on('end', () => {
+      if (over) return;
+      let value;
+      try { value = JSON.parse(Buffer.concat(chunks).toString('utf8')); } catch { value = null; }
+      if (!value || typeof value !== 'object' || Array.isArray(value)) { response.writeHead(400).end(); return; }
+      const temp = file + '.tmp';
+      fs.writeFile(temp, JSON.stringify(value, null, 1) + '\n', (error) => {
+        if (error) { response.writeHead(500).end(); return; }
+        fs.rename(temp, file, (failure) => response.writeHead(failure ? 500 : 204).end());
+      });
+    });
+    return;
+  }
   // scene images from kamaitachi-gba-kor/tools/export_images.py: NNN.png and palette variants NNN-v.png
   // Pictures extended for upright phones (kamaitachi-gba-kor assets/outpaint/portrait/NNN.png) and their list.
   if (url === '/art/outpaint/index.json') {

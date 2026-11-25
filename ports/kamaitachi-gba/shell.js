@@ -234,6 +234,9 @@ addEventListener("pointerdown", wake);
 wake();
 fit();
 
+// Dialogue editor (main.js, src/text-editor.js) on the page being read; E does the same on a keyboard.
+document.getElementById("dialogue")?.addEventListener("click", () => window.kamaitachi?.openDialogueEditor?.());
+
 // Text language: the button shows the language in use and switches to the other one in place.
 {
   const button = document.getElementById("language");
