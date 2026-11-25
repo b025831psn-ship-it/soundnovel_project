@@ -73,3 +73,8 @@ test('APU renders 32 kHz samples from SPC700 clocks', () => {
   assert.ok(apu.cpu.clock - before >= 3200 - 4 && apu.cpu.clock - before <= 3200 + 32);
   apu.cpuWrite(0, 0xaa); assert.equal(apu.cpu.read(0xf4), 0xaa);
 });
+
+test('envelope rate 0 never fires, including when the counter wraps', () => {
+  const dsp = new SDSP(new Uint8Array(0x10000));
+  for (let c = 0; c < 0x7800; c++) { dsp.counter = c; assert.equal(dsp.readCounter(0), true); }
+});

@@ -33,13 +33,14 @@ export function replaySpc({ records, spcPorts, dsp, apu = new APU(), lead = 1 })
   }
 
   const cmp = (a, b) => {
-    let i = 0, maxDrift = 0;
+    let i = 0, maxDrift = 0; const drift = {};
     for (; i < a.length; i++) {
       if (!b[i] || a[i][1] !== b[i][1] || a[i][2] !== b[i][2]) break;
-      maxDrift = Math.max(maxDrift, Math.abs(a[i][0] - b[i][0]));
+      const d = b[i][0] - a[i][0]; drift[d] = (drift[d] ?? 0) + 1;
+      maxDrift = Math.max(maxDrift, Math.abs(d));
     }
     const ctx = i < a.length ? { want: a.slice(Math.max(0, i - 3), i + 4), got: b.slice(Math.max(0, i - 3), i + 4) } : null;
-    return { want: a.length, got: b.length, matched: i, maxDrift, ctx };
+    return { want: a.length, got: b.length, matched: i, maxDrift, drift, ctx };
   };
   const portsDsp = portWant.filter(([t]) => t >= 0);
   return { offset, ports: cmp(portsDsp, portGot.filter(([t]) => t >= 0)), dsp: cmp(want, dspGot) };

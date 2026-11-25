@@ -41,6 +41,7 @@ export class SPC700 {
   constructor({ dsp = new DspRegisters(), onDspWrite = null, onPortWrite = null } = {}) {
     this.ram = new Uint8Array(0x10000);
     this.ipl = null;            // 64 bytes when a local image is loaded
+    this.hle = null;            // boot ROM stand-in (ipl-hle.js) when there is no image
     this.dsp = dsp;
     this.onDspWrite = onDspWrite;   // (clock, reg, value) for trace comparison
     this.onPortWrite = onPortWrite; // (clock, port, value)
@@ -97,8 +98,11 @@ export class SPC700 {
     switch (addr) {
       case 0xf2: return this.dspAddr;
       case 0xf3: this.syncDsp(); return this.dsp.read(this.dspAddr & 0x7f);
-      case 0xf4: case 0xf5: case 0xf6: case 0xf7: return this.portIn[addr - 0xf4];
+      case 0xf4: case 0xf5: case 0xf6: case 0xf7:
+        if (this.onPortRead) this.onPortRead(this.clock, this.curOp);
+        return this.portIn[addr - 0xf4];
       case 0xfd: case 0xfe: case 0xff: {
+        this.syncTimers();
         const t = this.timers[addr - 0xfd]; const v = t.out; t.out = 0; return v;
       }
       case 0xf0: case 0xf1: case 0xfa: case 0xfb: case 0xfc: return 0;
@@ -204,10 +208,15 @@ export class SPC700 {
   // Executes one instruction and returns the clocks it took.
   step() {
     if (this.stopped) { this.tick(2); return 2; }
-    this.dspDone = 0;
+    this.dspDone = 0; this.timerDone = 0;
+    if (this.hle && !this.hle.done) { const c = this.hle.step(this); this.tick(c); return c; }
+    const inIpl = this.ipl !== null && this.pc >= 0xffc0 && (this.control & 0x80);
     const op = this.fetch();
     this.curOp = op;
     let extra = this.exec(op);
+    // The IPL's final JMP [!abs+X] into the uploaded program takes one clock more than the
+    // same opcode in RAM (measured: reset-to-frame-5700 CPU reads and PCM, see apu.js).
+    if (inIpl && op === 0x1f) extra += 1;
     const clocks = CYCLES[op] + extra;
     this.tick(clocks);
     return clocks;
@@ -215,9 +224,19 @@ export class SPC700 {
 
   tick(clocks) {
     this.clock += clocks;
-    for (const t of this.timers) t.tick(clocks);
+    for (const t of this.timers) t.tick(clocks - this.timerDone);
+    this.timerDone = 0;
     if (this.dsp.tick) this.dsp.tick(clocks - this.dspDone);
     this.dspDone = 0;
+  }
+
+  // Brings the timers up to the point inside the current instruction where a $FD-$FF read
+  // sees them: two clocks before the instruction's last (read) cycle. This matched both
+  // references: Kamaitachi polls with MOV A,dp (3 clocks, offset 0) and Zakuro with
+  // MOV Y,!abs (4 clocks, offset 1; reading at the start drops a pitch-slide step).
+  syncTimers() {
+    const at = this.timerAccessOffset ?? Math.max(0, CYCLES[this.curOp] - 3);
+    if (at > this.timerDone) { for (const t of this.timers) t.tick(at - this.timerDone); this.timerDone = at; }
   }
 
   // Brings the DSP up to the point inside the current instruction where a $F3 access

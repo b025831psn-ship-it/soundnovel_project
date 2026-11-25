@@ -2,6 +2,7 @@
 // through four ports. `cpuWrite/cpuRead` are the $2140-$2143 view.
 import { SPC700 } from './spc700.js';
 import { SDSP } from './sdsp.js';
+import { IplHle } from './ipl-hle.js';
 
 export const SPC_CLOCK_HZ = 1024000;
 export const SAMPLE_RATE = 32000;
@@ -16,13 +17,31 @@ export class APU {
   // transfer ran on hardware; the DSP and the timer dividers free-run from power-on, so
   // their phase at the driver's first instruction depends on it. 621,677 clocks is this
   // game's measured boot (reference probe), which makes the output match sample for sample.
-  boot(records, { iplClocks = 621677 } = {}) {
+  // `timerLead` places the timer dividers relative to that point; -1 fits Kamaitachi's
+  // probe, +3 fits Zakuro's 599e867 run (whose cycles are bus-access times).
+  boot(records, { iplClocks = 621677, timerLead = -1 } = {}) {
     const cb = this.dsp.onSample; this.dsp.onSample = null;
     this.dsp.tick(iplClocks);
     this.dsp.onSample = cb;
-    for (const t of this.cpu.timers) t.phase = (iplClocks - 1) % t.period;
+    for (const t of this.cpu.timers) t.phase = (((iplClocks + timerLead) % t.period) + t.period) % t.period;
     return this.cpu.uploadRecords(records);
   }
+
+  // Power-on; the CPU's own upload then runs through the ports. With a local 64-byte IPL
+  // image the SPC700 runs it; without one (the web build) ipl-hle.js stands in for it. Measured on the Snes9x trace with master clock 0 = SPC time 0: the S-DSP runs
+  // from 0, the timer dividers from 1 and the SPC700 core from 3 (`coreDelay`, which
+  // MasterLink applies). With this, every CPU read from reset to frame 5700 and the PCM
+  // capture match, and the driver starts at SPC time 621,677 as `boot()` assumes.
+  powerOn(ipl = null) {
+    if (ipl) this.cpu.loadIplImage(ipl);
+    else { this.cpu.hle = new IplHle(); this.cpu.reset(); }
+    const cb = this.dsp.onSample; this.dsp.onSample = null;
+    this.dsp.tick(APU.CORE_DELAY);
+    this.dsp.onSample = cb;
+    for (const t of this.cpu.timers) t.phase = (APU.CORE_DELAY - 1) % t.period;
+    this.coreDelay = APU.CORE_DELAY;
+  }
+  static CORE_DELAY = 3;
 
   cpuWrite(port, value) { this.cpu.portIn[port & 3] = value & 0xff; }
   cpuRead(port) { return this.cpu.portOut[port & 3]; }
