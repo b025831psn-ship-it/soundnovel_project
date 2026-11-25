@@ -1,6 +1,7 @@
 import { CPU } from './cpu.js';
 import { ZakuroBus } from './bus.js';
 import { vblankBoundary, vblankOrdinal } from './master-clock.js';
+import { readTouchState } from './touch-state.js';
 
 // Measured reset release -> first CPU bus cycle offset in the reference trace.
 // The CPU core begins at vector fetch, so the VM supplies the preceding S-CPU
@@ -18,6 +19,9 @@ export class ZakuroVM {
   }
   reset() { this.nmiTriggerMaster = null; this.bus.clock.idle(RESET_MASTER_CYCLES); this.cpu.reset(); }
   setJoypad(mask) { this.bus.setJoypad(mask); }
+  getTouchState() { return readTouchState(this.bus.wram); }
+  exportSram() { return this.bus.exportSram(); }
+  importSram(bytes) { this.bus.importSram(bytes); }
   step() {
     if (this.nmiTriggerMaster != null && this.bus.clock.master >= this.nmiTriggerMaster) {
       this.cpu.nmiPending = true;

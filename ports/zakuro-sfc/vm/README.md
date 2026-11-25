@@ -71,7 +71,16 @@ next auto-joypad sample; later fields return to recorded input unless another
 mask is queued. Choice-mode WRAM uses `$007F` as the active flag, `$0081` as the
 cursor, `$0082` as the last option index, and `$0083/$0085/$0087/$0089` as the
 four target block IDs. Save/load uses selected slot `$0348` (0-2); exact menu
-row hit boxes still need PPU/text-row observation.
+row hit boxes still need PPU/text-row observation. `vm.getTouchState()` exposes
+the proven choice state and full-width touch rectangles. The initial rectangle
+derivation comes from the native 256x224 first-choice capture: y=20+48*n,
+height=48. Non-choice screens currently report `text`; menu and bookmark/save
+must not be inferred from that value until their native WRAM flags are traced.
+`vm.exportSram()` and `vm.importSram()` move the complete 8 KiB battery image.
+Browser persistence can pass `onSramWrite` to the VM constructor and debounce
+storage writes using the callback's monotonically increasing `revision`, or
+poll `vm.bus.consumeSramDirty()`. The game continues to own its three native
+save slots inside that opaque image.
 With that input, `tools/vm-full-run.mjs` reaches the end without a stop or CPU
 error and finds all 252,918 reference CPU writes. The former extra idle-clear
 triplets at reference frames 422, 760, and 1798 are gone, and the write sequence
@@ -92,5 +101,13 @@ produce the same complete APUIO result.
 All legacy `[WP]` and `[STUCK]` diagnostics are disabled unless
 `globalThis.ZAKURO_VM_DEBUG` is explicitly enabled, so they no longer print or
 perform timing-visible watchpoint reads in normal runs.
+
+Screen-output bring-up is separate from the timing-complete CPU/APU path. The
+bus already forwards `$2100-$213F` and DMA B-bus accesses to an injected `ppu`,
+but this repository does not yet contain a pixel renderer. Native reference
+hashes exist for the opening, first text page, first choice, and both first
+choice branches. Pixel-for-pixel VM comparison must remain open until VRAM,
+CGRAM, OAM, background composition, and frame presentation are implemented;
+the audio/APUIO result does not imply PPU correctness.
 
 The CPU core provenance and license are in `THIRD_PARTY_NOTICES.md`.

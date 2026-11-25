@@ -6,3 +6,4 @@ export { RESET_MASTER_CYCLES, ZakuroVM } from './vm.js';
 export { createApuLink } from './apu-link.js';
 export { readInputTrace } from './input-trace.js';
 export { ProgramImage } from './program-image.js';
+export { TOUCH_WRAM, choiceRectangles, readTouchState } from './touch-state.js';

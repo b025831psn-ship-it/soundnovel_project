@@ -8,7 +8,7 @@ function normalizeRom(bytes) {
 }
 
 export class ZakuroBus {
-  constructor({ rom = null, program = null, sram = null, masterLink, clock = new MasterClock(), ppu = null, trace = null, wramFill = 0x55, inputFrames = null, inputFrameOffset = 1, onProgramRead = null } = {}) {
+  constructor({ rom = null, program = null, sram = null, masterLink, clock = new MasterClock(), ppu = null, trace = null, wramFill = 0x55, inputFrames = null, inputFrameOffset = 1, onProgramRead = null, onSramWrite = null } = {}) {
     if (!masterLink) throw new TypeError('masterLink is required');
     if (!rom && !program) throw new TypeError('rom or program is required');
     this.rom = rom ? normalizeRom(rom) : null; this.program = program;
@@ -33,6 +33,7 @@ export class ZakuroBus {
     this.sram = new Uint8Array(sramSize); this.sram.fill(sramFill);
     this.sramMask = sramSize - 1;
     this.sramHigh = sramConfig?.high ?? (sramSize > 0x10000 ? 0x7fff : 0xffff);
+    this.sramRevision = 0; this.sramDirty = false; this.onSramWrite = onSramWrite;
     this.io = new Uint8Array(0x6000); this.fastRom = false; this.accessCount = 0;
     this.nmiFlag = false;
     this.inputFrames = inputFrames; this.pendingJoypad = null;
@@ -77,7 +78,14 @@ export class ZakuroBus {
     const a = address & 0xffffff, v = value & 0xff, master = this.clock.charge(a, this.fastRom); this.accessCount++;
     const bank = a >>> 16, offset = a & 0xffff;
     if (bank === 0x7e || bank === 0x7f) { this.wram[a & 0x1ffff] = v; return; }
-    if (this.isLoRomSram(bank, offset)) { this.sram[this.loRomSramAddress(a)] = v; return; }
+    if (this.isLoRomSram(bank, offset)) {
+      const sramOffset = this.loRomSramAddress(a);
+      if (this.sram[sramOffset] !== v) {
+        this.sram[sramOffset] = v; this.sramDirty = true; this.sramRevision++;
+        this.onSramWrite?.({ offset: sramOffset, value: v, revision: this.sramRevision });
+      }
+      return;
+    }
     if ((bank & 0x40) === 0 && offset < 0x2000) { this.wram[offset] = v; return; }
     if ((bank & 0x40) === 0 && offset >= 0x2140 && offset <= 0x2143) {
       const port = offset & 3; this.masterLink.write(master, port, v);
@@ -119,6 +127,18 @@ export class ZakuroBus {
 
   loRomSramAddress(address) {
     return ((((address & 0xff0000) >>> 1) | (address & 0x7fff)) & this.sramMask);
+  }
+
+  exportSram() { return this.sram.slice(); }
+
+  importSram(bytes) {
+    const data = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
+    if (data.length !== this.sram.length) throw new RangeError(`SRAM image must be ${this.sram.length} bytes`);
+    this.sram.set(data); this.sramDirty = false; this.sramRevision++;
+  }
+
+  consumeSramDirty() {
+    const dirty = this.sramDirty; this.sramDirty = false; return dirty;
   }
 
   setJoypad(mask) {

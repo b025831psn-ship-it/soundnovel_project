@@ -108,6 +108,36 @@ test('program manifest carries explicit SRAM into the ROM-free bus', async () =>
   assert.equal(bus.read(0xf00000), 0x33);
 });
 
+test('SRAM import/export and write hook support browser persistence', () => {
+  const writes = [];
+  const bus = new ZakuroBus({
+    rom: fixtureRom([]), sram: { size: 8192, fill: 0x60 },
+    onSramWrite: event => writes.push(event), masterLink: { read: () => 0, write() {} },
+  });
+  bus.write(0x700000, 0x42);
+  assert.deepEqual(writes, [{ offset: 0, value: 0x42, revision: 1 }]);
+  assert.equal(bus.consumeSramDirty(), true);
+  assert.equal(bus.consumeSramDirty(), false);
+  const image = bus.exportSram(); image[1] = 0x33; bus.importSram(image);
+  assert.equal(bus.read(0x700001), 0x33);
+  assert.equal(bus.consumeSramDirty(), false);
+  assert.throws(() => bus.importSram(new Uint8Array(1)), /8192 bytes/);
+});
+
+test('touch state exposes choice cursor, targets and screen rectangles', () => {
+  const vm = new ZakuroVM({ rom: fixtureRom([]), masterLink: { read: () => 0, write() {} } });
+  vm.bus.wram[0x7f] = 1; vm.bus.wram[0x81] = 1; vm.bus.wram[0x82] = 1;
+  vm.bus.wram.set([7, 0, 8, 0], 0x83); vm.bus.wram[0x348] = 2;
+  assert.deepEqual(vm.getTouchState(), {
+    mode: 'choice',
+    choice: { cursor: 1, count: 2, targets: [7, 8], rectangles: [
+      { index: 0, x: 0, y: 20, width: 256, height: 48 },
+      { index: 1, x: 0, y: 68, width: 256, height: 48 },
+    ] },
+    saveSlot: 2,
+  });
+});
+
 test('recorded joypad frames feed auto-joypad registers and serial reads', () => {
   const frames = [0, 0x1000, 0x0080];
   const bus = new ZakuroBus({
