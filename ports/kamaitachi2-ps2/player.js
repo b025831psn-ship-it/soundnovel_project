@@ -847,6 +847,12 @@ function canvasPoint(event) {
 function touchGame(event) {
   if (menuOpen) return;
   const {x, y} = canvasPoint(event);
+  // render.js footer(): ○ 決定 at 112..180 and × 戻る at 197..267 on the memory-card,
+  // slot and name-confirm screens (the created/save-note screens show ○ only).
+  if (y >= 386 && y < 420 && ['autosave','slot','file-select','created','save-note','confirm'].includes(scene)) {
+    if (x >= 104 && x < 188) { step('circle'); return; }
+    if (x >= 188 && x < 275 && !['created','save-note'].includes(scene)) { step('cross'); return; }
+  }
   if (scene === 'title') {
     if (y >= 360) { index = Math.max(0, Math.min(2, Math.floor((x - 79) / 152))); step('circle'); }
     return;

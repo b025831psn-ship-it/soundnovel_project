@@ -93,6 +93,15 @@ try {
   await tap(165, 400);
   await at('autosave');
   console.log('click flow: autosave');
+  // Footer buttons: × 戻る goes back to the title, ○ 決定 confirms the highlighted はい.
+  await tap(230, 403);
+  await at('title');
+  await tap(165, 400);
+  await at('autosave');
+  await tap(150, 403);
+  await at('slot');
+  await tap(230, 403);
+  await at('autosave');
   await tap(320, 205);
   await at('story');
   assert.equal(await page.locator('nav').count(), 0, 'virtual pad is absent');
