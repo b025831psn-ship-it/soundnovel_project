@@ -28,7 +28,7 @@ let sn4Mode = false, sn4Event, sn4WaitUntil = 0;
 // EE 0x112610: one character every max(1, speed) frames; CommandSpeed stores speed at +0x2a4.
 let sn4SpeedMarks = [], sn4Shown = '';
 const sn4Style = {speed:1, spacing:0, position:null, marginLeft:null, marginTop:null,
-  positions:[], rubies:[], scene:null, scenePack:null, caption:null, retainMovie:false,
+  positions:[], centers:[], rubies:[], scene:null, scenePack:null, caption:null, retainMovie:false,
   sceneCommands:[], unknown:[]};
 let scene = 'loading', index = 0, role = 0, page = 0, revealed = 0;
 let names = [], autosave = false, slot = 0, entered = 0, lastFrame, userNotice = '';
@@ -688,7 +688,16 @@ function drawStory(time) {
   }
   const metrics = sn4Mode ? {spacing:sn4Style.spacing, widthScale:1}
     : block.nativeGlyphWidth ? {spacing:0, widthScale:1} : {};
-  const end = screen.text(text, x, y, {...metrics, scale, max:Math.min(580, 640 - x), readings, colors:textColors});
+  const max = Math.min(580, 640 - x);
+  const full = storyText();
+  const lineStart = sn4Mode && sn4Style.centers.length ? offset => {
+    if (!sn4Style.centers.includes(offset)) return undefined;
+    const line = full.slice(offset).split('\n')[0];
+    const width = Array.from(line).reduce((w, ch) =>
+      w + ((data.font[ch] ?? data.font['�'])[2] + metrics.spacing) * metrics.widthScale, 0);
+    return width < max ? x + (max - width) / 2 : x;
+  } : undefined;
+  const end = screen.text(text, x, y, {...metrics, scale, max, readings, colors:textColors, lineStart});
   screen.c.restore();
   if (revealed >= storyText().length) {
     const tick = Math.floor(time * 6);
@@ -948,12 +957,13 @@ try {
     marginLeft:value => { sn4Style.marginLeft = value; },
     marginTop:value => { sn4Style.marginTop = value; },
     ruby:(word, readings) => { sn4Style.rubies.push({word, readings}); },
-    clearText:() => { sn4Shown = ''; sn4Style.position = null; sn4Style.positions = []; sn4Style.rubies = []; },
+    clearText:() => { sn4Shown = ''; sn4Style.position = null; sn4Style.positions = []; sn4Style.centers = []; sn4Style.rubies = []; },
     scene:value => { sn4Style.scenePack = value; },
     caption:value => { sn4Style.caption = value; return applyScenePack(value); },
     command:(name, args, context) => {
       sn4Style.sceneCommands.push({kind:'sn4', name, args, ...context});
-      if (name === 'Center') sn4Style.position = (320 << 16) | (sn4Style.marginTop ?? 31);
+      // EE 0x136f30: measure the rest of the line and move the cursor by half the free width.
+      if (name === 'Center') sn4Style.centers.push(sn4.text.length);
       return 0;
     },
   });

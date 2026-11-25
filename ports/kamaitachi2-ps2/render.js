@@ -54,8 +54,9 @@ export class Screen {
     return tile;
   }
 
-  text(str, x, y, { scale = 1, max = Infinity, leading = 40, spacing = 1, widthScale = scale, readings, colors, tint } = {}) {
-    let px = x, py = y, offset = 0;
+  text(str, x, y, { scale = 1, max = Infinity, leading = 40, spacing = 1, widthScale = scale, readings, colors, tint, lineStart } = {}) {
+    // lineStart(offset) may move the first glyph of a line (SN4 CommandCenter).
+    let px = lineStart?.(0) ?? x, py = y, offset = 0;
     for (const ch of str) {
       const rgb = colors?.get(offset);
       if (rgb) tint = rgb.every(channel => channel === 128) ? undefined : rgb;
@@ -64,7 +65,7 @@ export class Screen {
       if (ch === '\n' || px + advance > x + max) { px = x; py += leading; }
       const reading = readings?.get(offset);
       offset += ch.length;
-      if (ch === '\n') continue;
+      if (ch === '\n') { px = lineStart?.(offset) ?? px; continue; }
       if (reading) this.centered(reading, px + advance / 2, py - 10, .38);
       if (glyph) {
         const [gx, gy, w, h, top] = glyph;
