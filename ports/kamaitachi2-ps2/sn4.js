@@ -73,9 +73,13 @@ export class Sn4Vm {
         // CommandNoop16 has no EE-side visual call, but it terminates a choice
         // response record. Yield the accumulated response before continuing.
         case 0x16:
+          this.clearBeforeRun = true;
           return {type:'pause', reason:'choice-separator', label:this.label,
             offset:command.offset, text:this.text};
         case 0x1e: this.hooks.captionSync?.(); break;
+        case 0x0c:
+        case 0x15:
+        case 0x32: break;
         case 0x12:
         case 0x13:
           this.pending = {type:'name', role:command.op - 0x12};
@@ -86,6 +90,10 @@ export class Sn4Vm {
         case 0x50:
           return {type:'wait', label:this.label, offset:command.offset, ticks:args[0], text:this.text};
         case 0x55: this.hooks.lineSpacing?.(args[0]); break;
+        case 0x5a: this.hooks.command5a?.(args[0]); break;
+        case 0x5c: this.hooks.command5c?.(args[0]); break;
+        case 0x5d: this.hooks.marginLeft?.(args[0]); break;
+        case 0x61: this.hooks.marginTop?.(args[0]); break;
         case 0x65: this.hooks.position?.(args[0]); break;
         case 0x6a:
         case 0x6b: this.jump(args[0]); break;
@@ -107,6 +115,7 @@ export class Sn4Vm {
           break;
         }
         case 0x75: this.hooks.color?.(...args); break;
+        case 0x106: this.hooks.ruby?.(...args); break;
         default:
           throw new Error(`Unsupported SN4 opcode 0x${command.op.toString(16).padStart(2, '0')} at ${this.label}+0x${command.offset.toString(16)}`);
       }

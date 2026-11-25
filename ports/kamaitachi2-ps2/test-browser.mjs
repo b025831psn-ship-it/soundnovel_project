@@ -85,9 +85,12 @@ try {
   assert.deepEqual(vmBranches.map(branch => branch.targets), [
     ['my01_0075', 'my01_0073'], ['my01_0075', 'my01_0073'],
   ]);
-  assert.deepEqual(vmBranches.map(branch => branch.label), ['my01_0077', 'my01_0073']);
-  assert.ok(vmBranches.every(branch => branch.text.length > 0));
-  assert.deepEqual(vmBranches[0].captions, ['my0002e_10']);
+  assert.deepEqual(vmBranches.map(branch => branch.label), ['my01_0085', 'my01_0073']);
+  assert.ok(vmBranches.every(branch => branch.text.length > 0 || branch.texts.some(Boolean)));
+  assert.deepEqual(vmBranches[0].captions, [
+    'my0002e_10', 'my0002f_00', 'my0002g_00', 'my0002g_10',
+    'my0002g_35', 'my0002g_40', 'my0002h_00',
+  ]);
   assert.deepEqual(vmBranches[1].captions, []);
   assert.ok(vmBranches[0].texts.some(text => text.includes('北海道に引っ越してしまった')));
   const musicWait = await page.evaluate(async () => {
@@ -273,9 +276,11 @@ try {
   for (let i=0; i<8 && !(await label()).includes('一通の招待状'); i++) await key('Enter');
   assert.match(await label(), /^その後も、真理とは、手紙や電話/);
   assert.match(await label(), /一通の招待状が届いた。$/);
-  for (let i=0; i<3 && !(await label()).startsWith('ゲームソフト'); i++) await key('Enter');
-  assert.equal((await label()).split('\n').length, 2);
-  for (let i=0; i<3 && !(await label()).includes('三日月館'); i++) await key('Enter');
+  for (let i=0; i<20 && !(await label()).includes('ありがとうございました'); i++) {
+    await key('Enter'); await page.waitForTimeout(100);
+  }
+  assert.match(await label(), /ゲームソフト『かまいたちの夜』[^]*ありがとうございました。$/);
+  for (let i=0; i<12 && !(await label()).includes('することができました'); i++) await key('Enter');
   assert.equal((await label()).split('\n').length, 6);
   assert.match(await label(), /^ゲームソフト『かまいたちの夜』/);
   assert.match(await label(), /三日月館[^]*することができました。$/);
@@ -284,23 +289,29 @@ try {
   assert.match(await label(), /八月十五日\nから十六日まで/);
   for (let i=0; i<8 && !(await label()).endsWith('我孫子武丸'); i++) await key('Enter');
   assert.match(await label(), /八月吉日\n三日月館当主\n我孫子武丸$/);
-  for (let i=0; i<8 && !(await label()).endsWith('出会ったことがないからだ。'); i++) await key('Enter');
-  assert.match(await label(), /^この『我孫子武丸』というのは、『かまいたちの夜』/);
-  assert.match(await label(), /出会ったことがないからだ。$/);
+  const authorPages = new Set();
+  for (let i=0; i<30 && !(await label()).includes('会えるかもしれない'); i++) {
+    authorPages.add(await label());
+    await key('Enter'); await page.waitForTimeout(100);
+  }
+  assert.ok([...authorPages].some(text => text.startsWith('この『我孫子武丸』')));
+  assert.ok([...authorPages].some(text => text.endsWith('出会ったことがないからだ。')));
   for (let i=0; i<10 && !(await label()).endsWith('会えるかもしれない……。'); i++) await key('Enter');
   assert.deepEqual((await label()).split('\n'), [
     'この招待状は、真理にも届いているのだろうか。',
     'ぼくは、すぐに、真理に電話をした。',
     'もしかしたら、また、真理と会えるかもしれない……。',
   ]);
-  await key('Enter');
-  await key('Enter');
+  for (let i=0; i<24 && !(await label()).endsWith('あ、真理？'); i++) {
+    await key('Enter'); await page.waitForTimeout(100);
+  }
   assert.match(await label(), /「もしもし・・・・・・あ、真理？$/);
   await key('Enter');
   assert.equal(await canvas.getAttribute('data-scene'), 'story');
   await page.waitForTimeout(3000);
-  await key('Enter');
   assert.match(await label(), /真理？ひさしぶりだね……」$/);
+  await key('Enter');
+  await key('Enter');
   await page.waitForFunction(() => document.querySelector('canvas').getAttribute('aria-label') === '八月十五日正午');
   await page.waitForFunction(() => {
     const ctx = document.querySelector('canvas').getContext('2d');

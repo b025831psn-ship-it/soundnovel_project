@@ -22,7 +22,8 @@ const saveKey = 'soundnovel.slps25132.opening.v1';
 let saved = readSave();
 let data, screen, groups, editor, pages, sn4;
 let sn4Mode = false, sn4Event, sn4WaitUntil = 0;
-const sn4Style = {speed:1, spacing:0, position:null, scene:null, scenePack:null, caption:null};
+const sn4Style = {speed:1, spacing:0, position:null, marginLeft:null, marginTop:null,
+  rubies:[], scene:null, scenePack:null, caption:null};
 let scene = 'loading', index = 0, role = 0, page = 0, revealed = 0;
 let names = [], autosave = false, slot = 0, entered = 0, lastFrame, userNotice = '';
 let idleMovie = 'opening';
@@ -350,23 +351,7 @@ function makePages(s) {
       retainMovie:true, append:i > 0, end:i === lines.length - 1, book:i === lines.length - 1,
       text: () => lines.slice(0, i + 1).join('\n'),
     })),
-    { target:'my01_0077-cont', book:true, text: () => correspondence() + '\n' + letter[3] },
-    { background:'my0000', text: () => s.my01_0078.slice(0, 2).join('\n') },
-    { background:'my0000', append:true, book:true, text: () => s.my01_0078.join('\n') },
-    { background:'my0000', ruby:sceneryRuby, text: () => middle.slice(4, 7).join('\n') },
-    { background:'my0000', ruby:sceneryRuby, append:true, book:true, text: () => middle.slice(4).join('\n') },
-    { background:'my0000', text: () => closing[0] },
-    { background:'my0000', append:true, text: () => closing.slice(0, 4).join('\n') },
-    { background:'my0000', append:true, book:true, ruby:{word:closing[11], readings:closing.slice(6, 11)},
-      text: () => [...closing.slice(0, 6), closing[11]].join('\n') },
-    { background:'my0002', text:introduction },
-    { background:'my0002', append:true, book:true, text: () => introduction() + '\n' + author.slice(9).join('') },
-    { background:'my0002', text:invitationQuestion },
-    { background:'my0002', append:true, text:phoneCall },
-    { background:'my0002', append:true, text:beforeGreeting },
-    { background:'my0002', append:true, text:greeting, waits:greetingWaits },
-    { background:'my0002', append:true, autoAdvance:true, text: () => greeting() + s.phoneGreeting.at(-1).text },
-    { background:'my0000', positioned:s.my02_0010.lines, autoAdvance:true,
+    { target:'my01_0085-cont', background:'my0000', positioned:s.my02_0010.lines, autoAdvance:true,
       speeds:[{offset:0, speed:s.my02_0010.speed}],
       waits: () => [{offset:0, remaining:s.my02_0010.waitBefore * 1000 / 59.94},
         {offset:s.my02_0010.lines.reduce((size,line) => size + line.text.length, 0), remaining:s.my02_0010.waitAfter * 1000 / 59.94}],
@@ -598,11 +583,13 @@ function drawStory(time) {
   if (block.movie && !text) return;
   if (!block.movie && !block.retainMovie) screen.background(background, background === 'my0645', time);
   const vmPosition = sn4Style.position === null ? null : {x:sn4Style.position >>> 16, y:sn4Style.position & 0xffff};
-  const origin = vmPosition ?? (block.background === 'my0000' ? data.invitationOrigin : {x:32, y:31});
+  const vmMargins = sn4Mode && (sn4Style.marginLeft !== null || sn4Style.marginTop !== null)
+    ? {x:sn4Style.marginLeft ?? 32, y:sn4Style.marginTop ?? 31} : null;
+  const origin = vmPosition ?? vmMargins ?? (block.background === 'my0000' ? data.invitationOrigin : {x:32, y:31});
   const scale = block.center || (background === 'my0645' && !block.movie && !block.retainMovie) ? .96 : .91;
   const y = block.center ? 192 : origin.y;
   const x = block.center ? (640 - screen.width(storyText(), scale)) / 2 : origin.x;
-  const rubies = block.rubies ?? (block.ruby ? [block.ruby] : []);
+  const rubies = sn4Mode ? sn4Style.rubies : (block.rubies ?? (block.ruby ? [block.ruby] : []));
   const readings = rubies.length ? new Map() : undefined;
   for (const ruby of rubies) {
     const start = block.firstRuby ? storyText().indexOf(ruby.word) : storyText().lastIndexOf(ruby.word);
@@ -775,6 +762,9 @@ try {
     speed:value => { sn4Style.speed = value; },
     spacing:value => { sn4Style.spacing = value; },
     position:value => { sn4Style.position = value; },
+    marginLeft:value => { sn4Style.marginLeft = value; },
+    marginTop:value => { sn4Style.marginTop = value; },
+    ruby:(word, readings) => { sn4Style.rubies.push({word, readings}); },
     scene:value => { sn4Style.scenePack = value; },
     caption:value => { sn4Style.caption = value; return applyScenePack(value); },
   });

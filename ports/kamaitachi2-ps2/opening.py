@@ -399,9 +399,14 @@ def first_choice_program(data):
               for a, b in zip(labels, labels[1:])}
 
     def decode(name, stop_at_choice=False, first_text_only=False,
-               stop_caption=None, stop_jump=False):
+               stop_caption=None, stop_jump=False, start_after_caption=None,
+               label_name=None, skip_to_first_text=False):
         base, block = blocks[name]
-        pos = block.find(b"\x02") if first_text_only else 0
+        if start_after_caption:
+            marker = bytes((0x74, len(start_after_caption) + 1)) + start_after_caption.encode() + b"\0"
+            pos = block.index(marker) + len(marker)
+        else:
+            pos = block.find(b"\x02") if first_text_only or skip_to_first_text else 0
         if pos < 0:
             raise ValueError(f"Missing text in {name}")
         ops = []
@@ -414,16 +419,36 @@ def first_choice_program(data):
                 ops.append({"op": op, "offset": offset,
                             "args": [block[pos:end].decode("cp932")]})
                 pos = end + 1
-            elif op in (0x04, 0x09, 0x0B, 0x0D, 0x0E, 0x12, 0x13, 0x1E):
+            elif op in (0x04, 0x09, 0x0B, 0x0C, 0x0D, 0x0E, 0x12, 0x13, 0x15, 0x1E, 0x32):
                 ops.append({"op": op, "offset": offset, "args": []})
                 if first_text_only and op in (0x09, 0x0B, 0x16):
                     break
             elif op in (0x40, 0x46):
                 ops.append({"op": op, "offset": offset, "args": [block[pos]]})
                 pos += 1
-            elif op in (0x50, 0x55, 0x65):
+            elif op == 0x4C:
+                ops.append({"op": op, "offset": offset, "args": list(block[pos:pos + 2])})
+                pos += 2
+            elif op in (0x50, 0x55, 0x5A, 0x5C, 0x5D, 0x61, 0x65):
                 ops.append({"op": op, "offset": offset,
                             "args": [int.from_bytes(block[pos:pos + 4], "big")]})
+                pos += 4
+            elif op == 0x06:
+                readings = []
+                while block[pos] == 0x02:
+                    end = block.index(b"\x03", pos + 1)
+                    readings.append(block[pos + 1:end].decode("cp932"))
+                    pos = end + 1
+                if block[pos] != 0x07 or block[pos + 1] != 0x02:
+                    raise ValueError(f"Invalid ruby command in {name} at {offset:#x}")
+                end = block.index(b"\x03", pos + 2)
+                base_text = block[pos + 2:end].decode("cp932")
+                ops.append({"op": 0x106, "offset": offset,
+                            "args": [base_text[:len(readings)], readings]})
+                pos += 1
+            elif op == 0x66:
+                packed = int.from_bytes(block[pos:pos + 4], "big")
+                ops.append({"op": 0x65, "offset": offset, "args": [packed]})
                 pos += 4
             elif op in (0x72, 0x73, 0x74):
                 size = block[pos]
@@ -452,6 +477,15 @@ def first_choice_program(data):
                 pos += size + 1
                 if stop_at_choice:
                     break
+            elif op == 0x6F:
+                size = block[pos]
+                payload = block[pos + 1:pos + 1 + size]
+                if len(payload) != size or size < 5 or size != 5 + 4 * payload[4]:
+                    raise ValueError(f"Invalid CommandWipe in {name} at {offset:#x}")
+                ops.append({"op": op, "offset": offset,
+                            "args": [int.from_bytes(payload[:4], "big"),
+                                     *[n for (n,) in struct.iter_unpack(">I", payload[5:])]]})
+                pos += size + 1
             elif op == 0x70:
                 size = block[pos]
                 payload = block[pos + 1:pos + 1 + size]
@@ -466,7 +500,7 @@ def first_choice_program(data):
                     break
             else:
                 raise ValueError(f"Unsupported first-choice extraction opcode {op:#x} in {name} at {offset:#x}")
-        return {"label": name, "offset": base, "ops": ops}
+        return {"label": label_name or name, "offset": base, "ops": ops}
 
     names = ["my01_0047", "my01_0055", "my01_0062", "my01_0070"]
     decoded = [decode(name, stop_at_choice=name == "my01_0070") for name in names]
@@ -476,7 +510,15 @@ def first_choice_program(data):
               decode("my01_0077", stop_caption="my0002e_10")]
     branch[0]["next"] = branch[1]["label"]
     branch[1]["next"] = branch[2]["label"]
-    decoded.extend(branch)
+    continuation = [decode("my01_0077", start_after_caption="my0002e_10",
+                           label_name="my01_0077_after_scene"),
+                    *[decode(name) for name in ("my01_0078", "my01_0079", "my01_0080", "my01_0081", "my01_0082")],
+                    decode("my01_0085", skip_to_first_text=True, stop_caption="my0002h_00")]
+    branch[2]["next"] = continuation[0]["label"]
+    for current, following in zip(continuation, continuation[1:]):
+        if current["label"] != "my01_0082":
+            current["next"] = following["label"]
+    decoded.extend(branch + continuation)
     decoded.append(decode("my01_0073", first_text_only=True, stop_jump=True))
     return {"entry": names[0], "labels": decoded}
 
@@ -610,6 +652,31 @@ def opening_assets(disc, out, encode):
                   "fadeFrames": int.from_bytes(volume[2], "little"),
                   "wait": int.from_bytes(volume[3], "little")},
     }
+    # ScenePack entries reached by the invitation and phone path. Their table
+    # offsets are relative to the my0002 command area at file offset 0x72110.
+    later_entries = {
+        "my0002f_00": (0x2D1, 0x34F), "my0002g_00": (0x34F, 0x37F),
+        "my0002g_10": (0x37F, 0x39D), "my0002g_35": (0x39D, 0x3BB),
+        "my0002g_40": (0x3BB, 0x3E9), "my0002h_00": (0x3E9, 0x408),
+    }
+    for name, (start, end) in later_entries.items():
+        command = scene_pack[0x72110 + start:0x72110 + end]
+        entry = {}
+        if image := re.search(rb"\x27\x00([^\0]+\.ipu)\x00", command):
+            entry["image"] = image[1].decode("ascii").removesuffix(".ipu")
+        if music := music_pattern.search(command):
+            entry["music"] = {"operation": 0x14, "command": 0x07,
+                              "file": music[1].decode("ascii"),
+                              "volume": int.from_bytes(music[2], "little"),
+                              "wait": int.from_bytes(music[3], "little"),
+                              "fadeFrames": int.from_bytes(music[4], "little")}
+        elif volume := volume_pattern.search(command):
+            entry["music"] = {"operation": 0x17, "command": 0x0A,
+                              "volume": int.from_bytes(volume[1], "little"),
+                              "fadeFrames": int.from_bytes(volume[2], "little"),
+                              "wait": int.from_bytes(volume[3], "little")}
+        if entry:
+            scene_pack_opening[name] = entry
     config = {
         "font": font_atlas(asset("SCENARIO/sn4.fnt"), out),
         "rows": asset("SCENARIO/namkan.txt").decode("cp932").strip("\n").split("\n\n"),
