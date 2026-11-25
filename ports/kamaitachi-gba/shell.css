@@ -64,6 +64,24 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); ou
   transition: opacity .6s ease;
 }
 .stage.ready #screen { opacity: 1; }
+.screen-box { position: relative; line-height: 0; }
+/* Menu button over the screen's bottom-right corner, so it stays in reach in full screen and on phones.
+   Quiet until hovered; hidden while the game can't open the menu. */
+.menu-button {
+  position: absolute; right: 2.5%; bottom: 3.5%;
+  display: grid; place-items: center; width: 40px; height: 40px; padding: 0;
+  border: 1px solid rgba(255, 255, 255, .18); border-radius: 10px;
+  background: rgba(8, 9, 11, .55); color: #ece8e1;
+  -webkit-backdrop-filter: blur(4px); backdrop-filter: blur(4px);
+  opacity: .7; transition: opacity .25s ease, background .15s ease, transform .06s ease;
+  touch-action: manipulation;
+}
+.menu-button svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 1.75; stroke-linecap: round; stroke-linejoin: round; }
+.menu-button:hover, .menu-button:focus-visible { opacity: 1; background: rgba(8, 9, 11, .8); }
+.menu-button:active { transform: scale(.94); }
+.menu-button.unavailable { opacity: 0; pointer-events: none; }
+.stage:not(.ready) .menu-button { display: none; }
+.immersive.idle .menu-button:not(:hover) { opacity: .45; }
 .loading {
   position: absolute;
   display: grid;
@@ -124,10 +142,6 @@ kbd {
 /* Inside the hub the side column already explains the keys. */
 .embedded .keys { display: none; }
 .controls { display: flex; align-items: center; gap: 2px; flex: none; }
-/* Game menu: icon and label at the bottom right; dimmed while the game can't open it. */
-.icon.menu-button { display: inline-flex; flex: none; white-space: nowrap; align-items: center; width: auto; gap: 8px; padding: 0 12px 0 10px; margin-left: 4px; border: 1px solid var(--line-strong); color: var(--text); }
-.menu-label { font-size: 13px; font-weight: 500; }
-.icon.menu-button.unavailable { opacity: .4; }
 .sep { width: 1px; height: 20px; margin: 0 6px; background: var(--line); }
 .icon {
   display: inline-grid;

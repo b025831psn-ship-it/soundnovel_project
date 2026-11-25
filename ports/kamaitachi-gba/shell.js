@@ -68,6 +68,8 @@ whenReady(({ input, sound }) => {
   const showMenuState = (available) => menuButton.classList.toggle("unavailable", !available);
   addEventListener("kamaitachi:menu", (event) => showMenuState(event.detail.available));
   showMenuState(window.kamaitachi?.menuAvailable ?? false);
+  // Keep the tap on the button: the screen's own handlers (tap = A, tap to pick) must not see it.
+  for (const type of ["pointerdown", "pointerup", "click"]) menuButton.addEventListener(type, (event) => event.stopPropagation());
   menuButton.addEventListener("click", () => {
     navigator.vibrate?.(8);
     if (window.kamaitachi?.openMenu) { window.kamaitachi.openMenu(); return; }

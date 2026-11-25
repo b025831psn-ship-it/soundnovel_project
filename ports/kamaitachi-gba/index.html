@@ -11,10 +11,17 @@
 </head>
 <body>
 <main class="shell" id="shell">
-  <!-- The cartridge's 240x160 screen, scaled by whole numbers. Nothing is drawn over it. -->
+  <!-- The cartridge's 240x160 screen, scaled by whole numbers. The game's pixels are never drawn over;
+       the only thing laid on top is the menu button, an HTML element in the bottom-right corner. -->
   <div class="stage" id="stage">
     <canvas id="glow" width="24" height="16" aria-hidden="true"></canvas>
-    <canvas id="screen" aria-label="게임 화면 240×160"></canvas>
+    <div class="screen-box">
+      <canvas id="screen" aria-label="게임 화면 240×160"></canvas>
+      <!-- The game menu (GBA R: 移動 flowchart, オプション, セーブ). Shown only when the game can open it. -->
+      <button type="button" class="menu-button" id="menu" aria-label="게임 메뉴 (S)" title="게임 메뉴 · 이동 · 저장 (S)">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3.5" width="7" height="5" rx="1"/><rect x="14" y="9.5" width="7" height="5" rx="1"/><rect x="3" y="15.5" width="7" height="5" rx="1"/><path d="M10 6h2v12h-2M12 12h2"/></svg>
+      </button>
+    </div>
     <div class="loading" id="loading" role="status">
       <span class="bar-track"><span></span></span>
       <span>원작 데이터를 불러오는 중</span>
@@ -46,11 +53,6 @@
       <button type="button" class="icon" id="fullscreen" aria-label="전체 화면 (F)" title="전체 화면 (F)">
         <svg viewBox="0 0 24 24" aria-hidden="true" class="on"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg>
         <svg viewBox="0 0 24 24" aria-hidden="true" class="off"><path d="M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5"/></svg>
-      </button>
-      <!-- The game menu (GBA R: bookmarks, 移動 flowchart, options), bottom right so phones reach it too. -->
-      <button type="button" class="icon menu-button" id="menu" aria-label="게임 메뉴 (S)" title="게임 메뉴 · 책갈피 · 이동 (S)">
-        <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3.5" width="7" height="5" rx="1"/><rect x="14" y="9.5" width="7" height="5" rx="1"/><rect x="3" y="15.5" width="7" height="5" rx="1"/><path d="M10 6h2v12h-2M12 12h2"/></svg>
-        <span class="menu-label">메뉴</span>
       </button>
     </div>
   </footer>
