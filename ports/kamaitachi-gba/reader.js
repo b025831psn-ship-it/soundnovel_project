@@ -128,18 +128,56 @@ const extend = $("extend");
 const extendCtx = extend.getContext("2d");
 extend.width = 240; extend.height = EXTENDED_HEIGHT;
 let extendBase = null;
+// A row's mean color when it is flat or nearly black (the logo and copyright screens sit on black or a
+// very dark glow), else null.
+function flatRow(data, y) {
+  const at = y * 240 * 4, r = data[at], g = data[at + 1], b = data[at + 2];
+  let flat = true, brightest = 0;
+  const sum = [0, 0, 0];
+  for (let x = 0; x < 240; x++) {
+    const i = at + x * 4;
+    if (Math.abs(data[i] - r) + Math.abs(data[i + 1] - g) + Math.abs(data[i + 2] - b) > 12) flat = false;
+    brightest = Math.max(brightest, data[i] + data[i + 1] + data[i + 2]);
+    for (let k = 0; k < 3; k++) sum[k] += data[i + k];
+  }
+  return flat || brightest <= 240 ? sum.map((v) => Math.round(v / 240)) : null;
+}
+let flatKey = "";
 function drawExtend(game) {
   const screen = game.screen;
   const entry = screen.base && extendedFor(screen);
-  shell.classList.toggle("extended", Boolean(entry));
-  if (!entry) { extendBase = null; return; }
+  // Without an extended picture, a screen whose top and bottom rows are flat continues in those colors
+  // (instead of the blurred glow), so the logo and copyright fill the upright screen like the original's black.
+  const data = !entry && screen.image?.data;
+  const top = data && flatRow(data, 0), bottom = data && flatRow(data, 159);
+  const flat = Boolean(top && bottom);
+  shell.classList.toggle("extended", Boolean(entry) || flat);
   const canvas = $("screen");
   const width = canvas.clientWidth;
   extend.style.width = `${width}px`;
   extend.style.height = `${(width * EXTENDED_HEIGHT) / 240}px`;
+  if (flat) {
+    extendBase = null;
+    const key = `${top}|${bottom}`;
+    if (key !== flatKey) {
+      flatKey = key;
+      extendCtx.fillStyle = `rgb(${top})`; extendCtx.fillRect(0, 0, 240, EXTENDED_HEIGHT / 2);
+      extendCtx.fillStyle = `rgb(${bottom})`; extendCtx.fillRect(0, EXTENDED_HEIGHT / 2, 240, EXTENDED_HEIGHT / 2);
+      stage.style.setProperty("--edge-top", `rgb(${top})`);
+      stage.style.setProperty("--edge-bottom", `rgb(${bottom})`);
+    }
+    return;
+  }
+  flatKey = "";
+  if (!entry) { extendBase = null; return; }
   if (screen.base === extendBase) return;
   extendBase = screen.base;
-  extendCtx.putImageData(new ImageData(extendedPixels(entry, screen.base), 240, EXTENDED_HEIGHT), 0, 0);
+  const pixels = extendedPixels(entry, screen.base);
+  extendCtx.putImageData(new ImageData(pixels, 240, EXTENDED_HEIGHT), 0, 0);
+  const last = (EXTENDED_HEIGHT - 1) * 240 * 4;
+  const mean = (from) => { const c = [0, 0, 0]; for (let x = 0; x < 240; x++) for (let k = 0; k < 3; k++) c[k] += pixels[from + x * 4 + k] / 240; return c.map(Math.round); };
+  stage.style.setProperty("--edge-top", `rgb(${mean(0)})`);
+  stage.style.setProperty("--edge-bottom", `rgb(${mean(last)})`);
 }
 
 // Where to cut: the silhouette when one is up (people are what the page is about), otherwise the band

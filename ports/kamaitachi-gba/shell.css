@@ -387,3 +387,7 @@ html.filled, html.filled body { overflow: hidden; }
 
 /* Text language (日本語 / 한국어): a one-character label, the language now shown. */
 .icon.lang { font: 600 14px/1 "Noto Serif KR", serif; }
+
+/* Upright game screens: the stage beyond the picture continues its outer rows' colors; no blurred glow. */
+.shell.reader-on.extended:not(.reading) #glow { display: none; }
+.shell.reader-on.extended:not(.reading) .stage { background: linear-gradient(var(--edge-top, #000) 50%, var(--edge-bottom, #000) 50%); }
