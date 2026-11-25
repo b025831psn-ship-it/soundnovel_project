@@ -363,12 +363,12 @@ html.filled, html.filled body { overflow: hidden; }
 .choices:empty { display: none; }
 .choice {
   display: flex; align-items: center; gap: 12px; width: 100%; min-height: 54px; padding: 12px 16px;
-  border: 1px solid rgba(255, 255, 255, .22); border-radius: 12px;
+  border: 0; border-radius: 12px;
   background: rgba(10, 11, 14, .55); -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px);
   color: #f4f1ea; text-align: left;
-  transition: background .15s ease, border-color .15s ease, transform .06s ease;
+  transition: background .15s ease, transform .06s ease;
 }
-.choice.selected { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 22%, rgba(10, 11, 14, .6)); }
+.choice.selected { background: color-mix(in srgb, var(--accent) 22%, rgba(10, 11, 14, .6)); }
 .choice:active { transform: scale(.985); }
 #readertoggle[aria-pressed="true"] { color: var(--accent); }
 /* Full screen upright while reading stays upright (no quarter turn). */
