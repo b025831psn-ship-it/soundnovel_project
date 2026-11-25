@@ -45,3 +45,6 @@
 - 일치에 필요했던 것: S-DSP를 32단계 클록 처리로 바꾼 것, DSP 접근을 명령 시작 시점에 반영한 것, 전원 투입 뒤 IPL 동안(621,677클록) DSP와 타이머 분주기가 계속 돌았다는 점을 `APU.boot()`에 넣은 것, BRA 클록 중복 가산 수정.
 - `tools/replay-trace.mjs`는 CPU 쪽 로그(`apu-ports.tsv`) 기준 대조다. CPU가 읽은 APU 응답 4,209,120건이 모두 맞는다.
 - `sound/master-link.js`: 65c816 VM 연결. VM의 master clock을 `15664/328125`(나머지 누적)로 SPC 클록에 옮기고, `$2140–$2143` 접근 전에 APU를 그 시각까지 진행한다.
+- `sound/output.js`·`sound/sfc-worklet.js`·`sound/resampler.js`: 브라우저 출력. APU는 VM과 같은 스레드에서 돌고, S-DSP 샘플을 블록으로 AudioWorklet에 보낸다. 워크릿은 32,040 Hz를 기기 출력률로 선형 보간하고, 버퍼 채움 정도로 비율을 ±0.5% 안에서 보정한다. 음소거·일시정지 지원.
+- `sound/demo.html`: 비공개 `port-data/sound/ipl-records.bin`·`dsp-gauss.bin`과 `trace/spc-ports.tsv`로 reset부터 첫 선택지까지의 사운드를 실시간 재생하는 확인 페이지. 저장소 상위 폴더를 정적 서버로 열고 `ports/kamaitachi-sfc/sound/demo.html`에 접속한다(`?data=`로 자료 경로 변경).
+- `tools/extract-sound.mjs <rom> <kamaitachi-sfc-kor/port-data/sound>`: 드라이버 부팅 레코드(file `$003A3F`, 10,011 bytes)를 `ipl-records.bin`으로 추출한다.
