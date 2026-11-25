@@ -12,12 +12,12 @@ const records = [{ dest: 0x400, payload: prog }, { dest: 0x400 }];
 
 test('replay applies CPU writes and matches DSP writes and port reads', () => {
   const ports = [['0', '0', 'w', '0', '00'], ['1', '21000', 'w', '0', '05'], ['2', '42000', 'r', '0', '05']];
-  const r = replay({ records, ports, dsp: [['1010', '4c', '05']] });
+  const r = replay({ records, ports, dsp: [['1010', '4c', '05']], calibrate: false });
   assert.equal(r.firstDiff, -1); assert.equal(r.readMismatch.length, 0); assert.ok(r.maxDrift < 20);
 });
 
 test('replay reports the first DSP divergence', () => {
   const ports = [['0', '0', 'w', '0', '00'], ['1', '21000', 'w', '0', '05']];
-  const r = replay({ records, ports, dsp: [['1010', '4c', '06']] });
+  const r = replay({ records, ports, dsp: [['1010', '4c', '06']], calibrate: false });
   assert.equal(r.firstDiff, 0);
 });
