@@ -35,3 +35,4 @@
 - 512개 가우스 보간 표는 칩 데이터라 포함하지 않고 생성자 인수로 받는다. 표가 없으면 테스트용 선형 보간으로 대신한다.
 - `apu.js`: SPC700과 S-DSP가 64 KiB ARAM을 공유하는 오디오 장치. 메인 CPU 쪽은 `cpuWrite/cpuRead`로 `$2140–$2143`을 다룬다.
 - `tools/boot-driver.mjs <rom>`: 소유 ROM(SHA-256 `3228a3b3…`)에서 IPL 레코드 4개를 읽어 드라이버를 부팅하고, CPU `$00:B7BE`의 부팅 handshake(`"Chun"` 쓰기 → `"SOFT"` 응답 → port 0에 0)를 재생한다. DSP 쓰기를 `clock reg value` TSV로 출력한다. 2026-11-25 확인: SOFT 응답 54,500클록, 드라이버 main loop(`$11C6` receiver) 진입, 첫 1초 DSP 쓰기 237건(대부분 KOFF).
+- `tools/replay-trace.mjs <rom> <apu-ports.tsv> <dsp-writes.tsv>`: 에뮬레이터의 APU 포트 로그를 시간에 맞춰 재생하고, CPU가 읽은 포트 값과 DSP 쓰기 순서(reg, value)를 자동 대조한다. 첫 불일치 위치와 클록 오차 최대값을 출력한다. 로그 형식은 PR #24 댓글 7149110384.

@@ -4,21 +4,13 @@
 // CPU side of $00:B7BE: write "Chun" to $2140-$2143, wait for "SOFT", write 0 to $2140,
 // wait for port 0 to read 0. Prints DSP register writes as `clock\treg\tvalue`.
 import { readFileSync, writeFileSync } from 'node:fs';
-import { createHash } from 'node:crypto';
 import { APU } from '../sound/apu.js';
+import { checkRom, readIplRecords } from './rom.mjs';
 
-const ROM_SHA256 = '3228a3b35f7d234a7bf91f8159ccc56518199222e84d258c14a153f54f9fcbc7';
 const [romPath, flag, logPath] = process.argv.slice(2);
 const rom = readFileSync(romPath);
-const sha = createHash('sha256').update(rom).digest('hex');
-if (sha !== ROM_SHA256) throw new Error(`unexpected ROM ${sha}`);
-
-const records = []; let p = 0x3a3f;
-for (;;) {
-  const n = rom[p] | (rom[p + 1] << 8), dest = rom[p + 2] | (rom[p + 3] << 8);
-  records.push({ dest, payload: n ? rom.subarray(p + 4, p + 4 + n) : null });
-  if (!n) break; p += 4 + n;
-}
+checkRom(rom);
+const records = readIplRecords(rom);
 
 const dsp = [];
 const apu = new APU({ onDspWrite: (t, r, v) => dsp.push([t, r, v]) });
