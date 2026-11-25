@@ -3,6 +3,7 @@
 // scenario bytecode, so they are ported routine by routine. Each `yield` is one frame wait
 // (08002FB8); fades use the same brightness slots the scenario VM steps every VBlank.
 import { ObjTextSurface } from "./obj-text.js";
+import { NameEntry, NAME_PICTURES } from "./name-entry.js";
 
 // Image ids passed to 08003878. 08000DC4 maps 0x2329-0x2331 to picture id - 0x2328 + 0xE7 and
 // 0x238C-0x2422 through the signed byte table at 08019400 (+0xE7).
@@ -45,7 +46,7 @@ const CURSOR_HIDDEN = 2;
 
 // Palette bank 15 colors (BGR555) the title menu uses: BG1 box 0x0E, OBJ outline 1, white 2, grey 3.
 const BOX = 0x15d9;
-const OBJ_COLORS = { 1: 0x0000, 2: 0x7fff, 3: 0x56b5 };
+const OBJ_COLORS = { 1: 0x0000, 2: 0x7fff, 3: 0x56b5, 5: 0x03e0 };
 // BLDCNT 0x3146 / BLDALPHA 0x070D: BG1 and semi-transparent OBJs blend over BG0 at 13/16 + 7/16.
 const EVA = 13;
 const EVB = 7;
@@ -67,11 +68,22 @@ export class Boot {
     this.deferred = [];
     this.logoShown = false; // 020066C1: set when returning to the title from a game
     this.book = 0; // 02004642: last bookmark chosen
+    // 02006649 + 16 * slot: the names the text shows (1 hero 透, 2 girlfriend 真理, 0 culprit).
+    this.names = { 0: [], 1: [0x93, 0xa7], 2: [0x90, 0x5e, 0x97, 0x9d] };
+    // 020006C4: VBlank count (080066E8), zeroed by the 080031C0 init. mGBA frame f reads f - 3, and
+    // this port starts 17 frames after power-on (row 31000), so the count starts at 13 here.
+    this.tick = 13;
+    this.blank = false; // DISPCNT 0
+    this.repeat = false; // 020289C4: d-pad auto-repeat
+    this.repeatCount = 0;
+    this.repeatKeys = 0;
   }
 
   async load() {
     this.pictureMap = await this.assets.bin("ui/picture-map.bin");
-    for (const id of [LOGO, COPYRIGHT, TITLE, ...BOOKS]) {
+    this.nameTable = await this.assets.bin("ui/name-table.bin");
+    this.nameEntry = new NameEntry({ boot: this, font: this.font, table: this.nameTable });
+    for (const id of [LOGO, COPYRIGHT, TITLE, ...BOOKS, ...NAME_PICTURES]) {
       const name = String(pictureIndex(id, this.pictureMap)).padStart(3, "0");
       const [tiles, palette] = await Promise.all([
         this.assets.bin(`bg/${name}.bin`),
@@ -94,10 +106,18 @@ export class Boot {
   command(command, ram) {
     // 1D 1C (080096FC): set 0200077F so the next opcode 16 takes the preset entry unseen.
     if (command === 0x1c) { ram.choiceSkip = 1; return undefined; }
-    if (command !== 0x00) return undefined;
     this.ram = ram;
-    this.run = this.title();
+    if (command === 0x03) this.run = this.nameScreens([0, 1]);
+    else if (command === 0x04) this.run = this.nameScreens([2]);
+    else if (command === 0x00) this.run = this.title();
+    else return undefined;
     return { waiting: "boot" };
+  }
+
+  // 08009670 (1D 03): hero then girlfriend; 0800967E (1D 04): the culprit, then 0200077F = 1.
+  *nameScreens(modes) {
+    for (const mode of modes) yield* this.nameEntry.run(mode);
+    if (modes[0] === 2) this.ram.choiceSkip = 1;
   }
 
   // 0800B79C asks whether any save slot is in use; saves are not ported yet.
@@ -111,8 +131,16 @@ export class Boot {
 
   // Once per frame after vm.vblank(): `trigger` holds the KEYINPUT bits newly pressed this frame
   // (020006E4). The first call comes in the frame the scenario reached 1D 00.
-  frame(trigger = 0) {
+  frame(trigger = 0, held = 0) {
     if (!this.run) return;
+    // 08009BF8 with 020289C4 set: a d-pad direction held for 30 more frames repeats, then every 6.
+    if (this.repeat) {
+      const pad = held & 0xf0;
+      if (!pad || pad !== this.repeatKeys) this.repeatCount = 30;
+      else if (this.repeatCount <= 0) { trigger |= pad; this.repeatCount = 5; }
+      else this.repeatCount--;
+      this.repeatKeys = pad;
+    }
     // 020006E4 is latched in the VBlank interrupt, so the routine sees a press one frame later.
     this.trigger = this.latched;
     this.latched = trigger;
@@ -126,6 +154,11 @@ export class Boot {
     }
   }
 
+  // 080066E8 runs in every VBlank, story or native screen alike.
+  vblank() {
+    this.tick++;
+  }
+
   pressed(mask) {
     return (this.trigger & mask) !== 0;
   }
@@ -137,6 +170,19 @@ export class Boot {
     if (!late) this.screen.setBackground(tiles, palette, 0);
     for (let n = 0; n < lag; n++) yield;
     if (late) this.screen.setBackground(tiles, palette, 0);
+  }
+
+  showPicture(id) {
+    const { tiles, palette } = this.pictures.get(id);
+    this.screen.setBackground(tiles, palette, 0);
+  }
+
+  // 080065A8: set a slot's brightness at once.
+  setBrightness(slot, value) {
+    const effect = this.vm.ram.brightness[slot];
+    effect.current = effect.target = value;
+    effect.duration = 0;
+    this.screen.setBrightness(slot, value);
   }
 
   // 080063F4: fade a brightness slot up to half its maximum. The slot moves by `delta` for
@@ -376,10 +422,20 @@ export class Boot {
     this.sound.engine?.playerStart?.(11, song);
   }
 
+  clearGlyph(surface, encoded, x, y) {
+    const index = this.font.find(encoded);
+    if (index < 0) return;
+    const glyph = this.font.glyph(index);
+    for (let gy = 0; gy < glyph.height; gy++) for (let gx = 0; gx < glyph.width; gx++) {
+      const px = x + gx, py = y + gy;
+      if (px >= 0 && px < 240 && py >= 0 && py < 160) surface.pixels[py * 240 + px] = 0;
+    }
+  }
+
   // BG1 boxes, OBJ text and the cursor over the picture the screen already drew.
   draw() {
     const screen = this.screen;
-    if (!screen.background) {
+    if (!screen.background || this.blank) {
       screen.image.data.fill(0);
       for (let i = 3; i < screen.image.data.length; i += 4) screen.image.data[i] = 255;
       screen.ctx.putImageData(screen.image, 0, 0);
@@ -398,7 +454,21 @@ export class Boot {
     const blend = (top, pixel) =>
       top.map((value, i) => Math.min(255, (value * EVA + data[4 * pixel + i] * EVB) >> 4));
     const text = new ObjTextSurface();
-    for (const { x, y, encoded, color } of layer.glyphs) text.glyph(this.font, encoded, x, y, color);
+    // OBJ order: sprites behind the text surface (priority 1, 終了 highlight), the text, then
+    // the priority 0 cursor squares on top.
+    const sprite = (s) => {
+      for (let py = Math.max(0, s.y); py < Math.min(160, s.y + s.h); py++)
+        for (let px = Math.max(0, s.x); px < Math.min(240, s.x + s.w); px++) text.pixels[py * 240 + px] = s.color;
+    };
+    for (const s of layer.sprites ?? []) if (s.behind) sprite(s);
+    for (const { x, y, encoded, color } of layer.glyphs) {
+      // The name grid's rows overlap by one line; 08006C64 stores whole 4bpp nibbles, so a later
+      // glyph's transparent pixels clear what an earlier one left there (mGBA rows 82 and 107).
+      if (layer.replace) this.clearGlyph(text, encoded, x, y);
+      text.glyph(this.font, encoded, x, y, color);
+    }
+    for (const f of layer.fills ?? []) sprite(f);
+    for (const s of layer.sprites ?? []) if (!s.behind) sprite(s);
     const box = new Uint8Array(240 * 160);
     for (const [x, y, w, h] of layer.boxes)
       for (let py = y; py < y + h; py++) box.fill(1, py * 240 + x, py * 240 + x + w);

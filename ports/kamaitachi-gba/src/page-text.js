@@ -89,7 +89,7 @@ export class PageText {
         // TextWindow gives the name, or {name:n} with n the raw argument byte ('1' = 0x31).
         let id = Number(fragment.match(/^\{name:(\d+)\}$/)?.[1] ?? Object.keys(this.text.names).find((k) => this.text.names[k] === fragment));
         if (id >= 0x30) id -= 0x30;
-        const bytes = NAMES[id] ?? [];
+        const bytes = this.text.nameBytes?.[id] ?? NAMES[id] ?? [];
         for (let i = 0; i + 1 < bytes.length; i += 2) put((bytes[i] << 8) | bytes[i + 1]);
         continue;
       }

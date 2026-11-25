@@ -76,6 +76,13 @@ export class TextWindow {
   }
 
   feed(raw) {
+    // A page that ended in a lone 'p' (+ 'g') is cleared once its click wait is over.
+    if (this.pendingClear) {
+      this.pendingClear = false;
+      this.fragments = [];
+      this.pageRaw = [];
+      this.afterWait = false;
+    }
     this.pageRaw.push(raw);
     this.wait = "none";
     for (let pos = 0; pos < raw.length; pos++) {
@@ -94,6 +101,13 @@ export class TextWindow {
         this.afterWait = true;
       } else if (control === "p") {
         if (this.afterWait) this.fragments.push("\n");
+        else {
+          // 08007A3C: a 'p' that no 'r' wait came before waits itself (02024DFA), with the page
+          // marker; a following 'g' clears the page after the press (welcome "お名前をどうぞ……。pg").
+          this.wait = "click";
+          if (raw[pos + 1] === 0x67) { pos++; this.pendingClear = true; }
+          else this.fragments.push("\n");
+        }
         this.afterWait = false;
       } else if (control === "P") {
         this.afterWait = false;

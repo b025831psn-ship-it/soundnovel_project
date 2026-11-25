@@ -47,9 +47,10 @@ const vm = new VM({ banks, scene, text, musicMap: music.request_to_song, audio: 
   audioTables, choiceView, transitionTimings,
   entryRow: Number.isInteger(entryRow) ? entryRow : 31000 });
 const page = new PageText(screen, font, text);
-// Opcode 1D's native screens (1D 00: logo, copyright, title menu).
+// Opcode 1D's native screens (1D 00: logo, copyright, title menu, bookmarks; 1D 03/04: names).
 const boot = await new Boot({ vm, screen, assets, font, sound: vm.sound }).load();
 vm.system = boot;
+text.nameBytes = boot.names; // names entered on 1D 03 / 1D 04 show up in the story text
 window.kamaitachi = { vm, screen, assets, font, input, sound, page, boot };
 
 let last = performance.now();
@@ -65,9 +66,14 @@ function loop(now) {
     if (pressed("A") && ((vm.waiting === "click" && !page.typing) || vm.waiting === "choice")) vm.resume();
     // KEYINPUT bits newly pressed this frame, for the native screens (020006E4).
     let trigger = 0;
-    for (const key of Object.keys(KEY)) if (pressed(key)) trigger |= KEY[key];
+    let held = 0;
+    for (const key of Object.keys(KEY)) {
+      if (pressed(key)) trigger |= KEY[key];
+      if (input.pressed(key)) held |= KEY[key];
+    }
     vm.vblank();
-    if (vm.waiting === "boot") boot.frame(trigger);
+    boot.vblank();
+    if (vm.waiting === "boot") boot.frame(trigger, held);
     else page.frame(Boolean(screen.choiceOverlay));
     for (const key of Object.keys(KEY)) {
       if (input.pressed(key)) previous.add(key); else previous.delete(key);
