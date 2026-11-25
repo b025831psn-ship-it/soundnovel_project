@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 160">
+<defs>
+<linearGradient id="sky" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#0c0814"/><stop offset=".7" stop-color="#3a2058"/><stop offset="1" stop-color="#160c22"/></linearGradient>
+<radialGradient id="glow" cx=".74" cy=".24" r=".3"><stop offset="0" stop-color="#d8c8ff" stop-opacity=".35"/><stop offset="1" stop-color="#d8c8ff" stop-opacity="0"/></radialGradient>
+</defs>
+<rect width="240" height="160" fill="url(#sky)"/>
+<rect width="240" height="160" fill="url(#glow)"/>
+<path d="M186 26a14 14 0 1 0 0 26a11 11 0 1 1 0-26z" fill="#ede4ff"/>
+<g fill="#ede4ff" opacity=".7"><circle cx="22" cy="18" r=".8"/><circle cx="60" cy="34" r=".6"/><circle cx="96" cy="14" r=".8"/><circle cx="132" cy="28" r=".6"/><circle cx="224" cy="62" r=".7"/><circle cx="40" cy="58" r=".5"/></g>
+<g fill="#08050d">
+<path d="M0 160V112h14V96l7-16 7 16v16h12v-8h10v-8l5-10 5 10v18h14V88l9-30 9 30v24h10V98h16v14h8V76l11-40 11 40v36h12v-14l6-12 6 12v14h12V94h14v18h8V84l6-14 6 14v28H240V160z"/>
+<rect x="122" y="36" width="1.5" height="-1"/>
+</g>
+<g fill="#f2c25a"><rect x="128" y="88" width="3" height="5" opacity=".8"/><rect x="82" y="96" width="3" height="4" opacity=".55"/><rect x="194" y="104" width="3" height="4" opacity=".5"/></g>
+<g transform="translate(64 44) rotate(-8)" fill="#08050d"><path d="M-22 6h38l2 1.4h-40z"/><path d="M2 5c-2-6-1-11 3-13l2 4 2-2c2 4 1 8-1 11z"/><path d="M5-8l3-8 1 7z"/><path d="M16 6l9-4-3 5 4 1-10 0z"/></g>
+</svg>

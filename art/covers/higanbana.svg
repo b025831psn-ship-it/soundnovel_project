@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 160">
+<defs>
+<linearGradient id="sky" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#14070a"/><stop offset=".62" stop-color="#4a1016"/><stop offset="1" stop-color="#1a0608"/></linearGradient>
+<radialGradient id="sun" cx=".7" cy=".58" r=".35"><stop offset="0" stop-color="#ff8a5c" stop-opacity=".55"/><stop offset="1" stop-color="#ff8a5c" stop-opacity="0"/></radialGradient>
+<g id="lily" fill="none" stroke-linecap="round">
+<path d="M0 0v34" stroke="#2a1a12" stroke-width="1.4"/>
+<g stroke="#e0302a" stroke-width="1.5"><path d="M0 0c-4-3-9-2-12 2"/><path d="M0 0c4-3 9-2 12 2"/><path d="M0 0c-2-5-1-9 3-12"/><path d="M0 0c-5 0-9 3-10 7"/><path d="M0 0c5 0 9 3 10 7"/><path d="M0 0c2-5 1-9-3-12"/></g>
+<g stroke="#ff6a4a" stroke-width=".6"><path d="M0 0c-7-6-13-9-17-7"/><path d="M0 0c7-6 13-9 17-7"/><path d="M0 0c-3-8-1-14 2-17"/><path d="M0 0c3-8 7-12 11-12"/><path d="M0 0c-6-4-12-4-15 0"/></g>
+<circle r="1.6" fill="#ff4a3a"/></g>
+</defs>
+<rect width="240" height="160" fill="url(#sky)"/>
+<rect width="240" height="160" fill="url(#sun)"/>
+<circle cx="168" cy="92" r="13" fill="#ff9a6a" opacity=".5"/>
+<path d="M0 104q60-10 120-4t120-2v62H0z" fill="#12060a"/>
+<g fill="#0c0406"><rect x="40" y="62" width="3" height="44"/><rect x="62" y="62" width="3" height="44"/><rect x="34" y="60" width="38" height="4"/><rect x="31" y="56" width="44" height="3"/><rect x="37" y="70" width="32" height="2.4"/></g>
+<use href="#lily" x="22" y="118"/><use href="#lily" x="52" y="126" transform="scale(1)"/><use href="#lily" x="86" y="114"/><use href="#lily" x="118" y="128"/><use href="#lily" x="150" y="118"/><use href="#lily" x="184" y="126"/><use href="#lily" x="214" y="116"/>
+<use href="#lily" x="8" y="140"/><use href="#lily" x="70" y="142"/><use href="#lily" x="136" y="144"/><use href="#lily" x="200" y="142"/>
+</svg>
