@@ -5,16 +5,27 @@
 <style>
   :root { --bg: #0d0d0f; --fg: #e8e4dc; --muted: #8a857c; --accent: #b3262d; }
   body { margin: 0; background: var(--bg); color: var(--fg); font: 15px/1.6 "Noto Serif KR", serif; }
-  main { max-width: 640px; margin: 0 auto; padding: 32px 16px; }
+  main { max-width: 800px; margin: 0 auto; padding: 32px 16px; }
   h1 { font-size: 20px; font-weight: 600; margin: 0 0 8px; }
   p { color: var(--muted); margin: 0 0 20px; }
   button { background: none; color: var(--fg); border: 1px solid var(--accent); padding: 8px 18px; font: inherit; cursor: pointer; margin: 0 8px 8px 0; }
   button:disabled { opacity: .4; cursor: default; }
+  .screen { display: block; margin: 0 auto 16px; background: #000; image-rendering: pixelated; }
+  .pad { display: flex; justify-content: space-between; gap: 12px; margin-bottom: 12px; user-select: none; touch-action: none; }
+  .pad div { display: grid; gap: 6px; }
+  .dpad { grid-template-columns: repeat(3, 48px); grid-template-rows: repeat(3, 48px); }
+  .face { grid-template-columns: repeat(3, 56px); align-content: center; }
+  .pad button { margin: 0; padding: 0; min-height: 48px; }
   #stat { margin-top: 20px; font: 13px/1.6 ui-monospace, monospace; color: var(--muted); white-space: pre; }
 </style>
 <main>
-  <h1>카마이타치의 밤 SFC · VM 사운드</h1>
-  <p>원작 65c816 코드를 VM에서 그대로 실행하고, 사운드 칩과 주고받는 신호로 SPC700·S-DSP를 구동합니다. 화면 출력은 아직 없습니다. 키: 방향키, X=A, Z=B, Enter=START.</p>
+  <h1>카마이타치의 밤 SFC · VM</h1>
+  <p>원작 65c816 코드를 VM에서 그대로 실행합니다. 화면은 VM의 PPU 출력, 소리는 SPC700·S-DSP입니다. 화면은 아직 원작과 픽셀 단위로 같지 않습니다. 키: 방향키, X=A, Z=B, Enter=START.</p>
+  <canvas id="screen" class="screen" width="256" height="224"></canvas>
+  <div class="pad" id="pad">
+    <div class="dpad"><span></span><button data-b="UP">▲</button><span></span><button data-b="LEFT">◀</button><span></span><button data-b="RIGHT">▶</button><span></span><button data-b="DOWN">▼</button><span></span></div>
+    <div class="face"><button data-b="START">START</button><button data-b="B">B</button><button data-b="A">A</button></div>
+  </div>
   <button id="play" disabled>불러오는 중…</button><button id="pause" disabled>일시정지</button><button id="mute" disabled>음소거</button>
   <div id="stat"></div>
 </main>
@@ -42,7 +53,12 @@
     const port = out.connectPort();
     worker.postMessage({ type: 'start', game, gauss, port }, [game, gauss, port]);
     let status = null, error = '';
-    worker.onmessage = ({ data }) => { if (data.type === 'status') status = data; else if (data.type === 'error') error = data.message; };
+    const ctx = $('screen').getContext('2d'); let picture = null;
+    worker.onmessage = ({ data }) => {
+      if (data.type === 'frame') picture = data.pixels;
+      else if (data.type === 'status') status = data;
+      else if (data.type === 'error') error = data.message;
+    };
     worker.onerror = (e) => { error = e.message; };
     let muted = false, paused = false;
     $('mute').onclick = () => { muted = !muted; out.setMuted(muted); $('mute').textContent = muted ? '소리 켜기' : '음소거'; };
@@ -52,7 +68,17 @@
       e.preventDefault(); held = down ? held | b : held & ~b; worker.postMessage({ type: 'buttons', mask: held });
     };
     addEventListener('keydown', key(true)); addEventListener('keyup', key(false));
+    const press = (name, down) => { const b = PAD[name]; held = down ? held | b : held & ~b; worker.postMessage({ type: 'buttons', mask: held }); };
+    for (const el of $('pad').querySelectorAll('button')) {
+      el.onpointerdown = (e) => { e.preventDefault(); el.setPointerCapture(e.pointerId); press(el.dataset.b, true); };
+      el.onpointerup = el.onpointercancel = () => press(el.dataset.b, false);
+    }
+    // Largest integer scale that fits the column (the original 256x224 pixels, unfiltered).
+    const fit = () => { const k = Math.max(1, Math.floor(Math.min($('screen').parentElement.clientWidth / 256, (innerHeight * 0.7) / 224)));
+      $('screen').style.width = `${256 * k}px`; $('screen').style.height = `${224 * k}px`; };
+    fit(); addEventListener('resize', fit);
     const show = () => {
+      if (picture) { ctx.putImageData(new ImageData(picture, 256, 224), 0, 0); picture = null; }
       const s = out.stats();
       $('stat').textContent = (status ? `frame ${status.frame}  ${status.time.toFixed(1)}초\n계산 ${status.cost.toFixed(1)} ms(8 ms마다)` : '시작 중…') +
         (s ? `\n출력 ${out.context.sampleRate} Hz  버퍼 ${s.fill}  부족 ${s.underruns}` : '') + (error ? `\n오류: ${error}` : '');
