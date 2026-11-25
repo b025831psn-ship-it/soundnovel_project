@@ -32,66 +32,15 @@ function sizeTo(height) {
   pictureCtx.imageSmoothingEnabled = false;
 }
 
-// Pictures extended for an upright screen (outpainting pilot, kamaitachi-gba-kor assets/outpaint-pilot):
-// 240x360 with the cartridge's 240x160 at rows 100-259. The middle is always the live screen (tone,
-// fades and silhouettes as the game draws them); the margins follow the picture's tone by the ratio of
-// the live screen to the untoned picture.
+// The upright canvas: 240x360 with the cartridge's 240x160 at rows 100-259.
 const EXTENDED_TOP = 100, EXTENDED_HEIGHT = 360;
-const extended = new Map(); // tiles signature -> { pixels, raw }
-const signature = (tiles) => { let h = tiles.length; for (let i = 0; i < tiles.length; i += 61) h = (h * 31 + tiles[i]) | 0; return h; };
-// The picture without the game's tone: its pixels and channel sums.
-function untoned(tiles, palette) {
-  const sums = new Float64Array(3);
-  const pixels = new Uint8ClampedArray(240 * 160 * 3);
-  const colors = [];
-  for (let i = 0; i < 256; i++) { const c = palette[2 * i] | (palette[2 * i + 1] << 8); colors.push([c & 31, (c >> 5) & 31, (c >> 10) & 31].map((v) => (v << 3) | (v >> 2))); }
-  for (let y = 0; y < 160; y++) for (let x = 0; x < 240; x++) {
-    const c = colors[tiles[((y >> 3) * 30 + (x >> 3)) * 64 + (y & 7) * 8 + (x & 7)]];
-    pixels.set(c, 3 * (y * 240 + x));
-    sums[0] += c[0]; sums[1] += c[1]; sums[2] += c[2];
-  }
-  return { sums, pixels };
-}
-const outpaint = new URLSearchParams(location.search).get("outpaint") !== "0";
-async function loadExtended(game) {
-  if (!outpaint) return;
-  let ids = [];
-  try { ids = await (await fetch("/art/outpaint/index.json")).json(); } catch { return; }
-  // Pictures the game shows first load first (title, bookmarks, characters, then the story in play
-  // order), a few at a time, so the title never waits behind the whole list.
-  const rank = (id) => { const at = FIRST_SHOWN.indexOf(id); return at < 0 ? FIRST_SHOWN.length + id : at; };
-  const queue = ids.slice().sort((a, b) => rank(a) - rank(b));
-  const worker = async () => { for (let id; (id = queue.shift()) !== undefined;) await loadOne(id); };
-  await Promise.all(Array.from({ length: 4 }, worker));
-  async function loadOne(id) {
-    try {
-      const name = String(id).padStart(3, "0");
-      const [tiles, palette] = await Promise.all([game.assets.bin(`bg/${name}.bin`), game.assets.bin(`palette/${name}.bin`)]);
-      const image = new Image();
-      image.src = `/art/outpaint/${name}.png`;
-      await image.decode();
-      const canvas = Object.assign(document.createElement("canvas"), { width: 240, height: EXTENDED_HEIGHT });
-      const ctx = canvas.getContext("2d");
-      ctx.drawImage(image, 0, 0);
-      // The model's full-resolution picture for the margins, when served (portrait-hd, 720x1080).
-      const hd = new Image();
-      hd.src = `/art/outpaint/hd/${name}.webp`;
-      const sharp = await hd.decode().then(() => hd, () => null);
-      extended.set(signature(tiles), { pixels: ctx.getImageData(0, 0, 240, EXTENDED_HEIGHT).data, raw: untoned(tiles, palette), hd: sharp });
-    } catch { /* not served: the picture is cut from the original only */ }
-  }
-}
-const FIRST_SHOWN = [259, 256, 257, 258, 222, 285, 286, 287, 288, 289, 290, 291, 292, 293, 294, 295, 296, 297,
-  200, 74, 1, 2, 3, 209, 9, 12, 6, 17, 11, 7, 23, 22, 24, 8, 10];
-let extendedLoading = null;
 // Per-picture choices made in the editor (editor.html, saved as /art/portrait-edits.json on the test
 // server, 태우 2026-11-25): { "<picture id>": { mode, shift, crop } }
-//   mode  "ai" (the extended picture; the default when there is one), "fill" (the original cut to fill
-//         the screen) or "frame" (the original whole, over a blurred enlargement of itself)
-//   shift GBA rows the picture moves (+ down) in "ai" and "frame"
+//   mode  "frame" (the original whole, over a blurred enlargement of itself; the default) or "fill"
+//         (the original cut to fill the screen)
+//   shift GBA rows the picture moves (+ down) in "frame"
 //   zoom  enlargement, 1 to 3 (cut evenly above and below)
-//   candidate  another extended version ("a", "b", ...) in "ai"
-//   crop  where the part shown across sits, 0 (left edge) to 100 (right edge); otherwise automatic
+//   crop  where the part shown across sits, 0 (left edge) to 100 (right edge)
 let edits = {};
 let editVersion = 0;
 // Read again whenever the picture changes, so a value saved in the editor shows without reloading
@@ -114,14 +63,12 @@ loadEdits();
 if (!PREVIEW) setInterval(() => { if (document.visibilityState === "visible") loadEdits(); }, 3000);
 let currentId = null;
 // Every picture: the original whole over a blurred backdrop of itself, at 120%, centred (태우 2026-11-26;
-// the AI-extended margins are given up). The editor's values for a picture go on top; an old "ai" mode
-// or candidate is ignored.
+// AI-extended margins were given up). The editor's values for a picture go on top.
 const DEFAULT_EDIT = { mode: "frame", zoom: 1.2, crop: 50 };
 const editFor = (id) => {
   if (id === null || id === undefined) return null;
-  const { candidate, ...own } = edits[id] ?? {};
-  const edit = { ...DEFAULT_EDIT, ...own };
-  if (edit.mode === "ai" || !edit.mode) edit.mode = "frame";
+  const edit = { ...DEFAULT_EDIT, ...(edits[id] ?? {}) };
+  if (edit.mode !== "fill") edit.mode = "frame";
   return edit;
 };
 function pictureId(game) {
@@ -145,166 +92,15 @@ function paintFrame(ctx, base, width, height) {
   const shift = Math.round((editFor(currentId)?.shift ?? 0) * scale);
   if (shift) shiftPicture(ctx, width, height, shift, scale);
 }
-// Other extended versions of a picture (kamaitachi-gba-kor assets/outpaint/candidates, NNN-x.png with
-// candidates-hd NNN-x.webp), picked in the editor (edit.candidate = "x"); loaded when first wanted.
-const candidates = new Map(); // "id-x" -> entry, or null while loading / when missing
-function candidateFor(id, pick) {
-  const key = `${id}-${pick}`;
-  if (candidates.has(key)) return candidates.get(key);
-  candidates.set(key, null);
-  const game = window.kamaitachi;
-  const name = String(id).padStart(3, "0");
-  Promise.all([game.assets.bin(`bg/${name}.bin`), game.assets.bin(`palette/${name}.bin`)]).then(async ([tiles, palette]) => {
-    const image = new Image();
-    image.src = `/art/outpaint/cand/${name}-${pick}.png`;
-    await image.decode();
-    const canvas = Object.assign(document.createElement("canvas"), { width: 240, height: EXTENDED_HEIGHT });
-    const ctx = canvas.getContext("2d");
-    ctx.drawImage(image, 0, 0);
-    const hd = new Image();
-    hd.src = `/art/outpaint/cand-hd/${name}-${pick}.webp`;
-    const sharp = await hd.decode().then(() => hd, () => null);
-    candidates.set(key, { pixels: ctx.getImageData(0, 0, 240, EXTENDED_HEIGHT).data, raw: untoned(tiles, palette), hd: sharp });
-    editVersion++;
-  }).catch(() => {});
-  return null;
-}
-const extendedFor = (screen) => {
-  if (!screen.background?.tiles) return undefined;
-  const pick = editFor(currentId)?.candidate;
-  return (pick && candidateFor(currentId, pick)) || extended.get(signature(screen.background.tiles));
-};
 function compose(screen, base) {
-  const mode = editFor(currentId)?.mode;
-  if (mode === "frame") { sizeTo(EXTENDED_HEIGHT); paintFrame(pictureCtx, base, picture.width, picture.height); return EXTENDED_TOP; }
-  const entry = mode === "fill" ? null : extendedFor(screen);
-  if (!entry) { sizeTo(160); sourceCtx.putImageData(new ImageData(new Uint8ClampedArray(base), 240, 160), 0, 0); }
-  else {
-    sizeTo(EXTENDED_HEIGHT);
-    if (entry.hd) { paintSharp(pictureCtx, entry, base, picture.width, picture.height, screen.silhouette); return EXTENDED_TOP; }
-    sourceCtx.putImageData(new ImageData(extendedPixels(entry, base), 240, EXTENDED_HEIGHT), 0, 0);
-  }
+  if (editFor(currentId)?.mode !== "fill") { sizeTo(EXTENDED_HEIGHT); paintFrame(pictureCtx, base, picture.width, picture.height); return EXTENDED_TOP; }
+  sizeTo(160);
+  sourceCtx.putImageData(new ImageData(new Uint8ClampedArray(base), 240, 160), 0, 0);
   pictureCtx.drawImage(source, 0, 0, picture.width, picture.height);
-  return entry ? EXTENDED_TOP : 0;
+  return 0;
 }
-// Sharp margins: the model's own full-resolution picture, toned like the live screen (per-channel gain),
-// with the cartridge's pixels in the middle as they are (whole-pixel scaling), their outer 14 rows
-// fading into the picture.
 const middle = Object.assign(document.createElement("canvas"), { width: 240, height: 160 });
 const middleCtx = middle.getContext("2d");
-// Whether a silhouette runs into the picture's top or bottom edge (cut by the frame in the original).
-function silhouetteCut(layer) {
-  if (!layer?.vram) return { top: false, bottom: false };
-  const count = (y) => {
-    let n = 0;
-    for (let x = 0; x < 240; x++) {
-      const byte = layer.vram[((y >> 3) * 30 + (x >> 3)) * 32 + (y & 7) * 4 + ((x & 7) >> 1)];
-      if ((x & 1 ? byte >> 4 : byte & 15) !== 0) n++;
-    }
-    return n;
-  };
-  return { top: count(0) > 3, bottom: count(159) > 3 };
-}
-const CUT_MS = 400;
-let pendingLayer = null; // the scene's silhouette buffer (020117C8), shown or not yet
-const cutLevels = new Map(); // canvas context -> { top, bottom, time }
-let cutEasing = false; // set while a margin is still moving toward framed or open
-function cutLevel(ctx, cut) {
-  const now = performance.now();
-  const state = cutLevels.get(ctx) ?? { top: cut.top ? 1 : 0, bottom: cut.bottom ? 1 : 0, time: now };
-  // The picture's height is settled once, when it first shows (태우 2026-11-26: a picture never moves
-  // while it stays): lowered when a figure in the layer's buffer then (29 comes before the picture
-  // and its blind) stands on the bottom edge, and kept so whatever the silhouettes do afterwards.
-  if (state.picture !== currentId) {
-    const first = silhouetteCut(pendingLayer ? { vram: pendingLayer } : null).bottom || cut.bottom;
-    state.picture = currentId; state.held = first; state.bottom = first ? 1 : 0;
-  }
-  cut = { top: cut.top, bottom: state.held };
-  const step = Math.min(1, (now - state.time) / CUT_MS);
-  const ease = (value, wanted) => (wanted ? Math.min(1, value + step) : Math.max(0, value - step));
-  state.top = ease(state.top, cut.top);
-  state.bottom = ease(state.bottom, cut.bottom);
-  state.time = now;
-  cutLevels.set(ctx, state);
-  if (state.top !== (cut.top ? 1 : 0) || state.bottom !== (cut.bottom ? 1 : 0)) cutEasing = true;
-  return state;
-}
-function paintSharp(ctx, entry, base, width, height, layer) {
-  const live = [0, 0, 0];
-  for (let i = 0; i < base.length; i += 4) { live[0] += base[i]; live[1] += base[i + 1]; live[2] += base[i + 2]; }
-  const gain = [0, 1, 2].map((c) => (entry.raw.sums[c] ? live[c] / entry.raw.sums[c] : 1));
-  ctx.save();
-  ctx.globalCompositeOperation = "source-over";
-  ctx.globalAlpha = 1;
-  ctx.imageSmoothingEnabled = true;
-  ctx.imageSmoothingQuality = "high";
-  ctx.drawImage(entry.hd, 0, 0, width, height);
-  ctx.globalCompositeOperation = "multiply";
-  ctx.fillStyle = `rgb(${gain.map((g) => Math.round(Math.min(1, g) * 255))})`;
-  ctx.fillRect(0, 0, width, height);
-  const over = Math.max(...gain) - 1;
-  if (over > 0.01) { ctx.globalCompositeOperation = "lighter"; ctx.globalAlpha = Math.min(1, over); ctx.drawImage(entry.hd, 0, 0, width, height); }
-  ctx.restore();
-  // Where a silhouette is cut by the frame (a silhouette blinding in reaches the edge part way
-  // through, so the change eases over CUT_MS):
-  // - at the bottom (태우 2026-11-25), the picture moves down so the cut-off figure stands near the
-  //   screen's bottom edge, the margin left below it is blurred and darkened and the figure fades
-  //   into it, and the sky above grows (the extended picture's top rows, stretched and blurred);
-  // - at the top, the figure is carried over the picture's top edge (its pixels stay solid in the
-  //   fading rows) and a head cut flat by the frame is rounded off above it.
-  const level = cutLevel(ctx, silhouetteCut(layer));
-  const scale = width / 240;
-  const below = (EXTENDED_TOP + 160) * scale;
-  const mask = (x, y) => {
-    const byte = layer?.vram?.[((y >> 3) * 30 + (x >> 3)) * 32 + (y & 7) * 4 + ((x & 7) >> 1)] ?? 0;
-    return (x & 1 ? byte >> 4 : byte & 15) !== 0;
-  };
-  const FEATHER = 14;
-  const rows = new Uint8ClampedArray(base);
-  for (let y = 0; y < 160; y++) {
-    const d = Math.min(y, 159 - y);
-    if (d >= FEATHER) continue;
-    let t = (d + 0.5) / FEATHER; t = t * t * (3 - 2 * t);
-    for (let x = 0; x < 240; x++) {
-      const a = y < 80 && mask(x, y) ? 1 : t;
-      rows[4 * (y * 240 + x) + 3] = Math.round(255 * a);
-    }
-  }
-  middleCtx.putImageData(new ImageData(rows, 240, 160), 0, 0);
-  ctx.save();
-  ctx.imageSmoothingEnabled = false;
-  ctx.drawImage(middle, 0, EXTENDED_TOP * scale, width, 160 * scale);
-  ctx.restore();
-  // (Rounding off flat-cut heads was tried and dropped: a guessed shape reads as a hat, 태우 2026-11-25.)
-  if (level.bottom > 0) {
-    // the picture's own bottom rows, stretched down over the margin, blurred and darkening
-    const from = below - 10 * scale, band = 8 * scale, room = height - below + 6 * scale;
-    shifted.width = width; shifted.height = room;
-    const b = shifted.getContext("2d");
-    b.filter = `blur(${Math.round(5 * scale)}px)`;
-    b.drawImage(ctx.canvas, 0, from, width, band, 0, -4 * scale, width, room + 8 * scale);
-    b.filter = "none";
-    b.globalCompositeOperation = "source-atop";
-    const dark = b.createLinearGradient(0, 0, 0, room);
-    dark.addColorStop(0, "rgba(0,0,0,0)"); dark.addColorStop(1, "rgba(0,0,0,.45)");
-    b.fillStyle = dark; b.fillRect(0, 0, width, room);
-    b.globalCompositeOperation = "destination-in";
-    const soft = b.createLinearGradient(0, 0, 0, 8 * scale);
-    soft.addColorStop(0, "rgba(0,0,0,0)"); soft.addColorStop(1, "#000");
-    b.fillStyle = soft; b.fillRect(0, 0, width, room);
-    b.globalCompositeOperation = "source-over";
-    ctx.save();
-    ctx.globalAlpha = level.bottom;
-    ctx.drawImage(shifted, 0, below - 6 * scale);
-    ctx.restore();
-  }
-  // Moved by the editor (portrait-edits.json: shift, in GBA rows, + down) and for a figure standing
-  // on the bottom edge.
-  // A shift set in the editor is the picture's place; the automatic drop is only for pictures without one.
-  const shift = editFor(currentId)?.shift;
-  const drop = Math.round((Number.isFinite(shift) ? shift : level.bottom * DROP) * scale);
-  if (drop) shiftPicture(ctx, width, height, drop, scale);
-}
 // Moves the whole picture down (drop > 0) or up; the side left open is filled with that edge's rows,
 // stretched, blurred and faded into the picture.
 function shiftPicture(ctx, width, height, drop, scale) {
@@ -328,92 +124,14 @@ function shiftPicture(ctx, width, height, drop, scale) {
   else { ctx.drawImage(shifted, 0, open, width, height - open, 0, 0, width, height - open); ctx.drawImage(sky, 0, height - sky.height); }
   ctx.restore();
 }
-// How far (GBA rows) the picture moves down for a figure standing on the bottom edge: half the bottom
-// margin, so a band of blurred picture stays below the feet.
-const DROP = 50;
-// A figure whose top is cut flat (its first row already 10 or more pixels wide; some silhouettes are
-// cropped above the head in the cartridge, 태우 2026-11-25) gets a rounded top: a half ellipse as wide
-// as that row, up to 12 rows high, in the figure's own color there.
-function roundHeads(ctx, base, mask, scale) {
-  let first = 0;
-  const any = (y) => { for (let x = 0; x < 240; x++) if (mask(x, y)) return true; return false; };
-  while (first < 120 && !any(first)) first++;
-  if (first >= 120) return;
-  const top = (EXTENDED_TOP + first) * scale;
-  const row = first * 240, next = Math.min(159, first + 1) * 240;
-  const DEEP = 4; // the dome spans the figure as wide as it is a few rows down
-  const at = Math.min(159, first + DEEP);
-  for (let x = 0; x < 240;) {
-    if (!mask(x, first)) { x++; continue; }
-    let end = x;
-    while (end < 240 && mask(end, first)) end++;
-    if (end - x >= 10) {
-      let left = x, right = end;
-      while (left > 0 && mask(left - 1, at)) left--;
-      while (right < 240 && mask(right, at)) right++;
-      const w = right - left;
-      const color = [0, 0, 0];
-      for (let i = x; i < end; i++) for (let c = 0; c < 3; c++) color[c] += base[4 * (row + i) + c] + base[4 * (next + i) + c];
-      const rgb = color.map((v) => Math.round(v / (2 * (end - x))));
-      ctx.save();
-      ctx.fillStyle = `rgb(${rgb})`;
-      ctx.beginPath();
-      ctx.ellipse(((left + right) / 2) * scale, top + (DEEP + 1) * scale, (w / 2) * scale, (DEEP + Math.min(9, w * 0.3)) * scale, 0, Math.PI, 2 * Math.PI);
-      ctx.fill();
-      ctx.restore();
-    }
-    x = end;
-  }
-}
 const shifted = document.createElement("canvas"), sky = document.createElement("canvas");
-function extendedPixels(entry, base) {
-  const live = new Float64Array(3);
-  for (let i = 0; i < base.length; i += 4) { live[0] += base[i]; live[1] += base[i + 1]; live[2] += base[i + 2]; }
-  const gain = [0, 1, 2].map((c) => (entry.raw.sums[c] ? live[c] / entry.raw.sums[c] : 1));
-  const out = new Uint8ClampedArray(entry.pixels.length);
-  for (let i = 0; i < out.length; i += 4) {
-    out[i] = entry.pixels[i] * gain[0]; out[i + 1] = entry.pixels[i + 1] * gain[1]; out[i + 2] = entry.pixels[i + 2] * gain[2]; out[i + 3] = 255;
-  }
-  // The game's tone is not a plain gain: per column, what the live edge row differs from the toned
-  // picture there (smoothed over 31 columns) is carried onto the picture's feathered edge and margin,
-  // fading out with distance, so nothing steps at the join.
-  const FEATHER = 14;
-  const match = (edgeRow, step) => {
-    const diff = new Float32Array(240 * 3);
-    for (let x = 0; x < 240; x++) for (let c = 0; c < 3; c++) {
-      let sum = 0, count = 0;
-      for (let k = Math.max(0, x - 15); k <= Math.min(239, x + 15); k++) {
-        sum += base[4 * (edgeRow * 240 + k) + c] - entry.raw.pixels[3 * (edgeRow * 240 + k) + c] * gain[c]; count++;
-      }
-      diff[x * 3 + c] = sum / count;
-    }
-    const start = EXTENDED_TOP + edgeRow + (step < 0 ? FEATHER - 1 : 1 - FEATHER);
-    for (let i = 0, row = start; row >= 0 && row < EXTENDED_HEIGHT; i++, row += step) {
-      const weight = i < FEATHER ? 1 : Math.exp(-(i - FEATHER) / 45);
-      for (let x = 0; x < 240; x++) for (let c = 0; c < 3; c++) out[4 * (row * 240 + x) + c] += diff[x * 3 + c] * weight;
-    }
-  };
-  match(0, -1);
-  match(159, 1);
-  // The live screen in the middle; its outer 14 rows fade into the picture's own feathered edge.
-  for (let y = 0; y < 160; y++) {
-    const d = Math.min(y, 159 - y);
-    let t = d >= FEATHER ? 1 : (d + 0.5) / FEATHER;
-    t = t * t * (3 - 2 * t);
-    const from = y * 240 * 4, to = (EXTENDED_TOP + y) * 240 * 4;
-    if (t === 1) { out.set(base.subarray(from, from + 960), to); continue; }
-    for (let i = 0; i < 960; i++) out[to + i] = i % 4 === 3 ? 255 : out[to + i] * (1 - t) + base[from + i] * t;
-  }
-  return out;
-}
 
 // The game's own screens (title, bookmarks, character pages) upright: the screen at full width, as
-// it is (menus and taps unchanged), with the extended picture's margins drawn behind it above and
-// below; the screen's top and bottom rows fade into them (CSS mask).
+// it is (menus and taps unchanged); a screen with flat top and bottom rows continues in those colors
+// above and below (CSS mask).
 const extend = $("extend");
 const extendCtx = extend.getContext("2d");
 extend.width = 240 * UP; extend.height = EXTENDED_HEIGHT * UP;
-let extendBase = null;
 // A row's mean color when it is flat or nearly black (the logo and copyright screens sit on black or a
 // very dark glow), else null.
 function flatRow(data, y) {
@@ -431,46 +149,24 @@ function flatRow(data, y) {
 let flatKey = "";
 function drawExtend(game) {
   const screen = game.screen;
-  const entry = screen.base && extendedFor(screen);
-  // Without an extended picture, a screen whose top and bottom rows are flat continues in those colors
-  // (instead of the blurred glow), so the logo and copyright fill the upright screen like the original's black.
-  const data = !entry && screen.image?.data;
+  // A screen whose top and bottom rows are flat continues in those colors (instead of the blurred
+  // glow), so the logo and copyright fill the upright screen like the original's black.
+  const data = screen.image?.data;
   const top = data && flatRow(data, 0), bottom = data && flatRow(data, 159);
   const flat = Boolean(top && bottom);
-  shell.classList.toggle("extended", Boolean(entry) || flat);
+  shell.classList.toggle("extended", flat);
+  if (!flat) { flatKey = ""; return; }
   const canvas = $("screen");
   const width = canvas.clientWidth;
   extend.style.width = `${width}px`;
   extend.style.height = `${(width * EXTENDED_HEIGHT) / 240}px`;
-  if (flat) {
-    extendBase = null;
-    const key = `${top}|${bottom}`;
-    if (key !== flatKey) {
-      flatKey = key;
-      extendCtx.fillStyle = `rgb(${top})`; extendCtx.fillRect(0, 0, extend.width, extend.height / 2);
-      extendCtx.fillStyle = `rgb(${bottom})`; extendCtx.fillRect(0, extend.height / 2, extend.width, extend.height / 2);
-      stage.style.setProperty("--edge-top", `rgb(${top})`);
-      stage.style.setProperty("--edge-bottom", `rgb(${bottom})`);
-    }
-    return;
-  }
-  flatKey = "";
-  if (!entry) { extendBase = null; return; }
-  if (screen.base === extendBase && !cutEasing) return;
-  cutEasing = false;
-  extendBase = screen.base;
-  const pixels = extendedPixels(entry, screen.base);
-  if (entry.hd) paintSharp(extendCtx, entry, screen.base, extend.width, extend.height, screen.silhouette);
-  else {
-    const flatSource = Object.assign(document.createElement("canvas"), { width: 240, height: EXTENDED_HEIGHT });
-    flatSource.getContext("2d").putImageData(new ImageData(pixels, 240, EXTENDED_HEIGHT), 0, 0);
-    extendCtx.imageSmoothingEnabled = false;
-    extendCtx.drawImage(flatSource, 0, 0, extend.width, extend.height);
-  }
-  const last = (EXTENDED_HEIGHT - 1) * 240 * 4;
-  const mean = (from) => { const c = [0, 0, 0]; for (let x = 0; x < 240; x++) for (let k = 0; k < 3; k++) c[k] += pixels[from + x * 4 + k] / 240; return c.map(Math.round); };
-  stage.style.setProperty("--edge-top", `rgb(${mean(0)})`);
-  stage.style.setProperty("--edge-bottom", `rgb(${mean(last)})`);
+  const key = `${top}|${bottom}`;
+  if (key === flatKey) return;
+  flatKey = key;
+  extendCtx.fillStyle = `rgb(${top})`; extendCtx.fillRect(0, 0, extend.width, extend.height / 2);
+  extendCtx.fillStyle = `rgb(${bottom})`; extendCtx.fillRect(0, extend.height / 2, extend.width, extend.height / 2);
+  stage.style.setProperty("--edge-top", `rgb(${top})`);
+  stage.style.setProperty("--edge-bottom", `rgb(${bottom})`);
 }
 
 // Where to cut: the silhouette when one is up (people are what the page is about), otherwise the band
@@ -533,14 +229,11 @@ function drawPicture(game) {
   const id = pictureId(game);
   if (id !== currentId && !PREVIEW) loadEdits();
   currentId = id;
-  pendingLayer = game.vm?.scene?.layerBuffer ?? null;
   const edit = editFor(currentId);
-  if (base !== shownBase || cutEasing || editVersion !== shownEdit) {
+  if (base !== shownBase || editVersion !== shownEdit) {
     const edited = editVersion !== shownEdit;
     shownEdit = editVersion;
-    cutEasing = false;
     compose(screen, base);
-    picture.classList.toggle("sharp", edit?.mode !== "fill" && edit?.mode !== "frame" && Boolean(extendedFor(screen)?.hd));
     if (edited) crop = -1;
     const width = Math.min(240, (source.height * size.width) / (size.height * zoomOf(edit)));
     // Across, the place is settled when a picture first shows: the editor's value, or centred on the
@@ -548,7 +241,7 @@ function drawPicture(game) {
     // stays it holds, whatever the silhouettes do (태우 2026-11-26); the zoom is the editor's.
     const same = screen.background === shownBackground;
     if (!same || crop < 0) {
-      const layer = pendingLayer ? { vram: pendingLayer } : screen.silhouette;
+      const layer = game.vm?.scene?.layerBuffer ? { vram: game.vm.scene.layerBuffer } : screen.silhouette;
       crop = Number.isFinite(edit?.crop)
         ? Math.round((Math.max(0, Math.min(100, edit.crop)) / 100) * Math.max(0, 240 - width)) : cropLeft(base, layer, width);
       picture.classList.remove("pan");

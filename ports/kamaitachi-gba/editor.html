@@ -34,11 +34,6 @@
   .actions { display: flex; gap: 8px; flex-wrap: wrap; }
   .actions .save { background: var(--accent); }
   #status { color: var(--dim); min-height: 1.5em; }
-  .cands { display: flex; gap: 6px; flex-wrap: wrap; }
-  .cands button { border: 0; padding: 0; border-radius: 6px; overflow: hidden; background: var(--panel); color: var(--text); cursor: pointer; outline: 2px solid transparent; width: 64px; font: inherit; }
-  .cands button img { display: block; width: 64px; height: 96px; object-fit: cover; }
-  .cands button span { display: block; font-size: 12px; padding: 2px 0; text-align: center; }
-  .cands button[aria-pressed="true"] { outline-color: var(--accent); }
   [hidden] { display: none !important; }
 </style>
 </head>
@@ -60,10 +55,6 @@
       <button data-mode="fill">꽉 채워 자르기</button>
     </div>
     <p class="hint">기본은 원본 + 흐린 배경, 확대 120%, 좌우 가운데예요.</p>
-  </div>
-  <div id="candBox" hidden>
-    <h2>AI 확장 후보</h2>
-    <div class="cands" id="cands"></div>
   </div>
   <div id="shiftBox">
     <h2>위아래 위치</h2>
@@ -91,23 +82,16 @@
 const $ = (id) => document.getElementById(id);
 const IDS = Array.from({ length: 298 }, (_, i) => i);
 const pad = (id) => String(id).padStart(3, "0");
-let edits = {}, ai = new Set(), current = null, filter = "all", dirty = false, shownId = null;
+let edits = {}, current = null, filter = "all", dirty = false, shownId = null;
 
-const [savedEdits, aiIds, candidateList] = await Promise.all([
-  fetch("/art/portrait-edits.json", { cache: "no-cache" }).then((r) => (r.ok ? r.json() : {})).catch(() => ({})),
-  fetch("/art/outpaint/index.json").then((r) => (r.ok ? r.json() : [])).catch(() => []),
-  fetch("/art/outpaint/candidates.json", { cache: "no-cache" }).then((r) => (r.ok ? r.json() : {})).catch(() => ({})),
-]);
-const candidates = candidateList ?? {};
-edits = savedEdits ?? {};
-ai = new Set(aiIds);
+edits = await fetch("/art/portrait-edits.json", { cache: "no-cache" }).then((r) => (r.ok ? r.json() : {})).catch(() => ({})) ?? {};
 
 function tags(id) {
   return [edits[id] ? "편집" : ""].filter(Boolean).join(" · ");
 }
 function renderGrid() {
   const grid = $("grid");
-  grid.replaceChildren(...IDS.filter((id) => filter === "all" || (filter === "ai" ? ai.has(id) : edits[id])).map((id) => {
+  grid.replaceChildren(...IDS.filter((id) => filter === "all" || edits[id]).map((id) => {
     const button = document.createElement("button");
     button.className = "pic";
     button.dataset.id = id;
@@ -122,20 +106,9 @@ function syncControls() {
   $("title").textContent = current === null ? "그림을 고르세요" : `그림 ${pad(current)}`;
   for (const button of $("modes").children) {
     button.setAttribute("aria-pressed", String((edit.mode === "fill" ? "fill" : "") === button.dataset.mode));
-    button.disabled = button.dataset.mode === "ai" && !ai.has(current);
   }
   const mode = edit.mode === "fill" ? "fill" : "frame";
   $("shiftBox").hidden = mode === "fill";
-  const picks = candidates[current] ?? [];
-  $("candBox").hidden = true; // AI-extended candidates are given up (2026-11-26)
-  $("cands").replaceChildren(...["", ...picks].map((pick) => {
-    const button = document.createElement("button");
-    button.dataset.pick = pick;
-    button.setAttribute("aria-pressed", String((edit.candidate ?? "") === pick));
-    const src = pick ? `/art/outpaint/cand/${pad(current)}-${pick}.png` : `/art/outpaint/${pad(current)}.png`;
-    button.innerHTML = `<img alt="" src="${src}"><span>${pick ? pick.toUpperCase() : "지금 것"}</span>`;
-    return button;
-  }));
   $("zoom").value = Math.round((edit.zoom ?? 1.2) * 100);
   $("zoomOut").textContent = `${Math.round((edit.zoom ?? 1.2) * 100)}%`;
   $("shift").value = edit.shift ?? 0;
@@ -189,10 +162,6 @@ $("modes").addEventListener("click", (event) => {
   const mode = event.target.closest("button")?.dataset.mode;
   if (mode !== undefined) change({ mode: mode || undefined });
 });
-$("cands").addEventListener("click", (event) => {
-  const pick = event.target.closest("button")?.dataset.pick;
-  if (pick !== undefined) change({ candidate: pick || undefined });
-});
 $("zoom").addEventListener("input", () => change({ zoom: Number($("zoom").value) / 100 }));
 $("shift").addEventListener("input", () => change({ shift: Number($("shift").value) }));
 $("cropAuto").addEventListener("change", () => change({ crop: $("cropAuto").checked ? undefined : Number($("crop").value) }));
@@ -232,7 +201,7 @@ $("filters").addEventListener("click", (event) => {
   renderGrid();
 });
 renderGrid();
-select(ai.size ? [...ai].sort((a, b) => a - b)[0] : 0);
+select(0);
 </script>
 </body>
 </html>
