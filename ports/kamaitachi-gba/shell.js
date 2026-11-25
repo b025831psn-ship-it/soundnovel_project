@@ -16,6 +16,8 @@ function fit() {
   const scale = steps >= 1 ? steps / ratio : Math.min(box.width / 240, box.height / 160);
   canvas.style.width = `${240 * scale}px`;
   canvas.style.height = `${160 * scale}px`;
+  $("scale").textContent = steps >= 1 ? `×${steps}` : "축소";
+  $("scale").title = `원본 240×160 → ${Math.round(240 * scale * ratio)}×${Math.round(160 * scale * ratio)} (정수 배율)`;
 }
 new ResizeObserver(fit).observe(stage);
 addEventListener("resize", fit);
@@ -45,6 +47,7 @@ whenReady(({ input, sound }) => {
     button.addEventListener("pointerdown", (event) => {
       event.preventDefault();
       button.setPointerCapture(event.pointerId);
+      navigator.vibrate?.(8);
       sound.resume();
       input.buttons.add(key);
       button.classList.add("down");
@@ -80,14 +83,58 @@ whenReady(({ input, sound }) => {
   apply();
 });
 
+const shell = $("shell");
 const fullscreen = $("fullscreen");
-if (!document.fullscreenEnabled) fullscreen.hidden = true;
-fullscreen.addEventListener("click", () => {
+const toggleFullscreen = () => {
   if (document.fullscreenElement) document.exitFullscreen();
-  else document.querySelector(".shell").requestFullscreen?.();
-});
+  else shell.requestFullscreen?.();
+};
+if (!document.fullscreenEnabled) fullscreen.hidden = true;
+fullscreen.addEventListener("click", toggleFullscreen);
+
+// Theatre mode belongs to the hub page around this one: ask it, and follow what it says.
+const embedded = window.parent !== window;
+const theatre = $("theatre");
+let theatreOn = false;
+const immersive = () => shell.classList.toggle("immersive", theatreOn || Boolean(document.fullscreenElement));
+if (embedded) {
+  document.documentElement.classList.add("embedded");
+  theatre.hidden = false;
+  theatre.addEventListener("click", () => parent.postMessage({ type: "theatre" }, location.origin));
+  addEventListener("message", (event) => {
+    if (event.origin !== location.origin || event.data?.type !== "theatre") return;
+    theatreOn = Boolean(event.data.on);
+    theatre.setAttribute("aria-pressed", String(theatreOn));
+    theatre.setAttribute("aria-label", theatreOn ? "극장 모드 끝내기 (T)" : "극장 모드 (T)");
+    immersive();
+  });
+  parent.postMessage({ type: "hello" }, location.origin);
+}
+
 document.addEventListener("fullscreenchange", () => {
-  fullscreen.setAttribute("aria-label", document.fullscreenElement ? "전체 화면 끝내기" : "전체 화면");
+  const on = Boolean(document.fullscreenElement);
+  fullscreen.setAttribute("aria-pressed", String(on));
+  fullscreen.setAttribute("aria-label", on ? "전체 화면 끝내기 (F)" : "전체 화면 (F)");
+  immersive();
   fit();
 });
+
+// T and F are not GBA keys, so they never reach the game.
+addEventListener("keydown", (event) => {
+  if (event.repeat || event.ctrlKey || event.metaKey || event.altKey) return;
+  if (event.code === "KeyF") toggleFullscreen();
+  if (event.code === "KeyT" && embedded) parent.postMessage({ type: "theatre" }, location.origin);
+  if (event.code === "Escape" && embedded && theatreOn && !document.fullscreenElement) parent.postMessage({ type: "theatre", on: false }, location.origin);
+});
+
+// While immersed, the bar and cursor rest after 2.5 s without the pointer moving.
+let idleTimer = 0;
+const wake = () => {
+  shell.classList.remove("idle");
+  clearTimeout(idleTimer);
+  idleTimer = setTimeout(() => shell.classList.add("idle"), 2500);
+};
+addEventListener("pointermove", wake);
+addEventListener("pointerdown", wake);
+wake();
 fit();

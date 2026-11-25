@@ -18,6 +18,10 @@ const routes = new Map([
     [path.join(__dirname, 'ports/kamaitachi-gba/sound', file), (file.endsWith('.html') ? 'text/html' : 'text/javascript') + '; charset=utf-8']]),
   ['/kamaitachi-gba-kor/port-data/sound/m4a.json', [path.join(__dirname, 'kamaitachi-gba-kor/port-data/sound/m4a.json'), 'application/json; charset=utf-8']],
   ['/kamaitachi-gba-kor/port-data/sound/m4a.bin', [path.join(__dirname, 'kamaitachi-gba-kor/port-data/sound/m4a.bin'), 'application/octet-stream']],
+  // Title-card still: the pension at night (scene picture 002 from kamaitachi-gba-kor).
+  ['/art/kamaitachi-still.png', [path.join(__dirname, 'kamaitachi-gba-kor/assets/bg/002.png'), 'image/png']],
+  // Title logo: the official clear logo traced to vector paths and laid out on one line (kamaitachi-gba-kor/assets/hub).
+  ['/art/kamaitachi-logo.svg', [path.join(__dirname, 'kamaitachi-gba-kor/assets/hub/logo-row.svg'), 'image/svg+xml']],
   ['/style.css', [path.join(__dirname, 'style.css'), 'text/css; charset=utf-8']],
   ['/games.js', [path.join(__dirname, 'games.js'), 'text/javascript; charset=utf-8']],
   ['/AGB-AHZJ.gba', [path.join(__dirname, '..', 'AGB-AHZJ.gba'), 'application/octet-stream']],

@@ -3,10 +3,11 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#08090b">
 <title>사운드노벨</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+KR:wght@400;500;600&family=Noto+Serif+KR:wght@500;700&family=Noto+Serif+JP:wght@500;700&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+KR:wght@400;500;600&family=Noto+Serif+KR:wght@500;700&family=Noto+Serif+JP:wght@500;700&family=Yusei+Magic&family=Potta+One&family=Anton&display=swap">
 <link rel="stylesheet" href="/style.css">
 </head>
 <body>
@@ -15,61 +16,92 @@
     <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 18V7l8-3 8 3v11"/><path d="M9 18v-5a3 3 0 0 1 6 0v5"/></svg>
     <span>사운드노벨</span>
   </a>
-  <span class="platform">GAME BOY ADVANCE · 원작 엔진 이식</span>
+  <p class="now" id="now" hidden><span class="dot" aria-hidden="true"></span><span id="now-title"></span></p>
+  <span class="platform">원작 엔진 이식 · 브라우저에서 바로</span>
 </header>
 
 <main class="hub">
   <section class="theatre" aria-label="게임 실행기">
-    <!-- Before a game starts: the selected work's title card. -->
+    <!-- Before a game starts: the selected work's title card over a still from the game. -->
     <div class="marquee" id="marquee">
-      <div class="snow" aria-hidden="true"></div>
-      <p class="kicker">1994 슈퍼 패미컴 · 2002 게임보이 어드밴스</p>
-      <h1 lang="ja">かまいたちの夜<span>ADVANCE</span></h1>
-      <p class="ko">카마이타치의 밤 어드밴스</p>
-      <p class="lede">폭설로 고립된 펜션, 그날 밤의 이야기. 원작 GBA 엔진을 그대로 옮겨, 같은 화면과 같은 소리로 플레이합니다.</p>
-      <a class="start" href="#kamaitachi">
-        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5l11 7-11 7z"/></svg>
-        플레이
-      </a>
+      <div class="still" aria-hidden="true"><img src="/art/kamaitachi-still.png" alt="" onerror="this.remove()"></div>
+      <div class="snow" aria-hidden="true"><i></i><i></i><i></i></div>
+      <div class="card">
+        <p class="kicker"><span>GAME BOY ADVANCE</span><span>2002</span><span>춘소프트</span></p>
+        <h1 class="logo" lang="ja">
+          <img src="/art/kamaitachi-logo.svg" alt="かまいたちの夜 ADVANCE" onerror="this.closest('h1').classList.add('text')">
+          <span class="jp">かまいたちの夜</span><span class="adv" lang="en">ADVANCE</span>
+        </h1>
+        <p class="ko">카마이타치의 밤 어드밴스</p>
+        <p class="lede">폭설로 고립된 펜션, 그날 밤의 이야기.<br>원작 엔진을 그대로 옮겨, 같은 화면과 같은 소리로 플레이합니다.</p>
+        <div class="actions">
+          <a class="start" href="#kamaitachi">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5l11 7-11 7z"/></svg>
+            플레이
+          </a>
+          <span class="hint">일본어 원문 · 헤드폰 권장</span>
+        </div>
+        <ul class="facts" aria-label="이식 방식">
+          <li><b>240×160</b>원본 해상도, 정수 배율</li>
+          <li><b>MP2K</b>원작 사운드 드라이버</li>
+          <li><b>VM</b>원작 스크립트 그대로 실행</li>
+        </ul>
+      </div>
     </div>
     <iframe hidden title="게임 실행기" allow="autoplay; fullscreen; gamepad" allowfullscreen></iframe>
   </section>
 
-  <nav class="library" aria-label="작품 선택">
-    <h2 class="label">작품</h2>
-    <a class="work" href="#kamaitachi" aria-label="카마이타치의 밤 어드밴스 실행">
-      <span class="cover kama">
-        <img src="/art/kamaitachi.png?logo" alt="" onerror="this.remove()">
-        <span class="cover-text" lang="ja">かまいたちの夜<small>ADVANCE</small></span>
-      </span>
-      <span class="info">
-        <span class="title">카마이타치의 밤 어드밴스</span>
-        <span class="sub">2002 · 춘소프트</span>
-        <span class="status ready">플레이 가능 · 일본어</span>
-      </span>
-    </a>
-    <a class="work" href="#higanbana" aria-label="피안화 실행">
-      <span class="cover higan">
-        <img src="/art/higanbana.png?logo" alt="" onerror="this.remove()">
-        <span class="cover-text" lang="ja">彼岸花</span>
-      </span>
-      <span class="info">
-        <span class="title">피안화</span>
-        <span class="sub">2002</span>
-        <span class="status">준비 중</span>
-      </span>
-    </a>
+  <aside class="side">
+    <nav class="library" aria-label="작품 선택">
+      <h2 class="label">작품 <span>2</span></h2>
+      <a class="work" href="#kamaitachi" aria-label="카마이타치의 밤 어드밴스 실행" data-title="카마이타치의 밤 어드밴스">
+        <span class="cover kama">
+          <img src="/art/kamaitachi-still.png" alt="" onerror="this.remove()">
+          <span class="cover-text" lang="ja">かまいたちの夜</span>
+        </span>
+        <span class="info">
+          <span class="title">카마이타치의 밤 어드밴스</span>
+          <span class="sub">GBA · 2002 · 춘소프트</span>
+          <span class="status ready">플레이 가능 · 일본어</span>
+        </span>
+      </a>
+      <a class="work soon" href="#higanbana" aria-label="피안화 실행" data-title="피안화">
+        <span class="cover higan">
+          <span class="cover-text" lang="ja">彼岸花</span>
+        </span>
+        <span class="info">
+          <span class="title">피안화</span>
+          <span class="sub">GBA · 2002</span>
+          <span class="status">준비 중</span>
+        </span>
+      </a>
+    </nav>
+
+    <section class="guide" aria-label="조작법">
+      <h2 class="label">조작</h2>
+      <dl>
+        <div><dt><kbd>Z</kbd></dt><dd>결정 · 다음 문장</dd></div>
+        <div><dt><kbd>X</kbd></dt><dd>취소 · 메뉴</dd></div>
+        <div><dt><kbd>↑</kbd><kbd>↓</kbd></dt><dd>선택지 고르기</dd></div>
+        <div><dt><kbd>Enter</kbd></dt><dd>START</dd></div>
+        <div><dt><kbd>T</kbd></dt><dd>극장 모드</dd></div>
+        <div><dt><kbd>F</kbd></dt><dd>전체 화면</dd></div>
+      </dl>
+      <p class="note">휴대폰에서는 화면 아래 버튼을, 화면을 누르면 A 버튼입니다.</p>
+    </section>
+
     <p class="links">
-      <a target="_blank" rel="noopener" href="https://www.spike-chunsoft.co.jp/pages/games/kamagba/">카마이타치 소개</a>
+      <a target="_blank" rel="noopener" href="https://www.spike-chunsoft.co.jp/pages/games/kamagba/">공식 소개</a>
       <a target="_blank" rel="noopener" href="https://78514.com/games/kama/kama_endlist.html">공략</a>
     </p>
-  </nav>
+  </aside>
 </main>
 
 <script>
   const links = Array.from(document.querySelectorAll('.work'));
   const frame = document.querySelector('iframe');
   const marquee = document.querySelector('#marquee');
+  const now = document.querySelector('#now');
   function showSelection() {
     const selected = links.find(link => link.hash === location.hash);
     for (const link of links) {
@@ -78,8 +110,11 @@
     }
     marquee.hidden = Boolean(selected);
     frame.hidden = !selected;
+    now.hidden = !selected;
     document.body.classList.toggle('playing', Boolean(selected));
+    if (!selected) setTheatre(false);
     if (selected) {
+      document.querySelector('#now-title').textContent = selected.dataset.title;
       frame.title = selected.getAttribute('aria-label');
       const src = selected.hash === '#kamaitachi'
         ? '/ports/kamaitachi-gba/index.html'
@@ -90,6 +125,23 @@
       frame.removeAttribute('src');
     }
   }
+
+  // Theatre mode: the header and the side column step away and the stage takes the window,
+  // so the screen can grow to the next whole-number scale. The port page asks for it (T key or its button).
+  function setTheatre(on) {
+    document.body.classList.toggle('theatre-mode', on);
+    frame.contentWindow?.postMessage({ type: 'theatre', on }, location.origin);
+  }
+  addEventListener('message', (event) => {
+    if (event.origin !== location.origin || event.source !== frame.contentWindow) return;
+    if (event.data?.type === 'theatre') setTheatre(event.data.on ?? !document.body.classList.contains('theatre-mode'));
+    if (event.data?.type === 'hello') setTheatre(document.body.classList.contains('theatre-mode'));
+  });
+  addEventListener('keydown', (event) => {
+    if (!document.body.classList.contains('playing')) return;
+    if (event.key === 't' || event.key === 'T') setTheatre(!document.body.classList.contains('theatre-mode'));
+    if (event.key === 'Escape') setTheatre(false);
+  });
   window.addEventListener('hashchange', showSelection);
   showSelection();
 </script>
