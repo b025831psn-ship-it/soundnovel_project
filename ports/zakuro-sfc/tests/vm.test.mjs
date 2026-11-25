@@ -64,6 +64,22 @@ test('power-on WRAM uses the native reference pattern across low-bank mirrors', 
   assert.equal(bus.readMapped(0x7e01ec), 0x55);
 });
 
+test('recorded joypad frames feed auto-joypad registers and serial reads', () => {
+  const frames = [0, 0x1000, 0x0080];
+  const bus = new ZakuroBus({
+    rom: fixtureRom([]), masterLink: { read: () => 0, write() {} }, inputFrames: frames,
+    clock: new MasterClock(0, { refresh: false }),
+  });
+  bus.setInputField(0);
+  assert.equal(bus.read(0x4218), 0x00);
+  assert.equal(bus.read(0x4219), 0x10);
+  bus.write(0x4016, 1); bus.write(0x4016, 0);
+  assert.deepEqual(Array.from({ length: 4 }, () => bus.read(0x4016) & 1), [0, 0, 0, 1]);
+  bus.setInputField(1);
+  assert.equal(bus.read(0x4218), 0x80);
+  assert.equal(bus.read(0x4219), 0x00);
+});
+
 test('65C816 store opcodes report total cycles without double-counting fetch', () => {
   // LDA #$5a; STA $00; STX $01; STZ $02; STA $2000
   const vm = new ZakuroVM({

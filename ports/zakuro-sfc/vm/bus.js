@@ -8,7 +8,7 @@ function normalizeRom(bytes) {
 }
 
 export class ZakuroBus {
-  constructor({ rom, masterLink, clock = new MasterClock(), ppu = null, trace = null, wramFill = 0x55 } = {}) {
+  constructor({ rom, masterLink, clock = new MasterClock(), ppu = null, trace = null, wramFill = 0x55, inputFrames = null, inputFrameOffset = 1 } = {}) {
     if (!masterLink) throw new TypeError('masterLink is required');
     this.rom = normalizeRom(rom); this.masterLink = masterLink; this.clock = clock;
     this.ppu = ppu; this.trace = trace; this.onNmi = null; this.wram = new Uint8Array(128 * 1024);
@@ -18,6 +18,9 @@ export class ZakuroBus {
     this.wram.fill(wramFill & 0xff);
     this.io = new Uint8Array(0x6000); this.fastRom = false; this.accessCount = 0;
     this.nmiFlag = false;
+    this.inputFrames = inputFrames;
+    this.inputFrameOffset = inputFrameOffset;
+    this.joy1 = 0; this.joyStrobe = 0; this.joySerialBit = 0;
     this.wramAddress = 0;
     this.dmaBytes = 0; this.dmaMasterCycles = 0; this.dmaTransfers = 0; this.dmaChannels = 0;
     this.hdmaMask = 0; this.hdmaEvents = [];
@@ -45,6 +48,8 @@ export class ZakuroBus {
       return (inVblank(master) ? 0x80 : 0) | (inLine >= 1096 ? 0x40 : 0)
         | (inAutoJoypadRead(master) ? 0x01 : 0);
     }
+    if ((bank & 0x40) === 0 && offset === 0x4016) return this.readJoy1();
+    if ((bank & 0x40) === 0 && offset === 0x4017) return 0;
     if ((bank & 0x40) === 0 && offset >= 0x2000 && offset < 0x6000) return this.io[offset];
     if (offset >= 0x8000) return this.rom[((bank & 0x7f) * 0x8000 + (offset & 0x7fff)) % this.rom.length];
     return 0;
@@ -62,6 +67,11 @@ export class ZakuroBus {
       this.writeWramPort(offset, v); return;
     }
     if ((bank & 0x40) === 0 && offset >= 0x2100 && offset <= 0x213f && this.ppu) { this.ppu.write?.(offset, v, master); return; }
+    if ((bank & 0x40) === 0 && offset === 0x4016) {
+      this.joyStrobe = v & 1;
+      if (this.joyStrobe) this.joySerialBit = 0;
+      return;
+    }
     if ((bank & 0x40) === 0 && offset >= 0x2000 && offset < 0x6000) {
       const old = this.io[offset];
       this.io[offset] = v; if (offset === 0x420d) this.fastRom = !!(v & 1);
@@ -70,6 +80,20 @@ export class ZakuroBus {
       // NMITIMEN low->high during VBlank triggers NMI if RDNMI has not been read.
       if (offset === 0x4200 && (v & 0x80) && !(old & 0x80) && this.nmiFlag) this.onNmi?.();
     }
+  }
+
+  setInputField(field) {
+    // Native frame F ends at VBlank ordinal F-1 after the initial reset frame.
+    this.joy1 = this.inputFrames?.[field + this.inputFrameOffset] ?? 0;
+    this.io[0x4218] = this.joy1 & 0xff;
+    this.io[0x4219] = this.joy1 >>> 8;
+    this.joySerialBit = 0;
+  }
+
+  readJoy1() {
+    const bit = this.joySerialBit < 16 ? (this.joy1 >>> (15 - this.joySerialBit)) & 1 : 1;
+    if (!this.joyStrobe && this.joySerialBit < 16) this.joySerialBit++;
+    return bit;
   }
 
   writeWramPort(offset, value) {

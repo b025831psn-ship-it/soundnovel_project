@@ -4,3 +4,4 @@ export { ApuTraceComparator, readApuPorts } from './apu-trace.js';
 export { CPU } from './cpu.js';
 export { RESET_MASTER_CYCLES, ZakuroVM } from './vm.js';
 export { createApuLink } from './apu-link.js';
+export { readInputTrace } from './input-trace.js';

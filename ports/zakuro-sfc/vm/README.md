@@ -44,4 +44,17 @@ cycles, with a 40-cycle current delta and 80-cycle maximum. Optional
 The comparator still fails at the first semantic mismatch by default so timing
 cannot be hidden by resynchronizing the trace.
 
+The private `port-data/trace/input.tsv` contains all 3,713 native controller
+frames through the first choice. `readInputTrace()` feeds each VBlank sample to
+the `$4218/$4219` auto-joypad registers and the `$4016/$4017` serial interface.
+With that input, `tools/vm-full-run.mjs` reaches the end without a stop or CPU
+error and finds all 252,918 reference CPU writes. Three harmless extra idle-clear
+triplets remain immediately before commands at reference frames 422, 760, and
+1798; the command writes themselves differ by only -14, +20, and -12 master
+clocks. The strict all-access checker still stops at row 66,426 while the live
+APU response becomes visible 76 master clocks earlier than the native trace.
+All legacy `[WP]` and `[STUCK]` diagnostics are disabled unless
+`globalThis.ZAKURO_VM_DEBUG` is explicitly enabled, so they no longer print or
+perform timing-visible watchpoint reads in normal runs.
+
 The CPU core provenance and license are in `THIRD_PARTY_NOTICES.md`.

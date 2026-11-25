@@ -1,7 +1,8 @@
 import { readFile } from 'node:fs/promises';
 import { createWriteStream } from 'node:fs';
 import { finished } from 'node:stream/promises';
-import { ApuTraceComparator, createApuLink, readApuPorts, scanlineTiming, ZakuroVM } from '../vm/index.js';
+import { dirname, join } from 'node:path';
+import { ApuTraceComparator, createApuLink, readApuPorts, readInputTrace, scanlineTiming, ZakuroVM } from '../vm/index.js';
 
 const [romPath, tracePath, iplPath] = process.argv.slice(2);
 if (!romPath || !tracePath) {
@@ -9,17 +10,30 @@ if (!romPath || !tracePath) {
   process.exit(2);
 }
 
-const [rom, reference, ipl] = await Promise.all([
+const [rom, reference, ipl, inputFrames] = await Promise.all([
   readFile(romPath), readApuPorts(tracePath), iplPath ? readFile(iplPath) : null,
+  readInputTrace(join(dirname(tracePath), 'input.tsv')),
 ]);
 const comparator = new ApuTraceComparator(reference);
-const { link, bootMode } = createApuLink({ rom, ipl });
+const { apu, link, bootMode } = createApuLink({ rom, ipl });
 let mismatch = null;
 const firstDeltas = [];
+const accessTrace = process.env.ZAKURO_VM_ACCESS_TRACE
+  ? createWriteStream(process.env.ZAKURO_VM_ACCESS_TRACE) : null;
+accessTrace?.write('master_cycle\tdir\tport\tvalue\n');
+const spcTrace = process.env.ZAKURO_VM_SPC_TRACE
+  ? createWriteStream(process.env.ZAKURO_VM_SPC_TRACE) : null;
+spcTrace?.write('spc_cycle\teffective_cycle\topcode\tport\tvalue\n');
+if (spcTrace) apu.cpu.onPortWrite = (clock, port, value) => {
+  const opcode = apu.cpu.curOp;
+  spcTrace.write(`${clock}\t${clock + (link.writeLag[opcode] || link.readLag)}\t${opcode.toString(16).padStart(2, '0')}\t${port}\t${value.toString(16).padStart(2, '0')}\n`);
+};
 const vm = new ZakuroVM({
   rom,
+  inputFrames,
   masterLink: link,
   trace(access) {
+    accessTrace?.write(`${access.master}\t${access.dir}\t${access.port}\t${access.value.toString(16).padStart(2, '0')}\n`);
     if (mismatch) return;
     try {
       const delta = comparator.observe(access);
@@ -81,7 +95,9 @@ while ((!mismatch || keepRunning) && !vm.cpu.stopped && instructions < maxInstru
 instructionTrace?.end();
 stateTrace?.end();
 nmiTrace?.end();
-await Promise.all([instructionTrace, stateTrace, nmiTrace].filter(Boolean).map(stream => finished(stream)));
+accessTrace?.end();
+spcTrace?.end();
+await Promise.all([instructionTrace, stateTrace, nmiTrace, accessTrace, spcTrace].filter(Boolean).map(stream => finished(stream)));
 
 const result = {
   instructions,

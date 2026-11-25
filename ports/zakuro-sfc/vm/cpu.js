@@ -313,6 +313,9 @@ export class CPU {
     this.trace.push({ pb: opPB, pc: opPC, op: opcode, a: this.A, x: this.X, y: this.Y, sp: this.SP, dp: this.DP, db: this.DB, e: this.P.E, m: this.P.M });
     if (this.trace.length > this.traceSize) this.trace.shift();
 
+    // --- Optional targeted diagnostics. Disabled by default because watchpoint
+    // reads are observable bus cycles and must never perturb normal VM timing. ---
+    if (globalThis.ZAKURO_VM_DEBUG) {
     // --- Targeted PC watchpoints (first-visit only) ---
     if (!globalThis._pcVisited) globalThis._pcVisited = {};
     const pcKey = (opPB << 16) | opPC;
@@ -391,6 +394,7 @@ export class CPU {
             }
         }
         sd.count = 0; sd.windowMin = opPC; sd.windowMax = opPC;
+    }
     }
 
     this.cycles++; 

@@ -32,6 +32,7 @@ export class ZakuroVM {
     const beforeVblank = vblankOrdinal(beforeMaster);
     const afterVblank = vblankOrdinal(afterMaster);
     if (afterVblank > beforeVblank) {
+      this.bus.setInputField(afterVblank);
       this.bus.nmiFlag = true;
       if (this.bus.io[0x4200] & 0x80) this.cpu.nmiPending = true;
     }
