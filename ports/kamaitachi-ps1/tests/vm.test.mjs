@@ -74,7 +74,12 @@ test("conditional families keep their distinct target encodings", () => {
   { label: 19010, resourceId: 19, recordId: 10 });
   const table = vm.run(Uint8Array.of(0x57, 1, 0x3e, 0x11, 0, 0xed, 0, 0x1c, 0, 0xee, 0),
     { resourceId: 0, recordId: 16 }).at(-1);
-  assert.deepEqual(table.options.map((option) => [option.target.resourceId, option.target.recordId]), [[0, 17], [0, 28]]);
+  assert.deepEqual(table.options.map((option) => option.target), [
+    { kind: "label-or-resource-offset", labelTarget: { label: 17, resourceId: 0, recordId: 17 },
+      offsetTarget: { kind: "resource-offset", resourceId: 0, resourceOffset: 17 } },
+    { kind: "label-or-resource-offset", labelTarget: { label: 28, resourceId: 0, recordId: 28 },
+      offsetTarget: { kind: "resource-offset", resourceId: 0, resourceOffset: 28 } },
+  ]);
   const hub = vm.run(Uint8Array.of(0x57, 1, 0x11, 0x7e, 0x69, 2, 0, 0x98, 0x3a, 8, 0),
     { resourceId: 27, recordId: 5 }).at(-1);
   assert.deepEqual(hub.options.map((option) => option.target), [

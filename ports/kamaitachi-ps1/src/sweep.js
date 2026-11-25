@@ -6,7 +6,7 @@ const isEndingTarget = (target) => target?.resourceId === 31 && target?.recordId
 
 export async function sweep(portDataRoot, {
   resourceId = 25, recordId = 7, maxStates = 200000, includeResourceEntries = false,
-  unlockPolicy = "fresh", includeFreshRoot = true, additionalRoots = [],
+  unlockPolicy = "fresh", includeFreshRoot = true, additionalRoots = [], distinguishRoots = false,
 } = {}) {
   if (!["fresh", "both"].includes(unlockPolicy)) throw new Error(`unknown unlock policy: ${unlockPolicy}`);
   const data = await loadPortData(portDataRoot);
@@ -25,8 +25,14 @@ export async function sweep(portDataRoot, {
   }
   const states = new Set(), records = new Set(), endings = [], endingRoutes = [], stops = [], failures = [];
   const counts = { choice: 0, jump: 0, call: 0, return: 0, branch: 0, flagStore: 0 };
+  let activeState = null;
   const enqueue = (location, stack, nextResource = null, root = "unknown") => {
     if (!location) return;
+    if (location.kind === "label-or-resource-offset") {
+      const labelResource = data.resources.get(Number(location.labelTarget.resourceId));
+      location = labelResource?.records?.some((record) => record.id === Number(location.labelTarget.recordId))
+        ? location.labelTarget : location.offsetTarget;
+    }
     if (location.kind === "next-resource") {
       if (nextResource == null) { failures.push({ location: "dynamic", reason: "missing-next-resource" }); return; }
       location = { resourceId: nextResource, recordId: location.recordId || 0, offset: 0 };
@@ -42,7 +48,8 @@ export async function sweep(portDataRoot, {
     }
     const resource = data.resources.get(Number(location.resourceId));
     if (!resource?.records?.some((record) => record.id === Number(location.recordId))) {
-      failures.push({ location: locationKey(location), reason: "missing-label-target" }); return;
+      failures.push({ location: locationKey(location), reason: "missing-label-target",
+        from: activeState ? locationKey(activeState) : null }); return;
     }
     queue.push({ ...location, offset: location.offset || 0, stack, nextResource, root });
   };
@@ -56,7 +63,8 @@ export async function sweep(portDataRoot, {
 
   while (queue.length && states.size < maxStates) {
     const state = queue.shift();
-    const key = `${state.root}|${locationKey(state)}|${state.stack.length ? locationKey(state.stack.at(-1)) : "root"}`;
+    activeState = state;
+    const key = `${distinguishRoots ? `${state.root}|` : ""}${locationKey(state)}|${state.stack.length ? locationKey(state.stack.at(-1)) : "root"}`;
     if (states.has(key)) continue;
     states.add(key); records.add(`${state.resourceId}:${state.recordId}`);
     let events;
@@ -100,10 +108,13 @@ export async function sweep(portDataRoot, {
       enqueue(transfer.fallthrough, state.stack, nextResource, state.root); }
   }
   const totalRecords = [...data.resources.values()].reduce((sum, resource) => sum + (resource.records?.length || 0), 0);
+  const perResource = [...data.resources.values()].map((resource) => ({ resourceId: resource.id,
+    reached: [...records].filter((key) => key.startsWith(`${resource.id}:`)).length,
+    records: resource.records?.length || 0 })).filter((row) => row.reached > 0);
   return { start: includeFreshRoot ? { resourceId, recordId } : null, states: states.size, records: records.size,
     totalRecords, roots: { freshPlay: includeFreshRoot, additional: additionalRoots.map((root) => root.name),
       resourceEntries: includeResourceEntries, unlockPolicy }, coverage: totalRecords ? records.size / totalRecords : 0,
-    counts, endings: [...new Map(endings.map((ending) => [ending.id, ending])).values()],
+    perResource, counts, endings: [...new Map(endings.map((ending) => [ending.id, ending])).values()],
     endingRoutes: [...new Map(endingRoutes.map((route) => [`${route.source}>${route.target}`, route])).values()],
     stops, failures, truncated: queue.length > 0 };
 }

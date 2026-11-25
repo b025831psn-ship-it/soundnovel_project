@@ -106,10 +106,14 @@ hub without treating resource fall-off as an ending.
 
 The report also runs two native-entry root families that are not reachable by
 scenario bytecode alone: `title-menu:main` at `31:0` and
-`title-menu:scenario-select` at `39:0`. Resource 31 initializes/returns from the
-title flow, while resource 39 is the flag-driven scenario dispatch table and
-contains exits into the otherwise isolated scenario resources. These roots are
+`title-menu:scenario-select:<N>` for every record in resource 39. Resource 31
+initializes/returns from the title flow, while each `39:N` is one native-indexed
+scenario/bookmark menu entry with its own flag checks and destination. These roots are
 reported separately from fresh play rather than silently inflating it.
+The JSON result includes a `perResource` table so a menu-root run proves that
+all 264 dispatch records were entered instead of merely reaching `39:0`.
+Sub-1000 transfer words are resolved like retail: an existing resource-0 label
+wins; otherwise the same word is a current-resource byte offset.
 
 Ending coverage counts decoded source transfers into the shared `31:11`
 title-return record. The opcode `44` there is one shared implementation, not

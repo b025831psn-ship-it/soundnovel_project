@@ -16,6 +16,13 @@ const resourceOffsetTarget = (resourceId, operands) => ({
   kind: "resource-offset", resourceId,
   resourceOffset: (operands.at(-1) << 8) | operands.at(-2),
 });
+const scenarioTarget = (resourceId, operands) => {
+  const target = labelTarget(operands);
+  return target.label < 1000
+    ? { kind: "label-or-resource-offset", labelTarget: target,
+        offsetTarget: { kind: "resource-offset", resourceId, resourceOffset: target.label } }
+    : target;
+};
 const conditionalBranch = (event, resourceId, recordId, pc, length, operands, targetOperands, target) => ({
   ...event, status: "implemented", kind: "branch",
   target,
@@ -133,7 +140,7 @@ export class ScenarioVM {
       }
       const operands = [...bytes.slice(pc, pc + length)]; pc += length;
       if (opcode === 0x01 || opcode === 0x02) {
-        const target = labelTarget(operands);
+        const target = scenarioTarget(resourceId, operands);
         events.push({ ...event, status: "implemented", kind: opcode === 0x01 ? "jump" : "call",
           target, returnTo: opcode === 0x02 ? { resourceId, recordId, offset: pc } : null,
           operandLength: length, operands });
@@ -159,7 +166,7 @@ export class ScenarioVM {
       }
       if (LABEL_BRANCHES.has(opcode)) {
         const word = operands.slice(-2);
-        events.push(conditionalBranch(event, resourceId, recordId, pc, length, operands, word, labelTarget(word)));
+        events.push(conditionalBranch(event, resourceId, recordId, pc, length, operands, word, scenarioTarget(resourceId, word)));
         return events;
       }
       if (OFFSET_BRANCHES.has(opcode)) {
@@ -170,7 +177,7 @@ export class ScenarioVM {
       }
       if (UNLOCK_LABEL_BRANCHES.has(opcode)) {
         const word = operands.slice(1, 3);
-        const branch = conditionalBranch(event, resourceId, recordId, pc, length, operands, word, labelTarget(word));
+        const branch = conditionalBranch(event, resourceId, recordId, pc, length, operands, word, scenarioTarget(resourceId, word));
         events.push({ ...branch, unlockRequired: true,
           unlockFlag: { kind: "retail-unlock-index", encoded: operands.slice(3, 5) } });
         return events;
@@ -181,7 +188,7 @@ export class ScenarioVM {
         continue;
       }
       if (opcode === 0x56) {
-        const target = labelTarget(operands.slice(0, 2));
+        const target = scenarioTarget(resourceId, operands.slice(0, 2));
         events.push({ ...event, status: "implemented", kind: "branch", target,
           fallthrough: { resourceId, recordId, offset: pc },
           condition: { kind: "retail-flag-expression", opcode: hex(opcode),
@@ -210,7 +217,7 @@ export class ScenarioVM {
       if (opcode === 0x13) {
         const options = [];
         for (let index = 2; index + 1 < operands.length; index += 2) {
-          const target = labelTarget(operands.slice(index, index + 2));
+          const target = scenarioTarget(resourceId, operands.slice(index, index + 2));
           options.push({ index: options.length, label: target.label,
             target: { resourceId: target.resourceId, recordId: target.recordId } });
         }
@@ -221,7 +228,7 @@ export class ScenarioVM {
       if (opcode === 0x57) {
         const options = [];
         for (let index = 2; index + 1 < operands.length; index += 4)
-          options.push({ index: options.length, target: labelTarget(operands.slice(index, index + 2)) });
+          options.push({ index: options.length, target: scenarioTarget(resourceId, operands.slice(index, index + 2)) });
         events.push({ ...event, status: "implemented", kind: "choice-table", options,
           fallthrough: { resourceId, recordId, offset: pc }, operandLength: length, operands });
         return events;
