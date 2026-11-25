@@ -33,7 +33,12 @@ const routes = new Map([
 
 // The native-bytecode port (ports/kamaitachi-gba) and its extracted cartridge data (port-data).
 const portTypes = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8',
-  '.css': 'text/css; charset=utf-8', '.json': 'application/json; charset=utf-8', '.bin': 'application/octet-stream', '.tsv': 'text/tab-separated-values; charset=utf-8' };
+  '.css': 'text/css; charset=utf-8', '.json': 'application/json; charset=utf-8', '.bin': 'application/octet-stream', '.tsv': 'text/tab-separated-values; charset=utf-8',
+  '.mjs': 'text/javascript; charset=utf-8', '.png': 'image/png', '.jpg': 'image/jpeg', '.webp': 'image/webp', '.svg': 'image/svg+xml',
+  '.wasm': 'application/wasm', '.ogg': 'audio/ogg', '.mp3': 'audio/mpeg', '.wav': 'audio/wav', '.woff2': 'font/woff2', '.txt': 'text/plain; charset=utf-8' };
+// Kamaitachi 2 (PS2) web build lives in the private kamaitachi2-ps2-kor checkout on this PC; its web/ folder path is
+// in a local, uncommitted serve.ps2web (one line). Disc images are never among the served types.
+const ps2Web = (() => { try { return path.resolve(__dirname, fs.readFileSync(path.join(__dirname, 'serve.ps2web'), 'utf8').trim()); } catch { return ''; } })();
 function portRoute(url) {
   for (const [prefix, dir, exts] of [
     ['/ports/kamaitachi-gba/', path.join(__dirname, 'ports', 'kamaitachi-gba'), ['.html', '.js', '.css']],
@@ -46,8 +51,9 @@ function portRoute(url) {
     ['/sfc-vm/', path.join(__dirname, 'sfc-vm'), ['.js']],
     // Code shared by every port (save store and sync client); its tests and the reference server stay out.
     ['/shared/', path.join(__dirname, 'shared'), ['.js']],
+    ['/kamaitachi2-ps2/', ps2Web, ['.html', '.js', '.mjs', '.css', '.json', '.bin', '.png', '.jpg', '.webp', '.svg', '.wasm', '.ogg', '.mp3', '.wav', '.woff2', '.txt']],
   ]) {
-    if (!url.startsWith(prefix)) continue;
+    if (!url.startsWith(prefix) || !dir) continue;
     const file = path.join(dir, decodeURIComponent(url.slice(prefix.length)) || 'index.html');
     const ext = path.extname(file);
     if (!file.startsWith(dir + path.sep) || !exts.includes(ext) || /(^|[\\/])(tests?|tools|server)[\\/]/.test(file.slice(dir.length))) return null;
