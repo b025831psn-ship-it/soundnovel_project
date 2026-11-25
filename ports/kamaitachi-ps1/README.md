@@ -31,7 +31,11 @@ node tools/opcode-report.mjs /private/port-data > opcode-status.json
 ```
 
 The primary table is read from retail `0x8006a3ec` (256 slots), and the `1d`
-sub-table from `0x800129dc` (108 slots). Opcode `00` text and `1d 03` name entry
-are implemented. Every other slot is present as a handler-address-citing stub
-that stops; it is never silently skipped. `run-all` intentionally returns a
-single machine-readable failure list for Claude's whole-game pass.
+sub-table from `0x800129dc` (108 slots). The private extractor can run
+`psx-analysis/tools/scenario_lengths.py` to attach public-safe cursor-delta
+evidence for all 364 handlers. Fixed-width and proven variable-width stubs log
+their operands and continue; only an unresolved data-dependent width stops a
+record. Opcode `00` text and `1d 03` name entry are implemented. The ten most
+frequent blockers are identified separately as decoded commands until their
+state/rendering effects have native trace parity; a guessed semantic name is
+not treated as an implementation.

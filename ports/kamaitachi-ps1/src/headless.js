@@ -5,12 +5,15 @@ export async function createHeadless(portDataRoot, options = {}) {
   const data = await loadPortData(portDataRoot);
   const primary = data.manifest.opcodeTables.primary.handlers;
   const sub1d = data.manifest.opcodeTables.sub1d.handlers;
+  const primaryLengths = data.manifest.opcodeTables.primary.lengths || [];
+  const sub1dLengths = data.manifest.opcodeTables.sub1d.lengths || [];
   return {
     data,
-    opcodeStatus: () => opcodeStatus(primary, sub1d),
+    opcodeStatus: () => opcodeStatus(primary, sub1d, primaryLengths, sub1dLengths),
     async run(resourceId, recordId, choicePolicy = "first") {
       const loaded = await data.record(resourceId, recordId);
-      const vm = new ScenarioVM({ primaryHandlers: primary, sub1dHandlers: sub1d, choicePolicy, ...options });
+      const vm = new ScenarioVM({ primaryHandlers: primary, sub1dHandlers: sub1d,
+        primaryLengths, sub1dLengths, choicePolicy, ...options });
       try {
         return { resourceId: Number(resourceId), recordId: Number(recordId),
           events: vm.run(loaded.bytes, { resourceId: Number(resourceId), recordId: Number(recordId) }), failure: null };
