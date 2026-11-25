@@ -89,7 +89,7 @@ let extendedLoading = null;
 //   mode  "ai" (the extended picture; the default when there is one), "fill" (the original cut to fill
 //         the screen) or "frame" (the original whole, over a blurred enlargement of itself)
 //   shift GBA rows the picture moves (+ down) in "ai" and "frame"
-//   crop  the left column of the cut in "fill" (otherwise placed automatically)
+//   crop  where the part shown across sits, 0 (left edge) to 100 (right edge); otherwise automatic
 let edits = {};
 let editVersion = 0;
 fetch("/art/portrait-edits.json", { cache: "no-cache" }).then((r) => (r.ok ? r.json() : {}))
@@ -478,8 +478,8 @@ function drawPicture(game) {
     const same = screen.background === shownBackground;
     const layerChanged = (screen.silhouette ? silhouetteSpan(screen.silhouette)?.left : null) !== shownLayer;
     if (!same || layerChanged || crop < 0) {
-      const next = edit?.mode === "fill" && Number.isFinite(edit.crop)
-        ? Math.max(0, Math.min(240 - width, Math.round(edit.crop))) : cropLeft(base, screen.silhouette, width);
+      const next = Number.isFinite(edit?.crop)
+        ? Math.round((Math.max(0, Math.min(100, edit.crop)) / 100) * Math.max(0, 240 - width)) : cropLeft(base, screen.silhouette, width);
       picture.classList.toggle("pan", same && crop >= 0);
       crop = next;
     }

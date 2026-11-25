@@ -65,9 +65,9 @@
     <p class="hint">오른쪽으로 갈수록 그림이 아래로 내려가요.</p>
   </div>
   <div id="cropBox">
-    <h2>좌우 위치</h2>
+    <h2>좌우 위치 (0 왼쪽 끝, 100 오른쪽 끝)</h2>
     <div class="row"><label><input type="checkbox" id="cropAuto" checked> 자동</label></div>
-    <div class="row"><input type="range" id="crop" min="0" max="160" step="1" value="80" disabled><output id="cropOut">자동</output></div>
+    <div class="row"><input type="range" id="crop" min="0" max="100" step="1" value="50" disabled><output id="cropOut">자동</output></div>
   </div>
   <div class="actions">
     <button id="prev">← 이전</button>
@@ -114,7 +114,6 @@ function syncControls() {
   }
   const mode = edit.mode ?? (ai.has(current) ? "ai" : "fill");
   $("shiftBox").hidden = mode === "fill";
-  $("cropBox").hidden = mode !== "fill";
   $("shift").value = edit.shift ?? 0;
   $("shiftOut").textContent = edit.shift ?? 0;
   const auto = !Number.isFinite(edit.crop);
