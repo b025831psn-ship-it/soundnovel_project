@@ -10,7 +10,20 @@ import { Silhouettes } from "./src/silhouette.js";
 import { openBooks } from "./src/books-store.js";
 
 const base = "../../kamaitachi-gba-kor/port-data";
+// Text language. "ko" reads the script, font and menu strings extracted from a Korean fan patch of
+// the cartridge (kgk port-data-ko, same layout) over the Japanese data; everything else is shared.
+// ?lang=ja|ko picks it and is remembered; setLanguage() switches and reloads.
+const LANGUAGE_KEY = "kamaitachi-gba.lang";
+const LANGUAGES = ["ja", "ko"];
+function storedLanguage() {
+  try { return localStorage.getItem(LANGUAGE_KEY); } catch { return null; }
+}
+let language = new URLSearchParams(location.search).get("lang") ?? storedLanguage() ?? "ja";
+if (!LANGUAGES.includes(language)) language = "ja";
+try { localStorage.setItem(LANGUAGE_KEY, language); } catch {}
 const assets = new Assets(base);
+if (language === "ko") assets.overlay("../../kamaitachi-gba-kor/port-data-ko", (path) =>
+  /^(manifest\.json|scenario\/|font\/|ui\/(flow-map|option-text|name-table|map-titles|system-text)\.bin)/.test(path));
 const manifest = await assets.json("manifest.json");
 const bankPaths = manifest.files.filter((file) =>
   file.path.startsWith("scenario/"),
@@ -96,7 +109,14 @@ canvas.addEventListener("pointerdown", (event) => {
 let menuRequested = false;
 let menuAvailable = false;
 const openMenu = () => { if (!menuAvailable) return false; menuRequested = true; sound.resume(); return true; };
-window.kamaitachi = { vm, screen, assets, font, input, sound, page, boot, tap, openMenu,
+function setLanguage(next) {
+  if (!LANGUAGES.includes(next) || next === language) return;
+  try { localStorage.setItem(LANGUAGE_KEY, next); } catch {}
+  const url = new URL(location.href);
+  url.searchParams.set("lang", next);
+  location.href = url.href;
+}
+window.kamaitachi = { language, languages: LANGUAGES, setLanguage, vm, screen, assets, font, input, sound, page, boot, tap, openMenu,
   get menuAvailable() { return menuAvailable; } };
 
 let last = performance.now();

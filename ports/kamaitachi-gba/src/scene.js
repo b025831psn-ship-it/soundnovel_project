@@ -78,8 +78,15 @@ export class Assets {
   constructor(base = "port-data") {
     this.base = base.replace(/\/$/, "");
   }
+  // Paths `match` accepts are read from `base` instead (a translation's files over the originals).
+  overlay(base, match) {
+    this.overlayBase = base.replace(/\/$/, "");
+    this.overlayMatch = match;
+    return this;
+  }
   async response(path) {
-    const response = await fetch(`${this.base}/${path}`);
+    const root = this.overlayMatch?.(path) ? this.overlayBase : this.base;
+    const response = await fetch(`${root}/${path}`);
     if (!response.ok) throw new Error(`${response.status} ${path}`);
     return response;
   }

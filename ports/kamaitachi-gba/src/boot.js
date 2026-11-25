@@ -3,7 +3,8 @@
 // scenario bytecode, so they are ported routine by routine. Each `yield` is one frame wait
 // (08002FB8); fades use the same brightness slots the scenario VM steps every VBlank.
 import { ObjTextSurface } from "./obj-text.js";
-import { NameEntry, NAME_PICTURES } from "./name-entry.js";
+import { NameEntry, NAME_PICTURES, adoptNameText } from "./name-entry.js";
+import { adoptRomString, romString } from "./rom-text.js";
 import { Books, pageState, restoreData, restorePosition } from "./save.js";
 import { FlowMap, MapSurface, FLOW_COLUMNS, FLOW_ROWS, flowScaleX } from "./flow-map.js";
 import { Options, CONTROLS_PICTURE, TONE_PICTURE, CAST_PICTURES } from "./options.js";
@@ -22,6 +23,24 @@ export function pictureIndex(id, table = null) {
   if (!table || at < 0 || at > 0x96) return -1;
   const value = (table[at] << 24) >> 24;
   return value > 0 ? value + 0xe7 : -1;
+}
+
+// Where each literal sits on the cartridge (see rom-text.js). A ROM whose strings were rewritten in
+// place (the Korean fan patch) replaces them when its ui/system-text.bin is loaded.
+function adoptSystemText(blob) {
+  const take = (target, address) => adoptRomString(target, blob, address);
+  take(MENU[0].label, 0x1ae9c);
+  take(MENU[1].label, 0x1ae8c);
+  take(UNUSED, 0x199d4);
+  [0x1acb4, 0x1aca4, 0x1ac94, 0x1ac88].forEach((at, i) => take(SJIS.bookMenu[i], at));
+  [0x1ab70, 0x1ab78, 0x1ab84, 0x1ac88].forEach((at, i) => take(SJIS.gameMenu[i], at));
+  [0x1ad84, 0x1ad74, 0x1ad64].forEach((at, i) => take(SJIS.copyTargets[i], at));
+  for (const [key, at] of [["saving", 0x198fc], ["saved", 0x19948], ["loading", 0x1acc8], ["erasing", 0x1ad2c],
+    ["turns", 0x199c4], ["good", 0x199cc], ["bad", 0x199d0], ["yes", 0x19638], ["no", 0x19640]]) take(SJIS[key], at);
+  // The port's 上書きしますか？ is not on the cartridge; a translation shows its 0801ADDA question
+  // (after the r r s s s s layout codes).
+  const question = romString(blob, 0x1ade0);
+  if (question && question[0] !== 0x8f) take(SJIS.overwrite, 0x1ade0);
 }
 
 // 0801AEAC/0801AEC4 rectangles (x, y, w, h), 0801AEA5 text x, 0801AEA7 cursor x, 08825F6C labels.
@@ -87,6 +106,16 @@ const SJIS = {
   loading: [0x83, 0x51, 0x81, 0x5b, 0x83, 0x80, 0x83, 0x66, 0x81, 0x5b, 0x83, 0x5e, 0x82, 0xf0, 0x93, 0xc7, 0x82, 0xdd, 0x8d, 0x9e, 0x82, 0xdd, 0x92, 0x86, 0x82, 0xc5, 0x82, 0xb7, 0x81, 0x42],
   // 0801AD2C ゲームデータを消去しています。
   erasing: [0x83, 0x51, 0x81, 0x5b, 0x83, 0x80, 0x83, 0x66, 0x81, 0x5b, 0x83, 0x5e, 0x82, 0xf0, 0x8f, 0xc1, 0x8b, 0x8e, 0x82, 0xb5, 0x82, 0xc4, 0x82, 0xa2, 0x82, 0xdc, 0x82, 0xb7, 0x81, 0x42],
+  // 0801AD84 / 0801AD74 / 0801AD64: 左の本に写す, 中央の本に写す, 右の本に写す
+  copyTargets: [
+    [0x8d, 0xb6, 0x82, 0xcc, 0x96, 0x7b, 0x82, 0xc9, 0x8e, 0xca, 0x82, 0xb7],
+    [0x92, 0x86, 0x89, 0x9b, 0x82, 0xcc, 0x96, 0x7b, 0x82, 0xc9, 0x8e, 0xca, 0x82, 0xb7],
+    [0x89, 0x45, 0x82, 0xcc, 0x96, 0x7b, 0x82, 0xc9, 0x8e, 0xca, 0x82, 0xb7],
+  ],
+  yes: [0x82, 0xcd, 0x82, 0xa2], // 08019638 はい
+  no: [0x82, 0xa2, 0x82, 0xa2, 0x82, 0xa6], // 08019640 いいえ
+  // 上書きしますか？ (the port's shortening of 0801ADDA 上書きをしてもよろしいですか？)
+  overwrite: [0x8f, 0xe3, 0x8f, 0x91, 0x82, 0xab, 0x82, 0xb5, 0x82, 0xdc, 0x82, 0xb7, 0x82, 0xa9, 0x81, 0x48],
   turns: [0x89, 0xf1, 0x96, 0xda], // 080199C4 回目
   good: [0x8a, 0xae], // 080199CC 完
   bad: [0x8f, 0x49], // 080199D0 終
@@ -150,6 +179,14 @@ export class Boot {
   async load() {
     this.pictureMap = await this.assets.bin("ui/picture-map.bin");
     this.nameTable = await this.assets.bin("ui/name-table.bin");
+    try { this.systemText = await this.assets.bin("ui/system-text.bin"); } catch { this.systemText = null; }
+    if (this.systemText) {
+      adoptSystemText(this.systemText);
+      adoptNameText(this.systemText);
+      // 080197EC / 080197E4: the names the game starts with (透, 真理).
+      this.names[1] = romString(this.systemText, 0x197ec) ?? this.names[1];
+      this.names[2] = romString(this.systemText, 0x197e4) ?? this.names[2];
+    }
     this.nameEntry = new NameEntry({ boot: this, font: this.font, table: this.nameTable });
     try { this.flow = await this.assets.bin("ui/flow-map.bin"); } catch { this.flow = null; }
     try {
@@ -767,12 +804,11 @@ export class Boot {
 
   // 08009FA8: a yes/no question over the books; true for はい.
   *confirm(base) {
-    const yes = [0x82, 0xcd, 0x82, 0xa2]; // はい
-    const no = [0x82, 0xa2, 0x82, 0xa2, 0x82, 0xa6]; // いいえ
+    const { yes, no } = SJIS;
     let choice = 1;
     while (true) {
       const glyphs = [...base.glyphs];
-      this.text(glyphs, [0x8f, 0xe3, 0x8f, 0x91, 0x82, 0xab, 0x82, 0xb5, 0x82, 0xdc, 0x82, 0xb7, 0x82, 0xa9, 0x81, 0x48], 0x30, 0x4c, 2, true); // 上書きしますか？
+      this.text(glyphs, SJIS.overwrite, 0x30, 0x4c, 2, true);
       this.text(glyphs, yes, 0x50, 0x68, choice === 0 ? 2 : 3, true);
       this.text(glyphs, no, 0x88, 0x68, choice === 1 ? 2 : 3, true);
       glyphs.push({ ...this.point(choice === 0 ? 0x44 : 0x7c, 0x68), encoded: MENU_POINTER, color: 2 });
@@ -841,11 +877,7 @@ export class Boot {
 
   // The copy target: the other two books, left to right.
   *pickBook(from) {
-    const names = [
-      [0x8d, 0xb6, 0x82, 0xcc, 0x96, 0x7b, 0x82, 0xc9, 0x8e, 0xca, 0x82, 0xb7], // 左の本に写す
-      [0x92, 0x86, 0x89, 0x9b, 0x82, 0xcc, 0x96, 0x7b, 0x82, 0xc9, 0x8e, 0xca, 0x82, 0xb7], // 中央の本に写す
-      [0x89, 0x45, 0x82, 0xcc, 0x96, 0x7b, 0x82, 0xc9, 0x8e, 0xca, 0x82, 0xb7], // 右の本に写す
-    ];
+    const names = SJIS.copyTargets;
     const targets = [0, 1, 2].filter((b) => b !== from);
     let selected = 0;
     while (true) {

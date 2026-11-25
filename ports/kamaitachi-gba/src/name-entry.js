@@ -3,6 +3,8 @@
 // culprit's name (mode 2). The routine is ported line by line; positions go through the same
 // 08006C64 transform as all OBJ text (y * 14 / 20), and each `yield` is one frame (08002FB8).
 
+import { adoptRomString } from "./rom-text.js";
+
 // Offset table at 08826660 (kgk port-data ui/name-table.bin): list 0 is the hero/girlfriend
 // characters, list 0B the culprit's, list 0A the kana that start a row group.
 const TABLE_BASE = 0x08826660;
@@ -15,6 +17,12 @@ const TITLES = [
 ];
 const ERASE = [0x8f, 0xc1, 0x82, 0xb7, 0x84, 0x87]; // 0801B81C 消すⒷ
 const DONE = [0x8f, 0x49, 0x97, 0xb9, 0x84, 0x7c]; // 0801B824 終了ⓈⓉ
+// A ROM with these strings rewritten in place brings its own (rom-text.js).
+export function adoptNameText(blob) {
+  [0x1b7f4, 0x1b804, 0x1b810].forEach((at, i) => adoptRomString(TITLES[i], blob, at));
+  adoptRomString(ERASE, blob, 0x1b81c);
+  adoptRomString(DONE, blob, 0x1b824);
+}
 const ARROW_UP = 0x8489; // 0801B82C
 const ARROW_DOWN = 0x848a; // 0801B830
 const SPACE = 0x8140;
