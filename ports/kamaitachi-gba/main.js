@@ -213,15 +213,6 @@ addEventListener("keydown", (event) => {
   if (event.code !== "KeyE" || event.repeat || event.ctrlKey || event.metaKey || event.altKey) return;
   if (openDialogueEditor()) event.preventDefault(); // the E itself must not land in the box
 });
-// ?edit=1: a small button for touch screens until the shell has its own.
-if (new URLSearchParams(location.search).get("edit") === "1") {
-  const button = Object.assign(document.createElement("button"), { textContent: "대사 편집", type: "button" });
-  Object.assign(button.style, { position: "fixed", right: "12px", top: "12px", zIndex: "40", padding: "8px 12px",
-    background: "#c0392b", color: "#fff", border: "0", borderRadius: "6px", font: "14px system-ui, sans-serif" });
-  button.addEventListener("click", openDialogueEditor);
-  document.body.append(button);
-}
-
 window.kamaitachi = { language, languages: LANGUAGES, setLanguage, vm, screen, assets, font, input, sound, page, boot, tap, openMenu,
   openDialogueEditor, get textEdits() { return textEdits; },
   get menuAvailable() { return menuAvailable; } };
