@@ -15,7 +15,7 @@ const BOTTOM = HEIGHT - 6 * K;
 export function wantsLargeText(search = globalThis.location?.search ?? "") {
   const forced = new URLSearchParams(search).get("bigtext");
   if (forced !== null) return forced !== "0";
-  return Boolean(globalThis.matchMedia?.("(pointer: coarse)").matches);
+  return Boolean(globalThis.matchMedia?.("(pointer: coarse) and (hover: none)").matches);
 }
 
 export class LargeText {
