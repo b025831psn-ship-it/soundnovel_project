@@ -104,14 +104,21 @@ try {
   await advanceTo('name');
   console.log('click flow: hero name');
   await tap(120, 130); // 이름판 첫 글자를 직접 선택
+  // Footer areas follow the drawn labels: × 文字消す deletes, ○ 文字決定 enters.
+  const nameLabel = () => canvas.getAttribute('aria-label');
+  const typed = await nameLabel();
   await tap(300, 410);
+  assert.equal(await nameLabel(), typed.slice(0, -1), '× 文字消す deletes one character');
+  await tap(170, 410);
+  assert.equal(await nameLabel(), typed, '○ 文字決定 enters the selected character');
+  await tap(430, 410); // △ 入力終了
   await at('confirm');
   await tap(300, 270);
   await at('story');
   await advanceTo('name');
   console.log('click flow: partner name');
   await tap(120, 130);
-  await tap(300, 410);
+  await tap(430, 410); // △ 入力終了
   await at('confirm');
   await tap(300, 270);
   await at('story');

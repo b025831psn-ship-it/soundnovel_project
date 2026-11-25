@@ -25,6 +25,8 @@ const saveKey = 'soundnovel.slps25132.opening.v1';
 let saved = readSave();
 let data, screen, groups, editor, pages, sn4;
 let sn4Mode = false, sn4Event, sn4WaitUntil = 0;
+// EE 0x112610: one character every max(1, speed) frames; CommandSpeed stores speed at +0x2a4.
+let sn4SpeedMarks = [], sn4Shown = '';
 const sn4Style = {speed:1, spacing:0, position:null, marginLeft:null, marginTop:null,
   positions:[], rubies:[], scene:null, scenePack:null, caption:null, retainMovie:false,
   sceneCommands:[], unknown:[]};
@@ -280,14 +282,17 @@ function showSn4(event) {
     enter('name');
   } else if (event.type === 'choice') {
     enter('choice');
-  } else if (event.type === 'wait') {
-    sn4WaitUntil = performance.now() + event.ticks * 1000 / 59.94;
-    revealed = event.text.length;
-    enter('story');
   } else {
-    revealed = 0;
+    // Text after 0x09 Pause continues the same page: keep what is already shown
+    // and type only the new characters. The wait (0x50/0x51) starts once typed.
+    const text = event.text?.trimEnd() ?? '';
+    revealed = sn4Shown && text.startsWith(sn4Shown) ? sn4Shown.length : 0;
     textWaits = [];
-    textSpeeds = [{offset:0, speed:sn4Style.speed}];
+    textSpeeds = [{offset:0, speed:sn4SpeedMarks.carry ?? sn4Style.speed}, ...sn4SpeedMarks];
+    sn4SpeedMarks = [];
+    sn4SpeedMarks.carry = sn4Style.speed;
+    sn4Shown = text;
+    sn4WaitUntil = event.type === 'wait' ? Infinity : 0;
     enter('story');
   }
 }
@@ -581,7 +586,8 @@ function step(key) {
   if (scene === 'story' || scene === 'complete') {
     if (key === 'circle' || key === 'start') {
       if (sn4Mode && sn4Event.type === 'wait') {
-        if (performance.now() >= sn4WaitUntil) showSn4(sn4.run());
+        if (revealed < storyText().length) revealed = storyText().length;
+        else if (performance.now() >= sn4WaitUntil) showSn4(sn4.run());
         return;
       }
       if (revealed < storyText().length) revealed = textWaits[0]?.offset ?? storyText().length;
@@ -735,7 +741,11 @@ function frame(now) {
       const speed = textSpeeds.findLast(change => change.offset <= revealed)?.speed ?? 1;
       const nextChange = textSpeeds.find(change => change.offset > revealed);
       const limit = Math.min(wait?.offset ?? Infinity, nextChange?.offset ?? Infinity, storyText().length);
-      revealed = speed === 0 ? limit : Math.min(limit, revealed + dt / (35 * speed));
+      const perChar = sn4Mode ? 1000 / 59.94 * Math.max(1, speed) : 35 * speed;
+      revealed = speed === 0 && !sn4Mode ? limit : Math.min(limit, revealed + dt / perChar);
+    }
+    if (sn4Mode && sn4Event?.type === 'wait' && sn4WaitUntil === Infinity && revealed >= storyText().length) {
+      sn4WaitUntil = now + sn4Event.ticks * 1000 / 59.94;
     }
     drawStory(time);
     if (!sn4Mode && pages[page].autoAdvance && !textWaits.length && revealed >= storyText().length) { page++; printPage(); }
@@ -825,6 +835,11 @@ window.addEventListener('blur', () => {
 });
 function canvasPoint(event) {
   const box = canvas.getBoundingClientRect();
+  // Portrait "filled" mode rotates <main> by 90deg (player.css): the canvas x axis
+  // then runs down the screen and its y axis runs right to left.
+  if (filled && matchMedia('(orientation: portrait)').matches)
+    return {x:(event.clientY - box.top) * 640 / box.height,
+      y:(box.right - event.clientX) * 448 / box.width};
   return {x:(event.clientX - box.left) * 640 / box.width,
     y:(event.clientY - box.top) * 448 / box.height};
 }
@@ -860,8 +875,11 @@ function touchGame(event) {
     return;
   }
   if (scene === 'name') {
-    if (y >= 68 && y < 110 && x >= 128 && x < 512) {
-      const group = Math.max(0, Math.min(editor.groups.length - 1, Math.floor((x - 128) / 32)));
+    if (y >= 68 && y < 112) {
+      // render.js editor(): L1 + left arrow at 80..132, groups at 144 + 32i, right arrow + R1 at 506..559.
+      if (x < 140) { step('l1'); return; }
+      if (x >= 504) { step('r1'); return; }
+      const group = Math.max(0, Math.min(editor.groups.length - 1, Math.floor((x - 144) / 32)));
       editor.groupBy(group - editor.group); announce(); return;
     }
     if (y >= 112 && y < 384 && x >= 72 && x < 568) {
@@ -874,11 +892,10 @@ function touchGame(event) {
       return;
     }
     if (y >= 384) {
-      if (x < 135) step('circle');
-      else if (x < 240) step('cross');
-      else if (x < 360) step('triangle');
-      else if (x < 500) step('l1');
-      else step('r1');
+      // Footer: ○ 文字決定 at 112..226, × 文字消す at 247..360, △ 入力終了 at 376..490.
+      if (x < 237) step('circle');
+      else if (x < 368) step('cross');
+      else if (x < 500) step('triangle');
     }
     return;
   }
@@ -915,7 +932,7 @@ try {
   }));
   groups = keyboardGroups(data.rows);
   sn4 = new Sn4Vm(sn4Program, {
-    speed:value => { sn4Style.speed = value; },
+    speed:value => { sn4Style.speed = value; sn4SpeedMarks.push({offset:sn4.text.trimEnd().length, speed:value}); },
     spacing:value => { sn4Style.spacing = value; },
     position:(value, offset) => {
       sn4Style.position = value;
@@ -925,7 +942,7 @@ try {
     marginLeft:value => { sn4Style.marginLeft = value; },
     marginTop:value => { sn4Style.marginTop = value; },
     ruby:(word, readings) => { sn4Style.rubies.push({word, readings}); },
-    clearText:() => { sn4Style.position = null; sn4Style.positions = []; sn4Style.rubies = []; },
+    clearText:() => { sn4Shown = ''; sn4Style.position = null; sn4Style.positions = []; sn4Style.rubies = []; },
     scene:value => { sn4Style.scenePack = value; },
     caption:value => { sn4Style.caption = value; return applyScenePack(value); },
     command:(name, args, context) => {
