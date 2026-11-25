@@ -69,13 +69,19 @@ export const HANDLERS = {
   0x51: "080058B4",
   0x52: "080058EC",
   0x53: "08005914",
+  0x54: "08005A0C",
+  0x55: "08005A94",
   0x56: "08005B1C",
   0x57: "08005BA8",
   0x58: "08005C30",
   0x59: "08005C7C",
+  0x5a: "08005CA8",
   0x5b: "08005CD4",
+  0x5c: "08005D24",
+  0x5d: "08005D54",
   0x5e: "08005DE0",
   0x5f: "080059C0",
+  0x60: "08005E6C",
   0x61: "08005EA4",
   0x62: "08005EE4",
   0x63: "08005F38",
@@ -104,8 +110,11 @@ export const SUPPRESSION = Object.freeze({
   0x37: ["77e-or-78e", "u16"], 0x46: ["78e", "u8"], 0x47: ["78e", "u8"], 0x48: ["78e", "u8"],
   0x4d: ["77e-or-78e", "u8"], 0x51: ["77e-or-78e", "u8,u16"],
   0x52: ["77e-or-78e", ""], 0x53: ["77e-or-78e", "u16"],
+  0x54: ["77e", "u8,u16,u16"], 0x55: ["77e", "u8,u16,u16"],
   0x57: ["sets-77e", "choice-key[]"], 0x58: ["77e-or-78e", "u16"],
-  0x5e: ["77e", "u8,u16,u16"], 0x5f: ["77e-or-78e", "u16"],
+  0x5a: ["77e-or-78e", "u8"], 0x5c: ["77e-or-78e", "u8,u8"],
+  0x5d: ["77e", "u8,u16,u16"], 0x5e: ["77e", "u8,u16,u16"],
+  0x5f: ["77e-or-78e", "u16"], 0x60: ["77e-or-78e", "u8"],
   0x61: ["77e-or-78e", "u16"],
   0x62: ["77e-or-78e", "u16"],
 });
@@ -157,6 +166,7 @@ export class VM {
       seenEdges: new Uint8Array(0x200), // 02002D94: 02002B94 as of the last opcode 53 (the map)
       tried: new Uint8Array(0x12c), // 02002F94: per node, 2 bits per choice entry taken (0800D084)
       seenTried: new Uint8Array(0x12c), // 020030C0: 02002F94 as of the last opcode 53
+      flowMask: 0, // 02004640: 16-bit route mask tested by opcodes 5D/5E
       inGame: 0, // 0200078D: set by 1D 67, lets R open the in-game menu
       vars: new Uint8Array(256),
       bits: new Uint8Array(256),
@@ -535,7 +545,11 @@ export class VM {
         const index = this.byte();
         args.push(index);
         if (this.suppressed(opcode)) break;
-        this.write("bits", index, opcode === 0x21 ? 1 : 0);
+        // 08003D70/08003DB0 set or clear the 1-based bit in 02004640.
+        const mask = 1 << (index - 1);
+        if (opcode === 0x21) this.ram.flowMask = (this.ram.flowMask | mask) & 0xffff;
+        else this.ram.flowMask &= ~mask;
+        this.writes.push(`flowMask=${this.ram.flowMask}`);
         break;
       }
       case 0x1c: {
@@ -586,7 +600,8 @@ export class VM {
         const row = this.word();
         args.push(index, row);
         if (this.suppressed(opcode)) break;
-        if (this.ram.bits[index]) this.branch(row);
+        // 08003F30 tests the same 1-based 02004640 bit as 5E.
+        if ((this.ram.flowMask >> (index - 1)) & 1) this.branch(row);
         break;
       }
       case 0x26:
@@ -853,6 +868,21 @@ export class VM {
         if (node === 0x84 && this.banks[this.bank][this.offset] === 0x0a) this.offset += 2;
         break;
       }
+      case 0x54:
+      case 0x55: {
+        const index = this.byte();
+        const row = this.word();
+        const key = this.word();
+        args.push(index, row, key);
+        if (this.suppressed(opcode)) break;
+        // 08005A0C/08005A94 test the byte array at 020024EC.
+        const set = this.ram.flags[index] !== 0;
+        if ((opcode === 0x54 && !set) || (opcode === 0x55 && set)) {
+          this.branch(row);
+          this.ram.edges[key] = 3;
+        }
+        break;
+      }
       case 0x56: {
         const row = this.word();
         const key = this.word();
@@ -862,13 +892,19 @@ export class VM {
         if (this.ram.effectBypass !== 1) this.ram.edges[key] = 3;
         break;
       }
+      case 0x5d:
       case 0x5e: {
         const index = this.byte();
         const row = this.word();
         const key = this.word();
         args.push(index, row, key);
         if (this.suppressed(opcode)) break;
-        if (this.ram.bits[index]) { this.branch(row); this.ram.edges[key] = 3; }
+        // 08005D54/08005DE0 test the 1-based bit in 02004640, not 020024EC.
+        const set = ((this.ram.flowMask >> (index - 1)) & 1) !== 0;
+        if ((opcode === 0x5d && !set) || (opcode === 0x5e && set)) {
+          this.branch(row);
+          this.ram.edges[key] = 3;
+        }
         break;
       }
       case 0x5f: {
@@ -910,6 +946,11 @@ export class VM {
         // 08005C7C -> 0800FF24: wait until the shared presentation flag
         // clears. The cartridge-frame duration is supplied by nativeWait.
         break;
+      case 0x5a:
+        // 08005CA8 consumes one byte; the normal path has no other side effect.
+        args.push(this.byte());
+        this.suppressed(opcode);
+        break;
       case 0x5b: {
         const command = this.byte();
         args.push(command);
@@ -921,6 +962,18 @@ export class VM {
         // 08005CFC: after consuming its u8 operand, skip a fixed 0x21-byte
         // inline block and continue at the following scenario command.
         this.offset += 0x21;
+        break;
+      }
+      case 0x5c:
+        // 08005D24 consumes two bytes; the normal path has no other side effect.
+        args.push(this.byte(), this.byte());
+        this.suppressed(opcode);
+        break;
+      case 0x60: {
+        const value = this.byte();
+        args.push(value);
+        // 08005E6C writes the shared frame flag at 020006E2.
+        if (!this.suppressed(opcode)) this.ram.frameFlag = value;
         break;
       }
       default:
