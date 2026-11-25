@@ -24,9 +24,11 @@
   import { APU } from './apu.js';
   import { createAudioOut } from './output.js';
   import { readIplRecords } from './ipl.js';
+  import { ReplayMachine } from './replay-machine.js';
+  import { runRealtime } from './realtime.js';
 
   const base = new URL(new URLSearchParams(location.search).get('data') ?? '../../../kamaitachi-sfc-kor/port-data/', location.href);
-  const IPL = 621677, SPC_HZ = 1025280;
+  const IPL = 621677;
   const $ = (id) => document.getElementById(id);
   const get = (p) => fetch(new URL(p, base)).then((r) => { if (!r.ok) throw new Error(`${p}: ${r.status}`); return r; });
   let records, gauss, inputs;
@@ -45,20 +47,14 @@
     const out = await createAudioOut(); await out.resume();
     $('mute').onclick = () => { muted = !muted; out.setMuted(muted); $('mute').textContent = muted ? '소리 켜기' : '음소거'; };
     const apu = new APU({ gauss }); apu.dsp.onSample = out.sample; apu.boot(records);
-    const end = inputs.at(-1)[0] + SPC_HZ; let k = 0, t0 = null;
-    const frame = (now) => {
-      t0 ??= now - 80; // start with ~80 ms buffered
-      const target = Math.min(end, Math.floor(((now - t0) / 1000) * SPC_HZ));
-      while (apu.cpu.clock < target) {
-        while (k < inputs.length && inputs[k][0] - 1 <= apu.cpu.clock) { apu.cpuWrite(inputs[k][1], inputs[k][2]); k++; }
-        apu.cpu.step();
-      }
-      out.flush();
-      $('prog').value = apu.cpu.clock / end;
-      const s = out.stats();
-      $('stat').textContent = `SPC ${apu.cpu.clock.toLocaleString()} / ${end.toLocaleString()} 클록  (${(apu.cpu.clock / SPC_HZ).toFixed(1)}초)\n출력 ${out.context.sampleRate} Hz` + (s ? `  버퍼 ${s.fill}  부족 ${s.underruns}` : '');
-      if (apu.cpu.clock < end) requestAnimationFrame(frame); else $('play').textContent = '끝';
-    };
-    requestAnimationFrame(frame);
+    const machine = new ReplayMachine(apu, inputs);
+    runRealtime(machine, out, {
+      onFrame: (m) => {
+        $('prog').value = m.time / m.end;
+        const s = out.stats();
+        $('stat').textContent = `${m.time.toFixed(1)} / ${m.end.toFixed(1)}초  (SPC ${apu.cpu.clock.toLocaleString()} 클록)\n출력 ${out.context.sampleRate} Hz` + (s ? `  버퍼 ${s.fill}  부족 ${s.underruns}` : '');
+        if (m.time >= m.end) $('play').textContent = '끝';
+      },
+    });
   };
 </script>

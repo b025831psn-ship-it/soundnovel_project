@@ -11,6 +11,9 @@ export class Resampler {
     this.cap = capacity; this.read = 0; this.write = 0; this.frac = 0;
     this.base = inRate / outRate; this.targetFill = Math.round(target * inRate);
     this.underruns = 0; this.dropped = 0;
+    // Output starts, and restarts after running dry, only once the buffer holds the
+    // target amount. Without this the first blocks play as a burst of short gaps.
+    this.primed = false;
   }
   get fill() { return (this.write - this.read + this.cap) % this.cap; }
   // `pcm` is interleaved s16 L/R.
@@ -23,10 +26,14 @@ export class Resampler {
   }
   // Fills `L`/`R` (Float32Array) with output samples.
   pull(L, R) {
+    if (!this.primed) {
+      if (this.fill < this.targetFill) { L.fill(0); R.fill(0); return; }
+      this.primed = true;
+    }
     const adjust = 1 + Math.max(-0.005, Math.min(0.005, (this.fill - this.targetFill) / (this.targetFill * 40 || 1)));
     const step = this.base * adjust;
     for (let i = 0; i < L.length; i++) {
-      if (this.fill < 2) { L[i] = 0; R[i] = 0; this.underruns++; continue; }
+      if (this.fill < 2) { L.fill(0, i); R.fill(0, i); this.underruns += L.length - i; this.primed = false; return; }
       const a = this.read, b = (a + 1) % this.cap, f = this.frac;
       L[i] = this.l[a] + (this.l[b] - this.l[a]) * f;
       R[i] = this.r[a] + (this.r[b] - this.r[a]) * f;
