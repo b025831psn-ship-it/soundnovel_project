@@ -90,6 +90,16 @@ and state transition before the common `27:0` path. It emits an explicit
 `{kind:"ending", id:"title-return"}` event. Coverage is reported only from
 the actual sweep output and is not promoted to a completion claim.
 
+The sweep command reports `fresh` and `unlock` results. Fresh play keeps
+blank-card-only unlock branches on their fallthrough. Unlock uses an explicit
+`both` policy for opcodes `54`, `55`, and `5d`, explores both cursor writes,
+and reports that coverage separately. Opcodes `0e`, `0f`, `24`, `25`, `40`,
+`45`, `54`, `55`, and `5d` preserve their handler-proven current-resource
+offset encoding; variable tables `78` and `bc` expose every consumed target.
+Opcode `4b` schedules the next resource, opcode `03` performs the retail call-
+stack pop, and the real `44` title return resumes through the common `27:0`
+hub without treating resource fall-off as an ending.
+
 ## Touch shell
 
 `src/touch-shell.js` is the input shell for the ported VM/VRAM runtime. It maps

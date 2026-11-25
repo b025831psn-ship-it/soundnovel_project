@@ -1,7 +1,12 @@
 const hex = (value, width = 2) => `0x${value.toString(16).padStart(width, "0")}`;
 
 const TOP_COMMANDS = new Set([0x0c, 0x08, 0x15, 0x31, 0x53, 0x1c, 0x2f, 0x2d, 0x17]);
-const OFFSET_BRANCHES = new Set([0x45]);
+const OFFSET_BRANCHES = new Set([0x0e, 0x0f, 0x24, 0x25, 0x40, 0x45]);
+const UNLOCK_OFFSET_BRANCHES = new Set([0x54, 0x55, 0x5d]);
+const IMPLEMENTED_OPCODES = new Set([
+  0x00, 0x01, 0x02, 0x03, 0x13, 0x15, 0x1d, 0x1e, 0x3c, 0x44, 0x4b,
+  0x56, 0x57, 0x5e, 0x78, 0xbc, ...OFFSET_BRANCHES, ...UNLOCK_OFFSET_BRANCHES,
+]);
 const labelTarget = (operands) => {
   const label = (operands[1] << 8) | operands[0];
   return { label, resourceId: Math.floor(label / 1000), recordId: label % 1000 };
@@ -10,6 +15,23 @@ const resourceOffsetTarget = (resourceId, operands) => ({
   kind: "resource-offset", resourceId,
   resourceOffset: (operands.at(-1) << 8) | operands.at(-2),
 });
+const offsetBranch = (event, resourceId, recordId, pc, length, operands, targetOperands = operands.slice(-2)) => ({
+  ...event, status: "implemented", kind: "branch",
+  target: resourceOffsetTarget(resourceId, targetOperands),
+  fallthrough: { resourceId, recordId, offset: pc },
+  condition: { kind: "retail-flag-expression", opcode: event.opcode,
+    operands: operands.slice(0, operands.length - targetOperands.length) },
+  operandLength: length, operands,
+});
+const tableTargets = (resourceId, operands, opcode) => {
+  const targets = [];
+  const indexes = opcode === 0x78
+    ? Array.from({ length: Math.max(0, (operands.length - 2) / 2) }, (_, index) => 2 + index * 2)
+    : [2, ...Array.from({ length: Math.max(0, (operands.length - 6) / 4) }, (_, index) => 8 + index * 4)];
+  for (const index of indexes) if (index + 1 < operands.length)
+    targets.push({ index: targets.length, target: resourceOffsetTarget(resourceId, operands.slice(index, index + 2)) });
+  return targets;
+};
 
 export class ScenarioFault extends Error {
   constructor(reason, event, events = []) {
@@ -117,8 +139,8 @@ export class ScenarioVM {
         return events;
       }
       if (opcode === 0x03) {
-        events.push({ ...event, status: "implemented", kind: "jump",
-          target: { kind: "next-resource", recordId: 0 }, operandLength: length, operands });
+        events.push({ ...event, status: "implemented", kind: "return", target: null,
+          reason: "retail-call-stack-pop", operandLength: length, operands });
         return events;
       }
       if (opcode === 0x15) {
@@ -135,11 +157,19 @@ export class ScenarioVM {
         return events;
       }
       if (OFFSET_BRANCHES.has(opcode)) {
-        const target = resourceOffsetTarget(resourceId, operands);
-        events.push({ ...event, status: "implemented", kind: "branch", target,
-          fallthrough: { resourceId, recordId, offset: pc },
-          condition: { kind: "retail-flag-expression", opcode: hex(opcode),
-            operands: operands.slice(0, -2) }, operandLength: length, operands });
+        events.push(offsetBranch(event, resourceId, recordId, pc, length, operands));
+        return events;
+      }
+      if (UNLOCK_OFFSET_BRANCHES.has(opcode)) {
+        const branch = offsetBranch(event, resourceId, recordId, pc, length, operands, operands.slice(1, 3));
+        events.push({ ...branch, unlockRequired: true,
+          unlockFlag: { kind: "retail-unlock-index", encoded: operands.slice(3, 5) } });
+        return events;
+      }
+      if (opcode === 0x78 || opcode === 0xbc) {
+        events.push({ ...event, status: "implemented", kind: "choice-table", tableOpcode: hex(opcode),
+          options: tableTargets(resourceId, operands, opcode),
+          fallthrough: { resourceId, recordId, offset: pc }, operandLength: length, operands });
         return events;
       }
       if (opcode === 0x56) {
@@ -174,6 +204,7 @@ export class ScenarioVM {
       if (opcode === 0x44) {
         events.push({ ...event, status: "implemented", kind: "ending",
           id: "title-return", evidence: "unique handler 0x8002188c transition",
+          resume: { resourceId: 27, recordId: 0, offset: 0 },
           operandLength: length, operands });
         return events;
       }
@@ -209,7 +240,7 @@ export function opcodeStatus(primaryHandlers, sub1dHandlers, primaryLengths = []
   return {
     primary: primaryHandlers.map((handler, opcode) => ({ opcode: hex(opcode), handler,
       operandLength: fixedLength(primaryLengths[opcode]), lengthRule: primaryLengths[opcode]?.lengthRule,
-      status: opcode === 0x00 || opcode === 0x1d || opcode === 0x13 ? "implemented" : TOP_COMMANDS.has(opcode) ? "decoded" : "stub" })),
+      status: IMPLEMENTED_OPCODES.has(opcode) ? "implemented" : TOP_COMMANDS.has(opcode) ? "decoded" : "stub" })),
     sub1d: sub1dHandlers.map((handler, opcode) => ({ opcode: hex(opcode), handler,
       operandLength: fixedLength(sub1dLengths[opcode]), lengthRule: sub1dLengths[opcode]?.lengthRule,
       status: opcode === 0x03 ? "implemented" : "stub" })),

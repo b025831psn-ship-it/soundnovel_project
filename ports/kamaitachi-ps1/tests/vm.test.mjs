@@ -39,7 +39,7 @@ test("opcode report covers every primary and 1d sub-dispatch slot", () => {
   const report = opcodeStatus(primary, sub1d);
   assert.equal(report.primary.length, 256);
   assert.equal(report.sub1d.length, 108);
-  assert.equal(report.primary.filter((row) => row.status === "implemented").length, 3);
+  assert.equal(report.primary.filter((row) => row.status === "implemented").length, 25);
   assert.equal(report.sub1d.filter((row) => row.status === "implemented").length, 1);
 });
 
@@ -75,4 +75,41 @@ test("conditional families keep their distinct target encodings", () => {
   const table = vm.run(Uint8Array.of(0x57, 1, 0x3e, 0x11, 0, 0xed, 0, 0x1c, 0, 0xee, 0),
     { resourceId: 0, recordId: 16 }).at(-1);
   assert.deepEqual(table.options.map((option) => option.target.recordId), [237, 238]);
+});
+
+test("remaining retail cursor writers expose branches and unlock-only paths", () => {
+  const lengths = Array(256);
+  for (const opcode of [0x0e, 0x0f, 0x24, 0x25]) lengths[opcode] = { classification: "fixed", operandLength: 3 };
+  lengths[0x40] = { classification: "fixed", operandLength: 4 };
+  for (const opcode of [0x54, 0x55, 0x5d]) lengths[opcode] = { classification: "fixed", operandLength: 5 };
+  const vm = new ScenarioVM({ primaryHandlers: primary, sub1dHandlers: sub1d, primaryLengths: lengths });
+  for (const opcode of [0x0e, 0x0f, 0x24, 0x25]) {
+    const branch = vm.run(Uint8Array.of(opcode, 7, 0xee, 5), { resourceId: 27, recordId: 2 }).at(-1);
+    assert.equal(branch.kind, "branch");
+    assert.equal(branch.target.resourceOffset, 1518);
+  }
+  assert.equal(vm.run(Uint8Array.of(0x40, 7, 3, 0xee, 5),
+    { resourceId: 27, recordId: 2 }).at(-1).target.resourceOffset, 1518);
+  for (const opcode of [0x54, 0x55, 0x5d]) {
+    const branch = vm.run(Uint8Array.of(opcode, 7, 0xee, 5, 9, 0), { resourceId: 27, recordId: 2 }).at(-1);
+    assert.equal(branch.target.resourceOffset, 1518);
+    assert.equal(branch.unlockRequired, true);
+    assert.deepEqual(branch.unlockFlag.encoded, [9, 0]);
+  }
+});
+
+test("variable dispatch tables and chapter transitions stay executable", () => {
+  const lengths = Array(256);
+  lengths[0x03] = { classification: "fixed", operandLength: 0 };
+  lengths[0x44] = { classification: "fixed", operandLength: 0 };
+  lengths[0x78] = { classification: "variable", lengthRule: "4+2*u8(0)" };
+  lengths[0xbc] = { classification: "variable", lengthRule: "6+4*u8(0)" };
+  const vm = new ScenarioVM({ primaryHandlers: primary, sub1dHandlers: sub1d, primaryLengths: lengths });
+  assert.equal(vm.run(Uint8Array.of(0x03), { resourceId: 27, recordId: 1 }).at(-1).kind, "return");
+  assert.deepEqual(vm.run(Uint8Array.of(0x44), { resourceId: 31, recordId: 11 }).at(-1).resume,
+    { resourceId: 27, recordId: 0, offset: 0 });
+  const table78 = vm.run(Uint8Array.of(0x78, 1, 0, 0xee, 5, 0xef, 5), { resourceId: 27, recordId: 1 }).at(-1);
+  assert.deepEqual(table78.options.map((row) => row.target.resourceOffset), [1518, 1519]);
+  const tableBc = vm.run(Uint8Array.of(0xbc, 1, 0, 0xee, 5, 1, 0, 2, 0, 0xef, 5), { resourceId: 27, recordId: 1 }).at(-1);
+  assert.deepEqual(tableBc.options.map((row) => row.target.resourceOffset), [1518, 1519]);
 });

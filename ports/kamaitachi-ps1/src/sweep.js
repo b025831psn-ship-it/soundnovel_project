@@ -5,7 +5,9 @@ const locationKey = ({ resourceId, recordId, offset = 0 }) => `${resourceId}:${r
 
 export async function sweep(portDataRoot, {
   resourceId = 25, recordId = 7, maxStates = 200000, includeResourceEntries = false,
+  unlockPolicy = "fresh",
 } = {}) {
+  if (!["fresh", "both"].includes(unlockPolicy)) throw new Error(`unknown unlock policy: ${unlockPolicy}`);
   const data = await loadPortData(portDataRoot);
   const primary = data.manifest.opcodeTables.primary;
   const sub1d = data.manifest.opcodeTables.sub1d;
@@ -87,6 +89,7 @@ export async function sweep(portDataRoot, {
     }
     if (transfer.kind === "ending") {
       endings.push({ kind: "ending", id: transfer.id, at: locationKey(state) });
+      enqueue(transfer.resume, [], null);
     } else if (transfer.kind === "choice" || transfer.kind === "choice-table") {
       counts.choice++;
       for (const option of transfer.options) enqueue(option.target, state.stack, nextResource);
@@ -109,14 +112,14 @@ export async function sweep(portDataRoot, {
       }
     } else {
       counts.branch++;
-      enqueue(transfer.target, state.stack, nextResource);
+      if (!transfer.unlockRequired || unlockPolicy === "both") enqueue(transfer.target, state.stack, nextResource);
       enqueue(transfer.fallthrough, state.stack, nextResource);
     }
   }
   const totalRecords = [...data.resources.values()].reduce((sum, resource) => sum + (resource.records?.length || 0), 0);
   return {
     start: { resourceId, recordId }, states: states.size, records: records.size, totalRecords,
-    roots: { freshPlay: true, resourceEntries: includeResourceEntries },
+    roots: { freshPlay: true, resourceEntries: includeResourceEntries, unlockPolicy },
     coverage: totalRecords ? records.size / totalRecords : 0, counts,
     endings: [...new Map(endings.map((ending) => [ending.id, ending])).values()], stops,
     failures, truncated: queue.length > 0,
