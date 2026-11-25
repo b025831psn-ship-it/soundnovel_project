@@ -71,6 +71,20 @@ test('65C816 store opcodes report total cycles without double-counting fetch', (
   assert.equal(vm.cpu.step(), 4);
 });
 
+test('NMITIMEN enable edge waits through the following instruction boundary', () => {
+  // LDA #$80; STA $4200; LDA #$55; STP. NMI vector -> $9000.
+  const rom = fixtureRom([0xa9, 0x80, 0x8d, 0x00, 0x42, 0xa9, 0x55, 0xdb]);
+  rom[0x7ffa] = 0x00; rom[0x7ffb] = 0x90;
+  const vm = new ZakuroVM({ rom, masterLink: { read: () => 0, write() {} } });
+  vm.reset(); vm.bus.nmiFlag = true;
+  vm.step(); vm.step();
+  assert.equal(vm.cpu.PC, 0x8005);
+  vm.step();
+  assert.equal(vm.cpu.A & 0xff, 0x55);
+  assert.equal(vm.cpu.PC, 0x9000);
+  assert.equal(vm.bus.nmiFlag, true);
+});
+
 test('$420B DMA halts the CPU for setup, channel, and byte clocks', () => {
   const clock = new MasterClock(0, { refresh: false });
   const bus = new ZakuroBus({ rom: fixtureRom([]), masterLink: { read: () => 0, write() {} }, clock });

@@ -36,7 +36,7 @@ instructionTrace?.write('instruction\tmaster_cycle\tpc\topcode\n');
 const milestones = {};
 while (!mismatch && !vm.cpu.stopped && instructions < maxInstructions) {
   const pc = (vm.cpu.PB << 16) | vm.cpu.PC;
-  if (instructionTrace && vm.bus.clock.master >= 4_200_000 && vm.bus.clock.master <= 9_300_000) {
+  if (instructionTrace && vm.bus.clock.master >= 25_000_000 && vm.bus.clock.master <= 73_000_000) {
     const opcode = vm.bus.readMapped(pc);
     instructionTrace.write(`${instructions}\t${vm.bus.clock.master}\t${pc.toString(16).padStart(6, '0')}\t${opcode.toString(16).padStart(2, '0')}\n`);
   }

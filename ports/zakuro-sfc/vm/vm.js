@@ -11,10 +11,18 @@ export class ZakuroVM {
   constructor(options) {
     this.bus = new ZakuroBus(options);
     this.cpu = new CPU(this.bus);
-    this.bus.onNmi = () => { this.cpu.nmiPending = true; };
+    this.deferredNmi = false;
+    // A low-to-high NMITIMEN edge during VBlank is recognized after the
+    // currently executing instruction; the following instruction completes
+    // before the CPU takes the NMI at its next boundary.
+    this.bus.onNmi = () => { this.deferredNmi = true; };
   }
   reset() { this.bus.clock.idle(RESET_MASTER_CYCLES); this.cpu.reset(); }
   step() {
+    if (this.deferredNmi) {
+      this.cpu.nmiPending = true;
+      this.deferredNmi = false;
+    }
     const beforeMaster = this.bus.clock.master;
     const accesses = this.bus.accessCount;
     const cpuCycles = this.cpu.step();
