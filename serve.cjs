@@ -80,16 +80,29 @@ function allowedFromOutside(request, response, url) {
     return false;
   }
   if (cartridges.has(url)) { response.writeHead(404).end(); return false; }
+  // A page opened with the password leaves this cookie, so the save API (which sends its own
+  // Authorization: Bearer) stays behind the same password without a second prompt.
+  response.setHeader('Set-Cookie', `sn_gate=${gateCookie}; Path=/; HttpOnly; Secure; SameSite=Strict; Max-Age=2592000`);
   return true;
+}
+const gateCookie = require('node:crypto').createHash('sha256').update('soundnovel-gate:' + password).digest('hex');
+function syncAllowedFromOutside(request, response) {
+  if (!['cf-connecting-ip', 'x-forwarded-for', 'x-forwarded-host'].some(name => name in request.headers)) return true;
+  const given = /(?:^|;\s*)sn_gate=([0-9a-f]{64})/.exec(request.headers.cookie ?? '')?.[1] ?? '';
+  const a = Buffer.from(given), b = Buffer.from(gateCookie);
+  if (password && a.length === b.length && require('node:crypto').timingSafeEqual(a, b)) return true;
+  response.writeHead(401, {'Content-Type': 'application/json'}).end('{"error":"open the site with the test password first"}');
+  return false;
 }
 
 // Save sync (shared/save): /sync/* goes to the save server on 127.0.0.1:SYNC_PORT with /sync stripped.
-// It skips the test password: the save API sends its own Authorization: Bearer (a Basic prompt would
-// replace it), and each vault's token guards its data. Bodies over 256 KB are refused here.
+// Through a tunnel it needs the password cookie that the site sets once the test password is given
+// (the save API sends its own Authorization: Bearer, so a Basic prompt can't guard it). Bodies over 256 KB are refused here.
 const SYNC_PORT = Number(process.env.SOUNDNOVEL_SYNC_PORT ?? 8780);
 const SYNC_MAX_BODY = 256 * 1024;
 function proxySync(request, response) {
   const headers = { ...request.headers, host: `127.0.0.1:${SYNC_PORT}` };
+  delete headers.cookie;
   if (Number(request.headers['content-length'] ?? 0) > SYNC_MAX_BODY) { response.writeHead(413).end(); request.resume(); return; }
   const upstream = http.request({ host: '127.0.0.1', port: SYNC_PORT, method: request.method,
     path: request.url.slice('/sync'.length) || '/', headers }, (reply) => {
@@ -108,7 +121,7 @@ function proxySync(request, response) {
 
 http.createServer((request, response) => {
   const url = request.url.split('?')[0];
-  if (url === '/sync' || url.startsWith('/sync/')) return proxySync(request, response);
+  if (url === '/sync' || url.startsWith('/sync/')) { if (syncAllowedFromOutside(request, response)) proxySync(request, response); return; }
   if (!allowedFromOutside(request, response, url)) return;
   // scene images from kamaitachi-gba-kor/tools/export_images.py: NNN.png and palette variants NNN-v.png
   // Pictures extended for upright phones (kamaitachi-gba-kor assets/outpaint/portrait/NNN.png) and their list.
