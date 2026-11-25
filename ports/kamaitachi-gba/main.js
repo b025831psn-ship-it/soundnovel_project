@@ -3,6 +3,8 @@ import { Assets, SceneLoader } from "./src/scene.js";
 import { NativeFont, TextWindow } from "./src/font.js";
 import { GBAInput } from "./src/input.js";
 import { VM } from "./src/vm.js";
+import { PageText } from "./src/page-text.js";
+import { Boot, KEY } from "./src/boot.js";
 import { createSound } from "./sound/output.js";
 
 const base = "../../kamaitachi-gba-kor/port-data";
@@ -31,15 +33,25 @@ const screen = new Screen(document.querySelector("#screen"));
 const scene = new SceneLoader(assets, screen);
 const text = new TextWindow({ 1: "透", 2: "真理" });
 const input = new GBAInput();
+// Opcode 57 lists (A/B rows over the story) are drawn by the screen; opcode 13 menus (welcome
+// screen) put their labels under the story text, which PageText keeps drawing.
 const choiceView = {
-  show: (choices, selected) => screen.showChoices(font, text.pageRaw, choices, selected),
-  hide: () => screen.clearChoices(),
+  show: (choices, selected) => {
+    if (vm.choiceState?.opcode === 0x13) page.showMenu(choices, selected, vm.choiceState.entries);
+    else screen.showChoices(font, text.pageRaw, choices, selected);
+  },
+  hide: () => { page.hideMenu(); screen.clearChoices(); },
 };
-const entryRow = Number.parseInt(new URLSearchParams(location.search).get("entryRow") ?? "27000", 10);
+const entryRow = Number.parseInt(new URLSearchParams(location.search).get("entryRow") ?? "31000", 10);
 const vm = new VM({ banks, scene, text, musicMap: music.request_to_song, audio: sound,
   audioTables, choiceView, transitionTimings,
-  entryRow: Number.isInteger(entryRow) ? entryRow : 27000 });
-window.kamaitachi = { vm, screen, assets, font, input, sound };
+  entryRow: Number.isInteger(entryRow) ? entryRow : 31000 });
+const page = new PageText(screen, font, text);
+// Opcode 1D's native screens (1D 00: logo, copyright, title menu, bookmarks; 1D 03/04: names).
+const boot = await new Boot({ vm, screen, assets, font, sound: vm.sound }).load();
+vm.system = boot;
+text.nameBytes = boot.names; // names entered on 1D 03 / 1D 04 show up in the story text
+window.kamaitachi = { vm, screen, assets, font, input, sound, page, boot };
 
 let last = performance.now();
 let accumulated = 0;
@@ -51,9 +63,19 @@ function loop(now) {
     const pressed = (key) => input.pressed(key) && !previous.has(key);
     if (pressed("UP")) vm.moveChoice(-1);
     if (pressed("DOWN")) vm.moveChoice(1);
-    if (pressed("A") && (vm.waiting === "click" || vm.waiting === "choice")) vm.resume();
+    if (pressed("A") && ((vm.waiting === "click" && !page.typing) || vm.waiting === "choice")) vm.resume();
+    // KEYINPUT bits newly pressed this frame, for the native screens (020006E4).
+    let trigger = 0;
+    let held = 0;
+    for (const key of Object.keys(KEY)) {
+      if (pressed(key)) trigger |= KEY[key];
+      if (input.pressed(key)) held |= KEY[key];
+    }
     vm.vblank();
-    for (const key of ["A", "UP", "DOWN"]) {
+    boot.vblank();
+    if (vm.waiting === "boot") boot.frame(trigger, held);
+    else page.frame(Boolean(screen.choiceOverlay));
+    for (const key of Object.keys(KEY)) {
       if (input.pressed(key)) previous.add(key); else previous.delete(key);
     }
     accumulated -= 1000 / 60;

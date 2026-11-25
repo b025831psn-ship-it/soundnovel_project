@@ -273,7 +273,13 @@ export class VM {
       this.ram.choiceActive = 1;
       this.ram.effectDisabled = 1;
       this.text?.beginChoices?.(entries.length);
-    } else this.waiting = "choice";
+    } else {
+      // 080040A0 also sets 0200077E: the 14/00/02/17/15 that follow collect the labels and
+      // opcode 16 waits (19:15F welcome menu). 1D 1C makes 16 take the preset entry instead.
+      this.ram.choiceActive = 1;
+      this.ram.effectDisabled = 1; // 080040D6-080040DA write 0200077E, as 57 does
+      this.text?.beginChoices?.(entries.length);
+    }
     return [
       count,
       index,
@@ -344,7 +350,10 @@ export class VM {
         this.ram.stack.push({ bank: this.bank, offset: this.offset });
         if (this.ram.choiceActive) {
           const index = this.choiceState?.entries.findIndex((entry) => entry.row === row);
-          if (index >= 0) this.collectingChoice = index;
+          if (index >= 0) {
+            this.collectingChoice = index;
+            this.choiceState.entries[index].x = this.ram.textX;
+          }
         }
         this.branch(row);
         break;
@@ -450,6 +459,8 @@ export class VM {
         break;
       case 0x14:
         args.push(this.byte());
+        // 0800814C: the text x origin of the current window becomes the operand + 8.
+        this.ram.textX = args[0] + 8;
         break;
       case 0x15: {
         if (this.ram.effectBypass === 1) {
@@ -465,6 +476,14 @@ export class VM {
         break;
       }
       case 0x16:
+        // 08004200: when 0200077F is set (system command 1D 1C), the menu is not shown and the
+        // entry chosen beforehand (02000780, written by opcode 3C) is taken at once.
+        if (this.ram.choiceSkip) {
+          this.ram.choiceSkip = 0;
+          this.waiting = "choice";
+          this.resume(this.ram.choicePreset ?? 0);
+          break;
+        }
         this.waiting = "choice";
         this.choiceView?.show?.(this.text?.choiceRaw ?? [], this.choiceSelection);
         break;
@@ -534,7 +553,8 @@ export class VM {
       case 0x1e: {
         const offset = this.word();
         args.push(offset);
-        if (this.ram.inputReady) this.offset = offset;
+        // Also taken while 0200077F (1D 1C) asks opcode 16 to pick the preset entry (mGBA 19:80 -> A6).
+        if (this.ram.inputReady || this.ram.choiceSkip) this.offset = offset;
         this.ram.updatePending = 1;
         break;
       }
@@ -714,7 +734,13 @@ export class VM {
         // 08005094: two u8 operands, followed by the 0800B79C menu-state
         // query when its first operand is zero. The boot UI owns that state;
         // retain bytecode alignment until the host implementation is attached.
-        args.push(this.byte(), this.byte());
+        {
+          const query = this.byte();
+          const index = this.byte();
+          args.push(query, index);
+          // 0800B79C: 1 when any save slot is in use (020007AC != FF), else 0.
+          if (query === 0) this.ram.choicePreset = this.system?.anySave?.() ? 1 : 0;
+        }
         break;
       case 0x3d:
         // 080050F4: clears two menu/input bytes after 0800AEA4.
@@ -919,6 +945,7 @@ export class VM {
       return;
     }
     this.waiting = "none";
+    this.text?.resumed?.();
   }
 
   moveChoice(delta) {

@@ -474,6 +474,27 @@ test("captured transition timing holds dispatch and carries audio gates", () => 
   assert.equal(vm.waiting, "none");
 });
 
+test("bookmark return scene request keeps the native six-frame decode interval", () => {
+  const trace = [];
+  const vm = new VM({
+    banks: { 25: bank([[0x04, 0x34, 0x12, 0x09, 0, 0, 0]]) },
+    entryRow: 25000,
+    trace: (entry) => trace.push(entry),
+    transitionTimings: { sites: { "19:2": [
+      { opcode: 0x04, frames: 6, audioFrame: "000000", audioIrq: "100000" },
+    ] } },
+  });
+  vm.step();
+  assert.equal(vm.waiting, "transition");
+  for (let frame = 1; frame < 6; frame++) {
+    vm.vblank();
+    assert.equal(vm.offset, 5, `opcode 09 dispatched before native frame 6 (frame ${frame})`);
+  }
+  vm.vblank();
+  assert.equal(vm.waiting, "none");
+  assert.ok(trace.some((entry) => entry.opcode === 0x09));
+});
+
 test("59 waits for the captured native presentation interval", () => {
   const vm = new VM({
     banks: { 27: bank([[0x59, 0x41, 1, 9]]) },
@@ -532,4 +553,34 @@ test("57 runs candidate bytecode in collection mode and 16 opens the choice", ()
   vm.resume(1);
   assert.equal(vm.ram.effectDisabled, 0);
   assert.equal(vm.offset, vm.rows[27][2]);
+});
+
+test("lone p waits; p g clears the page on resume; r p only breaks the line", () => {
+  const sjis = (s) => [...s].map((c) => c.charCodeAt(0));
+  const text = new TextWindow();
+  // r then p: the r waits, the p after it is a line break (no second wait).
+  assert.equal(text.feed(new Uint8Array([0x82, 0xa0, ...sjis("rp")])), "click");
+  text.resumed();
+  assert.deepEqual(text.fragments.length, 2);
+  assert.equal(text.fragments[1], "\n");
+  // lone p: waits and breaks the line, the page stays.
+  text.feed(new Uint8Array(sjis("g")));
+  assert.equal(text.feed(new Uint8Array([0x82, 0xa2, ...sjis("p")])), "click");
+  text.resumed();
+  assert.equal(text.fragments.length, 2);
+  // p g: waits, the page stays until the press, then is cleared at once.
+  text.feed(new Uint8Array(sjis("g")));
+  assert.equal(text.feed(new Uint8Array([0x82, 0xa4, ...sjis("pg")])), "click");
+  assert.equal(text.fragments.length, 1);
+  assert.equal(text.pageRaw.length, 1);
+  text.resumed();
+  assert.equal(text.fragments.length, 0);
+  assert.equal(text.pageRaw.length, 0);
+});
+
+test("opcode 13 disables effects while it collects labels", () => {
+  const vm = new VM({ banks: { 27: bank([[0x13, 1, 1, 0x79, 0x69, 0x02, 0x16], [0x00]]) }, text: new TextWindow() });
+  vm.step();
+  assert.equal(vm.ram.choiceActive, 1);
+  assert.equal(vm.ram.effectDisabled, 1);
 });
