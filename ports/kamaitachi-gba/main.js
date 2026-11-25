@@ -10,6 +10,7 @@ import { createSound } from "./sound/output.js";
 import { Silhouettes } from "./src/silhouette.js";
 import { openBooks } from "./src/books-store.js";
 import { restoreData, restorePosition } from "./src/save.js";
+import { TextEdits, openTextEditor } from "./src/text-editor.js";
 
 const base = "../../kamaitachi-gba-kor/port-data";
 const KOREAN = "../../kamaitachi-gba-kor/port-data-ko";
@@ -158,6 +159,7 @@ async function setLanguage(next) {
     vm.rows = vm.indexRows(data.banks);
     await boot.loadText(data.assets);
     if (start && offset !== null && vm.ram.inGame && !boot.run && ["click", "choice", "none"].includes(vm.waiting)) {
+      vm.textEdits = null; // the other language's edits; its own are loaded below
       restoreData(vm, start);
       restorePosition(vm, { bank: start.bank, offset });
       text.clearPage();
@@ -169,6 +171,7 @@ async function setLanguage(next) {
     screen.renderBackground();
     language = next;
     window.kamaitachi.language = next;
+    await loadTextEdits();
     try { localStorage.setItem(LANGUAGE_KEY, next); } catch {}
     const url = new URL(location.href);
     url.searchParams.set("lang", next);
@@ -179,7 +182,48 @@ async function setLanguage(next) {
     switching = false;
   }
 }
+// The dialogue editor (src/text-editor.js): edits of the current language replace text runs as
+// they are shown. E on a keyboard, or the shell's button, opens it on the page being read.
+let textEdits = null;
+async function loadTextEdits() {
+  textEdits = await new TextEdits(language).load();
+  vm.textEdits = textEdits.map();
+}
+await loadTextEdits();
+// The page being read starts over from its start (RAM as it was there), now with the edits.
+function restartPage() {
+  const start = boot.pageStart;
+  if (!start || !vm.ram.inGame || boot.run || !["click", "choice", "none"].includes(vm.waiting)) return false;
+  restoreData(vm, start);
+  restorePosition(vm, start);
+  text.clearPage();
+  page.hideMenu();
+  screen.clearChoices();
+  boot.pageStart = null;
+  page.drawn = -1;
+  screen.renderBackground();
+  return true;
+}
+function openDialogueEditor() {
+  if (document.querySelector(".te-back")) return false;
+  openTextEditor({ vm, font, language, textEdits, restartPage });
+  return true;
+}
+addEventListener("keydown", (event) => {
+  if (event.code !== "KeyE" || event.repeat || event.ctrlKey || event.metaKey || event.altKey) return;
+  if (openDialogueEditor()) event.preventDefault(); // the E itself must not land in the box
+});
+// ?edit=1: a small button for touch screens until the shell has its own.
+if (new URLSearchParams(location.search).get("edit") === "1") {
+  const button = Object.assign(document.createElement("button"), { textContent: "대사 편집", type: "button" });
+  Object.assign(button.style, { position: "fixed", right: "12px", top: "12px", zIndex: "40", padding: "8px 12px",
+    background: "#c0392b", color: "#fff", border: "0", borderRadius: "6px", font: "14px system-ui, sans-serif" });
+  button.addEventListener("click", openDialogueEditor);
+  document.body.append(button);
+}
+
 window.kamaitachi = { language, languages: LANGUAGES, setLanguage, vm, screen, assets, font, input, sound, page, boot, tap, openMenu,
+  openDialogueEditor, get textEdits() { return textEdits; },
   get menuAvailable() { return menuAvailable; } };
 
 let last = performance.now();
