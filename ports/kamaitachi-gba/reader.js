@@ -145,36 +145,60 @@ function paintSharp(ctx, entry, base, width, height, layer) {
   const over = Math.max(...gain) - 1;
   if (over > 0.01) { ctx.globalCompositeOperation = "lighter"; ctx.globalAlpha = Math.min(1, over); ctx.drawImage(entry.hd, 0, 0, width, height); }
   ctx.restore();
-  // Where a silhouette is cut by the frame, that side keeps the frame: the margin there is dimmed and
-  // the picture's edge stays hard, so the cut reads as the picture's border instead of a broken figure.
-  // The change eases over CUT_MS (a silhouette blinding in reaches the edge part way through), so the
-  // margin does not snap from open to framed.
+  // Where a silhouette is cut by the frame (a silhouette blinding in reaches the edge part way
+  // through, so the change eases over CUT_MS):
+  // - at the bottom (태우 2026-11-25), the picture moves down so the cut-off figure stands near the
+  //   screen's bottom edge, the margin left below it is blurred and darkened and the figure fades
+  //   into it, and the sky above grows (the extended picture's top rows, stretched and blurred);
+  // - at the top, the figure is carried over the picture's top edge (its pixels stay solid in the
+  //   fading rows) and a head cut flat by the frame is rounded off above it.
   const level = cutLevel(ctx, silhouetteCut(layer));
-  const scale0 = width / 240;
-  ctx.save();
-  if (level.top > 0) { ctx.fillStyle = `rgba(0, 0, 0, ${0.7 * level.top})`; ctx.fillRect(0, 0, width, EXTENDED_TOP * scale0); }
-  if (level.bottom > 0) { ctx.fillStyle = `rgba(0, 0, 0, ${0.7 * level.bottom})`; ctx.fillRect(0, (EXTENDED_TOP + 160) * scale0, width, height - (EXTENDED_TOP + 160) * scale0); }
-  ctx.restore();
+  const scale = width / 240;
+  const below = (EXTENDED_TOP + 160) * scale;
+  const mask = (x, y) => {
+    const byte = layer?.vram?.[((y >> 3) * 30 + (x >> 3)) * 32 + (y & 7) * 4 + ((x & 7) >> 1)] ?? 0;
+    return (x & 1 ? byte >> 4 : byte & 15) !== 0;
+  };
   const FEATHER = 14;
   const rows = new Uint8ClampedArray(base);
   for (let y = 0; y < 160; y++) {
     const d = Math.min(y, 159 - y);
     if (d >= FEATHER) continue;
-    const hard = y < 80 ? level.top : level.bottom;
     let t = (d + 0.5) / FEATHER; t = t * t * (3 - 2 * t);
-    t += (1 - t) * hard;
-    for (let x = 0; x < 240; x++) rows[4 * (y * 240 + x) + 3] = Math.round(255 * t);
+    for (let x = 0; x < 240; x++) {
+      const a = y < 80 && mask(x, y) ? 1 : t;
+      rows[4 * (y * 240 + x) + 3] = Math.round(255 * a);
+    }
   }
   middleCtx.putImageData(new ImageData(rows, 240, 160), 0, 0);
-  const scale = width / 240;
   ctx.save();
   ctx.imageSmoothingEnabled = false;
   ctx.drawImage(middle, 0, EXTENDED_TOP * scale, width, 160 * scale);
   ctx.restore();
-  // A silhouette standing on the picture's bottom edge (태우 2026-11-25): the picture moves down so the
-  // figure's cut-off feet sit on the screen's bottom edge, and the sky above grows to fill the top
-  // (the extended picture's top rows, stretched and blurred). It eases with the frame margin.
-  const drop = Math.round(level.bottom * (height - (EXTENDED_TOP + 160) * scale));
+  if (layer?.vram) roundHeads(ctx, base, mask, scale);
+  if (level.bottom > 0) {
+    // the picture's own bottom rows, stretched down over the margin, blurred and darkening
+    const from = below - 10 * scale, band = 8 * scale, room = height - below + 6 * scale;
+    shifted.width = width; shifted.height = room;
+    const b = shifted.getContext("2d");
+    b.filter = `blur(${Math.round(5 * scale)}px)`;
+    b.drawImage(ctx.canvas, 0, from, width, band, 0, -4 * scale, width, room + 8 * scale);
+    b.filter = "none";
+    b.globalCompositeOperation = "source-atop";
+    const dark = b.createLinearGradient(0, 0, 0, room);
+    dark.addColorStop(0, "rgba(0,0,0,0)"); dark.addColorStop(1, "rgba(0,0,0,.45)");
+    b.fillStyle = dark; b.fillRect(0, 0, width, room);
+    b.globalCompositeOperation = "destination-in";
+    const soft = b.createLinearGradient(0, 0, 0, 8 * scale);
+    soft.addColorStop(0, "rgba(0,0,0,0)"); soft.addColorStop(1, "#000");
+    b.fillStyle = soft; b.fillRect(0, 0, width, room);
+    b.globalCompositeOperation = "source-over";
+    ctx.save();
+    ctx.globalAlpha = level.bottom;
+    ctx.drawImage(shifted, 0, below - 6 * scale);
+    ctx.restore();
+  }
+  const drop = Math.round(level.bottom * DROP * scale);
   if (drop > 0) {
     shifted.width = width; shifted.height = height;
     shifted.getContext("2d").drawImage(ctx.canvas, 0, 0);
@@ -190,11 +214,46 @@ function paintSharp(ctx, entry, base, width, height, layer) {
     k.fillStyle = fade; k.fillRect(0, 0, width, sky.height);
     k.globalCompositeOperation = "source-over";
     ctx.save();
-    ctx.globalCompositeOperation = "source-over";
-    ctx.globalAlpha = 1;
     ctx.drawImage(shifted, 0, 0, width, height - drop, 0, drop, width, height - drop);
     ctx.drawImage(sky, 0, 0);
     ctx.restore();
+  }
+}
+// How far (GBA rows) the picture moves down for a figure standing on the bottom edge: half the bottom
+// margin, so a band of blurred picture stays below the feet.
+const DROP = 50;
+// A figure whose top is cut flat (its first row already 10 or more pixels wide; some silhouettes are
+// cropped above the head in the cartridge, 태우 2026-11-25) gets a rounded top: a half ellipse as wide
+// as that row, up to 12 rows high, in the figure's own color there.
+function roundHeads(ctx, base, mask, scale) {
+  let first = 0;
+  const any = (y) => { for (let x = 0; x < 240; x++) if (mask(x, y)) return true; return false; };
+  while (first < 120 && !any(first)) first++;
+  if (first >= 120) return;
+  const top = (EXTENDED_TOP + first) * scale;
+  const row = first * 240, next = Math.min(159, first + 1) * 240;
+  const DEEP = 4; // the dome spans the figure as wide as it is a few rows down
+  const at = Math.min(159, first + DEEP);
+  for (let x = 0; x < 240;) {
+    if (!mask(x, first)) { x++; continue; }
+    let end = x;
+    while (end < 240 && mask(end, first)) end++;
+    if (end - x >= 10) {
+      let left = x, right = end;
+      while (left > 0 && mask(left - 1, at)) left--;
+      while (right < 240 && mask(right, at)) right++;
+      const w = right - left;
+      const color = [0, 0, 0];
+      for (let i = x; i < end; i++) for (let c = 0; c < 3; c++) color[c] += base[4 * (row + i) + c] + base[4 * (next + i) + c];
+      const rgb = color.map((v) => Math.round(v / (2 * (end - x))));
+      ctx.save();
+      ctx.fillStyle = `rgb(${rgb})`;
+      ctx.beginPath();
+      ctx.ellipse(((left + right) / 2) * scale, top + (DEEP + 1) * scale, (w / 2) * scale, (DEEP + Math.min(9, w * 0.3)) * scale, 0, Math.PI, 2 * Math.PI);
+      ctx.fill();
+      ctx.restore();
+    }
+    x = end;
   }
 }
 const shifted = document.createElement("canvas"), sky = document.createElement("canvas");
