@@ -1,8 +1,7 @@
 #!/usr/bin/env node
 import fs from 'node:fs';
 import { pathToFileURL } from 'node:url';
-import { SfcBus } from '../bus.js';
-import { Cpu65816 } from '../cpu.js';
+import { SfcMachine } from '../machine.js';
 
 const [
   romPath, apuModulePath, outputPath, targetArg = '5700',
@@ -37,10 +36,7 @@ if (joypadPath) {
 }
 const output = fs.createWriteStream(outputPath);
 output.write('frame\tcpu_cycle\tdir(w/r)\tport\tvalue\tpc\topcode\n');
-let frame = 0;
-let inVblank = false;
-let pendingNmiAt = Infinity;
-let cpu;
+let machine;
 const semanticSnapshotRow = Number(semanticSnapshotRowArg);
 let semanticRows = 0;
 const lastApuRead = [null, null, null, null];
@@ -48,38 +44,61 @@ let semanticSnapshot = null;
 const saveSnapshot = (label) => {
   if (!snapshotDir) return;
   fs.mkdirSync(snapshotDir, { recursive: true });
-  fs.writeFileSync(`${snapshotDir}/vm-wram-${label}.bin`, bus.wram);
-  fs.writeFileSync(`${snapshotDir}/vm-vram-${label}.bin`, bus.vram);
+  fs.writeFileSync(`${snapshotDir}/vm-wram-${label}.bin`, machine.bus.wram);
+  fs.writeFileSync(`${snapshotDir}/vm-vram-${label}.bin`, machine.bus.vram);
 };
-const bus = new SfcBus(fs.readFileSync(romPath), {
+const joypadAtFrame = (frame) => joypadPath ? (joypad.get(frame) ?? 0)
+  : (frame > 300 && frame % 90 < 2 ? 0x0080 : 0);
+machine = new SfcMachine({
+  rom: fs.readFileSync(romPath),
   apu,
-  eventLimit: 0,
-  apuTraceLimit: 0,
-  onApuAccess: (event) => {
-    const ins = cpu?.currentInstruction;
-    output.write(`${frame}\t${event.masterCycle}\t${event.direction}\t${event.port}\t${event.value.toString(16).padStart(2, '0').toUpperCase()}\t${ins ? ins.address.toString(16).padStart(6, '0').toUpperCase() : ''}\t${ins ? ins.opcode.toString(16).padStart(2, '0').toUpperCase() : ''}\n`);
-    const semantic = event.direction === 'w' || lastApuRead[event.port] !== event.value;
-    if (event.direction === 'r') lastApuRead[event.port] = event.value;
-    if (!semantic) return;
-    if (semanticRows === semanticSnapshotRow) {
-      saveSnapshot(`semantic-${semanticRows}`);
-      semanticSnapshot = { row: semanticRows, frame, masterCycle: event.masterCycle,
-        direction: event.direction, port: event.port, value: event.value, pc: cpu?.address() ?? null };
+  joypad: joypadAtFrame,
+  busOptions: {
+    eventLimit: 0,
+    apuTraceLimit: 0,
+    wramInitialValue: Number.parseInt(wramFillArg, 16),
+    onApuAccess: (event) => {
+      const ins = machine?.cpu.currentInstruction;
+      output.write(`${machine.frame}\t${event.masterCycle}\t${event.direction}\t${event.port}\t${event.value.toString(16).padStart(2, '0').toUpperCase()}\t${ins ? ins.address.toString(16).padStart(6, '0').toUpperCase() : ''}\t${ins ? ins.opcode.toString(16).padStart(2, '0').toUpperCase() : ''}\n`);
+      const semantic = event.direction === 'w' || lastApuRead[event.port] !== event.value;
+      if (event.direction === 'r') lastApuRead[event.port] = event.value;
+      if (!semantic) return;
+      if (semanticRows === semanticSnapshotRow) {
+        saveSnapshot(`semantic-${semanticRows}`);
+        semanticSnapshot = { row: semanticRows, frame: machine.frame, masterCycle: event.masterCycle,
+          direction: event.direction, port: event.port, value: event.value, pc: machine?.cpu.address() ?? null };
+      }
+      semanticRows++;
+    },
+  },
+  cpuOptions: { traceLimit: 0 },
+  onFrame: (frame) => {
+    if (frame === 95 || frame === 209) {
+      saveSnapshot(`frame-${frame}`);
+      frameStats[frame] = { executed: machine.cpu.executed, masterCycle: machine.master, e1xxInstructions,
+        watchedWriters: Object.fromEntries([...watchedWriters].map(([address, writer]) =>
+          [`0x${address.toString(16).padStart(4, '0')}`, writer])),
+      };
     }
-    semanticRows++;
   },
-  onNmiEnable: (master) => {
-    if (inVblank) pendingNmiAt = Math.min(pendingNmiAt, master + 12);
+  onNmi: (frame) => {
+    if (nmiSnapshotFrames.has(frame) && !savedNmiFrames.has(frame)) {
+      saveSnapshot(`nmi-frame-${frame}`); savedNmiFrames.add(frame);
+    }
   },
-  wramInitialValue: Number.parseInt(wramFillArg, 16),
+  onInstruction: (instructionAddress) => {
+    for (const address of watchedWram) {
+      if (machine.bus.wram[address] === watchedValues.get(address)) continue;
+      watchedValues.set(address, machine.bus.wram[address]);
+      watchedWriters.set(address, { frame: machine.frame, pc: instructionAddress,
+        value: machine.bus.wram[address] });
+    }
+    if (machine.cpu.pbr === 0x02 && (machine.cpu.pc & 0xff00) === 0xe100) e1xxInstructions++;
+  },
 });
-cpu = new Cpu65816(bus, { traceLimit: 0 });
+const { bus, cpu } = machine;
 const targetFrame = Number(targetArg);
 const instructionLimit = Number(limitArg);
-let nextFrame = 1_368;
-let nextNmi = 306_912; // line 225 plus Snes9x NMITriggerPos 6+6
-let frameLength = 357_368;
-let nmiFrameLength = 357_368;
 let e1xxInstructions = 0;
 const frameStats = {};
 const parseHexCsv = (text) => text ? text.split(',').map((value) => Number.parseInt(value, 16)) : [];
@@ -98,10 +117,10 @@ const instructionTrace = [];
 
 let failure = null;
 try {
-  for (let index = 0; index < instructionLimit && frame < targetFrame; index++) {
+  for (let index = 0; index < instructionLimit && machine.frame < targetFrame; index++) {
     const instructionAddress = cpu.address();
-    if (distributionFrames.has(frame)) {
-      const stat = pcDistribution[frame] ??= { total: 0, decompress: 0, e1xx: 0, dbE0: 0, scheduler: 0, other: 0 };
+    if (distributionFrames.has(machine.frame)) {
+      const stat = pcDistribution[machine.frame] ??= { total: 0, decompress: 0, e1xx: 0, dbE0: 0, scheduler: 0, other: 0 };
       stat.total++;
       if (instructionAddress >= 0x029a00 && instructionAddress <= 0x029fff) stat.decompress++;
       else if (instructionAddress >= 0x02e100 && instructionAddress <= 0x02e1ff) stat.e1xx++;
@@ -110,48 +129,11 @@ try {
       else stat.other++;
     }
     if (cpu.masterCycle >= instructionTraceStart && cpu.masterCycle <= instructionTraceEnd)
-      instructionTrace.push([cpu.masterCycle, frame, instructionAddress, bus.read8(instructionAddress),
+      instructionTrace.push([cpu.masterCycle, machine.frame, instructionAddress, bus.read8(instructionAddress),
         cpu.a, cpu.x, cpu.y, cpu.s, cpu.d, cpu.dbr, cpu.p].join('\t'));
-    if (probePcs.has(instructionAddress)) pcProbes.push({ masterCycle: cpu.masterCycle, frame, pc: instructionAddress,
+    if (probePcs.has(instructionAddress)) pcProbes.push({ masterCycle: cpu.masterCycle, frame: machine.frame, pc: instructionAddress,
       a: cpu.a, x: cpu.x, y: cpu.y, dbr: cpu.dbr, p: cpu.p });
-    cpu.step();
-    for (const address of watchedWram) {
-      if (bus.wram[address] === watchedValues.get(address)) continue;
-      watchedValues.set(address, bus.wram[address]);
-      watchedWriters.set(address, { frame, pc: instructionAddress, value: bus.wram[address] });
-    }
-    if (cpu.pbr === 0x02 && (cpu.pc & 0xff00) === 0xe100) e1xxInstructions++;
-    while (cpu.masterCycle >= nextFrame) {
-      frame++;
-      if (frame === 95 || frame === 209) {
-        saveSnapshot(`frame-${frame}`);
-        frameStats[frame] = { executed: cpu.executed, masterCycle: cpu.masterCycle, e1xxInstructions,
-          watchedWriters: Object.fromEntries([...watchedWriters].map(([address, writer]) =>
-            [`0x${address.toString(16).padStart(4, '0')}`, writer])),
-        };
-      }
-      inVblank = false;
-      nextFrame += frameLength;
-      frameLength = frameLength === 357_368 ? 357_364 : 357_368;
-    }
-    while (cpu.masterCycle >= nextNmi) {
-      inVblank = true;
-      const buttons = joypadPath ? (joypad.get(frame) ?? 0)
-        : (frame > 300 && frame % 90 < 2 ? 0x0080 : 0);
-      bus.setController1(buttons);
-      if (bus.io[0x4200 - 0x2000] & 0x80) {
-        if (nmiSnapshotFrames.has(frame) && !savedNmiFrames.has(frame)) {
-          saveSnapshot(`nmi-frame-${frame}`); savedNmiFrames.add(frame);
-        }
-        cpu.nmi();
-      }
-      nextNmi += nmiFrameLength;
-      nmiFrameLength = nmiFrameLength === 357_368 ? 357_364 : 357_368;
-    }
-    if (cpu.masterCycle >= pendingNmiAt) {
-      pendingNmiAt = Infinity;
-      cpu.nmi();
-    }
+    machine.step();
   }
 } catch (error) {
   failure = error instanceof Error ? error.message : String(error);
@@ -167,7 +149,7 @@ if (dspTracePath) fs.writeFileSync(dspTracePath,
   `spc_cycle\treg\tvalue\n${dspTrace.map(([c, r, v]) =>
     `${c}\t${r.toString(16).padStart(2, '0').toUpperCase()}\t${v.toString(16).padStart(2, '0').toUpperCase()}`).join('\n')}\n`);
 console.log(JSON.stringify({
-  frame, executed: cpu.executed, masterCycle: cpu.masterCycle,
+  frame: machine.frame, executed: cpu.executed, masterCycle: cpu.masterCycle,
   apuAccesses: bus.apuAccessCount, address: cpu.address(), failure,
   semanticRows, semanticSnapshot, frameStats, e1xxInstructions, pcProbes, pcDistribution,
 }, null, 2));

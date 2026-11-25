@@ -33,6 +33,13 @@ trace runner의 네 번째 인수는 쉼표로 구분한 snapshot frame, 다섯 
 300-instruction trace를 시작할 frame입니다. snapshot은 ROM 데이터가 포함될 수
 있으므로 로컬 분석물로만 둡니다.
 
+`SfcMachine`은 CPU/bus와 frame·VBlank·NMI 시간축을 함께 소유합니다. 브라우저와
+trace runner는 `time`, `runTo(sec)`, `runToMaster(master)`, `setButtons(mask)`를
+공유하며, 화면 renderer가 연결되기 전까지 `onFrame(frame, null)`을 받습니다.
+`end`에 emulation seconds를 지정하면 realtime loop와 장시간 runner가 그 시각의
+다음 명령 경계에서 멈춥니다. `$4200` NMI-enable rising edge의 12-master 지연과
+joypad latch도 이 클래스에서 한 번만 구현합니다.
+
 ## Master-clock/APU 연결
 
 `Cpu65816.masterCycle`은 Snes9x와 같은 master-clock 단위로 opcode fetch,
