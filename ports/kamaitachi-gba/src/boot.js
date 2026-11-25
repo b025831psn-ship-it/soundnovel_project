@@ -183,10 +183,17 @@ export class Boot {
     if (this.systemText) {
       adoptSystemText(this.systemText);
       adoptNameText(this.systemText);
-      // 080197EC / 080197E4: the names the game starts with (透, 真理).
-      this.names[1] = romString(this.systemText, 0x197ec) ?? this.names[1];
-      this.names[2] = romString(this.systemText, 0x197e4) ?? this.names[2];
     }
+    // 088206F8 / 088206FC point at the names the game starts with (透 080197EC, 真理 080197E4);
+    // kgk ui/default-names.bin holds the two strings, 0-terminated.
+    try {
+      const bytes = Array.from(await this.assets.bin("ui/default-names.bin"));
+      const end = bytes.indexOf(0);
+      if (end > 0) {
+        this.names[1] = bytes.slice(0, end);
+        this.names[2] = bytes.slice(end + 1, bytes.indexOf(0, end + 1));
+      }
+    } catch {}
     this.nameEntry = new NameEntry({ boot: this, font: this.font, table: this.nameTable });
     try { this.flow = await this.assets.bin("ui/flow-map.bin"); } catch { this.flow = null; }
     try {

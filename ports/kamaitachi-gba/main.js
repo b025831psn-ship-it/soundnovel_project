@@ -23,7 +23,7 @@ if (!LANGUAGES.includes(language)) language = "ja";
 try { localStorage.setItem(LANGUAGE_KEY, language); } catch {}
 const assets = new Assets(base);
 if (language === "ko") assets.overlay("../../kamaitachi-gba-kor/port-data-ko", (path) =>
-  /^(manifest\.json|scenario\/|font\/|ui\/(flow-map|option-text|name-table|map-titles|system-text)\.bin)/.test(path));
+  /^(manifest\.json|scenario\/|font\/|ui\/(flow-map|option-text|name-table|map-titles|system-text|default-names)\.bin)/.test(path));
 const manifest = await assets.json("manifest.json");
 const bankPaths = manifest.files.filter((file) =>
   file.path.startsWith("scenario/"),
