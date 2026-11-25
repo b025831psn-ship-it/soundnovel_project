@@ -179,15 +179,15 @@ http.createServer((request, response) => {
       response.writeHead(404).end();
       return;
     }
-    // Caching: every file carries a validator, so a returning visitor gets 304s instead of the whole
-    // game again. Cartridge data and pictures may be reused for a day without asking; code and pages
-    // are checked every time (cheap when unchanged).
-    const etag = `"${stat.size.toString(36)}-${Math.floor(stat.mtimeMs).toString(36)}"`;
-    const data = /^(application\/(octet-stream|json)|image\/|audio\/|video\/|font\/)/.test(route[1]);
+    // Caching: every file carries a validator and is checked on each use, so a returning visitor gets
+    // small 304s instead of the whole game again, and code and data never drift apart after a deploy.
+    const tag = `${stat.size.toString(36)}-${Math.floor(stat.mtimeMs).toString(36)}`;
+    const etag = `W/"${tag}"`;
     response.setHeader('ETag', etag);
     response.setHeader('Last-Modified', stat.mtime.toUTCString());
-    response.setHeader('Cache-Control', data ? 'public, max-age=86400, stale-while-revalidate=604800' : 'no-cache');
-    if (request.headers['if-none-match'] === etag) { response.writeHead(304).end(); return; }
+    response.setHeader('Cache-Control', 'no-cache');
+    const given = (request.headers['if-none-match'] ?? '').split(',').map(v => v.trim().replace(/^W\//, ''));
+    if (given.includes(`"${tag}"`)) { response.writeHead(304).end(); return; }
     // Compression for text and the larger data files (kept in memory per version, so it is done once).
     const compressible = /^(text\/|application\/(json|octet-stream|javascript)|image\/svg)/.test(route[1]);
     if (compressible && !request.headers.range && /\bgzip\b/.test(request.headers['accept-encoding'] ?? '') && stat.size > 1024 && stat.size < 32 * 1024 * 1024) {
