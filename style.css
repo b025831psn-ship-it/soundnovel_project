@@ -151,25 +151,52 @@ kbd {
 .label { display: flex; align-items: center; gap: 8px; margin: 0 0 10px 2px; color: var(--muted); font-size: 12px; font-weight: 600; letter-spacing: .12em }
 .label span { color: var(--faint); font-weight: 500 }
 .library { display: flex; flex-direction: column; gap: 8px }
-.work {
-  position: relative; display: grid; grid-template-columns: 84px minmax(0, 1fr); gap: 14px; align-items: center;
-  padding: 8px 14px 8px 8px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface);
-  transition: border-color .15s ease, background .15s ease, transform .15s ease;
+/* One card per work: a cover, title, platforms and status. A series card opens its editions below it. */
+.entry {
+  position: relative; display: grid; grid-template-columns: 84px minmax(0, 1fr) auto; gap: 14px; align-items: center;
+  padding: 8px 12px 8px 8px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface);
+  transition: border-color .15s ease, background .15s ease;
 }
-.work:hover { background: var(--hover); border-color: var(--line-strong) }
-.work[aria-current] { border-color: color-mix(in srgb, var(--accent) 70%, transparent); background: var(--raised) }
-.work[aria-current]::before { content: ""; position: absolute; left: -1px; top: 18px; bottom: 18px; width: 3px; border-radius: 0 3px 3px 0; background: var(--accent) }
-.work.soon .cover { filter: grayscale(.4) }
+a.entry:hover, summary.entry:hover { background: var(--hover); border-color: var(--line-strong) }
+div.entry { grid-template-columns: 84px minmax(0, 1fr) }
+div.entry .cover, a.entry:not([aria-current]) .cover { filter: saturate(.75) }
+.entry[aria-current] { border-color: color-mix(in srgb, var(--accent) 70%, transparent); background: var(--raised) }
+.series { border-radius: 12px }
+.series > summary { list-style: none; cursor: pointer; user-select: none }
+.series > summary::-webkit-details-marker { display: none }
+.series[open] > summary { background: var(--raised); border-color: var(--line-strong); border-radius: 12px 12px 0 0 }
+.series:has(.work[aria-current]) > summary { border-color: color-mix(in srgb, var(--accent) 70%, transparent) }
+.series:has(.work[aria-current]) > summary::before { content: ""; position: absolute; left: -1px; top: 18px; bottom: 18px; width: 3px; border-radius: 0 3px 3px 0; background: var(--accent) }
+.chev { width: 16px; height: 16px; fill: none; stroke: var(--faint); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; transition: transform .2s var(--ease) }
+.series[open] .chev { transform: rotate(90deg) }
+.entry[aria-current]::before { content: ""; position: absolute; left: -1px; top: 18px; bottom: 18px; width: 3px; border-radius: 0 3px 3px 0; background: var(--accent) }
+
+/* Editions: a tree line from under the cover through each edition. */
+.editions {
+  position: relative; margin: 0; padding: 6px 8px 8px 56px; list-style: none;
+  border: 1px solid var(--line-strong); border-top: 0; border-radius: 0 0 12px 12px; background: var(--surface);
+}
+.editions::before { content: ""; position: absolute; left: 50px; top: 0; bottom: 26px; width: 1px; background: var(--line-strong) }
+.editions li { position: relative }
+.editions li::before { content: ""; position: absolute; left: -6px; top: 18px; width: 10px; height: 1px; background: var(--line-strong) }
+.edition { display: flex; flex-direction: column; padding: 5px 10px; border-radius: 8px }
+.edition .title { font-size: 14px; color: var(--muted) }
+.edition .sub { font-size: 11px }
+a.edition .title { color: var(--text) }
+a.edition:hover { background: var(--hover) }
+a.edition[aria-current] { background: var(--raised); box-shadow: inset 2px 0 0 var(--accent) }
+.editions li:has(a.edition)::before { background: var(--accent) }
+.edition .status { font-size: 11px; margin-top: 1px }
+
 .cover {
   position: relative; display: grid; place-items: center;
   aspect-ratio: 3 / 2; border-radius: 7px; overflow: hidden;
+  background: radial-gradient(90% 100% at 30% 15%, color-mix(in srgb, var(--tint, #1c2538) 100%, #fff 6%), #07080b);
   box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .06);
 }
-.cover.kama { background: linear-gradient(160deg, #1c2538, #07080b) }
-.cover.higan { background: radial-gradient(80% 90% at 30% 20%, #4a1218, #10080a) }
 .cover img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; image-rendering: pixelated }
 .cover:has(img)::after { content: ""; position: absolute; inset: 0; background: linear-gradient(0deg, rgba(0, 0, 0, .75), transparent 70%) }
-.cover-text { position: relative; z-index: 1; padding: 4px; font: 700 11px/1.25 "Noto Serif JP", serif; text-align: center; text-shadow: 0 1px 6px #000 }
+.cover-text { position: relative; z-index: 1; padding: 4px; font: 700 11px/1.25 "Noto Serif JP", serif; text-align: center; text-shadow: 0 1px 6px #000; color: #e4e0d8; word-break: keep-all }
 .cover:has(img) .cover-text { align-self: end; font-size: 9px; letter-spacing: .04em }
 .info { display: flex; flex-direction: column; min-width: 0 }
 .title { font: 600 15px/1.35 "Noto Serif KR", serif; word-break: keep-all }
@@ -179,41 +206,6 @@ kbd {
 .status.ready { color: var(--text) }
 .status.ready::before { background: var(--accent); box-shadow: 0 0 8px var(--accent) }
 
-/* All works, grouped by series; editions open below their series. No links except playable ones. */
-.upcoming > ul { display: grid; gap: 2px; margin: 0; padding: 0; list-style: none }
-.upcoming .single, .upcoming summary {
-  display: grid; grid-template-columns: 36px minmax(0, 1fr) auto; gap: 12px; align-items: center;
-  padding: 6px 8px 6px 6px; border-radius: 8px;
-}
-.upcoming .single { grid-template-columns: 36px minmax(0, 1fr) }
-.upcoming summary { list-style: none; cursor: pointer; user-select: none }
-.upcoming summary::-webkit-details-marker { display: none }
-.upcoming .single:hover, .upcoming summary:hover { background: var(--surface) }
-.upcoming summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 0 }
-.upcoming details[open] > summary { background: var(--surface) }
-.chev { width: 16px; height: 16px; fill: none; stroke: var(--faint); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; transition: transform .2s var(--ease) }
-details[open] > summary .chev { transform: rotate(90deg) }
-.mono {
-  display: grid; place-items: center; width: 36px; height: 36px; border-radius: 6px;
-  background: radial-gradient(90% 90% at 30% 20%, color-mix(in srgb, var(--tint) 100%, #fff 8%), #0b0c0f);
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .06);
-  color: #d9d5ce; font: 700 15px/1 "Noto Serif JP", serif;
-}
-.upcoming .title { font-size: 14px; color: var(--muted) }
-.upcoming .single:hover .title, .upcoming summary:hover .title, details[open] > summary .title { color: var(--text) }
-.upcoming .sub { font-size: 11px }
-.upcoming .sub em { font-style: normal; color: var(--accent-hover) }
-/* Editions: a thin tree line from the series tile down through each edition. */
-.editions { position: relative; margin: 2px 0 8px 23px; padding: 0 0 0 20px; list-style: none }
-.editions::before { content: ""; position: absolute; left: 0; top: 0; bottom: 16px; width: 1px; background: var(--line-strong) }
-.editions li { position: relative; display: flex; flex-direction: column; padding: 5px 8px; border-radius: 6px }
-.editions li::before { content: ""; position: absolute; left: -20px; top: 16px; width: 14px; height: 1px; background: var(--line-strong) }
-.editions .title { font-size: 13px }
-.editions li.ready a { display: flex; flex-direction: column; margin: -5px -8px; padding: 5px 8px; border-radius: 6px }
-.editions li.ready a:hover { background: var(--surface) }
-.editions li.ready .title { color: var(--text) }
-.editions li.ready::before { background: var(--accent) }
-.editions .status { font-size: 11px; margin-top: 1px }
 .guide dl { display: grid; gap: 2px; margin: 0; padding: 6px 0; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line) }
 .guide dl div { display: grid; grid-template-columns: 64px 1fr; align-items: center; min-height: 34px }
 .guide dt { display: flex; gap: 4px }
