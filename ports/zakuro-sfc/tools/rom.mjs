@@ -24,3 +24,9 @@ export function readBootRecords(rom, at = lorom(BOOT_DESCRIPTOR)) {
   records.push({ dest: records[0].dest, payload: null });
   return records;
 }
+
+// APU power-on and timing constants that reproduce the reference run (zakuro-sfc-kor 599e867,
+// Snes9x 1bcc369, cycles are SMP bus-access times). The driver's first instruction runs at
+// SPC cycle 1,223,778; the timer dividers sit 3 clocks ahead of that point; every DSP write
+// (all `MOV !$00F3,A`, 5 clocks) takes effect at the end of its instruction.
+export const APU_TIMING = { iplClocks: 1223778, timerLead: 3, dspAccessOffset: 5 };

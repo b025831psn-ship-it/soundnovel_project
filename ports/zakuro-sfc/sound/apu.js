@@ -16,11 +16,13 @@ export class APU {
   // transfer ran on hardware; the DSP and the timer dividers free-run from power-on, so
   // their phase at the driver's first instruction depends on it. 621,677 clocks is this
   // game's measured boot (reference probe), which makes the output match sample for sample.
-  boot(records, { iplClocks = 621677 } = {}) {
+  // `timerLead` places the timer dividers relative to that point; -1 fits Kamaitachi's
+  // probe, +3 fits Zakuro's 599e867 run (whose cycles are bus-access times).
+  boot(records, { iplClocks = 621677, timerLead = -1 } = {}) {
     const cb = this.dsp.onSample; this.dsp.onSample = null;
     this.dsp.tick(iplClocks);
     this.dsp.onSample = cb;
-    for (const t of this.cpu.timers) t.phase = (iplClocks - 1) % t.period;
+    for (const t of this.cpu.timers) t.phase = (((iplClocks + timerLead) % t.period) + t.period) % t.period;
     return this.cpu.uploadRecords(records);
   }
 

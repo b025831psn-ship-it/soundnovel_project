@@ -24,7 +24,7 @@
 
 ## 사운드 모듈 (`sound/`)
 
-`spc700.js`, `sdsp.js`, `apu.js`, `ipl.js`, `master-link.js`, `output.js`, `resampler.js`, `sfc-worklet.js`는 카마이타치 SFC 포트의 5c7f3ab에서 가져왔다. `spc700.js`만 타이머 읽기 시점을 고쳤다(아래). 카마이타치에서 리셋부터 첫 선택지까지 SPC 포트·DSP 쓰기와 PCM 512,331 샘플이 에뮬레이터와 완전히 일치했다(PR #24). 하드웨어 모듈이라 작품에 따라 바뀌지 않는다. 두 포트가 병합되면 공통 경로로 합친다.
+`spc700.js`, `sdsp.js`, `apu.js`, `ipl.js`, `master-link.js`, `output.js`, `resampler.js`, `sfc-worklet.js`는 카마이타치 SFC 포트의 5c7f3ab에서 가져왔다. `spc700.js`(타이머 읽기 시점), `sdsp.js`(rate 0), `apu.js`(타이머 분주 위치 인수)를 고쳤다(아래). 카마이타치에서 리셋부터 첫 선택지까지 SPC 포트·DSP 쓰기와 PCM 512,331 샘플이 에뮬레이터와 완전히 일치했다(PR #24). 하드웨어 모듈이라 작품에 따라 바뀌지 않는다. 두 포트가 병합되면 공통 경로로 합친다.
 
 - 64바이트 IPL ROM과 512개 가우스 표는 칩 데이터라 포함하지 않는다. 가우스 표는 로컬 파일을 `--gauss`로 넘긴다.
 - `APU.boot()`의 `iplClocks` 기본값(621,677)은 카마이타치의 측정값이다. 석류의 맛 부팅 시간은 에뮬레이터 추적으로 다시 잰다.
@@ -35,14 +35,19 @@
 - `cpu-side.mjs`: 런타임 전송의 메인 CPU 쪽. `$30:8383`의 순서(`$83E8`: port 0 ← `$FF`, `$BBAA` 대기 → `$8673` 범위별 전송 → `$8652` 종료 토큰)를 그대로 따른다. 드라이버는 IPL ROM으로 돌아가지 않고 같은 규약의 자체 수신 루틴으로 받는다. 65c816 VM이 이 루틴을 직접 실행하게 되면 테스트용으로만 남는다.
 - `play-request.mjs <rom> <manifest.json> <request> <초> [out.wav] [--gauss 파일]`: 드라이버를 부팅하고 요청 하나를 실제 APUIO 규약으로 전송한 뒤 ARAM을 대조하고 S-DSP 출력을 WAV로 쓴다. 요청별 전송 범위는 zakuro-sfc-kor `tools/build_audio_images.py`의 manifest를 쓴다.
 
-- `replay-spc.mjs <rom> <zakuro-sfc-kor/port-data> [--gauss 파일]`: 에뮬레이터 기록(Codex 599e867)의 SPC 쪽 포트 입력을 원본 SPC 클록에 넣고 부팅 ARAM, SPC 포트 쓰기, DSP 쓰기, PCM을 대조한다.
+- `replay-spc.mjs <rom> <zakuro-sfc-kor/port-data> [--gauss 파일]`: 에뮬레이터 기록(Codex 599e867, f1dfd5f)의 SPC 쪽 포트 입력을 원본 SPC 클록에 넣고 부팅 ARAM, SPC 포트 쓰기, DSP 쓰기, PCM을 대조한다.
 
-### 원본 대조 (2026-11-25, zakuro-sfc-kor 599e867, reset~첫 선택지)
+### 원본 대조 (2026-11-25, zakuro-sfc-kor 599e867/f1dfd5f, reset~첫 선택지)
 
 - 드라이버 첫 명령 시점(SPC cycle 1,223,778)의 ARAM 64 KiB가 같다. IPL이 남기는 `$00-$01`(마지막 목적지 `$0600`)도 맞춘다. DSP 레지스터는 전원 투입 때 정해지지 않으므로 기준 실행의 값(`boot-dsp.bin`)을 IPL 단계 전부터 넣는다.
-- SPC 포트 쓰기 120,284건과 DSP 쓰기 264,389건이 순서와 값 모두 같다. 시각 차이는 포트 최대 7, DSP 최대 5 SPC 클록이다. 기록의 read 행에는 쓰기 명령의 dummy read(쓰기 1클록 전)가 포함돼 있다.
-- 고친 것: 타이머 카운터(`$FD-$FF`)를 명령 시작이 아니라 읽기 클록 2클록 전 시점으로 읽는다. 석류의 맛 드라이버는 `MOV Y,!$00FD`(4클록)로 타이머를 기다리는데, 명령 시작에서 읽으면 24초 지점 음 높이 미끄럼 한 단계(`$52` = `$3E` 대신 `$3A`)가 빠졌다. 카마이타치(`MOV A,$FD`, 3클록)는 이 규칙에서도 포트·DSP 쓰기와 PCM 512,331 샘플이 그대로 일치한다.
-- PCM: frame 40~1000의 1,024,662값 중 1,002,795값(97.9%)이 같다. 첫 소리(sample 219,702)부터 255,232까지는 전부 같고, 그 뒤 최대 ±13의 작은 차이가 남는다. 기준 PCM은 README의 첫 sample cycle보다 2 sample(64클록) 늦게 맞춰진다(`--pcm-shift 2`).
+- SPC 포트 쓰기 120,284건과 DSP 쓰기 264,389건이 순서와 값 모두 같다. 기록 시각은 버스 접근 시각이고 read 행에는 쓰기 명령의 dummy read가 들어 있다. 제 쪽 시각(명령 시작)과의 차이는 모든 행에서 일정하다.
+- **PCM: frame 40~1000의 512,331 스테레오 샘플(1,024,662값)이 전부 같다.** 첫 sample 시각은 679,996(f1dfd5f 정정값)이다.
+- 맞추는 데 필요했던 것(`tools/rom.mjs`의 `APU_TIMING`):
+  - 타이머 `$FD-$FF`는 읽기 클록 2클록 전까지의 tick을 본다(`spc700.js`). 이 드라이버는 `MOV Y,!$00FD`(4클록)로 기다린다. 명령 시작 기준이면 24.6초 지점 음 높이 미끄럼 한 단계가 빠진다.
+  - 타이머 분주기 위치 `timerLead: 3`(드라이버 첫 명령 기준), 포트 입력은 기록된 읽기 시각 4클록 전에 둔다.
+  - DSP 쓰기(`MOV !$00F3,A`, 5클록)는 명령 끝에서 반영된다(`dspAccessOffset: 5`).
+  - S-DSP rate 0은 절대 발생하지 않는다(카운터 주기 30,721). 기존 표는 30,720이라 카운터가 한 바퀴 돌 때 rate 0 엔벨로프가 한 번 움직였다(`sdsp.js`).
+- 카마이타치(d07f1ef)는 기본값(`timerLead -1`, `dspAccessOffset 0`) 그대로 이 수정본에서도 포트·DSP 쓰기와 PCM 512,331 샘플이 완전히 일치한다.
 
 ### 전송 확인 (2026-11-25)
 
@@ -51,4 +56,4 @@
 
 ## 테스트
 
-`npm test` (직접 조립한 프로그램만 사용, 20개).
+`npm test` (직접 조립한 프로그램만 사용, 21개).

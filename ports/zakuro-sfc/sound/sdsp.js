@@ -3,7 +3,7 @@
 // a write is seen by exactly the steps that read that register after it.
 // The 512-entry gaussian table is chip data and is passed in, not shipped here.
 
-const RATES = Int32Array.from([0x7800, 2048, 1536, 1280, 1024, 768, 640, 512, 384, 320, 256, 192, 160, 128, 96, 80,
+const RATES = Int32Array.from([0x7801, 2048, 1536, 1280, 1024, 768, 640, 512, 384, 320, 256, 192, 160, 128, 96, 80,
   64, 48, 40, 32, 24, 20, 16, 12, 10, 8, 6, 5, 4, 3, 2, 1]);
 const OFFSETS = Int32Array.from([1, 0, 1040, 536, 0, 1040, 536, 0, 1040, 536, 0, 1040, 536, 0, 1040, 536,
   0, 1040, 536, 0, 1040, 536, 0, 1040, 536, 0, 1040, 536, 0, 1040, 0, 0]);
