@@ -220,6 +220,25 @@ test('M=1 INC/DEC, XBA and BIT immediate use the architected byte', () => {
   }
 });
 
+test('native timing includes direct-page, PHP, TSC and 16-bit indexed penalties', () => {
+  const cases = [
+    { bytes: [0x85, 0x20], setup: (cpu) => { cpu.d = 0x0101; }, cycles: 30 },
+    { bytes: [0x08], cycles: 22 },
+    { bytes: [0x3b], cycles: 14 },
+    { bytes: [0xbd, 0x00, 0x01], setup: (cpu) => { cpu.p &= ~0x10; }, cycles: 38 },
+  ];
+  for (const entry of cases) {
+    const rom = fixture();
+    rom.set(entry.bytes, 0);
+    const cpu = new Cpu65816(new SfcBus(rom));
+    cpu.e = false;
+    entry.setup?.(cpu);
+    const start = cpu.masterCycle;
+    cpu.step();
+    assert.equal(cpu.masterCycle - start, entry.cycles, `opcode $${entry.bytes[0].toString(16)}`);
+  }
+});
+
 test('X=1 clears and keeps the high bytes of X and Y clear', () => {
   const rom = fixture();
   rom.set([0xe2, 0x10, 0xe8, 0x88], 0); // SEP #$10; INX; DEY
@@ -296,6 +315,18 @@ test('NMI latches the standard auto-joypad result', () => {
   bus.setController1(0x1080); // Hardware JOY1 bits: Start + A
   cpu.nmi();
   assert.equal(bus.read16(0x4218), 0x1080);
+});
+
+test('NMI latches RDNMI bit 7 until $4210 is read', () => {
+  const rom = fixture();
+  rom[0x7fea] = 0x00;
+  rom[0x7feb] = 0x80;
+  const bus = new SfcBus(rom);
+  const cpu = new Cpu65816(bus);
+  cpu.e = false;
+  cpu.nmi();
+  assert.equal(bus.read8(0x4210), 0xc2);
+  assert.equal(bus.read8(0x4210), 0x42);
 });
 
 test('decodes and composites mode 3 BG1 from PPU memory', () => {

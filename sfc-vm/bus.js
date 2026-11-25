@@ -51,6 +51,8 @@ export class SfcBus {
     this.io[0x4219 - 0x2000] = this.controller1 >>> 8;
   }
 
+  latchNmi() { this.io[0x4210 - 0x2000] |= 0x80; }
+
   recordApuAccess(masterCycle, direction, port, value) {
     const event = { masterCycle, direction, port, value };
     this.lastApuAccess = event;
@@ -74,7 +76,10 @@ export class SfcBus {
       return value;
     }
     if ((bank & 0x40) === 0 && word >= 0x2000 && word < 0x8000) {
-      const value = this.io[word - 0x2000];
+      const value = word === 0x4210
+        ? (this.io[word - 0x2000] & 0x80) | 0x42
+        : this.io[word - 0x2000];
+      if (word === 0x4210) this.io[word - 0x2000] &= 0x7f;
       if (word === 0x4212 || (word >= 0x4218 && word <= 0x421b)) {
         const stat = this.readStats[`0x${word.toString(16)}`] ??= {
           reads: 0, nonzeroReads: 0, last: 0, lastNonzero: 0,
