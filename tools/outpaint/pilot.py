@@ -15,7 +15,9 @@ from PIL import Image
 
 PROMPT = ("Outpainting. The transparent area surrounds an existing photograph from a 2002 game. "
           "Continue the same scene naturally into the transparent area: same place, perspective, lighting, "
-          "color grading, film grain and softness. Do not change the existing photograph. Do not add people, "
+          "color grading, film grain and softness. At the borders keep the exact brightness and color of the "
+          "photograph's edge (no darker or more saturated sky); clouds, haze and texture as soft and blurry as "
+          "in the photograph. Do not change the existing photograph. Do not add people, "
           "text, logos or new prominent objects.")
 
 def key():
@@ -69,6 +71,30 @@ def quantize(image, colors):
     palette.putpalette(flat + flat[:3] * (256 - len(flat) // 3))
     return image.quantize(palette=palette, dither=Image.Dither.NONE).convert("RGB")
 
+def match_edges(image, original, ox, oy, fade=45.0, smooth=31):
+    """Bring the generated margin to the original's edge colors, fading back with distance (no seam)."""
+    import numpy as np
+    g = np.asarray(image.convert("RGB")).astype(float)
+    o = np.asarray(original.convert("RGB")).astype(float)
+    h, w = g.shape[:2]
+    kernel = np.ones(smooth) / smooth
+    def blur(d):
+        return np.stack([np.convolve(np.pad(d[:, c], smooth // 2, mode="edge"), kernel, "valid") for c in range(3)], 1)
+    top, bottom, left, right = oy, oy + 160, ox, ox + 240
+    if top > 0:
+        d = blur(o[0] - g[top - 1, left:right])
+        for i, row in enumerate(range(top - 1, -1, -1)): g[row, left:right] += d * np.exp(-i / fade)
+    if bottom < h:
+        d = blur(o[159] - g[bottom, left:right])
+        for i, row in enumerate(range(bottom, h)): g[row, left:right] += d * np.exp(-i / fade)
+    if left > 0:
+        d = blur(o[:, 0] - g[top:bottom, left - 1])
+        for i, col in enumerate(range(left - 1, -1, -1)): g[top:bottom, col] += d * np.exp(-i / fade)
+    if right < w:
+        d = blur(o[:, 239] - g[top:bottom, right])
+        for i, col in enumerate(range(right, w)): g[top:bottom, col] += d * np.exp(-i / fade)
+    return Image.fromarray(np.clip(g, 0, 255).astype("uint8"))
+
 # Each shape: canvas size sent to the model, where the original goes (scaled), and the GBA-pixel size
 # of the result. wide: 16:9 (sides added; top/bottom generated too and cropped). portrait: the full
 # width kept, height grown to 1.5x width so an upright phone can show a band of it.
@@ -99,11 +125,14 @@ def run(args):
             generated.save(os.path.join(args.out, f"{n:03d}-{shape}-raw.png"))
             # Back to GBA pixels: the model's canvas at 1/scale, then the crop around the original.
             gw, gh = round(cw / spec["scale"]), round(ch / spec["scale"])
-            small = quantize(generated.resize((gw, gh), Image.LANCZOS), colors)
             ox, oy = (gw - 240) // 2, (gh - 160) // 2
+            small = match_edges(generated.resize((gw, gh), Image.LANCZOS), original, ox, oy)
             small.paste(original, (ox, oy))
+            # Also the picture's own palette, for comparison (fades/tone then apply as on the cartridge).
+            paletted = quantize(small, colors); paletted.paste(original, (ox, oy))
             tw, th = spec["crop"]
             left, top = (gw - tw) // 2, (gh - th) // 2
+            paletted.crop((left, top, left + tw, top + th)).save(os.path.join(args.out, f"{n:03d}-{shape}-palette.png"))
             small.crop((left, top, left + tw, top + th)).save(os.path.join(args.out, f"{n:03d}-{shape}.png"))
             log.write(json.dumps({"picture": n, "shape": shape, "seconds": round(time.time() - started, 1), **meta}) + "\n")
             log.flush()
