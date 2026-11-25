@@ -33,7 +33,7 @@ whenReady(({ input, sound }) => {
   $("loading").hidden = true;
   stage.classList.add("ready");
 
-  // The glow behind the screen follows its colors a few times a second.
+  // The blurred scene behind the screen (the sides of a wide window) follows it a few times a second.
   const glow = $("glow").getContext("2d");
   glow.imageSmoothingEnabled = true;
   let tick = 0;
