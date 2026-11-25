@@ -1,5 +1,5 @@
 // Reference sync server (file-backed, no dependencies). Any host that implements the same
-// HTTP API can replace it. Run: node server.mjs [dataDir] [port]
+// HTTP API can replace it. Run: node server.mjs [dataDir] [port] [host=127.0.0.1]
 import http from "node:http";
 import fs from "node:fs";
 import path from "node:path";
@@ -153,6 +153,7 @@ export function createServer({ dir, maxBody = MAX_BODY, maxSlots = MAX_SLOTS, no
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
-  const [dir = "./vaults", port = "8780"] = process.argv.slice(2);
-  createServer({ dir }).listen(Number(port), () => console.log(`save server on :${port}, data in ${dir}`));
+  // Binds to 127.0.0.1 unless a host is given; put a front (serve.cjs, a proxy) in front for anything else.
+  const [dir = "./vaults", port = "8780", host = "127.0.0.1"] = process.argv.slice(2);
+  createServer({ dir }).listen(Number(port), host, () => console.log(`save server on ${host}:${port}, data in ${dir}`));
 }
