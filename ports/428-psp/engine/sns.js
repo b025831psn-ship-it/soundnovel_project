@@ -54,21 +54,21 @@ export function scanLabels(f, start) {
 }
 
 const sjis = new TextDecoder('shift_jis');
-export function* iterate(f, start, end = f.length) {
-  let p = start;
-  while (p < end - 1) {
-    const op = f[p];
-    if (op === 0x01) {
-      let q = p + 1; while (q < end && f[q] !== 0x02) q++;
-      yield { pc: p, op, text: sjis.decode(f.subarray(p + 1, q)), next: q };
-      p = q; continue;
-    }
-    if (NOLEN.has(op)) { yield { pc: p, op, next: p + 1 }; p++; continue; }
-    const len = f[p + 1];
-    const arg = f.subarray(p + 2, p + 2 + len);
-    const ins = { pc: p, op, arg, next: p + 2 + len };
-    if (op === 0x56 || op === 0x59) ins.label = cstr(arg, 1);
-    yield ins;
-    p = ins.next;
+// Decode one instruction at p (null at the end of the stream).
+export function decodeAt(f, p, end = f.length) {
+  if (p >= end - 1) return null;
+  const op = f[p];
+  if (op === 0x01) {
+    let q = p + 1; while (q < end && f[q] !== 0x02) q++;
+    return { pc: p, op, text: sjis.decode(f.subarray(p + 1, q)), next: q };
   }
+  if (NOLEN.has(op)) return { pc: p, op, next: p + 1 };
+  const len = f[p + 1];
+  const arg = f.subarray(p + 2, p + 2 + len);
+  const ins = { pc: p, op, arg, next: p + 2 + len };
+  if (op === 0x56 || op === 0x59) ins.label = cstr(arg, 1);
+  return ins;
+}
+export function* iterate(f, start, end = f.length) {
+  for (let x = decodeAt(f, start, end); x; x = decodeAt(f, x.next, end)) yield x;
 }

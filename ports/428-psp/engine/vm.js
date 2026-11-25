@@ -1,7 +1,7 @@
 // 428 PSP script VM: control flow and variables, reimplemented from the EBOOT handlers
 // (table 0x089C090C). Presentation ops are not executed here: they are handed to the host
 // as events so the renderer/sound layers can implement them one by one.
-import { iterate } from './sns.js';
+import { decodeAt } from './sns.js';
 
 const be = (a, o, n) => { let v = 0; for (let i = 0; i < n; i++) v = (v << 8) | a[o + i]; return v >>> 0; };
 const s16 = v => (v << 16) >> 16;
@@ -33,7 +33,7 @@ export function arith(a, code, b) {
 export function decodeControl(op, arg) {
   switch (op) {
     case 0x4f: case 0x50: return { v: be(arg, 0, 2), code: arg[2], x: be(arg, 3, 2) };
-    case 0x51: case 0x52: case 0x56: case 0x59: { const [label] = cstrAt(arg, 1); return { slot: arg[0], label }; }
+    case 0x51: case 0x52: case 0x56: case 0x59: case 0x5a: { const [label] = cstrAt(arg, 1); return { slot: arg[0], label }; }
     case 0x57: case 0x58: return decodeIf(op, arg);
     case 0x53: case 0x54: case 0x55: return decodeChoice(op, arg);
     case 0x5c: case 0x5d: return { v: be(arg, 0, 2) };
@@ -72,7 +72,7 @@ export class VM {
     this.sns = sns; this.host = host;
     this.vars = new Uint8Array(0x10000);
     this.script = null; this.pc = 0; this.halted = false; this.pendingChoice = null;
-    this.flow = []; // labels passed by goto (not starting with '_'), cf. ctx+0x27a8
+    this.flow = []; this.stack = []; // 5A call / 5B,BB return (0x0887A210 / 0x0887A334) // labels passed by goto (not starting with '_'), cf. ctx+0x27a8
   }
   get(v) { return this.vars[v]; }
   set(v, x) { this.vars[v] = x & 0xff; }
@@ -100,15 +100,18 @@ export class VM {
   step() {
     if (this.pendingChoice) return { type: 'choice', ...this.pendingChoice };
     const f = this.script.bytes;
-    const it = iterate(f, this.pc); const r = it.next();
-    if (r.done) { this.halted = true; return { type: 'end' }; }
-    const x = r.value; this.pc = x.next; const op = x.op;
+    const x = decodeAt(f, this.pc);
+    if (!x) { this.halted = true; return { type: 'end' }; }
+    this.pc = x.next; const op = x.op;
     switch (op) {
       case 0x4f: { const d = decodeControl(op, x.arg); this.set(d.v, arith(this.get(d.v), d.code, d.x)); return null; }
       case 0x50: { const d = decodeControl(op, x.arg); this.set(d.v, arith(this.get(d.v), d.code, this.get(d.x))); return null; }
       case 0x57: case 0x58: { const d = decodeControl(op, x.arg); if (!this.cond(d.terms)) this.goto(d.slot, d.label); return null; }
       case 0x52: case 0x59: { const d = decodeControl(op, x.arg); this.goto(d.slot, d.label); return { type: 'jump', op, ...d }; }
       case 0x56: return { type: 'label', label: x.label };
+      case 0x5a: { const d = decodeControl(op, x.arg); this.stack.push([this.script, this.pc]); this.goto(d.slot, d.label); return null; }
+      case 0x5b: case 0xbb: { const r = this.stack.pop(); if (!r) throw new Error('return with empty stack'); [this.script, this.pc] = r; return null; }
+      case 0xac: return { type: 'sceneEnd', pc: x.pc };
       case 0x5c: { const d = decodeControl(op, x.arg); this.set(d.v, 1); return null; }
       case 0x5d: { const d = decodeControl(op, x.arg); this.set(d.v, 0); return null; }
       case 0x53: case 0x54: case 0x55: { const d = decodeControl(op, x.arg); this.pendingChoice = { op, ...d }; return { type: 'choice', op, ...d }; }

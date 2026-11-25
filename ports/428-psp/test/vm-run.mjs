@@ -15,6 +15,7 @@ while (!vm.halted && steps < +(process.argv[4] || 200000)) {
   else if (e.type === 'choice') { choices++; trail.push(`${vm.script.name}@${vm.pc.toString(16)} choice ${e.options.map(o => o.label).join('|')}`); vm.choose(0); }
   else if (e.type === 'jump') trail.push(`${vm.script.name} ${e.label}`);
   else if (e.type === 'op') opCount.set(e.op, (opCount.get(e.op) || 0) + 1);
+  else if (e.type === 'sceneEnd') { trail.push(`${vm.script.name}@${e.pc.toString(16)} SCENE END after ${vm.flow.at(-1)}`); if (process.argv[5] === 'stop') break; }
   else if (e.type === 'end') trail.push(`end ${vm.script.name}`);
 }
 console.log({ steps, texts, choices, at: `${vm.script.name}@${vm.pc.toString(16)}`, halted: vm.halted, flow: vm.flow.length });
