@@ -52,5 +52,6 @@
 - `sound/output.js`·`sound/sfc-worklet.js`·`sound/resampler.js`: 브라우저 출력. APU는 VM과 같은 스레드에서 돌고, S-DSP 샘플을 블록으로 AudioWorklet에 보낸다. 워크릿은 32,040 Hz를 기기 출력률로 선형 보간하고, 버퍼 채움 정도로 비율을 ±0.5% 안에서 보정한다. 음소거·일시정지 지원.
 - `sound/demo.html`: 비공개 `port-data/sound/ipl-records.bin`·`dsp-gauss.bin`과 `trace/spc-ports.tsv`로 reset부터 첫 선택지까지의 사운드를 실시간 재생하는 확인 페이지. 저장소 상위 폴더를 정적 서버로 열고 `ports/kamaitachi-sfc/sound/demo.html`에 접속한다(`?data=`로 자료 경로 변경).
 - `sound/realtime.js`: 에뮬레이션을 벽시계에 맞춰 진행하고 출력 버퍼를 채우는 공통 루프. 기계는 `time`(초), `runTo(sec)`, 선택적 `end`만 제공하면 된다. 지금은 `sound/replay-machine.js`(기록된 입력 재생)가 쓰고, 브라우저 VM도 같은 계약으로 붙인다. 긴 정지 뒤에는 한 프레임에 최대 0.1초만 따라잡고 기준 시각을 다시 잡는다.
+- `sound/vm-demo.html` + `sound/vm-sound.js`: 원작 65c816 코드를 `sfc-vm/machine.js`(Codex `SfcMachine`)로 실행하고 APU를 `MasterLink`로 구동하는 페이지. 기록된 입력이 아니라 VM이 직접 소리를 낸다. 화면은 아직 없다. `?data=`(사운드 자료), `?game=`(게임 이미지 URL, 기본 `data/game/kamaitachi.sfc`). 키: 방향키, X=A, Z=B, A=Y, S=X, Q/W=L/R, Enter=START, Shift=SELECT. `sfc-vm/`이 같은 상위 폴더에 있어야 한다(Codex 브랜치 병합 후).
 - 출력 버퍼(`sound/resampler.js`)는 목표량(기본 80 ms)이 찰 때까지, 그리고 버퍼가 비었다가 다시 찰 때까지 재생을 미룬다. 재생 시작 때 짧은 끊김이 반복되던 문제를 없앴다(헤드리스 Chromium 12초 재생에서 부족 0).
 - `tools/extract-sound.mjs <rom> <kamaitachi-sfc-kor/port-data/sound>`: 드라이버 부팅 레코드(file `$003A3F`, 10,011 bytes)를 `ipl-records.bin`으로 추출한다.

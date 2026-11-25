@@ -1,0 +1,64 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SFC VM 사운드</title>
+<style>
+  :root { --bg: #0d0d0f; --fg: #e8e4dc; --muted: #8a857c; --accent: #b3262d; }
+  body { margin: 0; background: var(--bg); color: var(--fg); font: 15px/1.6 "Noto Serif KR", serif; }
+  main { max-width: 640px; margin: 0 auto; padding: 32px 16px; }
+  h1 { font-size: 20px; font-weight: 600; margin: 0 0 8px; }
+  p { color: var(--muted); margin: 0 0 20px; }
+  button { background: none; color: var(--fg); border: 1px solid var(--accent); padding: 8px 18px; font: inherit; cursor: pointer; margin: 0 8px 8px 0; }
+  button:disabled { opacity: .4; cursor: default; }
+  #stat { margin-top: 20px; font: 13px/1.6 ui-monospace, monospace; color: var(--muted); white-space: pre; }
+</style>
+<main>
+  <h1>카마이타치의 밤 SFC · VM 사운드</h1>
+  <p>원작 65c816 코드를 VM에서 그대로 실행하고, 사운드 칩과 주고받는 신호로 SPC700·S-DSP를 구동합니다. 화면 출력은 아직 없습니다. 키: 방향키, X=A, Z=B, Enter=START.</p>
+  <button id="play" disabled>불러오는 중…</button><button id="pause" disabled>일시정지</button><button id="mute" disabled>음소거</button>
+  <div id="stat"></div>
+</main>
+<script type="module">
+  import { APU } from './apu.js';
+  import { createAudioOut } from './output.js';
+  import { runRealtime } from './realtime.js';
+  import { VmSound, PAD, DEFAULT_KEYS } from './vm-sound.js';
+  import { SfcMachine } from '../../../sfc-vm/machine.js';
+
+  const q = new URLSearchParams(location.search);
+  const base = new URL(q.get('data') ?? '../../../kamaitachi-sfc-kor/port-data/', location.href);
+  const gameUrl = new URL(q.get('game') ?? 'game/kamaitachi.sfc', base);
+  const $ = (id) => document.getElementById(id);
+  const get = (u) => fetch(u).then((r) => { if (!r.ok) throw new Error(`${u.pathname}: ${r.status}`); return r.arrayBuffer(); });
+  let game, gauss;
+  try {
+    [game, gauss] = await Promise.all([get(gameUrl), get(new URL('sound/dsp-gauss.bin', base))]);
+    $('play').textContent = '시작'; $('play').disabled = false;
+  } catch (e) { $('play').textContent = '자료 없음'; $('stat').textContent = String(e); }
+
+  let held = 0;
+  $('play').onclick = async () => {
+    $('play').disabled = true; $('pause').disabled = false; $('mute').disabled = false;
+    const out = await createAudioOut(); await out.resume();
+    const apu = new APU({ gauss: new Int16Array(gauss) }); apu.powerOn(); apu.dsp.onSample = out.sample;
+    const machine = new SfcMachine({ rom: new Uint8Array(game), apu });
+    machine.setButtons(0);
+    const vm = new VmSound(machine);
+    let muted = false, paused = false, cost = 0;
+    const run = runRealtime({ get time() { return vm.time; }, end: null,
+      runTo(t) { const a = performance.now(); vm.runTo(t); cost = cost * 0.9 + (performance.now() - a) * 0.1; } }, out, {
+      onFrame: () => {
+        const s = out.stats();
+        $('stat').textContent = `frame ${vm.frame}  ${vm.time.toFixed(1)}초\n프레임당 계산 ${cost.toFixed(1)} ms` +
+          (s ? `\n출력 ${out.context.sampleRate} Hz  버퍼 ${s.fill}  부족 ${s.underruns}` : '');
+      },
+    });
+    $('mute').onclick = () => { muted = !muted; out.setMuted(muted); $('mute').textContent = muted ? '소리 켜기' : '음소거'; };
+    $('pause').onclick = () => { paused = !paused; run.setPaused(paused); $('pause').textContent = paused ? '계속' : '일시정지'; };
+    const key = (down) => (e) => {
+      const b = PAD[DEFAULT_KEYS[e.code]]; if (!b) return;
+      e.preventDefault(); held = down ? held | b : held & ~b; machine.setButtons(held);
+    };
+    addEventListener('keydown', key(true)); addEventListener('keyup', key(false));
+  };
+</script>
