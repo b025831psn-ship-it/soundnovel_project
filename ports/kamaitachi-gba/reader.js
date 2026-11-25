@@ -109,6 +109,9 @@ function loadEdits() {
     }).catch(() => {});
 }
 loadEdits();
+// and every few seconds while the page is in front, so a value saved with the picture already up
+// shows on it too
+if (!PREVIEW) setInterval(() => { if (document.visibilityState === "visible") loadEdits(); }, 3000);
 let currentId = null;
 const editFor = (id) => (id === null || id === undefined ? null : edits[id] ?? null);
 function pictureId(game) {
