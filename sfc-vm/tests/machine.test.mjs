@@ -31,10 +31,11 @@ test('runs to a master/time target at an instruction boundary', () => {
 test('owns frame, NMI and joypad scheduling', () => {
   const frames = [];
   const nmis = [];
+  const joypads = [];
   const machine = new SfcMachine({
     rom: loopingRom(),
     apu: null,
-    joypad: () => 0x1234,
+    joypad: (nmi, frame) => { joypads.push([nmi, frame]); return 0x1234; },
     onFrame: (frame, framebuffer) => frames.push([frame, framebuffer]),
     onNmi: (frame, master) => nmis.push([frame, master]),
   });
@@ -43,6 +44,8 @@ test('owns frame, NMI and joypad scheduling', () => {
 
   assert.equal(machine.frame, 1);
   assert.equal(nmis.length, 1);
+  assert.equal(machine.nmiCount, 1);
+  assert.deepEqual(joypads, [[1, 1]]);
   assert.equal(machine.bus.read8(0x4218), 0x34);
   assert.equal(machine.bus.read8(0x4219), 0x12);
 

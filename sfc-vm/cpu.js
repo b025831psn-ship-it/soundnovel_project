@@ -19,6 +19,12 @@ const DP_INDEXED_INDIRECT_OPS = new Set([0x01, 0x21, 0x41, 0x61, 0x81, 0xa1, 0xc
 const STACK_INDIRECT_Y_OPS = new Set([0x13, 0x33, 0x53, 0x73, 0x93, 0xb3, 0xd3, 0xf3]);
 const DP_INDIRECT_Y_READ_OPS = new Set([0x11, 0x31, 0x51, 0x71, 0xb1, 0xd1, 0xf1]);
 const ABSOLUTE_INDEXED_RMW_OPS = new Set([0x1e, 0x3e, 0x5e, 0x7e, 0xde, 0xfe]);
+const INDIRECT_POINTER_OPS = new Set([
+  0x01, 0x07, 0x11, 0x12, 0x13, 0x17, 0x21, 0x27, 0x31, 0x32, 0x33, 0x37,
+  0x41, 0x47, 0x51, 0x52, 0x53, 0x57, 0x61, 0x67, 0x71, 0x72, 0x73, 0x77,
+  0x81, 0x87, 0x91, 0x92, 0x93, 0x97, 0xa1, 0xa7, 0xb1, 0xb2, 0xb3, 0xb7,
+  0xc1, 0xc7, 0xd1, 0xd2, 0xd3, 0xd7, 0xe1, 0xe7, 0xf1, 0xf2, 0xf3, 0xf7,
+]);
 const INDEXED_DP_OPS = new Set([
   0x15, 0x35, 0x55, 0x75, 0x95, 0xb5, 0xd5, 0xf5,
   0x16, 0x36, 0x56, 0x76, 0x96, 0xb6, 0xd6, 0xf6,
@@ -45,23 +51,33 @@ const RMW_OPS = new Set([
   0x46, 0x4e, 0x56, 0x5e, 0x66, 0x6e, 0x76, 0x7e, 0xc6, 0xce, 0xd6, 0xde,
   0xe6, 0xee, 0xf6, 0xfe,
 ]);
+const STACK_IO4200_PLUS6 = new Set([0x0b, 0x20, 0x62, 0xd4, 0xf4, 0xfc]);
+const STACK_E_IO2100_DELTA = new Map([
+  [0x00, -4], [0x02, -4], [0x0b, -2], [0x20, -2], [0x22, -4], [0x28, -2],
+  [0x2b, -4], [0x40, -6], [0x60, -4], [0x62, -2], [0x68, -2], [0x6b, -6],
+  [0x7a, -2], [0xab, -2], [0xd4, -2], [0xf4, -2], [0xfa, -2], [0xfc, -2],
+]);
+const STACK_E_IO4200_DELTA = new Map([
+  [0x00, -4], [0x02, -4], [0x0b, 10], [0x20, -2], [0x22, 8], [0x28, -2],
+  [0x2b, -4], [0x40, -6], [0x60, -4], [0x62, 10], [0x68, -2], [0x6b, -6],
+  [0x7a, -2], [0xab, -2], [0xd4, 10], [0xf4, 10], [0xfa, -2], [0xfc, 10],
+]);
 
 const hex = (n, width) => n.toString(16).toUpperCase().padStart(width, '0');
 
 export class Cpu65816 {
   constructor(bus, { traceLimit = Infinity, onBusAccess = null } = {}) {
     this.rawBus = bus;
-    const cpu = this;
-    this.bus = new Proxy(bus, {
-      get(target, property) {
-        if (property === 'read8') return (address) => cpu.read8(address);
-        if (property === 'read16') return (address) => cpu.read16(address);
-        if (property === 'write8') return (address, value) => cpu.write8(address, value);
-        if (property === 'write16') return (address, value) => cpu.write16(address, value);
-        const value = Reflect.get(target, property, target);
-        return typeof value === 'function' ? value.bind(target) : value;
-      },
-    });
+    // These are the only bus entry points used by the CPU.  A fixed facade is
+    // substantially cheaper than a Proxy get trap on every emulated byte.
+    this.bus = {
+      read8: (address) => this.read8(address),
+      read16: (address) => this.read16(address),
+      write8: (address, value) => this.write8(address, value),
+      write16: (address, value) => this.write16(address, value),
+      latchControllers: bus.latchControllers?.bind(bus),
+      latchNmi: bus.latchNmi?.bind(bus),
+    };
     this.trace = [];
     this.traceLimit = traceLimit;
     this.onBusAccess = onBusAccess;
@@ -115,6 +131,7 @@ export class Cpu65816 {
     }
     const at = this.masterCycle;
     const value = this.rawBus.read8(address, at);
+    this.lastBusAddress = address;
     this.onBusAccess?.({ master: at, direction: 'r', address, value });
     this.advanceMaster(this.memorySpeed(address));
     this.busTransactions++;
@@ -126,10 +143,28 @@ export class Cpu65816 {
     return low | (this.read8((address + 1) & 0xffffff) << 8);
   }
 
+  readPointer8(address) {
+    address &= 0xffffff;
+    const at = this.masterCycle;
+    const value = this.rawBus.read8(address, at);
+    this.onBusAccess?.({ master: at, direction: 'r', address, value });
+    // 5A22 address-generation reads from the CPU/PPU I/O windows use the
+    // 8-master pointer path, even though a final data access is 6 masters.
+    this.advanceMaster(Math.max(8, this.memorySpeed(address)));
+    this.busTransactions++;
+    return value;
+  }
+
+  readPointer16(address) {
+    const low = this.readPointer8(address);
+    return low | (this.readPointer8((address + 1) & 0xffffff) << 8);
+  }
+
   write8(address, value) {
     address &= 0xffffff;
     const at = this.masterCycle;
     this.rawBus.write8(address, value, at);
+    this.lastBusAddress = address;
     this.onBusAccess?.({ master: at, direction: 'w', address, value: value & 0xff });
     this.advanceMaster(this.rawBus.takeDmaMasterCycles?.() ?? 0);
     this.advanceMaster(this.memorySpeed(address));
@@ -196,9 +231,27 @@ export class Cpu65816 {
     if (opcode === 0x91) this.internalCycle();
     if (DIRECT_PAGE_OPS.has(opcode) && (this.d & 0xff)) this.internalCycle();
 
+    const finalWord = this.lastBusAddress & 0xffff;
+    if (INDIRECT_POINTER_OPS.has(opcode) && finalWord >= 0x2000 && finalWord < 0x6000)
+      this.advanceMaster(this.a8() ? 2 : 4);
+
     if (INDEXED_STORE_OPS.has(opcode)) this.internalCycle();
     if (DP_INDIRECT_Y_READ_OPS.has(opcode) && !this.x8()) this.internalCycle();
     if (RMW_OPS.has(opcode)) this.internalCycle();
+
+    const startS = this.instructionStartS & 0xffff;
+    if (this.e) {
+      const adjustment = startS >= 0x4200 && startS < 0x6000
+        ? STACK_E_IO4200_DELTA.get(opcode)
+        : startS >= 0x2000 && startS < 0x4200 ? STACK_E_IO2100_DELTA.get(opcode) : 0;
+      if (adjustment) this.advanceMaster(adjustment);
+    } else if (startS >= 0x4200 && startS < 0x6000) {
+      if (STACK_IO4200_PLUS6.has(opcode)
+        || (opcode === 0x48 && !this.a8())
+        || ((opcode === 0x5a || opcode === 0xda) && !this.x8())) this.advanceMaster(6);
+    }
+    if (opcode === 0xd6 && this.d === 0xffff && this.x === 1)
+      this.advanceMaster(this.e ? 54 : 62);
 
     this.lastInstructionTransactions = this.busTransactions - startTransactions;
   }
@@ -290,6 +343,7 @@ export class Cpu65816 {
     this.indexedReadPenaltyApplied = false;
     const op = this.fetch8();
     this.currentInstruction = { address: at, opcode: op };
+    this.instructionStartS = this.s;
     this.branchTaken = false;
     let name;
     switch (op) {

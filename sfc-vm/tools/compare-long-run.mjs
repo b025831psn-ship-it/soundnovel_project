@@ -3,20 +3,21 @@ import fs from 'node:fs';
 
 const [nativePath, vmPath, outputPath = ''] = process.argv.slice(2);
 if (!nativePath || !vmPath) throw new Error('usage: compare-long-run.mjs native.tsv vm.tsv [report.json]');
-const read = (path) => fs.readFileSync(path, 'utf8').trim().split('\n').slice(1).map((line) => {
-  const [sourceFrame, wram, vram, cgram, oam, nmiPc, apuRaw, apuSemantic, apuCount, emuFrame] = line.split('\t');
-  return { frame: Number(emuFrame ?? sourceFrame), sourceFrame: Number(sourceFrame),
-    wram, vram, cgram, oam, nmiPc, apuRaw, apuSemantic, apuCount };
-});
+const read = (path) => {
+  const lines = fs.readFileSync(path, 'utf8').trim().split('\n');
+  const headers = lines[0].split('\t');
+  return lines.slice(1).map((line) => Object.fromEntries(headers.map((header, index) => {
+    const key = header === 'nmi_pc' ? 'nmiPc' : header === 'apu_raw' ? 'apuRaw'
+      : header === 'apu_semantic' ? 'apuSemantic' : header === 'apu_count' ? 'apuCount' : header;
+    const value = line.split('\t')[index];
+    return [key, header === 'nmi' || header === 'frame' ? Number(value) : value];
+  })));
+};
 const native = read(nativePath), vm = read(vmPath);
-const byFrame = (rows) => new Map(rows.map((row) => [row.frame, row]));
-const vmFrames = byFrame(vm);
-let bestOffset = 0, bestMatches = -1;
-for (let offset = -3; offset <= 3; offset++) {
-  let matches = 0;
-  for (const row of native.slice(0, 300)) if (vmFrames.get(row.frame + offset)?.wram === row.wram) matches++;
-  if (matches > bestMatches) { bestMatches = matches; bestOffset = offset; }
-}
+const key = native[0]?.nmi == null ? 'frame' : 'nmi';
+const vmFrames = new Map(vm.map((row) => [row[key], row]));
+const bestOffset = 0;
+const bestMatches = native.slice(0, 300).filter((row) => vmFrames.get(row[key])?.wram === row.wram).length;
 
 const fields = ['wram', 'vram', 'cgram', 'oam', 'nmiPc', 'apuRaw', 'apuSemantic', 'apuCount'];
 const report = { nativeFrames: native.length, vmFrames: vm.length, vmFrameOffset: bestOffset,
@@ -25,14 +26,14 @@ for (const field of fields) {
   const intervals = [];
   let open = null, compared = 0, mismatched = 0;
   for (const expected of native) {
-    const actual = vmFrames.get(expected.frame + bestOffset);
+    const actual = vmFrames.get(expected[key]);
     if (!actual) continue;
     compared++;
     const mismatch = expected[field] !== actual[field];
     if (mismatch) {
       mismatched++;
-      open ??= { nativeStart: expected.frame, vmStart: actual.frame, expected: expected[field], actual: actual[field] };
-      open.nativeEnd = expected.frame; open.vmEnd = actual.frame;
+      open ??= { nativeStart: expected[key], vmStart: actual[key], expected: expected[field], actual: actual[field] };
+      open.nativeEnd = expected[key]; open.vmEnd = actual[key];
     } else if (open) { intervals.push(open); open = null; }
   }
   if (open) intervals.push(open);

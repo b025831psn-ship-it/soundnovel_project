@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import { pathToFileURL } from 'node:url';
 import { SfcMachine } from '../machine.js';
 
-const [romPath, apuModulePath, outputPath, targetArg = '20000', periodArg = '90', wramArg = '55'] = process.argv.slice(2);
+const [romPath, apuModulePath, outputPath, targetArg = '20000', periodArg = '90', wramArg = '55', joypadPath = ''] = process.argv.slice(2);
 if (!romPath || !apuModulePath || !outputPath) throw new Error(
   'usage: long-run.mjs ROM.sfc APU-MODULE output.tsv [frames=20000] [a-period=90] [wram-fill=55]',
 );
@@ -32,11 +32,18 @@ let rawCount = 0, semanticCount = 0, machine;
 const rows = [];
 let lastNmiPc = 0;
 const target = Number(targetArg), period = Number(periodArg);
+const recordedJoypad = new Map();
+if (joypadPath) for (const line of fs.readFileSync(joypadPath, 'utf8').trim().split('\n').slice(1)) {
+  const [frameText,, addressText, valueText] = line.split('\t');
+  const nmi = Number(frameText) - 45, shift = Number.parseInt(addressText, 16) === 0x4219 ? 8 : 0;
+  recordedJoypad.set(nmi, (recordedJoypad.get(nmi) ?? 0) | (Number.parseInt(valueText, 16) << shift));
+}
 
 machine = new SfcMachine({
   rom: fs.readFileSync(romPath),
   apu,
-  joypad: (frame) => period && frame > 300 && frame % period < 2 ? 0x0080 : 0,
+  joypad: (nmi) => joypadPath ? (recordedJoypad.get(nmi) ?? 0)
+    : period && nmi > 300 && nmi % period < 2 ? 0x0080 : 0,
   cpuOptions: { traceLimit: 0 },
   busOptions: {
     eventLimit: 0,
@@ -51,9 +58,10 @@ machine = new SfcMachine({
       if (keep) { for (const byte of fields) fnvUpdate(semantic, byte); semanticCount++; }
     },
   },
-  onNmi: () => { lastNmiPc = machine.cpu.address(); },
-  onFrame: (frame) => {
-    rows.push([frame, hex(fnv(machine.bus.wram)), hex(fnv(machine.bus.vram)), hex(fnv(machine.bus.cgram)),
+  onNmi: (frame) => {
+    const nmi = machine.nmiCount;
+    lastNmiPc = machine.cpu.address();
+    rows.push([nmi, frame, hex(fnv(machine.bus.wram)), hex(fnv(machine.bus.vram)), hex(fnv(machine.bus.cgram)),
       hex(fnv(machine.bus.oam)), lastNmiPc.toString(16).padStart(6, '0'), xorCount(raw, rawCount),
       xorCount(semantic, semanticCount), rawCount].join('\t'));
     if (rows.length >= 100) {
@@ -62,10 +70,10 @@ machine = new SfcMachine({
   },
 });
 
-fs.writeFileSync(outputPath, 'frame\twram\tvram\tcgram\toam\tnmi_pc\tapu_raw\tapu_semantic\tapu_count\n');
+fs.writeFileSync(outputPath, 'nmi\tframe\twram\tvram\tcgram\toam\tnmi_pc\tapu_raw\tapu_semantic\tapu_count\n');
 let failure = null;
 try {
-  while (machine.frame < target) machine.step();
+  while (machine.nmiCount < target) machine.step();
 } catch (error) {
   failure = { frame: machine.frame, master: machine.master, pc: machine.cpu.address(),
     message: error instanceof Error ? error.message : String(error) };

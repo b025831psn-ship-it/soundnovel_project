@@ -12,13 +12,16 @@ export class SfcMachine {
     busOptions = {},
     cpuOptions = {},
     onNmi = null,
+    onAfterNmi = null,
     onInstruction = null,
   }) {
     this.frame = 0;
+    this.nmiCount = 0;
     this.end = null;
     this.joypad = joypad;
     this.onFrame = onFrame;
     this.onNmi = onNmi;
+    this.onAfterNmi = onAfterNmi;
     this.onInstruction = onInstruction;
     this.buttons = null;
     this.inVblank = false;
@@ -45,12 +48,18 @@ export class SfcMachine {
 
   setButtons(mask) { this.buttons = mask & 0xffff; }
 
-  latchNmi() {
-    const mask = this.buttons ?? this.joypad(this.frame) ?? 0;
+  enterNmi() {
+    this.nmiCount++;
+    const mask = this.buttons ?? this.joypad(this.nmiCount, this.frame) ?? 0;
     this.bus.setController1(mask);
-    if (!(this.bus.io[0x4200 - 0x2000] & 0x80)) return;
     this.onNmi?.(this.frame, this.master);
     this.cpu.nmi();
+    this.onAfterNmi?.(this.nmiCount, this.frame, this.master);
+  }
+
+  latchNmi() {
+    if (!(this.bus.io[0x4200 - 0x2000] & 0x80)) return;
+    this.enterNmi();
   }
 
   step() {
@@ -74,8 +83,7 @@ export class SfcMachine {
     }
     if (this.master >= this.pendingNmiAt) {
       this.pendingNmiAt = Infinity;
-      this.onNmi?.(this.frame, this.master);
-      this.cpu.nmi();
+      this.enterNmi();
     }
     return { instructionAddress, result };
   }
