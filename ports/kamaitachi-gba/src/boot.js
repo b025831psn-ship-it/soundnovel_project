@@ -127,9 +127,12 @@ export class Boot {
     this.books = books ?? new Books();
     this.pageStart = null;
     this.loading = null;
+    this.continueRequest = null;
+    this.titleActive = false;
     this.resumeWaiting = null;
     vm.onPageStart = (bank, offset) => {
       this.pageStart = pageState(vm, bank, offset, { names: this.names });
+      this.suspend();
     };
     // 02006649 + 16 * slot: the names the text shows (1 hero 透, 2 girlfriend 真理, 0 culprit).
     this.names = { 0: [], 1: [0x93, 0xa7], 2: [0x90, 0x5e, 0x97, 0x9d] };
@@ -211,6 +214,31 @@ export class Boot {
   *nameScreens(modes) {
     for (const mode of modes) yield* this.nameEntry.run(mode);
     if (modes[0] === 2) this.ram.choiceSkip = 1;
+  }
+
+  // Web only (not on the cartridge): the page the player is on is kept in the suspend slot, so a
+  // closed tab or another device carries on from here. The welcome and title pages do not count.
+  suspend() {
+    if (!this.vm.ram.inGame || !this.pageStart || !this.books.suspend) return;
+    this.books.suspend.write({
+      title: this.nodeTitle(this.vm.ram.node),
+      tone: { ...this.screen.tone },
+      state: this.pageStart,
+    });
+  }
+
+  // Web only: whether the suspend slot has a page to carry on from.
+  canContinue() {
+    return !!this.books.suspend?.read();
+  }
+
+  // Web only: carry on from the suspend slot. Only possible at the title menu: the title ends
+  // the way 本を読む does (the welcome plays, then 1D 67 puts the page back). Returns whether it was taken.
+  continueSuspended() {
+    const data = this.books.suspend?.read();
+    if (!data || !this.titleActive || this.continueRequest) return false;
+    this.continueRequest = data;
+    return true;
   }
 
   // 0800B79C: whether any book is in use.
@@ -475,6 +503,11 @@ export class Boot {
 
   // 0800EC3C
   *title() {
+    this.titleActive = true;
+    try { yield* this.titleScreens(); } finally { this.titleActive = false; }
+  }
+
+  *titleScreens() {
     yield* this.logo();
     let returning = false;
     while (true) {
@@ -482,6 +515,12 @@ export class Boot {
       this.fadeOut(0x19, 1);
       this.fadeOut(0x19, 5);
       yield* this.waitFade(1);
+      if (this.continueRequest) {
+        this.loading = this.continueRequest;
+        Object.assign(this.names, this.loading.state?.names ?? {});
+        this.continueRequest = null;
+        break;
+      }
       // 0800E4C4 -> 0800E328: bookmark selection. B returns to the title without the logo.
       if (yield* this.bookmarks()) break;
       this.logoShown = true;
@@ -520,6 +559,7 @@ export class Boot {
         select: () => { this.effect(3); selected = index; },
       }));
       yield;
+      if (this.continueRequest) return;
       if (this.pressed(KEY.RIGHT) && selected < items.length - 1) { this.effect(3); selected++; }
       if (this.pressed(KEY.LEFT) && selected > 0) { this.effect(3); selected--; }
       if (!this.pressed(KEY.A | KEY.START)) continue;

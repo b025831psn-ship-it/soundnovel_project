@@ -129,3 +129,58 @@ export class SyncClient {
     return out;
   }
 }
+
+// --- pairing with a short one-time code ---------------------------------------------------------
+// The 4-character code only moves the long secret between two devices within minutes. It is not
+// the account password, so it can be short; the server limits failed claims.
+export function newPairCode() {
+  const b = crypto.getRandomValues(new Uint8Array(4));
+  return [...b].map((x) => ALPHABET[x % 32]).join("");
+}
+
+async function pairKey(code, usage) {
+  const base = await crypto.subtle.importKey("raw", enc.encode(code.toUpperCase()), "PBKDF2", false, ["deriveKey"]);
+  return crypto.subtle.deriveKey({ name: "PBKDF2", hash: "SHA-256", iterations: 200000, salt: enc.encode("soundnovel-pair-v1") }, base, { name: "AES-GCM", length: 256 }, false, [usage]);
+}
+
+// `authToken` ties the code to the vault so only its owner can revoke it ("make a new code").
+export async function startPairing(secret, { baseUrl, authToken, fetchImpl = globalThis.fetch.bind(globalThis), attempts = 5 } = {}) {
+  for (let i = 0; i < attempts; i++) {
+    const code = newPairCode();
+    const iv = crypto.getRandomValues(new Uint8Array(12));
+    const ct = new Uint8Array(await crypto.subtle.encrypt({ name: "AES-GCM", iv }, await pairKey(code, "encrypt"), secret));
+    const r = await fetchImpl(`${baseUrl.replace(/\/$/, "")}/v1/pair/${code}`, {
+      method: "PUT", headers: { "content-type": "application/json", authorization: `Bearer ${authToken}` }, body: JSON.stringify({ blob: { iv: b64(iv), ct: b64(ct) } }),
+    });
+    if (r.status === 409) continue; // code already in use: pick another
+    if (!r.ok) throw new Error(`pairing failed: ${r.status}`);
+    return { code, expiresInSec: (await r.json()).expiresInSec ?? null };
+  }
+  throw new Error("no free pairing code");
+}
+
+// Returns the secret, or a reason: "wrong" (unknown, expired or already used), "limited", "error".
+export async function claimPairing(code, { baseUrl, fetchImpl = globalThis.fetch.bind(globalThis) } = {}) {
+  const clean = String(code).toUpperCase().replace(/[\s-]/g, "").replace(/[IL]/g, "1").replace(/O/g, "0");
+  const r = await fetchImpl(`${baseUrl.replace(/\/$/, "")}/v1/pair/${clean}/claim`, { method: "POST" });
+  if (r.status === 429) return { ok: false, reason: "limited" };
+  if (r.status === 404 || r.status === 400) return { ok: false, reason: "wrong" };
+  if (!r.ok) return { ok: false, reason: "error" };
+  const { blob } = await r.json();
+  try {
+    const pt = await crypto.subtle.decrypt({ name: "AES-GCM", iv: unb64(blob.iv) }, await pairKey(clean, "decrypt"), unb64(blob.ct));
+    return { ok: true, secret: new Uint8Array(pt) };
+  } catch { return { ok: false, reason: "error" }; }
+}
+
+export async function revokePairing(code, { baseUrl, authToken, fetchImpl = globalThis.fetch.bind(globalThis) }) {
+  const r = await fetchImpl(`${baseUrl.replace(/\/$/, "")}/v1/pair/${code.toUpperCase()}`, { method: "DELETE", headers: { authorization: `Bearer ${authToken}` } });
+  return r.status === 204;
+}
+
+// Gives this vault a new code and retires the old one (lost or leaked code).
+export async function renewPairing(secret, oldCode, opts) {
+  const fresh = await startPairing(secret, opts);
+  if (oldCode) await revokePairing(oldCode, opts);
+  return fresh;
+}

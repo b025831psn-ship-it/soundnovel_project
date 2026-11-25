@@ -24,7 +24,7 @@ export const codec = {
   validate: (p) => (p && typeof p === "object" && Number.isInteger(p.bank) && Number.isInteger(p.offset) ? { ok: true } : { ok: false, reason: "corrupt" }),
   migrate: () => ({ ok: false, reason: "unsupportedSchema" }),
   decode: (p) => ({ ok: true, state: p }),
-  summarize: (p) => ({ title: p?.title ?? "" }),
+  summarize: (p) => ({ title: typeof p?.title === "string" ? p.title : "" }),
 };
 
 export class StoreBooks {
@@ -40,7 +40,7 @@ export class StoreBooks {
 
   #write(slot, data) {
     try {
-      this.store.write(GAME_ID, slot, { schema: SCHEMA, dataVersion: codec.dataVersion, edition: this.edition, label: data?.title ?? "", payload: data });
+      this.store.write(GAME_ID, slot, { schema: SCHEMA, dataVersion: codec.dataVersion, edition: this.edition, label: typeof data?.title === "string" ? data.title : "", payload: data });
       return true;
     } catch { return false; }
   }
