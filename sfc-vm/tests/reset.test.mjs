@@ -134,6 +134,106 @@ test('8-bit LSR A does not shift the hidden B accumulator into A', () => {
   assert.equal(cpu.y, 0x09);
 });
 
+test('M=1 accumulator shifts and rotates preserve B and set N/Z/C from A only', () => {
+  const cases = [
+    { opcode: 0x0a, name: 'ASL', input: 0xa581, carry: 0, result: 0xa502, flags: 0x01 },
+    { opcode: 0x4a, name: 'LSR', input: 0xa581, carry: 0, result: 0xa540, flags: 0x01 },
+    { opcode: 0x2a, name: 'ROL', input: 0xa580, carry: 1, result: 0xa501, flags: 0x01 },
+    { opcode: 0x6a, name: 'ROR', input: 0xa501, carry: 1, result: 0xa580, flags: 0x81 },
+  ];
+  for (const entry of cases) {
+    const rom = fixture();
+    rom[0] = entry.opcode;
+    const cpu = new Cpu65816(new SfcBus(rom));
+    cpu.e = false;
+    cpu.p = 0x20 | 0x10 | entry.carry;
+    cpu.a = entry.input;
+    cpu.step();
+    assert.equal(cpu.a, entry.result, entry.name);
+    assert.equal(cpu.p & 0x83, entry.flags, `${entry.name} N/Z/C`);
+  }
+});
+
+test('M=0 accumulator shifts and rotates use the complete 16-bit C register', () => {
+  const cases = [
+    [0x0a, 0x8001, 0, 0x0002, 0x01],
+    [0x4a, 0x8001, 0, 0x4000, 0x01],
+    [0x2a, 0x8001, 1, 0x0003, 0x01],
+    [0x6a, 0x0001, 1, 0x8000, 0x81],
+  ];
+  for (const [opcode, input, carry, result, flags] of cases) {
+    const rom = fixture();
+    rom[0] = opcode;
+    const cpu = new Cpu65816(new SfcBus(rom));
+    cpu.e = false;
+    cpu.p = 0x10 | carry;
+    cpu.a = input;
+    cpu.step();
+    assert.equal(cpu.a, result, `opcode $${opcode.toString(16)}`);
+    assert.equal(cpu.p & 0x83, flags, `opcode $${opcode.toString(16)} N/Z/C`);
+  }
+});
+
+test('M=1 memory shifts, rotates, TSB and TRB touch one byte only', () => {
+  const cases = [
+    { bytes: [0x06, 0x20], input: 0x81, carry: 0, result: 0x02, flags: 0x01 },
+    { bytes: [0x46, 0x20], input: 0x81, carry: 0, result: 0x40, flags: 0x01 },
+    { bytes: [0x26, 0x20], input: 0x80, carry: 1, result: 0x01, flags: 0x01 },
+    { bytes: [0x66, 0x20], input: 0x01, carry: 1, result: 0x80, flags: 0x81 },
+    { bytes: [0x04, 0x20], input: 0x0f, a: 0xa5f0, result: 0xff, flags: 0x02 },
+    { bytes: [0x14, 0x20], input: 0xff, a: 0xa50f, result: 0xf0, flags: 0x00 },
+  ];
+  for (const entry of cases) {
+    const rom = fixture();
+    rom.set(entry.bytes, 0);
+    const bus = new SfcBus(rom);
+    bus.wram.set([entry.input, 0x5a], 0x20);
+    const cpu = new Cpu65816(bus);
+    cpu.e = false;
+    cpu.p = 0x20 | 0x10 | entry.carry;
+    cpu.a = entry.a ?? 0xa500;
+    cpu.step();
+    assert.equal(bus.wram[0x20], entry.result, `opcode $${entry.bytes[0].toString(16)}`);
+    assert.equal(bus.wram[0x21], 0x5a, 'adjacent byte');
+    assert.equal(cpu.a >>> 8, 0xa5, 'hidden B');
+    assert.equal(cpu.p & 0x83, entry.flags, `opcode $${entry.bytes[0].toString(16)} N/Z/C`);
+  }
+});
+
+test('M=1 INC/DEC, XBA and BIT immediate use the architected byte', () => {
+  const cases = [
+    { bytes: [0x1a], a: 0xa5ff, result: 0xa500, flags: 0x02 },
+    { bytes: [0x3a], a: 0xa500, result: 0xa5ff, flags: 0x80 },
+    { bytes: [0xeb], a: 0x0180, result: 0x8001, flags: 0x00 },
+    { bytes: [0x89, 0x80], a: 0xa500, result: 0xa500, flags: 0x02 },
+  ];
+  for (const entry of cases) {
+    const rom = fixture();
+    rom.set(entry.bytes, 0);
+    const cpu = new Cpu65816(new SfcBus(rom));
+    cpu.e = false;
+    cpu.p = 0x20 | 0x10 | 0x41; // prove BIT # preserves N/V/C
+    cpu.a = entry.a;
+    cpu.step();
+    assert.equal(cpu.a, entry.result, `opcode $${entry.bytes[0].toString(16)}`);
+    assert.equal(cpu.p & 0xc3, entry.flags | 0x41, `opcode $${entry.bytes[0].toString(16)} flags`);
+  }
+});
+
+test('X=1 clears and keeps the high bytes of X and Y clear', () => {
+  const rom = fixture();
+  rom.set([0xe2, 0x10, 0xe8, 0x88], 0); // SEP #$10; INX; DEY
+  const cpu = new Cpu65816(new SfcBus(rom));
+  cpu.e = false;
+  cpu.p = 0x20;
+  cpu.x = 0x12ff;
+  cpu.y = 0x3400;
+  cpu.run(3);
+  assert.equal(cpu.x, 0x00);
+  assert.equal(cpu.y, 0xff);
+  assert.equal(cpu.p & 0x82, 0x80, 'DEY sets N and clears Z from the 8-bit result');
+});
+
 test('enters the native NMI vector with a restorable interrupt frame', () => {
   const rom = fixture();
   rom[0x7fea] = 0x34;
