@@ -22,7 +22,7 @@ export class LargeText {
   constructor(screenCanvas) {
     this.screenCanvas = screenCanvas;
     this.enabled = true;
-    this.geometry = { k: K, scale: SCALE, pitch: ROW, limit: WIDTH - 8 * K - GLYPH };
+    this.geometry = { k: K, scale: SCALE, pitch: ROW, limit: WIDTH - 8 * K - GLYPH, right: WIDTH - 8 * K, words: true };
     const canvas = document.createElement("canvas");
     canvas.width = WIDTH;
     canvas.height = HEIGHT;
