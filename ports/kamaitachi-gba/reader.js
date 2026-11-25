@@ -114,6 +114,21 @@ function silhouetteCut(layer) {
   };
   return { top: count(0) > 3, bottom: count(159) > 3 };
 }
+const CUT_MS = 400;
+const cutLevels = new Map(); // canvas context -> { top, bottom, time }
+let cutEasing = false; // set while a margin is still moving toward framed or open
+function cutLevel(ctx, cut) {
+  const now = performance.now();
+  const state = cutLevels.get(ctx) ?? { top: cut.top ? 1 : 0, bottom: cut.bottom ? 1 : 0, time: now };
+  const step = Math.min(1, (now - state.time) / CUT_MS);
+  const ease = (value, wanted) => (wanted ? Math.min(1, value + step) : Math.max(0, value - step));
+  state.top = ease(state.top, cut.top);
+  state.bottom = ease(state.bottom, cut.bottom);
+  state.time = now;
+  cutLevels.set(ctx, state);
+  if (state.top !== (cut.top ? 1 : 0) || state.bottom !== (cut.bottom ? 1 : 0)) cutEasing = true;
+  return state;
+}
 function paintSharp(ctx, entry, base, width, height, layer) {
   const live = [0, 0, 0];
   for (let i = 0; i < base.length; i += 4) { live[0] += base[i]; live[1] += base[i + 1]; live[2] += base[i + 2]; }
@@ -132,20 +147,22 @@ function paintSharp(ctx, entry, base, width, height, layer) {
   ctx.restore();
   // Where a silhouette is cut by the frame, that side keeps the frame: the margin there is dimmed and
   // the picture's edge stays hard, so the cut reads as the picture's border instead of a broken figure.
-  const cut = silhouetteCut(layer);
+  // The change eases over CUT_MS (a silhouette blinding in reaches the edge part way through), so the
+  // margin does not snap from open to framed.
+  const level = cutLevel(ctx, silhouetteCut(layer));
   const scale0 = width / 240;
   ctx.save();
-  ctx.fillStyle = "rgba(0, 0, 0, .7)";
-  if (cut.top) ctx.fillRect(0, 0, width, EXTENDED_TOP * scale0);
-  if (cut.bottom) ctx.fillRect(0, (EXTENDED_TOP + 160) * scale0, width, height - (EXTENDED_TOP + 160) * scale0);
+  if (level.top > 0) { ctx.fillStyle = `rgba(0, 0, 0, ${0.7 * level.top})`; ctx.fillRect(0, 0, width, EXTENDED_TOP * scale0); }
+  if (level.bottom > 0) { ctx.fillStyle = `rgba(0, 0, 0, ${0.7 * level.bottom})`; ctx.fillRect(0, (EXTENDED_TOP + 160) * scale0, width, height - (EXTENDED_TOP + 160) * scale0); }
   ctx.restore();
   const FEATHER = 14;
   const rows = new Uint8ClampedArray(base);
   for (let y = 0; y < 160; y++) {
     const d = Math.min(y, 159 - y);
     if (d >= FEATHER) continue;
-    if ((y < 80 && cut.top) || (y >= 80 && cut.bottom)) continue;
+    const hard = y < 80 ? level.top : level.bottom;
     let t = (d + 0.5) / FEATHER; t = t * t * (3 - 2 * t);
+    t += (1 - t) * hard;
     for (let x = 0; x < 240; x++) rows[4 * (y * 240 + x) + 3] = Math.round(255 * t);
   }
   middleCtx.putImageData(new ImageData(rows, 240, 160), 0, 0);
@@ -245,7 +262,8 @@ function drawExtend(game) {
   }
   flatKey = "";
   if (!entry) { extendBase = null; return; }
-  if (screen.base === extendBase) return;
+  if (screen.base === extendBase && !cutEasing) return;
+  cutEasing = false;
   extendBase = screen.base;
   const pixels = extendedPixels(entry, screen.base);
   if (entry.hd) paintSharp(extendCtx, entry, screen.base, extend.width, extend.height, screen.silhouette);
@@ -319,7 +337,8 @@ function drawPicture(game) {
   const size = { width: reader.clientWidth, height: reader.clientHeight };
   if (!base || !size.height) return;
   extendedLoading ??= loadExtended(game).then(() => { shownBase = null; });
-  if (base !== shownBase) {
+  if (base !== shownBase || cutEasing) {
+    cutEasing = false;
     compose(screen, base);
     picture.classList.toggle("sharp", Boolean(extendedFor(screen)?.hd));
     const width = Math.min(240, (source.height * size.width) / size.height);
