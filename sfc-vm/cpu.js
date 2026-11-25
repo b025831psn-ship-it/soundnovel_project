@@ -280,6 +280,14 @@ export class Cpu65816 {
     this.interrupt(this.e ? 0x00fffa : 0x00ffea);
   }
 
+  irq() {
+    if (this.p & I) return false;
+    this.advanceMaster(this.memorySpeed(this.address()));
+    this.internalCycle();
+    this.interrupt(this.e ? 0x00fffe : 0x00ffee);
+    return true;
+  }
+
   address() { return (this.pbr << 16) | this.pc; }
   fetch8() { const v = this.bus.read8(this.address()); this.pc = (this.pc + 1) & 0xffff; return v; }
   fetch16() { const lo = this.fetch8(); return lo | (this.fetch8() << 8); }

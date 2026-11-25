@@ -47,3 +47,27 @@ After adding the full main/sub colour path, the recorded-input rerun still has
 missing CGWSEL/CGADSUB code path, but hash equality is still blocked by the
 frame-boundary renderer and the state divergence beginning at NMI 121.  No
 claim of native name-screen hash equality is made yet.
+
+## Scanline/HDMA scheduler
+
+The bundle-3 scheduler initializes HDMA at H=20 and transfers active channels
+at H=1106.  It implements direct and indirect tables, repeat/line counters,
+all eight transfer patterns, and charges the CPU sync, byte, and descriptor
+bus cycles.  Visible lines are now composited at H=512 from the live PPU state,
+so HDMA writes to CGRAM, VRAM, scroll, windows, and colour-math registers affect
+the following lines instead of being collapsed into one end-of-frame state.
+H/V timer IRQ positions are scheduled from $4200/$4207-$420A and TIMEUP is
+latched through $4211.
+
+This removes both requested early state failures: WRAM agrees through NMI 166
+(formerly 120), and semantic APUIO agrees through NMI 408 (formerly 162).  The
+remaining state intervals in the 5,700-NMI replay are WRAM 167-168, 176, and
+370-5700; semantic APUIO 409-515 and 589-5700.
+
+Framebuffer equality is not complete.  There are 5,597 differing NMI hashes
+in intervals 19-330, 346, 349, 371-502, 514-592, and 629-5700.  The requested
+name-confirmation sample at frame 2108 / NMI 2063 is native
+`26f9cb4bd06b9a94` versus VM `ab35ef4184a13f70`.  The intervals before NMI 370
+are renderer priority/raster-phase differences; the long interval from NMI
+371 also includes the persistent WRAM/VRAM/CGRAM state divergence beginning at
+NMI 370.  These are recorded as remaining causes, not as a pixel-match claim.

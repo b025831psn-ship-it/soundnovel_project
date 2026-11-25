@@ -146,11 +146,14 @@ function composeScreen(bus, objects, x, y, enable, windowRegister, bpps, direct)
   return top;
 }
 
-export function renderFrame(bus, width = 256, height = 224) {
-  const io = bus.io, rgba = new Uint8ClampedArray(width * height * 4);
+function renderLines(bus, rgba, width, height, firstY, lastY) {
+  const io = bus.io;
   const brightness = io[0x2100 - 0x2000] & 15;
   if (io[0x2100 - 0x2000] & 0x80) {
-    for (let index = 3; index < rgba.length; index += 4) rgba[index] = 255;
+    for (let y = firstY; y < lastY; y++) for (let x = 0; x < width; x++) {
+      const index = (y * width + x) * 4;
+      rgba[index] = rgba[index + 1] = rgba[index + 2] = 0; rgba[index + 3] = 255;
+    }
     return rgba;
   }
   const mode = io[0x2105 - 0x2000] & 7, bpps = mode === 7 ? [8] : MODE_BPP[mode] ?? [];
@@ -158,7 +161,7 @@ export function renderFrame(bus, width = 256, height = 224) {
   const cgwsel = io[0x2130 - 0x2000], math = io[0x2131 - 0x2000], half = !!(math & 0x40), subtract = !!(math & 0x80);
   const fixed = fixedColor(bus);
   const objects = (main | sub) & 0x10 ? renderObjects(bus, width, height) : null;
-  for (let y = 0; y < height; y++) for (let x = 0; x < width; x++) {
+  for (let y = firstY; y < lastY; y++) for (let x = 0; x < width; x++) {
     const top = composeScreen(bus, objects, x, y, main, 0x212e, bpps, !!(cgwsel & 1));
     const below = composeScreen(bus, objects, x, y, sub, 0x212f, bpps, !!(cgwsel & 1));
     let rgb = top.rgb;
@@ -180,6 +183,15 @@ export function renderFrame(bus, width = 256, height = 224) {
     rgba[out + 2] = rgb[2] * brightness / 15; rgba[out + 3] = 255;
   }
   return rgba;
+}
+
+export function renderScanline(bus, rgba, y, width = 256, height = 224) {
+  if (y < 0 || y >= height) return rgba;
+  return renderLines(bus, rgba, width, height, y, y + 1);
+}
+
+export function renderFrame(bus, width = 256, height = 224) {
+  return renderLines(bus, new Uint8ClampedArray(width * height * 4), width, height, 0, height);
 }
 
 export function decodeTilePixel(vram, tileAddress, x, y, bitsPerPixel) {

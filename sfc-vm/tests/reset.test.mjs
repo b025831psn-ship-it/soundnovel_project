@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { SfcBus } from '../bus.js';
 import { Cpu65816 } from '../cpu.js';
-import { decodeTilePixel, renderFrame, renderMode3Bg1 } from '../ppu.js';
+import { decodeTilePixel, renderFrame, renderMode3Bg1, renderScanline } from '../ppu.js';
 import { MasterLink, READ_POINT } from '../../ports/kamaitachi-sfc/sound/master-link.js';
 
 // Real reset sequence bytes from the verified ROM. Keeping only this short
@@ -465,4 +465,30 @@ test('renders mode 7 through the affine matrix and interleaved VRAM', () => {
   bus.cgram[2] = 0xe0;
   bus.cgram[3] = 0x03;
   assert.deepEqual([...renderFrame(bus, 1, 1)], [0, 255, 0, 255]);
+});
+
+test('runs an HDMA table at HBlank and charges its bus cycles', () => {
+  const bus = new SfcBus(new Uint8Array(0x8000));
+  bus.io[0x4300 - 0x2000] = 0;
+  bus.io[0x4301 - 0x2000] = 0x22;
+  bus.io[0x4302 - 0x2000] = 0x00;
+  bus.io[0x4303 - 0x2000] = 0x10;
+  bus.io[0x4304 - 0x2000] = 0x7e;
+  bus.io[0x420c - 0x2000] = 1;
+  bus.wram.set([0x81, 0x1f, 0], 0x1000);
+  assert.equal(bus.initHdma(20), 26);
+  assert.equal(bus.runHdmaLine(1106), 34);
+  assert.equal(bus.cgram[0], 0x1f);
+  assert.equal(bus.hdmaActive, 0);
+});
+
+test('renders each scanline from the PPU state visible on that line', () => {
+  const bus = new SfcBus(new Uint8Array(0x8000));
+  bus.io[0x2100 - 0x2000] = 15;
+  const rgba = new Uint8ClampedArray(2 * 4);
+  bus.cgram[0] = 0x1f;
+  renderScanline(bus, rgba, 0, 1, 2);
+  bus.cgram[0] = 0xe0; bus.cgram[1] = 0x03;
+  renderScanline(bus, rgba, 1, 1, 2);
+  assert.deepEqual([...rgba], [255, 0, 0, 255, 0, 255, 0, 255]);
 });

@@ -5,6 +5,7 @@ export class SfcBus {
   constructor(rom, {
     eventLimit = 0, apu = null, masterLink = null,
     apuTraceLimit = 0, onApuAccess = null, onNmiEnable = null,
+    onIrqConfig = null, onIrqAcknowledge = null,
     wramInitialValue = 0,
   } = {}) {
     this.rom = normalizeRom(rom);
@@ -39,9 +40,13 @@ export class SfcBus {
     this.apuTraceLimit = apuTraceLimit;
     this.onApuAccess = onApuAccess;
     this.onNmiEnable = onNmiEnable;
+    this.onIrqConfig = onIrqConfig;
+    this.onIrqAcknowledge = onIrqAcknowledge;
     this.apuAccessCount = 0;
     this.dmaStats = {};
     this.pendingDmaMasterCycles = 0;
+    this.hdmaActive = 0;
+    this.hdma = Array.from({ length: 8 }, () => ({ table: 0, indirect: 0, lines: 0, repeat: false, transfer: false }));
     this.pendingMath = null;
     this.readStats = {};
     this.ppuRevision = 0;
@@ -90,6 +95,7 @@ export class SfcBus {
         ? (this.io[word - 0x2000] & 0x80) | 0x42
         : this.io[word - 0x2000];
       if (word === 0x4210) this.io[word - 0x2000] &= 0x7f;
+      if (word === 0x4211) { this.io[word - 0x2000] &= 0x7f; this.onIrqAcknowledge?.(); }
       if (word === 0x4212 || (word >= 0x4218 && word <= 0x421b)) {
         const stat = this.readStats[`0x${word.toString(16)}`] ??= {
           reads: 0, nonzeroReads: 0, last: 0, lastNonzero: 0,
@@ -154,6 +160,7 @@ export class SfcBus {
       this.recordEvent({ kind: 'io-write', address, value });
       if (word === 0x4200 && !(previous & 0x80) && (value & 0x80))
         this.onNmiEnable?.(masterCycle);
+      if (word === 0x4200 || (word >= 0x4207 && word <= 0x420a)) this.onIrqConfig?.(masterCycle);
       this.writeIo(word, value);
     }
   }
@@ -290,6 +297,75 @@ export class SfcBus {
         nonzeroBytes, destination: 0x2100 + bbad,
       });
     }
+  }
+
+  readHdmaByte(address) {
+    return this.read8(address & 0xffffff, this.currentMasterCycle ?? 0);
+  }
+
+  loadHdmaLine(channel) {
+    const base = 0x4300 + channel * 0x10, state = this.hdma[channel];
+    const bank = this.io[base + 4 - 0x2000];
+    const descriptor = this.readHdmaByte((bank << 16) | state.table++);
+    let cycles = 8;
+    if (!descriptor) { this.hdmaActive &= ~(1 << channel); state.transfer = false; return cycles; }
+    state.lines = descriptor === 0x80 ? 128 : descriptor & 0x7f;
+    state.repeat = !(descriptor & 0x80);
+    state.transfer = true;
+    if (this.io[base - 0x2000] & 0x40) {
+      state.indirect = this.readHdmaByte((bank << 16) | state.table)
+        | (this.readHdmaByte((bank << 16) | ((state.table + 1) & 0xffff)) << 8);
+      state.table = (state.table + 2) & 0xffff;
+      cycles += 16;
+    }
+    this.io[base + 8 - 0x2000] = state.table & 0xff;
+    this.io[base + 9 - 0x2000] = state.table >>> 8;
+    this.io[base + 0x0a - 0x2000] = descriptor;
+    return cycles;
+  }
+
+  initHdma(masterCycle = 0) {
+    this.currentMasterCycle = masterCycle;
+    this.hdmaActive = this.io[0x420c - 0x2000];
+    let cycles = this.hdmaActive ? 18 : 0;
+    for (let channel = 0; channel < 8; channel++) if (this.hdmaActive & (1 << channel)) {
+      const base = 0x4300 + channel * 0x10, state = this.hdma[channel];
+      state.table = this.io[base + 2 - 0x2000] | (this.io[base + 3 - 0x2000] << 8);
+      cycles += this.loadHdmaLine(channel);
+    }
+    return cycles;
+  }
+
+  runHdmaLine(masterCycle = 0) {
+    this.currentMasterCycle = masterCycle;
+    if (!this.hdmaActive) return 0;
+    const patterns = [[0], [0, 1], [0, 0], [0, 0, 1, 1], [0, 1, 2, 3], [0, 1, 0, 1], [0, 0], [0, 0, 1, 1]];
+    let cycles = 18;
+    for (let channel = 0; channel < 8; channel++) if (this.hdmaActive & (1 << channel)) {
+      const base = 0x4300 + channel * 0x10, dmap = this.io[base - 0x2000];
+      const state = this.hdma[channel], pattern = patterns[dmap & 7];
+      if (state.transfer) {
+        const bank = dmap & 0x40 ? this.io[base + 7 - 0x2000] : this.io[base + 4 - 0x2000];
+        let source = dmap & 0x40 ? state.indirect : state.table;
+        for (let index = 0; index < pattern.length; index++) {
+          const address = (bank << 16) | source;
+          const ppu = 0x2100 + ((this.io[base + 1 - 0x2000] + pattern[index]) & 0xff);
+          if (dmap & 0x80) this.write8(address, this.read8(ppu, masterCycle), masterCycle);
+          else this.write8(ppu, this.readHdmaByte(address), masterCycle);
+          source = (source + 1) & 0xffff;
+          cycles += 8;
+        }
+        if (dmap & 0x40) state.indirect = source; else state.table = source;
+      }
+      state.transfer = !state.repeat;
+      state.lines--;
+      if (!state.lines) cycles += this.loadHdmaLine(channel);
+      else cycles += 8;
+      this.io[base + 8 - 0x2000] = state.table & 0xff;
+      this.io[base + 9 - 0x2000] = state.table >>> 8;
+      this.io[base + 0x0a - 0x2000] = (state.repeat ? 0 : 0x80) | (state.lines & 0x7f);
+    }
+    return cycles;
   }
 
   write16(address, value) {
