@@ -157,7 +157,7 @@ const toggleFullscreen = async () => {
   if (document.fullscreenEnabled && shell.requestFullscreen) {
     try {
       await shell.requestFullscreen({ navigationUI: "hide" });
-      if (touch) await screen.orientation?.lock?.("landscape").catch(() => {});
+      if (touch && !shell.classList.contains("reader-on")) await screen.orientation?.lock?.("landscape").catch(() => {});
       return;
     } catch { /* fall back to filling the window */ }
   }
