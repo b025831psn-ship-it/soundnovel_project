@@ -8,12 +8,37 @@
   :root { --bg: #0b0b0d; --fg: #d8d4cc; --accent: #b3262d; }
   html, body { margin: 0; height: 100%; background: var(--bg); color: var(--fg); font-family: 'Noto Serif KR', serif; }
   main { display: grid; place-items: center; min-height: 100%; }
-  canvas { image-rendering: pixelated; background: #000; outline: 1px solid #222; touch-action: manipulation; }
+  .stage { position: relative; line-height: 0; }
+  canvas { max-width: 100vw; image-rendering: pixelated; background: #000; outline: 1px solid #222; touch-action: manipulation; }
+  /* Same rule as the Kamaitachi Advance player: everything by touch, no pad; one menu icon on the screen's bottom-right
+     so it stays reachable in full screen and on phones. */
+  #menuBtn { position: absolute; right: 6px; bottom: 6px; width: 34px; height: 34px; border: 0; border-radius: 50%;
+    background: rgba(0,0,0,.45); color: #ddd; display: grid; place-items: center; cursor: pointer; opacity: .75; }
+  #menuBtn:hover { opacity: 1; }
+  #menuBtn svg { width: 18px; height: 18px; stroke: currentColor; stroke-width: 2; fill: none; }
+  #menu { position: absolute; right: 6px; bottom: 46px; min-width: 150px; background: rgba(12,12,14,.94); border: 1px solid #2a2a2e;
+    border-left: 3px solid var(--accent); line-height: 1.4; padding: 4px 0; }
+  #menu[hidden] { display: none; }
+  #menu button { display: block; width: 100%; text-align: left; background: none; border: 0; color: var(--fg); font: 14px 'Noto Serif KR', serif; padding: 10px 14px; cursor: pointer; }
+  #menu button:hover, #menu button:focus-visible { background: #1c1c20; }
+  #menu button:disabled { color: #666; cursor: default; background: none; }
+  .stage:fullscreen { display: grid; place-items: center; background: #000; }
   #status { position: fixed; left: 8px; bottom: 6px; font: 12px monospace; color: #777; }
 </style>
 </head>
 <body>
-<main><canvas id="screen" width="480" height="272"></canvas></main>
+<main>
+  <div class="stage" id="stage">
+    <canvas id="screen" width="480" height="272" aria-label="게임 화면 480×272"></canvas>
+    <button type="button" id="menuBtn" aria-label="메뉴" aria-expanded="false"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg></button>
+    <div id="menu" role="menu" hidden>
+      <button type="button" role="menuitem" data-act="sound">소리 끄기</button>
+      <button type="button" role="menuitem" data-act="full">전체 화면</button>
+      <button type="button" role="menuitem" disabled>저장·불러오기 (준비 중)</button>
+      <button type="button" role="menuitem" disabled>타임차트 (준비 중)</button>
+    </div>
+  </div>
+</main>
 <div id="status"></div>
 <script type="module" src="player.js"></script>
 </body>
