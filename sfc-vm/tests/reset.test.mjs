@@ -28,8 +28,8 @@ function fixture() {
 }
 
 test('executes the verified reset preamble and records hardware writes', () => {
-  const bus = new SfcBus(fixture());
-  const cpu = new Cpu65816(bus);
+  const bus = new SfcBus(fixture(), { eventLimit: 16 });
+  const cpu = new Cpu65816(bus, { traceLimit: 32 });
   cpu.run(16);
   assert.equal(cpu.e, false);
   assert.equal(cpu.s, 0x0ca8);
@@ -52,7 +52,7 @@ test('executes the reset table comparison loop with native-width flags', () => {
   rom.set([1, 0, 2, 0, 3, 0, 4, 0], 0x29e);
   const bus = new SfcBus(rom);
   bus.wram.set([1, 0, 2, 0, 3, 0, 4, 0], 0x3e1);
-  const cpu = new Cpu65816(bus);
+  const cpu = new Cpu65816(bus, { traceLimit: 64 });
   cpu.run(17 + 4 * 6 + 1);
   assert.equal(cpu.pc, 0x802f);
   assert.equal(cpu.x, 0xfe);
@@ -64,7 +64,7 @@ test('executes the reset table comparison loop with native-width flags', () => {
 });
 
 test('maps the cartridge SRAM window used by the reset checksum', () => {
-  const bus = new SfcBus(fixture());
+  const bus = new SfcBus(fixture(), { eventLimit: 4 });
   assert.equal(bus.read8(0x700000), 0x60, 'fresh SRAM matches the Snes9x probe pattern');
   bus.write16(0x700800, 0x1234);
   assert.equal(bus.read16(0x700800), 0x1234);
@@ -106,7 +106,7 @@ test('implements every opcode in all architected width modes', () => {
 });
 
 test('exposes the SPC700 IPL ready word and echoes transfer tokens', () => {
-  const bus = new SfcBus(fixture());
+  const bus = new SfcBus(fixture(), { eventLimit: 4 });
   assert.equal(bus.read16(0x2140), 0xbbaa);
   bus.write8(0x2140, 0xcc);
   assert.equal(bus.read8(0x2140), 0xcc);
@@ -134,7 +134,7 @@ test('timestamps APUIO at the bus transaction and routes it through MasterLink',
     cpuWrite(port, value) { calls.push(['write', this.cpu.clock, port, value]); },
   };
   const link = new MasterLink(apu);
-  const bus = new SfcBus(fixture(), { masterLink: link });
+  const bus = new SfcBus(fixture(), { masterLink: link, apuTraceLimit: 4 });
   assert.equal(bus.read8(0x2142, 328125), 0x52);
   bus.write8(0x2141, 0x7f, 656250);
   assert.deepEqual(calls, [['read', 15663, 2]], 'read observes only completed SPC instructions; write is queued');
@@ -151,7 +151,7 @@ test('timestamps APUIO at the bus transaction and routes it through MasterLink',
 test('charges memory-speed and internal master cycles per CPU bus transaction', () => {
   const rom = fixture();
   rom.set([0xad, 0x40, 0x21], 0); // LDA $2140
-  const bus = new SfcBus(rom);
+  const bus = new SfcBus(rom, { apuTraceLimit: 1 });
   const cpu = new Cpu65816(bus);
   cpu.step();
   assert.deepEqual(bus.apuTrace[0], {
@@ -176,7 +176,7 @@ test('alternates 5A22-v2 WRAM refresh between H=538 and H=534', () => {
 test('places the 16-bit absolute-index penalty before the data bus read', () => {
   const rom = fixture();
   rom.set([0xbd, 0x40, 0x21], 0); // LDA $2140,X
-  const bus = new SfcBus(rom);
+  const bus = new SfcBus(rom, { apuTraceLimit: 1 });
   const cpu = new Cpu65816(bus);
   cpu.e = false;
   cpu.p = (cpu.p | 0x20) & ~0x10; // 8-bit A, 16-bit index
@@ -344,7 +344,7 @@ test('enters the native NMI vector with a restorable interrupt frame', () => {
 });
 
 test('DMA mode 1 writes source bytes through the VRAM data ports', () => {
-  const bus = new SfcBus(fixture());
+  const bus = new SfcBus(fixture(), { eventLimit: 32 });
   bus.wram.set([0x11, 0x22, 0x33, 0x44], 0x100);
   bus.write8(0x2115, 0x80);
   bus.write16(0x2116, 0);

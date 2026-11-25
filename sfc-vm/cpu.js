@@ -66,7 +66,7 @@ const STACK_E_IO4200_DELTA = new Map([
 const hex = (n, width) => n.toString(16).toUpperCase().padStart(width, '0');
 
 export class Cpu65816 {
-  constructor(bus, { traceLimit = Infinity, onBusAccess = null, onInterruptVector = null } = {}) {
+  constructor(bus, { traceLimit = 0, onBusAccess = null, onInterruptVector = null } = {}) {
     this.rawBus = bus;
     // These are the only bus entry points used by the CPU.  A fixed facade is
     // substantially cheaper than a Proxy get trap on every emulated byte.

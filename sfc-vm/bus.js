@@ -3,8 +3,8 @@ import { MasterLink } from '../ports/kamaitachi-sfc/sound/master-link.js';
 
 export class SfcBus {
   constructor(rom, {
-    eventLimit = Infinity, apu = null, masterLink = null,
-    apuTraceLimit = Infinity, onApuAccess = null, onNmiEnable = null,
+    eventLimit = 0, apu = null, masterLink = null,
+    apuTraceLimit = 0, onApuAccess = null, onNmiEnable = null,
     wramInitialValue = 0,
   } = {}) {
     this.rom = normalizeRom(rom);

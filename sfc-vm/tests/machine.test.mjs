@@ -70,3 +70,17 @@ test('delivers an NMI enable edge twelve masters into vblank', () => {
   machine.runToMaster(enabledAt + 100);
   assert.equal(nmis, 1);
 });
+
+test('keeps debug histories disabled for an hour-equivalent 3600-frame run', () => {
+  const machine = new SfcMachine({ rom: loopingRom(), apu: null });
+  for (let frame = 0; frame < 3600; frame++) {
+    machine.bus.write8(0x2100, frame, machine.master);
+    machine.bus.read8(0x2140, machine.master);
+    machine.cpu.masterCycle = machine.nextFrame;
+    machine.step();
+  }
+  assert.equal(machine.frame, 3600);
+  assert.equal(machine.bus.events.length, 0);
+  assert.equal(machine.bus.apuTrace.length, 0);
+  assert.equal(machine.cpu.trace.length, 0);
+});
