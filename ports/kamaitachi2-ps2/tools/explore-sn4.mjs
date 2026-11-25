@@ -94,6 +94,15 @@ function makeVm() {
       if (name === 'condition') { fork(vm, args[0]); return vm.variables ? true : null; }
       if (name === 'caption') { music(vm, args[0]); return 0; }
       if (name === 'unknown') { report('unknown-op', hex(args[0]), where(vm)); return undefined; }
+      // Layout state, mirrored from player.js so every page can be laid out without a browser.
+      const L = vm.layout ??= {spacing: 0, marginLeft: null, marginTop: null, positions: [], centers: []};
+      if (name === 'spacing') L.spacing = args[0];
+      else if (name === 'marginLeft') L.marginLeft = args[0];
+      else if (name === 'marginTop') L.marginTop = args[0];
+      else if (name === 'position') L.positions.push({value: args[0], offset: args[1]});
+      else if (name === 'clearText') { L.positions = []; L.centers = []; }
+      else if (name === 'command' && args[0] === 'Center') L.centers.push(vm.text.length);
+      if (name === 'command') return 0;
       return undefined;
     },
   }));
@@ -117,7 +126,49 @@ function music(vm, name) {
   } else if (m.operation === 0x17 && !current) report('bgm-volume-without-start', name, where(vm));
 }
 
+// Lay out a page like player.js drawStory()/render.text() and flag what the
+// original would not show: lines past the screen, automatic wraps that start a
+// line with a closing mark, centered lines wider than the text box.
+const KINSOKU = new Set([...'ー。、」』）！？…・ぁぃぅぇぉっゃゅょァィゥェォッャュョ']);
+const advance = (ch, spacing) => (opening.font?.[ch] ?? opening.font?.['�'] ?? [0, 0, 32])[2] + spacing;
+function checkLayout(vm, raw) {
+  const text = raw.trimEnd();
+  if (!text.trim()) return;
+  const L = vm.layout ?? {spacing: 0, marginLeft: null, marginTop: null, positions: [], centers: []};
+  const at = where(vm);
+  if (L.positions.length) {
+    L.positions.forEach((run, i) => {
+      const value = text.slice(run.offset, L.positions[i + 1]?.offset ?? text.length);
+      const w = Array.from(value).reduce((a, ch) => a + advance(ch, L.spacing), 0);
+      if ((run.value >>> 16) + w > 640) report('layout-positioned-past-right', value.slice(0, 20), at);
+    });
+    return;
+  }
+  const x = L.marginLeft ?? 32, y = L.marginTop ?? 31, max = Math.min(580, 640 - x);
+  let px = x, py = y, offset = 0, lineStart = true;
+  const centerAt = o => {
+    if (!L.centers.includes(o)) return x;
+    const line = text.slice(o).split('\n')[0];
+    const w = Array.from(line).reduce((a, ch) => a + advance(ch, L.spacing), 0);
+    if (w >= max) report('layout-center-too-wide', line.slice(0, 24), at);
+    return w < max ? x + (max - w) / 2 : x;
+  };
+  px = centerAt(0);
+  for (const ch of text) {
+    const a = advance(ch, L.spacing);
+    if (ch === '\n') { offset += ch.length; px = centerAt(offset); py += 40; continue; }
+    if (px + a > x + max) {
+      px = x; py += 40;
+      if (KINSOKU.has(ch)) report('layout-wrap-starts-with-closing-mark', text.slice(Math.max(0, offset - 8), offset + 4).replace(/\n/g, '/'), at);
+      else report('info-layout-autowrap', vm.label, at);
+    }
+    px += a; offset += ch.length;
+  }
+  if (py + 32 > 448) report('layout-past-bottom', `${vm.label} (${Math.round(py)}px)`, at);
+}
+
 function checkText(vm, text) {
+  checkLayout(vm, text);
   for (const ch of text) if (ch !== '\n' && !glyphs.has(ch) && !NAMES.join('').includes(ch))
     report(glyphs.has('�') ? 'fallback-char' : 'unsupported-char', ch, where(vm));
 }
