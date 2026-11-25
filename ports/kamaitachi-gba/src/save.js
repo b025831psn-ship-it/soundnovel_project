@@ -83,10 +83,15 @@ export function pageState(vm, startBank, startOffset, extra = {}) {
   });
 }
 
-// Puts a page-start state back into the VM; the scenario then types that page from its start.
-export function restoreState(vm, state) {
-  const ram = typed(state.ram, vm.ram);
+// Puts a book's scenario RAM back (0800AEA4, before the welcome plays).
+// The brightness slots stay as they are: the load has just blacked them out to fade back in.
+export function restoreData(vm, state) {
+  const { brightness, ...ram } = typed(state.ram, vm.ram);
   Object.assign(vm.ram, ram);
+}
+
+// Moves the scenario to the book's page start (1D 67); that page is then typed from its start.
+export function restorePosition(vm, state) {
   vm.bank = state.bank;
   vm.offset = state.offset;
   vm.waiting = "none";

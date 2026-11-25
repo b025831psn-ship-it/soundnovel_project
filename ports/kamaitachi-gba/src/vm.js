@@ -340,6 +340,8 @@ export class VM {
           this.text?.collectChoice?.(this.collectingChoice, raw);
         else {
           // A page's first text: what a bookmark records (0800A838 keeps the page start).
+          // A page that ended in 'p' + 'g' is only cleared here, so clear it before the check.
+          this.text?.resumed?.();
           if (!this.text?.fragments?.length) this.onPageStart?.(startBank, startOffset);
           this.waiting = this.text?.feed(raw) ?? "none";
         }

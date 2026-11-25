@@ -586,3 +586,16 @@ test("opcode 13 disables effects while it collects labels", () => {
   assert.equal(vm.ram.choiceActive, 1);
   assert.equal(vm.ram.effectDisabled, 1);
 });
+
+test("the page after a p g page records its start (bookmark page-start hook)", () => {
+  const sjis = (s) => [...s].map((c) => c.charCodeAt(0));
+  const text = new TextWindow();
+  const starts = [];
+  const vm = new VM({ banks: { 27: bank([[0x00, 0x82, 0xa0, ...sjis("pg"), 0x00], [0x00, 0x82, 0xa2, ...sjis("pg"), 0x00]]) }, text });
+  vm.onPageStart = (b, offset) => starts.push(offset);
+  while (vm.step());
+  assert.equal(vm.waiting, "click");
+  vm.resume();
+  while (vm.step());
+  assert.deepEqual(starts, [vm.rows[27][0], vm.rows[27][1]]);
+});
