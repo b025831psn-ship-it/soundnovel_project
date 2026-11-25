@@ -25,6 +25,10 @@ export class SfcBus {
     this.oam = new Uint8Array(544);
     this.vramAddress = this.cgramAddress = this.oamAddress = this.wramAddress = 0;
     this.vmain = 0;
+    this.bgHofs = new Uint16Array(4);
+    this.bgVofs = new Uint16Array(4);
+    this.ppuScrollLatch = 0;
+    this.fixedColor = 0;
     this.controller1 = 0;
     this.events = [];
     this.eventLimit = eventLimit;
@@ -38,6 +42,7 @@ export class SfcBus {
     this.pendingDmaMasterCycles = 0;
     this.pendingMath = null;
     this.readStats = {};
+    this.ppuRevision = 0;
   }
 
   recordEvent(event) {
@@ -143,6 +148,7 @@ export class SfcBus {
     else if ((bank & 0x40) === 0 && word >= 0x2000 && word < 0x8000) {
       const previous = this.io[word - 0x2000];
       this.io[word - 0x2000] = value;
+      if (word >= 0x2100 && word <= 0x2133) this.ppuRevision++;
       this.recordEvent({ kind: 'io-write', address, value });
       if (word === 0x4200 && !(previous & 0x80) && (value & 0x80))
         this.onNmiEnable?.(masterCycle);
@@ -158,6 +164,18 @@ export class SfcBus {
         this.oam[this.oamAddress % this.oam.length] = value;
         this.oamAddress = (this.oamAddress + 1) % this.oam.length;
         break;
+      case 0x210d: case 0x210f: case 0x2111: case 0x2113: {
+        const bg = (address - 0x210d) >>> 1;
+        this.bgHofs[bg] = ((value << 8) | this.ppuScrollLatch) & 0x3ff;
+        this.ppuScrollLatch = value;
+        break;
+      }
+      case 0x210e: case 0x2110: case 0x2112: case 0x2114: {
+        const bg = (address - 0x210e) >>> 1;
+        this.bgVofs[bg] = ((value << 8) | this.ppuScrollLatch) & 0x3ff;
+        this.ppuScrollLatch = value;
+        break;
+      }
       case 0x2115: this.vmain = value; break;
       case 0x2116: this.vramAddress = (this.vramAddress & 0xff00) | value; break;
       case 0x2117: this.vramAddress = (value << 8) | (this.vramAddress & 0xff); break;
@@ -173,6 +191,11 @@ export class SfcBus {
       case 0x2122:
         this.cgram[this.cgramAddress & 0x1ff] = value;
         this.cgramAddress = (this.cgramAddress + 1) & 0x1ff;
+        break;
+      case 0x2132:
+        if (value & 0x20) this.fixedColor = (this.fixedColor & ~0x001f) | (value & 0x1f);
+        if (value & 0x40) this.fixedColor = (this.fixedColor & ~0x03e0) | ((value & 0x1f) << 5);
+        if (value & 0x80) this.fixedColor = (this.fixedColor & ~0x7c00) | ((value & 0x1f) << 10);
         break;
       case 0x2180:
         this.wram[this.wramAddress & 0x1ffff] = value;

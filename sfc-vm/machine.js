@@ -1,5 +1,6 @@
 import { SfcBus } from './bus.js';
 import { Cpu65816 } from './cpu.js';
+import { renderFrame } from './ppu.js';
 
 export const NTSC_MASTER_HZ = 21_477_272.7;
 
@@ -13,6 +14,7 @@ export class SfcMachine {
     cpuOptions = {},
     onNmi = null,
     onAfterNmi = null,
+    onNmiVector = null,
     onInstruction = null,
   }) {
     this.frame = 0;
@@ -22,6 +24,7 @@ export class SfcMachine {
     this.onFrame = onFrame;
     this.onNmi = onNmi;
     this.onAfterNmi = onAfterNmi;
+    this.onNmiVector = onNmiVector;
     this.onInstruction = onInstruction;
     this.buttons = null;
     this.inVblank = false;
@@ -30,6 +33,8 @@ export class SfcMachine {
     this.nextNmi = 306_912;
     this.frameLength = 357_368;
     this.nmiFrameLength = 357_368;
+    this.framebuffer = null;
+    this.renderedPpuRevision = -1;
 
     const externalNmiEnable = busOptions.onNmiEnable;
     this.bus = new SfcBus(rom, {
@@ -40,7 +45,15 @@ export class SfcMachine {
         if (this.inVblank) this.pendingNmiAt = Math.min(this.pendingNmiAt, master + 12);
       },
     });
-    this.cpu = new Cpu65816(this.bus, cpuOptions);
+    const externalInterruptVector = cpuOptions.onInterruptVector;
+    this.cpu = new Cpu65816(this.bus, {
+      ...cpuOptions,
+      onInterruptVector: (vector, master) => {
+        externalInterruptVector?.(vector, master);
+        if (vector === 0x00fffa || vector === 0x00ffea)
+          this.onNmiVector?.(this.nmiCount, this.frame, master);
+      },
+    });
   }
 
   get master() { return this.cpu.masterCycle; }
@@ -71,7 +84,13 @@ export class SfcMachine {
     while (this.master >= this.nextFrame) {
       this.frame++;
       this.inVblank = false;
-      this.onFrame?.(this.frame, null);
+      if (this.onFrame) {
+        if (this.renderedPpuRevision !== this.bus.ppuRevision) {
+          this.framebuffer = renderFrame(this.bus);
+          this.renderedPpuRevision = this.bus.ppuRevision;
+        }
+        this.onFrame(this.frame, this.framebuffer);
+      }
       this.nextFrame += this.frameLength;
       this.frameLength = this.frameLength === 357_368 ? 357_364 : 357_368;
     }

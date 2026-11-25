@@ -50,7 +50,9 @@ test('owns frame, NMI and joypad scheduling', () => {
   assert.equal(machine.bus.read8(0x4219), 0x12);
 
   machine.setButtons(0xabcd);
-  assert.deepEqual(frames[0], [1, null]);
+  assert.equal(frames[0][0], 1);
+  assert.ok(frames[0][1] instanceof Uint8ClampedArray);
+  assert.equal(frames[0][1].length, 256 * 224 * 4);
   machine.runToMaster(665_000);
   assert.equal(machine.bus.read8(0x4218), 0xcd);
   assert.equal(machine.bus.read8(0x4219), 0xab);

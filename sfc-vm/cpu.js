@@ -44,8 +44,8 @@ const DIRECT_PAGE_OPS = new Set([
 // Absolute indexed stores pay a dummy cycle. Long indexed ($9F) already has
 // the extra address byte as its fifth CPU cycle and has no additional penalty.
 const INDEXED_STORE_OPS = new Set([0x99, 0x9d, 0x9e]);
-const ABSOLUTE_X_READ_OPS = new Set([0x1d, 0x3c, 0x3d, 0x5d, 0x7d, 0xbc, 0xbd, 0xbe, 0xdd, 0xfd]);
-const ABSOLUTE_Y_READ_OPS = new Set([0x19, 0x39, 0x59, 0x79, 0xb9, 0xbb, 0xd9, 0xf9]);
+const ABSOLUTE_X_READ_OPS = new Set([0x1d, 0x3c, 0x3d, 0x5d, 0x7d, 0xbc, 0xbd, 0xdd, 0xfd]);
+const ABSOLUTE_Y_READ_OPS = new Set([0x19, 0x39, 0x59, 0x79, 0xb9, 0xbb, 0xbe, 0xd9, 0xf9]);
 const RMW_OPS = new Set([
   0x04, 0x06, 0x0c, 0x0e, 0x14, 0x16, 0x1c, 0x1e, 0x26, 0x2e, 0x36, 0x3e,
   0x46, 0x4e, 0x56, 0x5e, 0x66, 0x6e, 0x76, 0x7e, 0xc6, 0xce, 0xd6, 0xde,
@@ -66,7 +66,7 @@ const STACK_E_IO4200_DELTA = new Map([
 const hex = (n, width) => n.toString(16).toUpperCase().padStart(width, '0');
 
 export class Cpu65816 {
-  constructor(bus, { traceLimit = Infinity, onBusAccess = null } = {}) {
+  constructor(bus, { traceLimit = Infinity, onBusAccess = null, onInterruptVector = null } = {}) {
     this.rawBus = bus;
     // These are the only bus entry points used by the CPU.  A fixed facade is
     // substantially cheaper than a Proxy get trap on every emulated byte.
@@ -81,6 +81,7 @@ export class Cpu65816 {
     this.trace = [];
     this.traceLimit = traceLimit;
     this.onBusAccess = onBusAccess;
+    this.onInterruptVector = onInterruptVector;
     this.executed = 0;
     this.reset();
   }
@@ -264,6 +265,7 @@ export class Cpu65816 {
     this.p |= I;
     this.p &= ~D;
     this.pbr = 0;
+    this.onInterruptVector?.(vector, this.masterCycle);
     this.pc = this.bus.read16(vector);
   }
 

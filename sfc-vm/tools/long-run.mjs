@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import { pathToFileURL } from 'node:url';
 import { SfcMachine } from '../machine.js';
 
-const [romPath, apuModulePath, outputPath, targetArg = '20000', periodArg = '90', wramArg = '55', joypadPath = ''] = process.argv.slice(2);
+const [romPath, apuModulePath, outputPath, targetArg = '20000', periodArg = '90', wramArg = '55', joypadPath = '', renderArg = '1'] = process.argv.slice(2);
 if (!romPath || !apuModulePath || !outputPath) throw new Error(
   'usage: long-run.mjs ROM.sfc APU-MODULE output.tsv [frames=20000] [a-period=90] [wram-fill=55]',
 );
@@ -31,7 +31,12 @@ const raw = [FNV_HI, FNV_LO], semantic = [FNV_HI, FNV_LO], lastRead = [null, nul
 let rawCount = 0, semanticCount = 0, machine;
 const rows = [];
 let lastNmiPc = 0;
+const blankFramebuffer = new Uint8ClampedArray(256 * 224 * 4);
+for (let index = 3; index < blankFramebuffer.length; index += 4) blankFramebuffer[index] = 255;
+let framebufferHash = hex(fnv(blankFramebuffer));
+let lastFramebuffer = null;
 const target = Number(targetArg), period = Number(periodArg);
+const renderFrames = renderArg !== '0';
 const recordedJoypad = new Map();
 if (joypadPath) for (const line of fs.readFileSync(joypadPath, 'utf8').trim().split('\n').slice(1)) {
   const [frameText,, addressText, valueText] = line.split('\t');
@@ -58,19 +63,21 @@ machine = new SfcMachine({
       if (keep) { for (const byte of fields) fnvUpdate(semantic, byte); semanticCount++; }
     },
   },
-  onNmi: (frame) => {
-    const nmi = machine.nmiCount;
-    lastNmiPc = machine.cpu.address();
+  onNmi: () => { lastNmiPc = machine.cpu.address(); },
+  onNmiVector: (nmi, frame) => {
     rows.push([nmi, frame, hex(fnv(machine.bus.wram)), hex(fnv(machine.bus.vram)), hex(fnv(machine.bus.cgram)),
       hex(fnv(machine.bus.oam)), lastNmiPc.toString(16).padStart(6, '0'), xorCount(raw, rawCount),
-      xorCount(semantic, semanticCount), rawCount].join('\t'));
+      xorCount(semantic, semanticCount), rawCount, framebufferHash].join('\t'));
     if (rows.length >= 100) {
       fs.appendFileSync(outputPath, `${rows.splice(0).join('\n')}\n`);
     }
   },
+  onFrame: renderFrames ? (frame, framebuffer) => {
+    if (framebuffer !== lastFramebuffer) { framebufferHash = hex(fnv(framebuffer)); lastFramebuffer = framebuffer; }
+  } : null,
 });
 
-fs.writeFileSync(outputPath, 'nmi\tframe\twram\tvram\tcgram\toam\tnmi_pc\tapu_raw\tapu_semantic\tapu_count\n');
+fs.writeFileSync(outputPath, 'nmi\tframe\twram\tvram\tcgram\toam\tnmi_pc\tapu_raw\tapu_semantic\tapu_count\tframebuffer\n');
 let failure = null;
 try {
   while (machine.nmiCount < target) machine.step();

@@ -19,7 +19,7 @@ const vmFrames = new Map(vm.map((row) => [row[key], row]));
 const bestOffset = 0;
 const bestMatches = native.slice(0, 300).filter((row) => vmFrames.get(row[key])?.wram === row.wram).length;
 
-const fields = ['wram', 'vram', 'cgram', 'oam', 'nmiPc', 'apuRaw', 'apuSemantic', 'apuCount'];
+const fields = ['wram', 'vram', 'cgram', 'oam', 'nmiPc', 'apuRaw', 'apuSemantic', 'apuCount', 'framebuffer'];
 const report = { nativeFrames: native.length, vmFrames: vm.length, vmFrameOffset: bestOffset,
   alignmentMatchesInFirst300: bestMatches, fields: {} };
 for (const field of fields) {
