@@ -36,17 +36,21 @@ test('a CPU read sees an SPC port write only once the write started more than on
   assert.equal(at(63), 0x77); // T = 3.007
 });
 
-test('a CPU write reaches SPC instructions that start WRITE_LAG clocks later', () => {
-  const apu = new APU();
-  // loop: MOV A,$F4 (3) ; MOV $00,A (4) ; BRA loop (4)
-  apu.cpu.uploadRecords([{ dest: 0x400, payload: Uint8Array.of(0xe4, 0xf4, 0xc4, 0x00, 0x2f, 0xfa) }, { dest: 0x400 }]);
-  apu.cpu.clock = 0;
-  const link = new MasterLink(apu, { writeLag: 2.1 });
-  const seen = [];
-  const op = apu.cpu.step.bind(apu.cpu);
-  apu.cpu.step = () => { const s = apu.cpu.clock, r = op(); if (apu.cpu.ram[0] === 0x5a && !seen.length) seen.push(s); return r; };
-  link.write(21, 0, 0x5a); // T = 1.0025, due = ceil(3.1025) = 4
-  link.sync(2000);
-  // MOV A,$F4 runs at 0, 11, 22...; the first start >= 4 is 11, then MOV $00,A at 14
-  assert.deepEqual(seen, [14]);
+test('a CPU write reaches an SPC port read by its opcode read point', () => {
+  // MOV A,!$00F4 (E5) sees a write made at T from s >= T; CMP A,!$00F4 (65) from s >= T + 3.
+  const run = (op, writeMaster) => {
+    const apu = new APU();
+    // NOP x3 (clocks 0, 2, 4) ; op !$00F4 at clock 6 ; BRA self
+    apu.cpu.uploadRecords([{ dest: 0x400, payload: Uint8Array.of(0x00, 0x00, 0x00, op, 0xf4, 0x00, 0x2f, 0xfe) }, { dest: 0x400 }]);
+    apu.cpu.clock = 0; apu.cpu.a = 0;
+    const link = new MasterLink(apu);
+    link.write(writeMaster, 0, 0x5a);
+    link.sync(2000);
+    return op === 0xe5 ? apu.cpu.a === 0x5a : (apu.cpu.psw & 0x02) === 0x02; // CMP 0 vs 5A: Z only if seen as 0
+  };
+  const m = (t) => Math.ceil(t * 328125 / 15664); // smallest master with T >= t
+  assert.equal(run(0xe5, m(6) - 1), true);   // T just under 6: seen at s = 6
+  assert.equal(run(0xe5, m(6.01)), false);   // T > 6: not seen
+  assert.equal(run(0x65, m(3) - 1), false);  // T < 3: seen, so A=0 != 5A, Z clear
+  assert.equal(run(0x65, m(3.01)), true);    // T > 3: still old 0, Z set
 });
