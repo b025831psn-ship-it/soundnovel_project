@@ -198,7 +198,11 @@ function loop(now) {
     vm.vblank();
     boot.vblank();
     if (vm.waiting === "boot") boot.frame(trigger, held);
-    else page.frame(Boolean(screen.choiceOverlay));
+    else {
+      // 080073F4: the click-wait marker (8484, or 8483 when the page is cleared after the press).
+      page.waitMarker = vm.waiting === "click" && vm.ram.inGame ? (text.pendingClear ? 0x8483 : 0x8484) : 0;
+      page.frame(Boolean(screen.choiceOverlay));
+    }
     for (const key of Object.keys(KEY)) {
       if (input.pressed(key) || (key === "A" && tapA)) previous.add(key); else previous.delete(key);
     }

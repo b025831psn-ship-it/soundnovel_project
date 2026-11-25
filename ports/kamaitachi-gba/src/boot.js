@@ -339,7 +339,7 @@ export class Boot {
   resume(book) {
     restorePosition(this.vm, book.state);
     this.vm.text?.resumed?.();
-    if (this.vm.text) { this.vm.text.fragments = []; this.vm.text.pageRaw = []; }
+    if (this.vm.text) { this.vm.text.fragments = []; this.vm.text.pageRaw = []; this.vm.text.rest = null; }
   }
 
   // 02028B8C: the flowchart's scene titles. 0800B8A0 keeps what follows '：' and drops the
@@ -1167,7 +1167,7 @@ export class Boot {
     this.vm.scene?.silhouetteClear?.();
     ram.silhouettes?.fill(0xffff);
     this.vm.text?.resumed?.();
-    if (this.vm.text) { this.vm.text.fragments = []; this.vm.text.pageRaw = []; }
+    if (this.vm.text) { this.vm.text.fragments = []; this.vm.text.pageRaw = []; this.vm.text.rest = null; }
     ram.node = node;
     this.vm.gotoRow(39000 + node - 1);
     this.vm.waiting = "none";
