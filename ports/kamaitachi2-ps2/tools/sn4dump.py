@@ -111,7 +111,6 @@ def decode_block(blk, base, bi, stats):
         else:
             BAD.append((bi, hex(base+at), blk[at-24:at].hex(), blk[at:at+12].hex())); pos += 1; continue
         stats[op] += 1
-        if op == 0x66: op = 0x65  # same handler as Codex's VM, packed coordinate
         ops.append({"op": op, "offset": base + at, "args": args})
     missing = [(n, hex(base + o)) for o, ns in starts.items() for n in ns]
     out = []
@@ -147,8 +146,7 @@ def main():
                            "u8, be16 크기, 이름들" if op == 0x82 else "u8 크기 + 페이로드")
         for op in sorted(stats):
             if op == 0x85: continue
-            key = 0x65 if op == 0x66 else op
-            lab, off = first.get(0x106 if op == 6 else key, ("", 0))
+            lab, off = first.get(0x106 if op == 6 else op, ("", 0))
             rows.append(f"| `{op:#04x}` | {stats[op]} | `{lab}` @ `{off:#x}` | {kind(op)} |")
         open(sys.argv[3], "w", encoding="utf-8").write("\n".join(rows) + "\n")
 

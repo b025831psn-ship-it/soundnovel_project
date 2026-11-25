@@ -158,7 +158,7 @@ function checkLayout(vm, raw) {
     marginLeft:32, marginRight:32, marginTop:32, marginBottom:32, moves:[], lines:[], styles:[], centers:[]};
   const at = where(vm);
   const x = L.marginLeft, y = L.marginTop, right = 640 - L.marginRight, bottom = 448 - L.marginBottom;
-  let px = x, py = y, offset = 0, lineStart = true;
+  let px = x, py = y, offset = 0, lineStart = true, overRight = false;
   const styleAt = o => L.styles.findLast(mark => mark.offset <= o) ?? L;
   const advance = (ch, o) => {
     const s = styleAt(o), ratio = s.fontSize / 33;
@@ -187,9 +187,12 @@ function checkLayout(vm, raw) {
     const pushOpening = NO_END.has(ch) && next && px + a + nextA > right;
     if (ch === '\n' || wrap || pushOpening) { px = centerAt(offset); py += leading; }
     if (ch === '\n') { offset += ch.length; px = centerAt(offset); continue; }
+    // Closing marks may hang past the right margin (EE 0x16f278); anything else is drawn off the box.
+    if (px + a > right + 1 && !NO_START.has(ch) && !overRight) {
+      overRight = true; report('layout-positioned-past-right', `${vm.label} (${Math.round(px + a)}px)`, at);
+    }
     px += a; offset += ch.length;
   }
-  if (px > right + 1) report('layout-positioned-past-right', `${vm.label} (${Math.round(px)}px)`, at);
   if (py + styleAt(offset).fontSize > bottom) report('layout-past-bottom', `${vm.label} (${Math.round(py)}px)`, at);
 }
 

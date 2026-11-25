@@ -453,8 +453,12 @@ export class SeEngine {
     for (const v of this.voices) {
       const seq = v.track.seq;
       // SE path (0x1838): a1 = (slot master s8 + 1) * (slot volume >> 12) >> 7, i.e. up to 127.
-      const master = Math.round(127 * Math.max(0, seq.volume.value) / 100);
-      v.update(master, Math.round(seq.pan * 64 / 100), Math.round(seq.pitch * 256 / 100));
+      // EE 0x1be2e8 / 0x1be338 / 0x1be3f0 convert the ScenePack values with truncating
+      // division: volume*127/100, pan*63/100 (right) or pan*64/100 (left) around 0x40,
+      // pitch cents*256/100 (1/256 semitone).
+      const master = Math.trunc(127 * Math.max(0, seq.volume.value) / 100);
+      const pan = Math.trunc(seq.pan * (seq.pan >= 0 ? 63 : 64) / 100);
+      v.update(master, pan, Math.trunc(seq.pitch * 256 / 100));
     }
     this.frame++;
   }
