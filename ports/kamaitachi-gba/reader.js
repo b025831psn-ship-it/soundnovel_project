@@ -175,7 +175,7 @@ function paintSharp(ctx, entry, base, width, height, layer) {
   ctx.imageSmoothingEnabled = false;
   ctx.drawImage(middle, 0, EXTENDED_TOP * scale, width, 160 * scale);
   ctx.restore();
-  if (layer?.vram) roundHeads(ctx, base, mask, scale);
+  // (Rounding off flat-cut heads was tried and dropped: a guessed shape reads as a hat, 태우 2026-11-25.)
   if (level.bottom > 0) {
     // the picture's own bottom rows, stretched down over the margin, blurred and darkening
     const from = below - 10 * scale, band = 8 * scale, room = height - below + 6 * scale;
