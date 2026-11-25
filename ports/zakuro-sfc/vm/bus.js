@@ -1,4 +1,4 @@
-import { FRAME_MASTER_CYCLES, MasterClock, SCANLINE_MASTER_CYCLES, VBLANK_START_MASTER } from './master-clock.js';
+import { MasterClock, SCANLINE_MASTER_CYCLES, inAutoJoypadRead, inVblank } from './master-clock.js';
 
 function normalizeRom(bytes) {
   let rom = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
@@ -31,9 +31,9 @@ export class ZakuroBus {
       const value = this.nmiFlag ? 0x80 : 0; this.nmiFlag = false; return value;
     }
     if ((bank & 0x40) === 0 && offset === 0x4212) {
-      const inFrame = master % FRAME_MASTER_CYCLES, inLine = inFrame % SCANLINE_MASTER_CYCLES;
-      const vblank = inFrame >= VBLANK_START_MASTER;
-      return (vblank ? 0x80 : 0) | (inLine >= 1096 ? 0x40 : 0);
+      const inLine = master % SCANLINE_MASTER_CYCLES;
+      return (inVblank(master) ? 0x80 : 0) | (inLine >= 1096 ? 0x40 : 0)
+        | (inAutoJoypadRead(master) ? 0x01 : 0);
     }
     if ((bank & 0x40) === 0 && offset >= 0x2000 && offset < 0x6000) return this.io[offset];
     if (offset >= 0x8000) return this.rom[((bank & 0x7f) * 0x8000 + (offset & 0x7fff)) % this.rom.length];
@@ -66,11 +66,13 @@ export class ZakuroBus {
       channels++;
       const base = 0x4300 + channel * 0x10;
       const size = this.io[base + 5] | (this.io[base + 6] << 8);
-      bytes += size || 0x10000;
+      const count = size || 0x10000;
+      bytes += count;
       this.io[base + 5] = 0; this.io[base + 6] = 0;
     }
-    // One global startup byte-time, one per active channel, then one per byte.
-    const masterCycles = 8 * (1 + channels + bytes);
+    // S-CPU DMA startup is 18 master cycles, followed by 8 per active channel
+    // and 8 per transferred byte (Snes9x DMACPUSync/DMACPUSync2 model).
+    const masterCycles = 18 + 8 * (channels + bytes);
     this.dmaBytes += bytes; this.dmaMasterCycles += masterCycles;
     this.dmaTransfers++; this.dmaChannels += channels;
     this.clock.idle(masterCycles);

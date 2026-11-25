@@ -18,11 +18,14 @@ the high-level `APU.boot(readBootRecords(rom), APU_TIMING)` fallback.
 Current bring-up status (2026-11-25): the real cartridge reaches the SPC IPL
 handshake through scanline-derived HVBJOY/NMI scheduling. The master clock now
 includes the 176-cycle reset sequencer, 6/8/12-cycle bus regions, 40-cycle DRAM
-refresh steals, and `$420B` DMA CPU halts. This reduced the first IPL polling
-timeline error from 1,433,944 to 357,240 master cycles; the four power-on APUIO
-writes now have zero cycle error. The first 22 APUIO rows match in order and
-value before IPL port 0 changes to `cc` one frame early. The next timing work
-is PPU field phase and per-cycle 65C816 bus phasing; the comparator intentionally fails at the first
-semantic mismatch so timing cannot be hidden by resynchronizing the trace.
+refresh steals, alternating 357368/357364-cycle PPU fields, the three-scanline
+HVBJOY auto-read window, and exact 18 + 8/channel + 8/byte `$420B` DMA CPU
+halts. The four power-on APUIO writes have zero cycle error. Against private
+trace commit e286471, 21 APUIO rows match before IPL port 0 changes to `cc`
+357,374 master cycles (one field) early. DMA event sizes and most event phases
+now agree within tens of master cycles, isolating the remaining error to one
+missing frame-state transition before the upload. The comparator intentionally
+fails at the first semantic mismatch so timing cannot be hidden by
+resynchronizing the trace.
 
 The CPU core provenance and license are in `THIRD_PARTY_NOTICES.md`.

@@ -1,6 +1,6 @@
 import { CPU } from './cpu.js';
 import { ZakuroBus } from './bus.js';
-import { FRAME_MASTER_CYCLES, VBLANK_START_MASTER } from './master-clock.js';
+import { vblankOrdinal } from './master-clock.js';
 
 // Measured reset release -> first CPU bus cycle offset in the reference trace.
 // The CPU core begins at vector fetch, so the VM supplies the preceding S-CPU
@@ -21,8 +21,8 @@ export class ZakuroVM {
     const internalCycles = Math.max(0, cpuCycles - (this.bus.accessCount - accesses));
     this.bus.clock.idle(internalCycles * 6);
     const afterMaster = this.bus.clock.master;
-    const beforeVblank = Math.floor((beforeMaster - VBLANK_START_MASTER) / FRAME_MASTER_CYCLES);
-    const afterVblank = Math.floor((afterMaster - VBLANK_START_MASTER) / FRAME_MASTER_CYCLES);
+    const beforeVblank = vblankOrdinal(beforeMaster);
+    const afterVblank = vblankOrdinal(afterMaster);
     if (afterVblank > beforeVblank) {
       this.bus.nmiFlag = true;
       if (this.bus.io[0x4200] & 0x80) this.cpu.nmiPending = true;
