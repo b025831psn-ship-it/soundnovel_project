@@ -47,5 +47,13 @@ export function readSoundTables(exe) {
       volume: r.u32(0x8006a924 + 4 * i), // gp+0x30c target = volume * 90
     });
   }
-  return { panLaw: Uint8Array.from(r.bytes(0x8006aa84, 64)), songs };
+  // 0x800292b0: ids < 88 jump through 0x800119e0; entries that go to 0x80029360 stop the music.
+  const musicSilence = [];
+  for (let i = 0; i < SONG_COUNT; i++) if (r.u32(0x800119e0 + 4 * i) === 0x80029360) musicSilence.push(i);
+  // Effect tables indexed by (id - 1000) % 1000, 2 bytes each (read past their end as the game does).
+  const effects = [];
+  for (let n = 0; n < 1000; n++) {
+    effects.push({ restart: r.u8(0x8006b04c + 2 * n), pairMode: r.u8(0x8006b1cc + 2 * n), partner: r.u8(0x8006b1cd + 2 * n) });
+  }
+  return { panLaw: Uint8Array.from(r.bytes(0x8006aa84, 64)), songs, musicSilence, effects };
 }

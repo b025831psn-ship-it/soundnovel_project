@@ -77,3 +77,39 @@ test("music: play sets reverb from table, fade-in steps volume, stop with fade c
   assert.equal(mod.music.playing, 0);
   assert.ok(calls.some((c) => c[0] === "SsSeqClose"));
 });
+
+test("scenario play/stop: ids < 1000 are music, >= 1000 effects on the first free channel", () => {
+  const { mod } = rig();
+  mod.tables.musicSilence = [3];
+  mod.tables.effects = Array.from({ length: 1000 }, () => ({ restart: 0, pairMode: 0, partner: 0 }));
+  mod.loadMember = (pac, id) => pac === "MUS" ? { head: { fsize: 0x1000 }, body: new Uint8Array(16), seq: new Uint8Array(16) }
+    : { head: { fsize: 0x100 }, body: new Uint8Array(16), script: Uint8Array.from([3, 0, 0, 0, 0x30, 2, 0, 0, 0]) };
+  mod.play(2, 0);
+  assert.equal(mod.music.playing, 1);
+  mod.play(3, 0);
+  assert.equal(mod.music.playing, 0, "silence id stops the music");
+  mod.play(1007); run(mod, 1);
+  mod.play(1009); run(mod, 1);
+  assert.equal(mod.channelOf[7], 0);
+  assert.equal(mod.channelOf[9], 1);
+  mod.play(1009);
+  assert.equal(mod.channelOf[9], 1, "same effect again is ignored unless it is marked restartable");
+  mod.stop(1007, 0);
+  assert.equal(mod.active[0], 0);
+  assert.equal(mod.channelOf[7], 0xff);
+});
+
+test("scenario ops: effect id bank digit becomes the script flag; restartable ids keep the bank", () => {
+  const { mod } = rig();
+  mod.tables.effects = Array.from({ length: 1000 }, (_, n) => ({ restart: n === 8 ? 1 : 0, pairMode: 0, partner: 0 }));
+  const played = []; mod.play = (id, fade) => played.push([id, fade]);
+  mod.scenarioOp(0x30, [0xd3, 0x0b]); // 3027 = bank 2, effect 27
+  assert.equal(mod.flags[27], 2);
+  mod.scenarioOp(0x32, [3, 0, 0xa8, 0x0f]); // fade 3 -> 30 frames, 4008 = bank 3, effect 8 (restartable)
+  assert.deepEqual(played, [[1027, 0], [4008, 30]]);
+  mod.scenarioOp(0x35, [1, 0xf3, 0x03]); // bank 1 for effect 11 (1011): flag only
+  assert.equal(mod.flags[11], 1);
+  assert.equal(played.length, 2);
+  mod.scenarioOp(0x30, [0, 0], true); // skip mode issues nothing
+  assert.equal(played.length, 2);
+});

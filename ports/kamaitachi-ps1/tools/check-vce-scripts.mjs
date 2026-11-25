@@ -46,3 +46,29 @@ for (const m of pac("VCE.PAC")) {
 }
 console.log("VCE scripts", { ...res, errors: res.errors.length }, JSON.stringify(res.errors.slice(0, 8)));
 console.log("ops used", Object.fromEntries(VCE_OPS.map((o, i) => [o.name, ops[i]])));
+
+// Scenario path: play(1000 + member) / stop for every VCE member and every VCP pair.
+{
+  const vce = new Map(pac("VCE.PAC").map((m) => [m.id, m.bytes]));
+  let vcp = new Map();
+  try { vcp = new Map(pac("VCP.PAC").map((m) => [m.id, m.bytes])); } catch {}
+  const parse = (bytes) => { const p = vceParts(bytes); return { head: { fsize: parseVabHead(p.head.bytes, 0).size }, body: p.body.bytes, script: p.script.bytes }; };
+  const sub = (bytes, i) => { const be = (o) => bytes.readUInt32BE(o); return bytes.subarray(be(4 + 8 * i), be(4 + 8 * i) + be(8 + 8 * i)); };
+  const loadMember = (pacName, id) => pacName === "VCE" ? parse(vce.get(id)) : pacName === "VCP" ? [parse(sub(vcp.get(id), 0)), parse(sub(vcp.get(id), 1))] : null;
+  const r = { played: 0, pairs: 0, missing: [], errors: [] };
+  const log = [];
+  const mod = new SoundModule(stub(log), tables, { loadMember });
+  mod.reset();
+  const ids = [...vce.keys(), ...[...vcp.keys()].filter((k) => tables.effects[k % 1000].pairMode === 1)];
+  for (const member of ids) {
+    const n = member % 1000, fx = tables.effects[n];
+    if (fx.pairMode === 1 && !vcp.has(member)) { r.missing.push(member); continue; }
+    try {
+      mod.play(1000 + member, 0);
+      for (let f = 0; f < 120; f++) { mod.vsync(); mod.frame(); }
+      if (mod.channelOf[n] !== 0xff) { r.played++; if (fx.pairMode === 1) r.pairs++; }
+      mod.stop(1000 + member, 0); mod.frame();
+    } catch (e) { r.errors.push({ member, err: e.message }); }
+  }
+  console.log("scenario play/stop", { ...r, missing: r.missing.length, errors: r.errors.length }, JSON.stringify([r.missing.slice(0, 8), r.errors.slice(0, 4)]));
+}

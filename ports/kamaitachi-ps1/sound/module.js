@@ -71,6 +71,10 @@ export class SoundModule {
     this.cur = 0; // gp+0x3e4 channel being ticked
     this.music = { song: -1, acc: -1, sbAddr: 0, headSize: 0, reverbBytes: 0, vol: 0, step: 0, fade: 0, duration: 0, playing: 0, reverbType: 0, reverbDepth: 0 };
     this.trace = opts.trace || null;
+    this.channelOf = new Uint8Array(1000).fill(0xff); // 0x801fd688, effect -> channel
+    this.lastEffect = -1; // gp+0x80
+    this.nextChannel = 0; // gp+0x7c
+    this.currentMusic = -1; // 0x80079290
   }
 
   // 0x80028ccc: full sound reset (also the recovery path when SPU memory runs out).
@@ -91,6 +95,7 @@ export class SoundModule {
     this.inited = 1;
     Object.assign(this.music, { song: -1, sbAddr: 0, headSize: 0, reverbBytes: 0, fade: 0, duration: 0, playing: 0, step: 0, vol: 0 });
     this.transferring = 0;
+    this.channelOf.fill(0xff, 0, 0x100); this.lastEffect = -1; this.nextChannel = 0;
     ss.SsUtReverbOn();
     this.silenceReverb();
     this.loadUiBanks();
@@ -272,10 +277,131 @@ export class SoundModule {
       }
       ss.SsVabClose(this.vabIds[5 + chn]);
       ss.SpuFree(c.spuAddr);
+      this.lastEffect = -1;
       this.vabIds[5 + chn] = -1;
       if (c.rumble) this.rumbleStop();
     }
     this.lock = 0;
+  }
+
+  // ---- scenario entry points (ops 0x2f/0x30/0x31/0x32/0x35/0x36) ---------------
+
+  // 0x800292b0(soundId, fade): < 1000 music, >= 1000 effect (member id - 1000).
+  play(id, fade = 0) {
+    id &= 0xffff; fade &= 0xff;
+    if (id === 0x2753 || id === 0xffff) return;
+    if (id < 1000) {
+      if (s16(this.music.song) === id) return;
+      this.music.song = id; // gp+0x7e is written before the dispatch
+      if (id < 88 && !this.tables.musicSilence.includes(id)) { this.playMusic(id, fade); this.currentMusic = id; }
+      else this.stopMusic(0);
+      return;
+    }
+    const member = id - 1000, n = member % 1000;
+    const fx = this.tables.effects[n];
+    if (this.lastEffect === n) {
+      if (fx.restart !== 1) return;
+      const ch = this.channelOf[n];
+      this.nextChannel = ch;
+      this.stopEffect(ch, 0);
+      this.startEffect(member, ch, fade, this.loadMember("VCE", member));
+      this.lastEffect = n; this.channelOf[n] = ch;
+      return;
+    }
+    this.nextChannel = 0;
+    for (let i = 0; i < VCE_CHANNELS; i++) if (this.ch[i].id === n) this.nextChannel = 1;
+    if (this.nextChannel !== 0) return; // already playing (gp+0x7c used as a found flag)
+    for (let i = 0; i < VCE_CHANNELS; i++) {
+      this.nextChannel = i;
+      const v = this.voiceMap[i];
+      const free = v === NONE16 || this.ss.SpuGetKeyStatus(1 << v) !== 1;
+      if (!free) continue;
+      if (fx.pairMode === 1) { this.playPair(member, n, fx); return; }
+      this.ss.VSync(0);
+      this.stopEffect(i, 0);
+      this.startEffect(member, i, fade, this.loadMember("VCE", member));
+      this.lastEffect = n; this.channelOf[n] = i;
+      this.nextChannel = (i + 1) % 6;
+      return;
+    }
+  }
+
+  // 0x80026534(bank, soundId): the bank digit of an effect id becomes the script flag
+  // that ops 10/11 test (also for the paired half).
+  setVariant(bank, id) {
+    this.lock = 1;
+    const n = (((id & 0xffff) - 1000) % 1000) & 0xffff;
+    if (n >= 1000) { // id < 1000: the original writes 0x801fc460 + 0xfcxx (outside the table)
+      this.trace?.({ warning: "setVariant-out-of-table", bank, id, index: n });
+      this.lock = 0; return;
+    }
+    this.flags[n] = bank & 0xff;
+    const fx = this.tables.effects[n];
+    if (fx.pairMode === 1) this.flags[fx.partner] = bank & 0xff;
+    this.lock = 0;
+  }
+
+  // Scenario opcodes that reach the sound module. `u16` operands are little-endian.
+  // skip = the VM's skip/fast-forward state (0x80079295 / 0x800792a0); sounds are not issued then.
+  scenarioOp(opcode, o, skip = false) {
+    const u16 = (i) => o[i] | (o[i + 1] << 8);
+    if (skip) return;
+    switch (opcode) {
+      case 0x2f: return this.stop(u16(0), 0); // 0x80020634
+      case 0x31: return this.stop(u16(2), (u16(0) * 10) & 0xfe); // 0x80020884 {fade, id}
+      case 0x30: return this.issue(u16(0), 0); // 0x800206b4 (a following 0x00 text op runs first)
+      case 0x32: return this.issue(u16(2), (u16(0) * 10) & 0xff); // 0x80020948 {fade, id}
+      case 0x35: case 0x36: { // 0x80020c64 / 0x80020d78 {bank, id}
+        const bank = o[0], id = u16(1);
+        if (id === 0xffff) return;
+        const n = ((id - 1000) % 1000) & 0xffff;
+        const fx = this.tables.effects[n] || { restart: 0 }; // out of table: the original reads BSS (0 at boot)
+        this.setVariant(bank, id);
+        if (fx.restart === 1) this.play((id + bank * 1000) & 0xffff, 0);
+        else if (opcode === 0x36) this.play(id, 0);
+        return;
+      }
+    }
+  }
+
+  // body shared by ops 0x30/0x32
+  issue(id, fade) {
+    if (id < 1000) return this.play(id, fade);
+    const bank = cdiv(id - 1000, 1000) & 0xff, base = (id % 1000) + 1000, n = base - 1000;
+    this.setVariant(bank, base);
+    if (this.tables.effects[n].restart === 1) this.play((base + bank * 1000) & 0xffff, fade);
+    else this.play(base, fade);
+  }
+
+  // 0x80029448: two-part effect from VCP.PAC on channels ch, ch+1.
+  playPair(member, n, fx) {
+    const a = this.nextChannel, b = (a + 1) % 6;
+    this.stopEffect(a, 0);
+    this.stopEffect(b, 0);
+    const [p0, p1] = this.loadMember("VCP", member);
+    this.startEffect(member, a, 0, p0);
+    this.startEffect(fx.partner, b, 0, p1);
+    this.lock = 1;
+    this.channelOf[n] = a;
+    this.channelOf[fx.partner] = b;
+    this.nextChannel = (a + 2) % 6;
+    this.lock = 0;
+  }
+
+  // 0x80029174(soundId, fade)
+  stop(id, fade = 0) {
+    id &= 0xffff; fade &= 0xff;
+    if (id === 0xffff) return;
+    if (id < 1000) { this.currentMusic = -1; this.stopMusic(fade); return; }
+    const n = (id - 1000) % 1000;
+    if (this.channelOf[n] === 0xff) return;
+    this.stopEffect(this.channelOf[n], fade);
+    this.channelOf[n] = 0xff;
+    const fx = this.tables.effects[n];
+    if (fx.pairMode === 1 && this.channelOf[fx.partner] !== 0xff) {
+      this.stopEffect(this.channelOf[fx.partner], fade);
+      this.channelOf[fx.partner] = 0xff;
+    }
   }
 
   setFlag(i, v) { this.flags[i] = v ? 1 : 0; }

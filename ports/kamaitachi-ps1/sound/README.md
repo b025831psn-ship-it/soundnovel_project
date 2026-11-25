@@ -22,10 +22,21 @@ Done so far (formats the SPU and libsnd consume):
   (`0x80028b10`, `0x80028c74`), reset `0x80028ccc`. All libsnd/libspu calls go through
   an `ss` object named after the library functions (see `LIBSND.md`).
 
+Scenario entry point: `scenarioOp(opcode, operands, skip)` for primary ops `0x2f` stop,
+`0x30` play, `0x31` stop with fade `{fade, id}`, `0x32` play with fade `{fade, id}` (fade x10
+frames), `0x35`/`0x36` set effect variant `{bank, id}`. Sound ids < 1000 are songs (0x800292b0;
+ids in the 0x800119e0 table that point at 0x80029360 stop the music), ids >= 1000 are effects:
+`1000 + bank*1000 + n`; the bank becomes the script flag `flags[n]` (0x80026534) and only
+restartable effects (0x8006b04c) load the bank's own member. Pair effects (0x8006b1cc mode 1)
+load two halves from VCP.PAC onto adjacent channels. The VM calls `vsync()` per VSync and
+`frame()` once per main-loop frame.
+
 Checks against a private copy (counts only):
 `node tools/check-sound-data.mjs <dir>` → 73 MUS / 301 VCE members parse, 747 VAGs decode
 within their table sizes. `node tools/check-vce-scripts.mjs <dir> [frames] [flagFrame]` →
 all 301 effect scripts run through the module without unknown opcodes or runaway loops.
+`node tools/check-scenario-sound.mjs <port-data> <dir>` → every sound op the scenario sweep
+reaches (765 ops, 35 songs, 80 effect ids) runs through the module; all members exist.
 
 Next: the libsnd side behind `ss` (SsSeqCalledTbyT sequencer, SsUtKeyOnV/ChangePitch/
 SetVVol voice paths) and the SPU voice model (ADSR, pitch, reverb), then compare with the trace.
