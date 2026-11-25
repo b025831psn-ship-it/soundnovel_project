@@ -38,6 +38,7 @@ function portRoute(url) {
   for (const [prefix, dir, exts] of [
     ['/ports/kamaitachi-gba/', path.join(__dirname, 'ports', 'kamaitachi-gba'), ['.html', '.js', '.css']],
     ['/kamaitachi-gba-kor/port-data/', path.join(__dirname, 'kamaitachi-gba-kor', 'port-data'), ['.json', '.bin']],
+    ['/kamaitachi-gba-kor/port-data-ko/', path.join(__dirname, 'kamaitachi-gba-kor', 'port-data-ko'), ['.json', '.bin']],
     // SFC port (sound only so far): its page and the cartridge sound data and trace it plays back.
     ['/ports/kamaitachi-sfc/', path.join(__dirname, 'ports', 'kamaitachi-sfc'), ['.html', '.js']],
     ['/kamaitachi-sfc-kor/port-data/', path.join(__dirname, 'kamaitachi-sfc-kor', 'port-data'), ['.bin', '.tsv']],

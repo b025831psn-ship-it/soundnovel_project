@@ -384,3 +384,6 @@ html.filled, html.filled body { overflow: hidden; }
   -webkit-mask-image: linear-gradient(to bottom, transparent, #000 8.75%, #000 91.25%, transparent);
   mask-image: linear-gradient(to bottom, transparent, #000 8.75%, #000 91.25%, transparent);
 }
+
+/* Text language (日本語 / 한국어): a one-character label, the language now shown. */
+.icon.lang { font: 600 14px/1 "Noto Serif KR", serif; }
