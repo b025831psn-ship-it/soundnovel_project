@@ -709,6 +709,14 @@ export class VM {
           )
             this.ram.overlayMasks[index] = 0xffff;
         }
+        // The same request takes silhouette `request` off the 02000728 slots, and the layer's
+        // buffer is merged again from the ones left (1B:10B3 removes the two standing people
+        // before 29 adds them seated); the next 2E shows the result.
+        const slots = this.ram.silhouettes;
+        if (slots && slots.includes(request)) {
+          for (let index = 0; index < slots.length; index++) if (slots[index] === request) slots[index] = 0xffff;
+          this.scene?.silhouetteRebuild?.([...slots].filter((id) => id !== 0xffff));
+        }
         this.writes.push(`overlay=${request}`);
         break;
       }

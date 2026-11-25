@@ -56,6 +56,19 @@ export class SceneLoader {
     this.screen.setSilhouetteLayer?.(layer);
   }
 
+  // Opcode 2D: the buffer is merged again from the silhouettes still on the slots (an empty
+  // buffer, not none, so a following 2E blind wipes the removed ones row by row).
+  silhouetteRebuild(ids) {
+    if (!this.layerBuffer) return;
+    this.layerBuffer = new Uint8Array(LAYER_BYTES);
+    for (const id of ids) {
+      const picture = this.silhouettes?.picture(id);
+      if (!picture) continue;
+      mergeSilhouette(this.layerBuffer, picture.tiles);
+      this.layerColors = picture.colors;
+    }
+  }
+
   // 0800350C: buffer, layer and palette cleared, the layer off and the buffer pointer 0.
   silhouetteClear() {
     this.layerBuffer = null;
