@@ -329,7 +329,7 @@ html.filled, html.filled body { overflow: hidden; }
   background: #000; touch-action: manipulation; user-select: none; -webkit-user-select: none;
 }
 .shell.reading .screen-box { position: static; }
-.shell.reading #screen { visibility: hidden; }
+.shell.reading #screen, .shell.reading #screen + canvas { visibility: hidden; }
 .shell.reading .menu-button { z-index: 2; right: 14px; bottom: calc(14px + env(safe-area-inset-bottom)); width: 44px; height: 44px; }
 #picture {
   position: absolute; top: 0; left: 0; display: block;
