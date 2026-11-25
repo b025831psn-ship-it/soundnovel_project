@@ -21,7 +21,10 @@ function start({ game, gauss, port }) {
   const sink = createPcmSink(port);
   const apu = new APU({ gauss: new Int16Array(gauss) }); apu.powerOn(); apu.dsp.onSample = sink.sample;
   let shown = null, latest = null, latestFrame = 0;
+  // The VM keeps debug logs (bus events, APU accesses, instruction trace) unbounded by
+  // default; a player must switch them off or the tab runs out of memory in minutes.
   machine = new SfcMachine({ rom: new Uint8Array(game), apu,
+    busOptions: { eventLimit: 0, apuTraceLimit: 0 }, cpuOptions: { traceLimit: 0 },
     onFrame: (frame, fb) => { latest = fb; latestFrame = frame; } });
   machine.setButtons(0);
   const vm = new VmSound(machine);
