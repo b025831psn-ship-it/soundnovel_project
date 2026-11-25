@@ -192,6 +192,8 @@ kbd {
 @media (pointer: coarse) {
   .keys, .scale { display: none; }
   .icon.touch-only { display: inline-grid; }
+  /* Theatre mode is for a desktop window; on a phone full screen does that job. */
+  #theatre { display: none; }
   .shell:not(.pad-on) .pad { display: none; }
   .bar { min-height: 48px; justify-content: flex-end; border-top: 0; border-bottom: 1px solid var(--line); background: var(--stage); }
   .pad {
