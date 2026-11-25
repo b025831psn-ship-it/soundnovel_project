@@ -20,7 +20,30 @@
 SaveStore (공통)  ── IndexedDB(로컬 우선) ── Sync (서버)
 ```
 
-- **SaveCodec**(작품별): 엔진 상태 ↔ `payload` 변환과 `payload` 스키마 이전 함수. 원본 화면에 필요한 표시 정보(`label`, 완/종 횟수 등)도 만든다.
+- **SaveCodec**(작품별): `payload` 변환과 **슬롯 구성의 소유자**. Store·Sync는 슬롯 id를 해석하지 않고 불투명한 안정 id로만 다룬다. 새 포트가 생겨도 공통 코드를 고치지 않기 위해서다. 계약(이름은 가안, Codex 의견 반영):
+
+```ts
+interface SaveCodec<State, Payload> {
+  readonly gameId: string;
+  readonly currentSchema: number;
+  slots(): readonly SlotDescriptor[];                       // 슬롯 목록·표시·허용 연산을 선언
+  encode(snapshot: Snapshot, ctx: SaveContext): Payload;    // 실행 중 VM이 아니라 포트가 만든 불변 스냅샷을 받는다
+  validate(payload: unknown, schema: number): ValidationResult;
+  migrate(payload: unknown, fromSchema: number): MigrationResult<Payload>;
+  decode(payload: Payload, ctx: LoadContext): LoadResult<State>;
+  summarize(payload: Payload, ctx: DisplayContext): SlotSummary;  // 현재 언어의 제목, 완·종 횟수 등
+}
+type SlotDescriptor = {
+  id: string;                          // 안정 id: manual-0, system, suspend
+  group: "manual" | "system" | "suspend";
+  ordinal?: number;
+  canCopy?: boolean; canErase?: boolean; canWrite?: boolean;
+  showInOriginalUi: boolean;           // suspend는 false
+  original?: { containerId?: string; fileId?: string; blocks?: number };  // 카드 id, 원작 파일명 등은 표시용 메타데이터
+};
+```
+
+  - 불러오기는 항상 `validate → migrate → decode` 순서다. 모두 예외를 던지지 않고 `unsupportedSchema`, `incompatibleDataVersion`, `corrupt` 같은 명시적 결과를 돌려주며, 이것이 "불러올 수 없음" 표시와 연결된다.
 - **SaveStore**(공통): `list(gameId)`, `read(gameId, slot)`, `write(gameId, slot, envelope)`, `erase(gameId, slot)`, `exportAll()`, `importFile(file)`. 쓰기는 항상 로컬에 먼저 하고 동기화 대기열(outbox)에 넣는다.
 - **Sync**(공통): 대기열을 서버로 보내고, 서버의 변경을 받아 온다. 서버가 없거나 실패해도 게임은 멈추지 않는다.
 
@@ -47,15 +70,15 @@ IndexedDB 데이터베이스 `soundnovel` 하나.
 |---|---|
 | `format` | 봉투 형식 번호. 지금은 `1`. |
 | `gameId` | 작품+기종 고정 id (`kamaitachi-gba`, `kamaitachi-ps1` …). 한글판·원문판 구분 없음. |
-| `slot` | `book-0`..`book-2`, `suspend`, SFC·PS는 `slot-N` 또는 `card:<cardId>/<파일명>`. |
-| `cardId` | PS1·PS2 가상 카드 id. 기본은 `gameId`와 같다. 그 외 작품은 생략. |
+| `slot` | 슬롯 id. Codec이 정하는 불투명한 안정 id(`manual-0`, `system`, `suspend` 등). 공통 코드는 해석하지 않는다. |
+| `original` | 선택. 카드 id, 원작 파일명·제품 코드, 블록 수 같은 표시용 메타데이터. 저장 정체성에는 들어가지 않는다. |
 | `schema` | 이 작품 `payload`의 스키마 버전. 작품별 이전 함수가 사용한다. |
 | `dataVersion` | 시나리오·자산 구조 버전(위치가 유효한지 판단). 고정 ID 체계가 유지되는 한 올리지 않는다. |
 | `edition` | 저장한 판본(`ja`, `ko`). 참고용이며 호환 조건이 아니다. |
 | `revision` | 서버가 슬롯마다 매기는 증가 번호. 로컬에서는 마지막으로 받은 값(`baseRevision`)을 쓴다. |
 | `savedAt` | 저장 시각(UTC ISO 8601). |
 | `deviceId` | 저장한 기기. |
-| `label` | 슬롯 목록에 보일 문구(장면 제목 등). 평문. |
+| `label` | `summarize` 결과의 최소 캐시(목록을 빨리 그리기 위한 것). 평문. 언어를 바꾸면 Codec이 현재 언어로 다시 만든다. |
 | `payload` | 작품별 내용. 서버에는 암호화되어 올라간다. |
 
 ### 이전(migration)
@@ -95,11 +118,15 @@ IndexedDB 데이터베이스 `soundnovel` 하나.
 
 ## 슬롯 구성
 
+슬롯은 작품 Codec이 `slots()`로 선언하고, 공통 그룹은 세 가지다: `manual`(원작의 수동 저장 N개), `system`(전역 진행도·해금 등 singleton, 해당 작품에 있을 때만), `suspend`(웹 전용 singleton, 원작 화면에는 나타나지 않음).
+
 | 작품 | 슬롯 | 비고 |
 |---|---|---|
-| 카마이타치의 밤 GBA | `book-0`..`book-2`, `suspend` | 책 3권(저장·읽기·지우기·복사). `payload`는 페이지 시작 시점 VM 상태. 완·종 횟수는 `payload`에 포함. |
-| SFC (카마이타치·석류의 맛 등) | `slot-N`, `suspend` | 슬롯 수와 기록 항목은 작품별 ROM에서 확인한 뒤 채운다. |
-| PS1·PS2 | `card:<cardId>/<파일>`, `suspend` | 작품별 카드. 카드 화면의 블록·파일명은 원작 규칙을 따른다. |
+| 카마이타치의 밤 GBA | `manual-0`..`manual-2`, `suspend` | 책 3권(저장·읽기·지우기·복사). `payload`는 페이지 시작 시점 VM 상태. 완·종 횟수는 `payload`에 포함. |
+| SFC (카마이타치·석류의 맛 등) | `manual-N`, `system`?, `suspend` | 슬롯 수와 SRAM의 전역 진행도 유무는 작품별 ROM에서 확인한 뒤 채운다. |
+| PS1·PS2 | `manual-N`, `system`?, `suspend` | 작품별 가상 카드. 카드 id·원작 파일명·블록 수는 `original` 메타데이터. |
+
+PS 카드를 작품 간에 공유하거나 전작 데이터를 이어받는 일이 실제로 필요해지면, 파일 하나를 개별 슬롯처럼 동기화하면 여러 파일로 이루어진 저장이 부분 갱신될 수 있다. 그 경우에는 `카드 → 저장 항목들` 두 단계 모델과 카드 단위 원자적 쓰기를 따로 설계한다(지금은 하지 않음).
 
 ## 백업 파일
 
@@ -110,6 +137,6 @@ IndexedDB 데이터베이스 `soundnovel` 하나.
 ## 아직 정하지 않은 것
 
 - 서버 호스팅과 구현 언어(최소 API만 정해 둠).
-- SFC·PS 작품별 슬롯 구성(각 원본에서 확인 필요).
+- SFC·PS 작품별 슬롯 구성과 `system` 슬롯 유무(각 원본에서 확인 필요).
 - 전작 데이터 이어받기 여부(PS1·PS2 바이너리에서 확인 예정).
 - 계정 로그인(필요해지면 동기화 코드 위에 선택 기능으로).

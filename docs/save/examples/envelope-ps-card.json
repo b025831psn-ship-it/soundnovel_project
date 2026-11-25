@@ -1,8 +1,7 @@
 {
   "format": 1,
   "gameId": "kamaitachi-ps1",
-  "cardId": "kamaitachi-ps1",
-  "slot": "card:kamaitachi-ps1/BESLPS-01794",
+  "slot": "manual-0",
   "schema": 1,
   "dataVersion": 1,
   "edition": "ja",
@@ -10,5 +9,12 @@
   "savedAt": "2026-11-25T10:45:00Z",
   "deviceId": "dev-8b21d0",
   "label": "예시: 파일명과 블록 수는 원작 확인 뒤에 채운다",
-  "payload": { "_note": "예시 값" }
+  "payload": {
+    "_note": "예시 값"
+  },
+  "original": {
+    "containerId": "kamaitachi-ps1",
+    "fileId": "BESLPS-01794",
+    "blocks": 1
+  }
 }
