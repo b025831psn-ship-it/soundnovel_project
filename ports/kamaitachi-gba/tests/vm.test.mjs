@@ -474,25 +474,27 @@ test("captured transition timing holds dispatch and carries audio gates", () => 
   assert.equal(vm.waiting, "none");
 });
 
-test("bookmark return scene request keeps the native six-frame decode interval", () => {
+test("bookmark return keeps two path frames plus the six-frame scene decode", () => {
   const trace = [];
   const vm = new VM({
-    banks: { 25: bank([[0x04, 0x34, 0x12, 0x09, 0, 0, 0]]) },
-    entryRow: 25000,
+    banks: { 31: bank([[0x40, 0, 1, 0, 0, 0x04, 0x34, 0x12, 0x09, 0, 0, 0]]) },
+    entryRow: 31000,
     trace: (entry) => trace.push(entry),
-    transitionTimings: { sites: { "19:2": [
-      { opcode: 0x04, frames: 6, audioFrame: "000000", audioIrq: "100000" },
-    ] } },
+    transitionTimings: { sites: {
+      "1f:2": [{ opcode: 0x40, frames: 2, audioFrame: "11", audioIrq: "11" }],
+      "1f:7": [{ opcode: 0x04, frames: 6, audioFrame: "000000", audioIrq: "100000" }],
+    } },
   });
   vm.step();
   assert.equal(vm.waiting, "transition");
-  for (let frame = 1; frame < 6; frame++) {
+  for (let frame = 1; frame < 8; frame++) {
     vm.vblank();
-    assert.equal(vm.offset, 5, `opcode 09 dispatched before native frame 6 (frame ${frame})`);
+    assert.ok(!trace.some((entry) => entry.opcode === 0x09),
+      `opcode 09 dispatched before native frame 8 (frame ${frame})`);
   }
   vm.vblank();
   assert.equal(vm.waiting, "none");
-  assert.ok(trace.some((entry) => entry.opcode === 0x09));
+  assert.equal(trace.find((entry) => entry.opcode === 0x09)?.frame, 8);
 });
 
 test("59 waits for the captured native presentation interval", () => {
