@@ -7,7 +7,8 @@ import crypto from "node:crypto";
 import { pathToFileURL } from "node:url";
 
 const MAX_BODY = 256 * 1024;
-const MAX_SLOTS = 200;
+const MAX_SLOTS = 20; // per vault: a game has a handful of slots, not hundreds
+const MAX_VAULT_BYTES = 5 * 1024 * 1024;
 const HEX = /^[0-9a-f]{64}$/;
 const ID = /^[a-z0-9][a-z0-9:_-]{0,63}$/;
 
@@ -16,7 +17,7 @@ const PAIR = /^[0-9A-HJKMNP-TV-Z]{4}$/;
 // Pairing: a one-time, short-lived 4-character code hands a wrapped secret from one device to another.
 // It is never an account password; failed claims are rate limited per client and globally.
 export function createServer({ dir, maxBody = MAX_BODY, maxSlots = MAX_SLOTS, now = Date.now,
-  maxVaults = 500, maxVaultsPerClientPerHour = 10, pairTtlMs = null, pairSingleUse = false, maxPairs = 1000, maxFailsPerClient = 10, maxFailsGlobal = 200, failWindowMs = 10 * 60 * 1000 } = {}) {
+  maxVaults = 200, maxVaultBytes = MAX_VAULT_BYTES, maxPairBlob = 2048, maxRequestsPerMinute = 300, maxVaultsPerClientPerHour = 10, pairTtlMs = null, pairSingleUse = false, maxPairs = 1000, maxFailsPerClient = 10, maxFailsGlobal = 200, failWindowMs = 10 * 60 * 1000 } = {}) {
   fs.mkdirSync(dir, { recursive: true });
   const pairFile = path.join(dir, "pairs.json");
   // code -> { blob, auth, expires|null }. Persistent by default (beta: a few dozen users); a short TTL and
@@ -27,6 +28,7 @@ export function createServer({ dir, maxBody = MAX_BODY, maxSlots = MAX_SLOTS, no
   let globalFails = [];
   const recent = (list) => list.filter((t) => now() - t < failWindowMs);
   const clientOf = (req) => req.headers["cf-connecting-ip"] ?? req.socket.remoteAddress ?? "?";
+  const rate = new Map(); // client -> { start, count }
   const created = new Map(); // client -> vault creation timestamps (last hour)
   const sweep = () => { let n = 0; for (const [c, p] of pairs) if (p.expires != null && p.expires <= now()) { pairs.delete(c); n++; } if (n) savePairs(); };
   const shaOf = (t) => crypto.createHash("sha256").update(t).digest("hex");
@@ -35,7 +37,7 @@ export function createServer({ dir, maxBody = MAX_BODY, maxSlots = MAX_SLOTS, no
   const vaultFile = (id) => path.join(dir, `${id}.json`);
   const load = (id) => { try { return JSON.parse(fs.readFileSync(vaultFile(id), "utf8")); } catch { return null; } };
   const store = (id, v) => { const f = vaultFile(id); fs.writeFileSync(f + ".tmp", JSON.stringify(v)); fs.renameSync(f + ".tmp", f); };
-  const send = (res, code, body) => { res.writeHead(code, { "content-type": "application/json", "access-control-allow-origin": "*", "access-control-allow-headers": "authorization,content-type,if-match", "access-control-allow-methods": "GET,PUT,DELETE,OPTIONS" }); res.end(body === undefined ? "" : JSON.stringify(body)); };
+  const send = (res, code, body) => { res.writeHead(code, { "content-type": "application/json", "access-control-allow-origin": "*", "access-control-allow-headers": "authorization,content-type,if-match,x-vault-id", "access-control-allow-methods": "GET,PUT,DELETE,OPTIONS" }); res.end(body === undefined ? "" : JSON.stringify(body)); };
   const readBody = (req) => new Promise((resolve, reject) => {
     let n = 0; const chunks = [];
     req.on("data", (c) => { n += c.length; if (n > maxBody) { reject(Object.assign(new Error("too large"), { code: 413 })); req.destroy(); } else chunks.push(c); });
@@ -46,17 +48,28 @@ export function createServer({ dir, maxBody = MAX_BODY, maxSlots = MAX_SLOTS, no
   return http.createServer(async (req, res) => {
     try {
       if (req.method === "OPTIONS") return send(res, 204);
+      {
+        const who = clientOf(req); const r = rate.get(who);
+        if (!r || now() - r.start >= 60_000) rate.set(who, { start: now(), count: 1 });
+        else if (++r.count > maxRequestsPerMinute) return send(res, 429, { error: "slow down" });
+        if (rate.size > 10_000) rate.clear(); // never let the table itself grow without bound
+      }
       const pm = /^\/v1\/pair\/([^/]+)(\/claim)?$/.exec(new URL(req.url, "http://x").pathname);
       if (pm) {
         const code = pm[1].toUpperCase();
         if (!PAIR.test(code)) return send(res, 400, { error: "bad code" });
         sweep();
         if (req.method === "PUT" && !pm[2]) {
+          // Only a vault's owner can register a code, so strangers cannot fill the table.
+          const vid = req.headers["x-vault-id"];
+          const tk0 = /^Bearer (.+)$/.exec(req.headers.authorization ?? "")?.[1];
+          const v0 = typeof vid === "string" && HEX.test(vid) ? load(vid) : null;
+          if (!v0 || !tk0 || shaOf(tk0) !== v0.auth) return send(res, 401, { error: "vault auth required" });
           if (pairs.has(code)) return send(res, 409, { error: "in use" });
           if (pairs.size >= maxPairs) return send(res, 429, { error: "busy" });
           let body;
           try { body = JSON.parse(await readBody(req)); } catch { return send(res, 400, { error: "bad body" }); }
-          if (!body?.blob || typeof body.blob.ct !== "string" || typeof body.blob.iv !== "string") return send(res, 400, { error: "bad blob" });
+          if (!body?.blob || typeof body.blob.ct !== "string" || typeof body.blob.iv !== "string" || JSON.stringify(body.blob).length > maxPairBlob) return send(res, 400, { error: "bad blob" });
           const tk = /^Bearer (.+)$/.exec(req.headers.authorization ?? "")?.[1];
           if (!tk) return send(res, 401, { error: "auth required" });
           pairs.set(code, { blob: body.blob, auth: shaOf(tk), expires: pairTtlMs == null ? null : now() + pairTtlMs });
@@ -135,6 +148,8 @@ export function createServer({ dir, maxBody = MAX_BODY, maxSlots = MAX_SLOTS, no
         if (env?.gameId !== gameId || env?.slot !== slot || env?.format !== 1) return send(res, 400, { error: "envelope mismatch" });
         if (!cur && Object.values(vault.saves).filter((s) => !s.deleted).length >= maxSlots) return send(res, 413, { error: "too many slots" });
         const revision = curRev + 1;
+        const others = Object.entries(vault.saves).reduce((n, [k, s]) => n + (k === key || s.deleted ? 0 : JSON.stringify(s.env).length), 0);
+        if (others + JSON.stringify(env).length > maxVaultBytes) return send(res, 413, { error: "vault full" });
         vault.saves[key] = { env: { ...env, revision }, revision };
         store(vaultId, vault);
         return send(res, 200, { revision });

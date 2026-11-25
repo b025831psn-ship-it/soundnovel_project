@@ -13,7 +13,12 @@ async function setup(opts = {}, dir = fs.mkdtempSync(path.join(os.tmpdir(), "pai
   await new Promise((r) => server.listen(0, "127.0.0.1", r));
   return { dir, baseUrl: `http://127.0.0.1:${server.address().port}`, clock, close: () => server.close() };
 }
-const owner = async (secret) => ({ authToken: (await deriveKeys(secret)).authToken });
+// The vault must exist before its owner can register a code (the sync client creates it on first sync).
+const owner = async (secret, baseUrl) => {
+  const k = await deriveKeys(secret);
+  await fetch(`${baseUrl}/v1/vaults/${k.vaultId}`, { method: "PUT", headers: { authorization: `Bearer ${k.authToken}` } });
+  return { authToken: k.authToken, vaultId: k.vaultId };
+};
 
 test("codes are 4 characters from the unambiguous alphabet", () => {
   for (let i = 0; i < 200; i++) assert.match(newPairCode(), /^[0-9A-HJKMNP-TV-Z]{4}$/);
@@ -23,7 +28,7 @@ test("the code keeps working days later, from any device, and survives a server 
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "pair-"));
   let t = await setup({}, dir);
   const secret = newSecret();
-  const { code, expiresInSec } = await startPairing(secret, { baseUrl: t.baseUrl, ...(await owner(secret)) });
+  const { code, expiresInSec } = await startPairing(secret, { baseUrl: t.baseUrl, ...(await owner(secret, t.baseUrl)) });
   assert.equal(expiresInSec, null);
   t.clock.advance(3 * 24 * 3600 * 1000);
   for (let i = 0; i < 2; i++) {
@@ -39,9 +44,9 @@ test("the code keeps working days later, from any device, and survives a server 
 
 test("a new code retires the old one; only the vault owner can revoke", async () => {
   const t = await setup();
-  const secret = newSecret(), o = await owner(secret);
+  const secret = newSecret(), o = await owner(secret, t.baseUrl);
   const a = await startPairing(secret, { baseUrl: t.baseUrl, ...o });
-  const stranger = await owner(newSecret());
+  const stranger = await owner(newSecret(), t.baseUrl);
   assert.equal(await revokePairing(a.code, { baseUrl: t.baseUrl, ...stranger }), false);
   assert.equal((await claimPairing(a.code, { baseUrl: t.baseUrl })).ok, true);
   const b = await renewPairing(secret, a.code, { baseUrl: t.baseUrl, ...o });
@@ -54,7 +59,7 @@ test("a new code retires the old one; only the vault owner can revoke", async ()
 test("guessing is rate limited, and the limit lifts after the window", async () => {
   const t = await setup({ maxFailsPerClient: 5 });
   const secret = newSecret();
-  const { code } = await startPairing(secret, { baseUrl: t.baseUrl, ...(await owner(secret)) });
+  const { code } = await startPairing(secret, { baseUrl: t.baseUrl, ...(await owner(secret, t.baseUrl)) });
   for (let i = 0; i < 5; i++) assert.equal((await claimPairing("0000", { baseUrl: t.baseUrl })).reason, "wrong");
   assert.equal((await claimPairing(code, { baseUrl: t.baseUrl })).reason, "limited");
   t.clock.advance(10 * 60 * 1000 + 1);
@@ -64,7 +69,7 @@ test("guessing is rate limited, and the limit lifts after the window", async () 
 
 test("strict mode: single use and expiry can be switched on", async () => {
   const t = await setup({ pairTtlMs: 5 * 60 * 1000, pairSingleUse: true });
-  const secret = newSecret(), o = await owner(secret);
+  const secret = newSecret(), o = await owner(secret, t.baseUrl);
   const first = await startPairing(secret, { baseUrl: t.baseUrl, ...o });
   assert.equal(first.expiresInSec, 300);
   assert.equal((await claimPairing(first.code, { baseUrl: t.baseUrl })).ok, true);
@@ -75,10 +80,34 @@ test("strict mode: single use and expiry can be switched on", async () => {
   t.close();
 });
 
-test("registering a code needs a token, and a code cannot be taken over", async () => {
+test("only a vault owner can register a code, and blobs stay small", async () => {
   const t = await setup();
-  const r = await fetch(`${t.baseUrl}/v1/pair/ABCD`, { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify({ blob: { iv: "x", ct: "y" } }) });
-  assert.equal(r.status, 401);
+  const put = (headers, blob = { iv: "x", ct: "y" }) => fetch(`${t.baseUrl}/v1/pair/ABCD`, { method: "PUT", headers: { "content-type": "application/json", ...headers }, body: JSON.stringify({ blob }) });
+  assert.equal((await put({})).status, 401);
+  const stranger = await deriveKeys(newSecret()); // no vault on the server
+  assert.equal((await put({ authorization: `Bearer ${stranger.authToken}`, "x-vault-id": stranger.vaultId })).status, 401);
+  const o = await owner(newSecret(), t.baseUrl);
+  assert.equal((await put({ authorization: `Bearer ${o.authToken}`, "x-vault-id": o.vaultId }, { iv: "x", ct: "y".repeat(5000) })).status, 400);
+  assert.equal((await put({ authorization: `Bearer ${o.authToken}`, "x-vault-id": o.vaultId })).status, 201);
+  t.close();
+});
+
+test("a vault has a size and slot limit, and a client a request rate limit", async () => {
+  const t = await setup({ maxVaultBytes: 3000, maxSlots: 2, maxRequestsPerMinute: 12 });
+  const k = await deriveKeys(newSecret());
+  const h = { authorization: `Bearer ${k.authToken}`, "content-type": "application/json", "if-match": "0" };
+  await fetch(`${t.baseUrl}/v1/vaults/${k.vaultId}`, { method: "PUT", headers: h });
+  const env = (slot, n) => JSON.stringify({ format: 1, gameId: "g", slot, schema: 1, dataVersion: 1, revision: 0, savedAt: "2026-01-01T00:00:00Z", payload: "x".repeat(n) });
+  const put = (slot, n, match = "0") => fetch(`${t.baseUrl}/v1/vaults/${k.vaultId}/saves/g/${slot}`, { method: "PUT", headers: { ...h, "if-match": match }, body: env(slot, n) });
+  assert.equal((await put("s1", 100)).status, 200);
+  assert.equal((await put("s2", 100)).status, 200);
+  assert.equal((await put("s3", 100)).status, 413); // third slot
+  assert.equal((await put("s1", 5000, "1")).status, 413); // too big for the vault
+  let limited = 0;
+  for (let i = 0; i < 20; i++) if ((await fetch(`${t.baseUrl}/v1/vaults/${k.vaultId}/saves`, { headers: h })).status === 429) limited++;
+  assert.ok(limited > 0);
+  t.clock.advance(61_000);
+  assert.equal((await fetch(`${t.baseUrl}/v1/vaults/${k.vaultId}/saves`, { headers: h })).status, 200);
   t.close();
 });
 

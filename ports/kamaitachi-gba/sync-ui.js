@@ -112,7 +112,8 @@ export async function mountSyncUi({ api = ready(), fetchImpl } = {}) {
         try {
           const secret = newSecret();
           const keys = await connect(secret);
-          const p = await startPairing(secret, { baseUrl: server(), authToken: keys.authToken, ...(fetchImpl ? { fetchImpl } : {}) });
+          await client.ensureVault(); // a passcode can only be registered by an existing vault
+          const p = await startPairing(secret, { baseUrl: server(), authToken: keys.authToken, vaultId: keys.vaultId, ...(fetchImpl ? { fetchImpl } : {}) });
           pass = p.code; store.setMeta("passcode", pass);
           await sync();
         } catch { message = "시작하지 못했습니다. 서버 주소를 확인하세요."; client = null; }
@@ -130,7 +131,7 @@ export async function mountSyncUi({ api = ready(), fetchImpl } = {}) {
         el("p", { className: "note", textContent: "다른 기기에서 이 코드를 입력하면 같은 세이브가 열립니다. 남에게 알려 주지 마세요." }),
         el("button", { type: "button", textContent: "새로 만들기", onclick: async () => {
           const keys = await deriveKeys(unb64(store.getMeta("vaultSecret")));
-          try { const p = await renewPairing(unb64(store.getMeta("vaultSecret")), pass, { baseUrl: server(), authToken: keys.authToken, ...(fetchImpl ? { fetchImpl } : {}) }); pass = p.code; store.setMeta("passcode", pass); }
+          try { const p = await renewPairing(unb64(store.getMeta("vaultSecret")), pass, { baseUrl: server(), authToken: keys.authToken, vaultId: keys.vaultId, ...(fetchImpl ? { fetchImpl } : {}) }); pass = p.code; store.setMeta("passcode", pass); }
           catch { message = "새 패스코드를 만들지 못했습니다."; }
           paint();
         } })));
