@@ -169,6 +169,7 @@ export class VM {
       tried: new Uint8Array(0x12c), // 02002F94: per node, 2 bits per choice entry taken (0800D084)
       seenTried: new Uint8Array(0x12c), // 020030C0: 02002F94 as of the last opcode 53
       flowMask: 0, // 02004640: 16-bit route mask tested by opcodes 5D/5E
+      endingCount: 0, // 02004604: endings reached this power-on (opcode 44, up to 10)
       inGame: 0, // 0200078D: set by 1D 67, lets R open the in-game menu
       vars: new Uint8Array(256),
       bits: new Uint8Array(256),
@@ -844,11 +845,14 @@ export class VM {
         this.system?.cue?.(0x43, command, this.ram);
         break;
       }
-      case 0x44:
-        // 080053DC: the native flowchart UI returns through bank 27 row 0.
-        this.system?.cue?.(0x44, 39000, this.ram);
-        this.branch(39000);
+      case 0x44: {
+        // 080053DC: the screens after an ending (save, then 続ける / 終了する). Without a host the
+        // script goes on as after セーブしない and 続ける.
+        this.system?.cue?.(0x44, 0, this.ram);
+        const result = this.system?.ending?.(this.ram);
+        if (result?.waiting) this.waiting = result.waiting;
         break;
+      }
       case 0x45: {
         args.push(this.word(), this.word());
         if (

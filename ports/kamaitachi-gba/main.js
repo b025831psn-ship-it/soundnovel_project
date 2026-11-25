@@ -34,26 +34,31 @@ async function languageData(lang) {
   const from = languageAssets(lang);
   const manifest = await from.json("manifest.json");
   const banks = {};
-  for (const file of manifest.files.filter((entry) => entry.path.startsWith("scenario/"))) {
-    banks[Number.parseInt(file.path.slice(-6, -4), 16)] = await from.bin(file.path);
-  }
-  const [glyphs, lookup] = await Promise.all([from.bin("font/glyphs.bin"), from.bin("font/lookup.bin")]);
+  const files = manifest.files.filter((entry) => entry.path.startsWith("scenario/"));
+  const [glyphs, lookup, ...bytes] = await Promise.all([from.bin("font/glyphs.bin"), from.bin("font/lookup.bin"),
+    ...files.map((file) => from.bin(file.path))]);
+  files.forEach((file, i) => { banks[Number.parseInt(file.path.slice(-6, -4), 16)] = bytes[i]; });
   return { assets: from, banks, glyphs, lookup };
 }
 const assets = languageAssets(language);
-const first = await languageData(language);
+// Everything the start needs is fetched at once (each request is a round trip over the tunnel).
+const [first, music, audioTables, effectBytes, transitionTimings, sound] = await Promise.all([
+  languageData(language),
+  assets.json("sound/scenario-map.json"),
+  assets.json("sound/scene-audio.json"),
+  assets.bin("sound/effects.bin"),
+  assets.json("scenario-timing.json"),
+  // Browsers start audio only after a user gesture; until then m4a runs silently in the worklet.
+  createSound(new URL(`${base}/sound/`, location.href)),
+]);
+audioTables.effectBytes = effectBytes;
 const banks = first.banks;
 const font = new NativeFont(first.glyphs, first.lookup);
-const music = await assets.json("sound/scenario-map.json");
-const audioTables = await assets.json("sound/scene-audio.json");
-audioTables.effectBytes = await assets.bin("sound/effects.bin");
-const transitionTimings = await assets.json("scenario-timing.json");
-// Browsers start audio only after a user gesture; until then m4a runs silently in the worklet.
-const sound = await createSound(new URL(`${base}/sound/`, location.href));
 for (const type of ["keydown", "pointerdown"]) addEventListener(type, () => sound.resume(), { once: true });
 const screen = new Screen(document.querySelector("#screen"));
 const scene = new SceneLoader(assets, screen);
-scene.silhouettes = await Silhouettes.load(assets);
+// The silhouette pictures (2 MB) are first needed in the story, so the title does not wait for them.
+Silhouettes.load(assets).then((loaded) => { scene.silhouettes = loaded; }).catch(() => {});
 const text = new TextWindow({ 1: "透", 2: "真理" });
 const input = new GBAInput();
 // Opcode 57 lists (A/B rows over the story) are drawn by the screen; opcode 13 menus (welcome

@@ -5,6 +5,7 @@
 import { ObjTextSurface } from "./obj-text.js";
 import { NameEntry, NAME_PICTURES, adoptNameText } from "./name-entry.js";
 import { adoptRomString, romString } from "./rom-text.js";
+import { DEFAULT_TINT } from "./silhouette.js";
 import { Books, pageState, restoreData, restorePosition } from "./save.js";
 import { FlowMap, MapSurface, FLOW_COLUMNS, FLOW_ROWS, flowScaleX } from "./flow-map.js";
 import { Options, CONTROLS_PICTURE, TONE_PICTURE, CAST_PICTURES } from "./options.js";
@@ -122,6 +123,8 @@ const SJIS = {
 };
 // 0801ACC0, 080198F4, 0801AC80: BG1 rectangles of the book menu, the saving note and the header.
 const BOOK_MENU_BOX = [60, 35, 120, 65];
+// 08019530: the two-item box of the screens after an ending (opcode 44).
+const ENDING_BOX = [0x3c, 0x62, 0x78, 0x30];
 const SAVE_BOX = [75, 49, 93, 22];
 const LOAD_BOX = [0x12, 0x31, 0xcc, 0x16];
 // The menu box as mGBA shows it (0800CA02 builds 0xA8, 0x48 wide; 28..93 on screen).
@@ -215,12 +218,13 @@ export class Boot {
     this.pictureMap = await this.assets.bin("ui/picture-map.bin");
     await this.loadText(this.assets);
     const optionPictures = this.options ? [CONTROLS_PICTURE, TONE_PICTURE, ...CAST_PICTURES] : [];
-    for (const id of [LOGO, COPYRIGHT, TITLE, ...BOOKS, ...NAME_PICTURES, MENU_PICTURE, ...optionPictures]) {
+    const ids = [LOGO, COPYRIGHT, TITLE, ...BOOKS, ...NAME_PICTURES, MENU_PICTURE, ...optionPictures];
+    const loaded = await Promise.all(ids.map((id) => {
       const name = String(pictureIndex(id, this.pictureMap)).padStart(3, "0");
-      const [tiles, palette] = await Promise.all([
-        this.assets.bin(`bg/${name}.bin`),
-        this.assets.bin(`palette/${name}.bin`),
-      ]);
+      return Promise.all([this.assets.bin(`bg/${name}.bin`), this.assets.bin(`palette/${name}.bin`)]);
+    }));
+    for (const [i, id] of ids.entries()) {
+      const [tiles, palette] = loaded[i];
       // BG palette bank 15 (240-255) holds the menu colors on the title and the bookmark screen.
       if (id === TITLE || BOOKS.includes(id) || id === MENU_PICTURE) {
         palette.fill(0, 480);
@@ -750,6 +754,21 @@ export class Boot {
       if (!this.pressed(KEY.A)) continue;
       this.effect(0);
       this.book = book; // 02004642
+      if (mode === "ending") {
+        // 0800EA11: after an ending the shelf leaves once a book is written.
+        const before = JSON.stringify(this.books.read(book));
+        yield* this.saveTo(book);
+        if (JSON.stringify(this.books.read(book)) !== before) {
+          this.fadeOut(1, 1);
+          this.fadeOut(1, 5);
+          yield* this.waitFade(1);
+          this.layer = null;
+          return true;
+        }
+        shown = -1;
+        first = false;
+        continue;
+      }
       if (mode === "save") {
         yield* this.saveTo(book);
         shown = -1;
@@ -787,6 +806,108 @@ export class Boot {
   // A box with one line of text (08009EB4 / 0800A5E4 style notes).
   noteLayer(base, box, bytes, y = 0x4c) {
     return { ...base, boxes: [...base.boxes, box], glyphs: [...base.glyphs, ...this.text([], bytes, box[0] + 6, y, 2, true)] };
+  }
+
+  // Opcode 44 (080053DC): after an ending. Returns the VM wait while the screens run.
+  ending(ram) {
+    this.ram = ram;
+    this.run = this.endingScreens();
+    return { waiting: "boot" };
+  }
+
+  // 080052D0: lines of text over black and a two-item box (08019530: 0x3C, 0x62, 0x78 x 0x30).
+  // The pointer 8484 sits at (0x4B, 0x9A + 0x18 * item), the labels at 0x5A; the item under it is
+  // white, the other gray. Up and down move (sound 3), A takes it (sound 0, or 1 for the second).
+  // The text and the box are cleared before it returns.
+  *endingChoice(lines, labels, selected) {
+    const draw = () => {
+      const glyphs = [];
+      for (const [x, y, at] of lines) this.text(glyphs, romString(this.systemText, at) ?? [], x, y, 2, true);
+      labels.forEach((at, i) => this.text(glyphs, romString(this.systemText, at) ?? [], 0x5a, 0x9a + 0x18 * i, i === selected ? 2 : 3, true));
+      glyphs.push({ ...this.point(0x4b, 0x9a + 0x18 * selected), encoded: MENU_POINTER, color: 2 });
+      this.layer = { boxes: [ENDING_BOX], glyphs, black: true };
+      this.hits = labels.map((_, i) => ({
+        x: ENDING_BOX[0], y: ENDING_BOX[1] + 4 + 17 * i, w: ENDING_BOX[2], h: 17, current: i === selected,
+        select: () => { this.effect(3); selected = i; },
+      }));
+    };
+    while (true) {
+      draw();
+      yield;
+      if (this.pressed(KEY.DOWN) && selected === 0) { this.effect(3); selected = 1; continue; }
+      if (this.pressed(KEY.UP) && selected === 1) { this.effect(3); selected = 0; continue; }
+      if (this.pressed(KEY.A)) break;
+    }
+    this.effect(selected === 0 ? 0 : 1);
+    this.layer = null;
+    return selected;
+  }
+
+  *endingScreens() {
+    const { vm } = this;
+    const ram = vm.ram;
+    // 080015DC(1) and 0800350C: the silhouettes go; the story picture and text are cleared.
+    this.screen.silhouette = null;
+    vm.scene?.silhouetteClear?.();
+    ram.silhouettes.fill(0xffff);
+    [ram.presentationC5, ram.presentationC6, ram.presentationC7] = DEFAULT_TINT;
+    vm.text?.clearPage?.();
+    this.screen.background = null;
+    // 02004604: endings seen this power-on, counted up to 10.
+    if ((ram.endingCount ?? 0) <= 9) ram.endingCount = (ram.endingCount ?? 0) + 1;
+    this.fadeIn(1, 1);
+    this.fadeIn(1, 5);
+    let done = false;
+    while (!done) {
+      // 0801953x: 『かまいたちの夜』では … ゲームデータをセーブして下さい。 セーブする / セーブしない
+      const save = yield* this.endingChoice([[0x38, 0x14, 0x19538], [0x0a, 0x27, 0x19550], [0x30, 0x39, 0x19578],
+        [0x4e, 0x4c, 0x19594], [0x38, 0x5f, 0x195a8], [0x1c, 0x72, 0x195c4]], [0x195e8, 0x195f4], 0);
+      // 0200251F (flag 0x33): after the third ending, 犯人当てをあきらめて、他の物語を楽しみますか？
+      if (!ram.flags[0x33] && ram.endingCount > 2) {
+        if ((yield* this.endingChoice([[0x33, 0x2f, 0x19604], [0x2b, 0x42, 0x1961c]], [0x19638, 0x19640], 1)) === 0) ram.flags[0x33] = 1;
+      }
+      if (save === 1) {
+        // 今回プレイした分のゲームデータは保存されませんが、よろしいですか？
+        done = (yield* this.endingChoice([[0x43, 0x2f, 0x19648], [0x1a, 0x42, 0x1965c], [0x4a, 0x55, 0x19680]], [0x19638, 0x19640], 1)) === 0;
+      }
+      // 08018504: the map's links, nodes and tried entries go back to the last opcode 53.
+      ram.edges.set(ram.seenEdges);
+      ram.visited.set(ram.seenNodes);
+      ram.tried.set(ram.seenTried);
+      if (save === 0) {
+        // 080033A4(0x27): the book keeps bank 27 row 0, which goes on as the script after 44 does;
+        // 02004640 = 0, then the bookshelf (0800EA5C -> 0800E328) in its save mode.
+        vm.gotoRow(39000);
+        ram.flowMask = 0;
+        this.pageStart = pageState(vm, vm.bank, vm.offset, { names: this.names });
+        done = yield* this.bookmarks("ending");
+        this.screen.background = null;
+        this.layer = null;
+        this.fadeIn(1, 1);
+        this.fadeIn(1, 5);
+      }
+    }
+    ram.vars[3] = 0; // 02000609
+    // 08004608 = 0x3D..0x3F, the culprit found: あなたの名推理で事件は無事解決！ …
+    const solved = ram.node >= 0x3d && ram.node <= 0x3f;
+    const lines = solved
+      ? [[0x17, 0x25, 0x19694], [0x35, 0x38, 0x196b8], [0x45, 0x4b, 0x196d0], [0x23, 0x5e, 0x196e0], [0x47, 0x71, 0x196fc]]
+      : [[0x2f, 0x16, 0x19720], [0x45, 0x29, 0x19738], [0x51, 0x3c, 0x1974c], [0x2d, 0x4f, 0x19758], [0x3e, 0x62, 0x19774], [0x33, 0x75, 0x19788]];
+    const quit = yield* this.endingChoice(lines, [0x1970c, 0x19714], 0);
+    // 0800654C on slots 1, 2, 5, 8 and 10 frames (08003044).
+    this.fadeOut(1, 1);
+    this.fadeOut(1, 5);
+    for (let n = 0; n < 10; n++) yield;
+    if (quit === 1) {
+      // 終了する: 02000380 and 02000609 = 1; the script goes back to the title (31002, 3F).
+      ram.continueChosen = 1;
+      ram.vars[3] = 1;
+    }
+    // 0800A384: the music stops; 02004640 = 0.
+    vm.sound?.stop?.(0);
+    vm.syncAudio?.();
+    ram.flowMask = 0;
+    this.layer = null;
   }
 
   // 0800EA10 -> 0800B724 -> 0800A5E4: write the page-start state into the book.
@@ -1154,14 +1275,16 @@ export class Boot {
   // BG1 boxes, OBJ text and the cursor over the picture the screen already drew.
   draw() {
     const screen = this.screen;
+    const layer = this.layer;
+    // A layer marked `black` is drawn over a black screen (opcode 44's screens have no picture).
     if (!screen.background || this.blank) {
       screen.image.data.fill(0);
       for (let i = 3; i < screen.image.data.length; i += 4) screen.image.data[i] = 255;
-      screen.ctx.putImageData(screen.image, 0, 0);
-      return;
-    }
-    screen.renderBackground();
-    const layer = this.layer;
+      if (!layer?.black || this.blank) {
+        screen.ctx.putImageData(screen.image, 0, 0);
+        return;
+      }
+    } else screen.renderBackground();
     if (!layer) return;
     const data = screen.image.data;
     // Channels widen to 8 bits (c << 3 | c >> 2) before blending, and the blend keeps all 8 bits
