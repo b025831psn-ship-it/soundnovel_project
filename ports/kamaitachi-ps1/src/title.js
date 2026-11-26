@@ -107,19 +107,32 @@ export function cardLoad(ctx) { // 0x800298e4
   if ((v & 0xf) === 2 || (v & 0xf) === 4) unported(0x80029948);
   return v;
 }
-export function* cardCheck(ctx, k) { // 0x8002bd1c
+export function* cardCheck(ctx, k) { // 0x8002bd1c: the three save files of the card checked
   const { m } = ctx, sp = ctx.sp - 0x50, sub = { ...ctx, sp };
   for (let i = 0; i < 3; i++) for (let j = 0; j < 0x1f00; j++) m.write(0x800abe90 + i * 0x1f00 + j, 0, 1);
-  const s0 = 0;
-  m.write(0x8006aecc + 0x13, s0 + 0x30, 1);
-  ctx.call(0x80062798, [m.read(CARD_SLOT, 1) << 4], sp);
-  const v = cardWait(ctx, sp + 8, { newCard: 0x8002bdfc });
-  if ((v & 0xf) === 2 || (v & 0xf) === 4) unported(0x8002be14);
-  m.write(sp + 0x20, v, 4);
-  if (m.read(0x80079285, 1) === 1) return -1;
-  if ((v & 0xf) !== 1) unported(0x8002beec);
-  if (!(yield* cardMessage(sub, (k & 0xff) + 5))) unported(0x8002bf44);
-  return -1;
+  const wait = (at) => { ctx.call(0x80063748, [0, CARD_CMD, at], sp); return m.read(at, 4) >>> 0; };
+  const info = (at) => { ctx.call(0x80062798, [m.read(CARD_SLOT, 1) << 4], sp); return wait(at); };
+  for (;;) {
+    let again = 0;
+    for (let f = 0; f < 3; f++) {
+      m.write(0x8006aecc + 0x13, f + 0x30, 1); // the file name's digit
+      for (;;) {
+        let v = info(sp + 0x18);
+        if ((v & 0xf) === 3) m.write(0x80079285, 1, 1); // a new card
+        if ((v & 0xf) === 2 || (v & 0xf) === 4) do { info(sp + 0x18); info(sp + 0x1c); } while ((m.read(sp + 0x18, 4) & 0xf) !== (m.read(sp + 0x1c, 4) & 0xf));
+        v = m.read(sp + 0x18, 4) >>> 0; m.write(sp + 0x20, v, 4);
+        if (m.read(0x80079285, 1) === 1) return -1;
+        const t = v & 0xf;
+        if (t === 2 || t === 4) unported(0x8002be9c); // 0x80029b34: card errors
+        if (t === 1) { // no card: the message; "check again" goes on with the next file
+          if (yield* cardMessage(sub, (k & 0xff) + 5)) return -1;
+          again = 1; break;
+        }
+        if (t === 0 || t === 3) unported(0x8002befc); // the file read (_card_read 0x80062fa0)
+      }
+    }
+    if (!again) return 0;
+  }
 }
 export function* cardMessage(ctx, k) { // 0x80015fa8
   k &= 0xff;
@@ -176,6 +189,7 @@ export function* startMenu(ctx) { // 0x80016078 (the path without a memory card)
   const ui = (n) => sound(ctx).playUi(n, sp);
   m.write(sp + 0x2c, 1, 4);
   w8(0x80079282, 0); w8(0x8007928a, 0); w8(0x8007951e, 0);
+  menu: for (;;) { // 0x800160cc
   clearTextPage(sub);
   w8(0x800792c4, 3);
   cardInfo(sub, r8(CARD_SLOT) ? 0x10 : 0);
@@ -218,11 +232,17 @@ export function* startMenu(ctx) { // 0x80016078 (the path without a memory card)
       if ((yield* cardCheck(sub, 0)) !== -1) unported(0x80016478);
       const r = r8(0x80079518);
       w8(0x80079285, 1);
-      if (r === 0) unported(0x800177d8);
+      if (r === 0) { // 0x800177d8: back to the card choice unless the card was already taken
+        if (r8(0x8007928a) && r8(0x80079285) !== 1) break menu;
+        if (r8(sp + 0x30)) break menu;
+        w8(0x8007928a, 0); continue menu;
+      }
       if (r !== 1) unported(0x80016470);
       m.write(sp + 0x2c, 1, 4); w8(0x8007928a, 1);
       break;
     }
+  }
+  break;
   }
   animInit(m); fadeOut(m, 1, 2); clearTextPage(sub); inputTick(sub);
   return m.read(sp + 0x2c, 4) | 0;
