@@ -9,12 +9,14 @@ export function attachHybrid(oracle, { only, exclude = [] } = {}) {
   if (!Object.getOwnPropertyDescriptor(cpu, "sp")) Object.defineProperty(cpu, "sp", { get() { return this.r[29]; }, set(v) { this.r[29] = v | 0; } });
   const lib = new SoundLib(cpu);
   const native = (addr) => (...a) => cpu.call(addr, a.map((x) => x | 0));
-  const used = [];
+  const used = [], hits = new Map();
   for (const [name, addr] of Object.entries(ADDR)) {
     const ported = typeof SoundLib.prototype[name] === "function";
     const on = ported && (!only || only.includes(name)) && !exclude.includes(name);
     if (!on) { lib[name] = native(addr); continue; }
     used.push(name);
+    const fn = SoundLib.prototype[name];
+    lib[name] = function (...a) { hits.set(name, (hits.get(name) ?? 0) + 1); return fn.apply(this, a); };
     cpu.hooks.set(addr >>> 0, (c) => {
       const r = c.r, sp = r[29];
       const args = [r[4], r[5], r[6], r[7]];
@@ -24,5 +26,5 @@ export function attachHybrid(oracle, { only, exclude = [] } = {}) {
     });
   }
   lib.jalr = (addr, ...args) => { const n = NAME_AT.get(addr >>> 0); return n ? lib[n](...args) : cpu.call(addr, args.map((x) => x | 0)); };
-  return { lib, used };
+  return { lib, used, hits };
 }
