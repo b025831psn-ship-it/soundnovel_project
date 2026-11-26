@@ -75,26 +75,53 @@ const DEFAULT_EDIT = { mode: "frame", zoom: 1.2, crop: 50 };
 // Extended pictures (태우 2026-11-26): made outside the game (OpenAI, Photoshop) and kept on the test
 // PC; a picture without one keeps the blurred backdrop.
 const extended = new Map(); // id -> Image (complete once loaded) or null when there is none
-function extendedImage(id) {
+function extendedImage(id, priority = "high") {
   if (id === null || id === undefined || !extendedList?.has(id)) return null;
   if (!extended.has(id)) {
     const image = new Image();
     extended.set(id, image);
-    image.onload = () => { editVersion++; };
-    image.onerror = () => { extended.set(id, null); };
+    image.addEventListener("load", () => { editVersion++; });
+    image.addEventListener("error", () => { extended.set(id, null); editVersion++; });
+    image.fetchPriority = priority;
     image.src = `/art/extended/${String(id).padStart(3, "0")}.png`;
   }
   const image = extended.get(id);
   return image && image.complete && image.naturalWidth ? image : null;
 }
-// The list of extended pictures, loaded ahead so a picture never shows first without its extension;
-// a picture not on the list has none (no request for it).
+// The list of extended pictures; a picture not on it has none (no request for it). They are fetched
+// ahead two at a time, so the picture the game asks for is never queued behind all the others.
 let extendedList = null;
 fetch("/art/extended/index.json", { cache: "no-cache" }).then((r) => (r.ok ? r.json() : [])).catch(() => [])
   .then((list) => {
     extendedList = new Set(Array.isArray(list) ? list : []);
-    for (const id of extendedList) extendedImage(id);
+    const queue = [...extendedList];
+    const next = () => {
+      let id = queue.shift();
+      while (id !== undefined && extended.has(id)) id = queue.shift();
+      if (id === undefined) return;
+      extendedImage(id, "low");
+      const image = extended.get(id);
+      image.addEventListener("load", next);
+      image.addEventListener("error", next);
+    };
+    next();
+    next();
   });
+// Whether picture `id` has an extension still on its way. Such a picture is not shown without it first
+// (the original alone, then the tall picture behind it): the screen keeps what it had until it
+// arrives, four seconds at most (태우 2026-11-26).
+const waits = new Map(); // id -> when the wait began
+function awaited(id) {
+  if (id === null || id === undefined) return false;
+  const mode = edits[id]?.mode;
+  if (mode === "fill" || mode === "frame") return false;
+  if (extendedList && (!extendedList.has(id) || extendedImage(id) || extended.get(id) === null)) {
+    waits.delete(id);
+    return false;
+  }
+  if (!waits.has(id)) waits.set(id, performance.now());
+  return performance.now() - waits.get(id) < 4000;
+}
 const editFor = (id) => {
   if (id === null || id === undefined) return null;
   const edit = { ...DEFAULT_EDIT, ...(edits[id] ?? {}) };
@@ -390,6 +417,10 @@ function drawPicture(game) {
   // asked for, while the screen still shows (and fades) the last one until the new one is drawn.
   if (screen.background && !backgroundIds.has(screen.background)) backgroundIds.set(screen.background, pictureId(game));
   const id = screen.background ? backgroundIds.get(screen.background) : pictureId(game);
+  // The next picture's extension starts loading as soon as the scene asks for the picture, while
+  // the old one is still fading out.
+  extendedImage(pictureId(game));
+  if (awaited(id)) return;
   if (id !== currentId && !PREVIEW) loadEdits();
   currentId = id;
   const edit = editFor(currentId);
