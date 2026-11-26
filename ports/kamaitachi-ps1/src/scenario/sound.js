@@ -99,3 +99,14 @@ export function* waitEffect(ctx, n) {
   }
   snd.clearDone(n);
 }
+
+// 0x36 0x80020d78 bankSe(u8 bank, u16 id): the variant set, then the effect played (as
+// bank·1000 + id when it is numbered per bank); 0xffff = none. Ends the frame only while quiet.
+HANDLERS[0x36] = function* (ctx) {
+  const { m } = ctx, o = operand(m), bank = o.u8(), id = o.u16(), sp = ctx.sp - 0x28, snd = sound(ctx);
+  if (quiet(m)) { endFrame(m); return; }
+  if (id === 0xffff) return;
+  if (!perBank(ctx, id)) { snd.setVariant(bank, id, sp); snd.play(id, 0, sp); return; }
+  snd.setVariant(bank, id, sp);
+  if (perBank(ctx, id)) snd.play((id + 1000 * bank) & 0xffff, 0, sp);
+};
