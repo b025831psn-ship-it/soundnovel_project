@@ -2,7 +2,7 @@ import { Screen } from "./src/screen.js";
 import { Assets, SceneLoader } from "./src/scene.js";
 import { NativeFont, TextWindow } from "./src/font.js";
 import { GBAInput } from "./src/input.js";
-import { VM } from "./src/vm.js";
+import { VM, textKey } from "./src/vm.js";
 import { PageText } from "./src/page-text.js";
 import { LargeText, wantsLargeText } from "./src/large-text.js";
 import { Boot, KEY } from "./src/boot.js";
@@ -10,7 +10,8 @@ import { createSound } from "./sound/output.js";
 import { Silhouettes } from "./src/silhouette.js";
 import { openBooks } from "./src/books-store.js";
 import { restoreData, restorePosition } from "./src/save.js";
-import { TextEdits, openTextEditor } from "./src/text-editor.js";
+import { TextEdits, TextCodec, openTextEditor, untranslated } from "./src/text-editor.js";
+import { openScenePanel, replayTo } from "./src/debug-jump.js";
 
 const base = "../../kamaitachi-gba-kor/port-data";
 const KOREAN = "../../kamaitachi-gba-kor/port-data-ko";
@@ -59,6 +60,17 @@ const font = new NativeFont(first.glyphs, first.lookup);
 for (const type of ["keydown", "pointerdown"]) addEventListener(type, () => sound.resume(), { once: true });
 const screen = new Screen(document.querySelector("#screen"));
 const scene = new SceneLoader(assets, screen);
+// Where in the script the picture on screen was asked for ("bb:oooo" of the 04/05 opcode, like the
+// text editor's keys; the opcode's word has just been read when it calls the loader). A debug jump
+// sets it from the replay. The reader keys per-scene edits on it.
+let sceneSite = null;
+{
+  const request = scene.request.bind(scene);
+  scene.request = (argument, ram, mode) => {
+    sceneSite = textKey(vm.bank, vm.offset - 3);
+    return request(argument, ram, mode);
+  };
+}
 // The silhouette pictures (2 MB) are first needed in the story, so the title does not wait for them.
 Silhouettes.load(assets).then((loaded) => { scene.silhouettes = loaded; }).catch(() => {});
 const text = new TextWindow({ 1: "透", 2: "真理" });
@@ -213,8 +225,43 @@ addEventListener("keydown", (event) => {
   if (event.code !== "KeyE" || event.repeat || event.ctrlKey || event.metaKey || event.altKey) return;
   if (openDialogueEditor()) event.preventDefault(); // the E itself must not land in the box
 });
+// Debug mode (?debug=1, not shown to beta visitors): a list of every scene from the language's
+// debug-scenes.json (tools/scene-index.mjs, git-ignored) and a jump to any of them.
+const debugMode = new URLSearchParams(location.search).get("debug") === "1";
+let debugScenes = null;
+function debugJump(target) {
+  const entry = typeof target === "string" ? debugScenes?.find((scene) => scene.site === target) : target;
+  if (!entry) return false;
+  const state = replayTo(vm.banks, entry, { names: boot.names });
+  if (!state) return false;
+  text.clearPage();
+  page.hideMenu();
+  screen.clearChoices();
+  boot.debugJump(state);
+  sceneSite = state.sceneSite ?? entry.site;
+  page.drawn = -1;
+  return true;
+}
+if (debugMode) {
+  const codec = new TextCodec(language, font);
+  const japanese = new TextCodec("ja", { find: () => 0 });
+  debugScenes = (await languageAssets(language).json("debug-scenes.json").catch(() => null))?.scenes ?? [];
+  openScenePanel({
+    scenes: debugScenes,
+    decode: (hex) => {
+      const raw = Uint8Array.from(hex.match(/../g) ?? [], (h) => parseInt(h, 16));
+      if (language === "ko" && untranslated(raw)) return `[미번역] ${japanese.decode(raw).replace(/\{[^}]*\}|\n/g, "")}`;
+      return codec.decode(raw).replace(/\{n([12])\}/g, (_, n) => codec.decode(Uint8Array.from(boot.names[n] ?? []))).replace(/\{[^}]*\}|\n/g, "");
+    },
+    thumb: (entry) => `/kamaitachi-gba-kor/assets/bg/${String(entry.image).padStart(3, "0")}${entry.variant ? `-${entry.variant}` : ""}.png`,
+    editorLink: (entry) => `editor.html?id=${String(entry.image).padStart(3, "0")}&scene=${encodeURIComponent(`${entry.picture}@${entry.site}`)}&sil=${entry.silhouettes.join(",")}`,
+    jump: debugJump,
+    current: () => sceneSite,
+  });
+}
+
 window.kamaitachi = { language, languages: LANGUAGES, setLanguage, vm, screen, assets, font, input, sound, page, boot, tap, openMenu,
-  openDialogueEditor, get textEdits() { return textEdits; },
+  openDialogueEditor, get textEdits() { return textEdits; }, debugJump, get debugScenes() { return debugScenes; }, get sceneSite() { return sceneSite; },
   get menuAvailable() { return menuAvailable; } };
 
 let last = performance.now();
