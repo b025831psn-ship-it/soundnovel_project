@@ -38,4 +38,4 @@ Named from call sites in the game module and from each function's body
 | 0x80061368 | SpuGetKeyStatus(1 << voice) | channel ends when not ON |
 | 0x8005fd48 | SpuMallocWithStartAddr(0x1010, size) | effect banks |
 | 0x8005fff8 | SpuFree | |
-| 0x80060ff8 | VSync(n)? | VSync(5) between reverb changes |
+| 0x80060ff8 | SpuClearReverbWorkArea(mode) | game calls it with 5 when silencing reverb; zero-fills the work area with SpuWrite (0x8005edec) |

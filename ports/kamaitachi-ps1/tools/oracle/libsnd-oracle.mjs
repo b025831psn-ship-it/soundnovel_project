@@ -24,9 +24,8 @@ export const NATIVE = {
   SsUtReverbOn: [0x8005a748], SsUtReverbOff: [0x8005a728],
   SsUtKeyOn: [0x80059cd8], SsUtKeyOnV: [0x8005a188], SsUtKeyOffV: [0x8005a4e8],
   SsUtChangePitch: [0x80059848], SsUtSetVVol: [0x8005a974],
-  SpuGetKeyStatus: [0x80061368], SpuMallocWithStartAddr: [0x8005fd48], SpuFree: [0x8005fff8],
+  SpuGetKeyStatus: [0x80061368], SpuClearReverbWorkArea: [0x80060ff8], SpuMallocWithStartAddr: [0x8005fd48], SpuFree: [0x8005fff8],
 };
-const VSYNC = 0x80060ff8;
 const ARENA = 0x80100000, ARENA_END = 0x801c0000;
 export const SAMPLES_PER_FRAME = 735; // 44100 / 60 (NTSC)
 
@@ -39,7 +38,6 @@ export class LibsndOracle {
     this.arena = ARENA;
     this.dma = new Uint32Array(0x80 / 4); this.ioMem = new Map();
     this.cpu.io = { read: (a, w) => this.ioRead(a, w), write: (a, v, w) => this.ioWrite(a, v, w) };
-    this.cpu.hooks.set(VSYNC, (c) => { this.frame(Math.max(1, c.r[4] | 0)); c.r[2] = this.frames; c.ret(); });
     for (const v of [0xa0, 0xb0, 0xc0]) this.cpu.hooks.set(v, (c) => { this.bios(v, c.r[9]); c.ret(); });
     this.ss = new Proxy({}, { get: (_, k) => (...a) => this.callNamed(k, a) });
   }

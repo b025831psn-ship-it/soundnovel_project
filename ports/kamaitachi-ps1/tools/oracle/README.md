@@ -9,7 +9,7 @@ JS libsnd port alike, and their SPU register logs can be compared write by write
 Nothing here ships with the web player and no EXE bytes are committed. Outputs (WAV,
 `*.spu.json` register logs) stay local.
 
-Stubs: VSync (0x80060ff8) advances one 735-sample frame; BIOS B(08) OpenEvent returns a
+Stubs: the module's VSync advances one 735-sample frame; BIOS B(08) OpenEvent returns a
 handle and B(0B) TestEvent returns 1 (DMA completes at once); other BIOS calls return 0.
 Interrupts and the CD are not modelled.
 

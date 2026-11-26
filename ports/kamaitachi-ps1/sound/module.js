@@ -119,7 +119,7 @@ export class SoundModule {
     const ss = this.ss;
     ss.SsSetRVol(0, 0);
     ss.SsUtSetReverbDepth(0, 0);
-    ss.VSync(5);
+    ss.SpuClearReverbWorkArea(5); // 0x80060ff8 (libspu), mode 5 = hall
     ss.SsUtSetReverbFeedback(0);
     ss.SsUtSetReverbType(0);
     ss.wait80013ff0();
