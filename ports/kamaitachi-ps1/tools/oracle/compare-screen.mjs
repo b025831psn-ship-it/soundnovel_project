@@ -44,9 +44,8 @@ function libgpuHooks() {
   for (const [name, addr] of Object.entries(LIBGPU_ENTRY)) hooks.push([addr, (c) => {
     const lib = libgpuOf(c);
     const a = [4, 5, 6, 7].map((k) => c.r[k] | 0);
-    if (name === "ResetGraph" && [0, 3, 5].includes(a[0] & 7)) return false; // boot-time init: not ported yet, runs natively
     const sp = c.r[29] >>> 0, st = (k) => c.read(sp + 0x10 + 4 * k, 4) | 0;
-    const args = name === "LoadTPage" ? [...a, st(0), st(1), st(2), sp - 0x30] : name === "LoadClut" ? [a[0], a[1], a[2], sp - 0x28] : a;
+    const args = name === "LoadTPage" ? [...a, st(0), st(1), st(2), sp - 0x30] : name === "LoadClut" ? [a[0], a[1], a[2], sp - 0x28] : name === "GsInitGraph" ? [...a, st(0)] : a;
     const v = lib[name](...args);
     c.r[2] = (v ?? c.r[2]) | 0; c.ret();
   }]);

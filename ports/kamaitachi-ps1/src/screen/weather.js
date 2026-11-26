@@ -209,7 +209,7 @@ export function effectsOff(m) {
 export function effect(ctx, mode) {
   const { m } = ctx, g8 = (o) => m.read(GP + o, 1);
   if ((mode & 0xffff) >= 0x100) return;
-  if ((mode & 0xffff) !== 0) unported(0x800418f0);
+  if ((mode & 0xffff) !== 0) { ctx.call(0x800418d0, [mode], ctx.sp); return; } // other modes: not ported yet (native on the oracle)
   const keep = m.read(0x800792c3, 1);
   if (!keep) animStop(m);
   m.write(GP + 0x1cc, 0, 4); m.write(GP + 0x390, 0, 1);

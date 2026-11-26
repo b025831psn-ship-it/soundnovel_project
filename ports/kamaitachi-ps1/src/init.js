@@ -153,11 +153,11 @@ export function graphicsInit(ctx) { // 0x800351d0
   const { m, gs } = ctx, sp = ctx.sp - 0x48, sub = { ...ctx, sp }, { w8, w16, w32 } = io(m), call = (a, args) => ctx.call(a, args, sp) | 0;
   cdInit(sub); padInit(sub); effectsInit(sub);
   call(0x800454b8, [1]);
-  w32(sp + 0x10, 0); call(0x8004cde8, [0x140, 0xf0, 0, 0]); // GsInitGraph
-  call(0x8004d5e8, [0, 0, 0, 0xf0]); // GsDefDispBuff
+  w32(sp + 0x10, 0); gs.GsInitGraph(0x140, 0xf0, 0, 0, 0);
+  gs.GsDefDispBuff(0, 0, 0, 0xf0);
   for (let i = 0; i < 2; i++) { w32(0x801d5600 + 0x14 * i + 4, 0x8009d978 + 0x40 * i); w32(0x801d5600 + 0x14 * i, 4); }
-  call(0x8004d688, []); // GsInit3D
-  call(0x8004d5c8, [0, 0]);
+  gs.GsInit3D();
+  gs.GsSetOrign(0, 0);
   gs.DrawSync(0);
   const rect = sp + 0x30;
   w16(rect + 2, 0); w16(rect, 0); w16(rect + 4, 0x400); w16(rect + 6, 0x200);
@@ -165,13 +165,13 @@ export function graphicsInit(ctx) { // 0x800351d0
   w8(0x80079288, 0); w8(0x80079287, 0);
   animInit(m);
   for (const [o, v] of [[0x10, 0x2c0], [0x14, 0], [0x18, 0x300], [0x1c, 0x100], [0x20, 0], [0x24, 0x200]]) w32(sp + o, v);
-  call(0x80047d18, [0xa0, 0x10, 0x100, 0xc8]);
-  call(0x80046f08, [0x3c0, 0x100]);
+  call(0x80047d18, [0xa0, 0x10, 0x100, 0xc8]); // debug fonts (library; HLE in the browser)
+  call(0x80046f08, [0x3c0, 0x100]); // FntLoad
   w32(sp + 0x10, 0); w32(sp + 0x14, 0x200);
-  call(0x80046ec8, [call(0x80046fa8, [0x10, 0x10, 0x100, 0xc8])]);
+  call(0x80046ec8, [call(0x80046fa8, [0x10, 0x10, 0x100, 0xc8])]); // SetDumpFnt(FntOpen(...))
   w16(rect, 0); w16(rect + 2, 8); w16(rect + 6, 0xe0); w16(rect + 4, 0x140); w16(rect, 0); w16(rect + 2, 0); w16(rect + 4, 0x140); w16(rect + 6, 0xf0);
-  call(0x8004d4d8, [rect]);
-  call(0x8004d458, []);
+  gs.GsSetDrawBuffClip(rect);
+  gs.GsSetDrawBuffClipActive();
   gs.DrawSync(0);
 }
 
@@ -196,8 +196,8 @@ export function* logoMovie(ctx, k) {
   clearVram(sub);
   ctx.call(0x80053318, [], sp); // ResetCallback
   libcd(sub).CdInit();
-  ctx.call(0x80048f38, [0], sp); // ResetGraph(0)
-  ctx.call(0x800490ac, [0], sp); // SetGraphDebug(0)
+  ctx.gs.ResetGraph(0);
+  ctx.gs.SetGraphDebug(0);
   bzero(m, r32(0x80079484), 0x28000); bzero(m, r32(0x800794d8), 0x13800);
   bzero(m, r32(0x80079440), 0x12c00); bzero(m, r32(0x80079508), 0x2e000);
   if (ctx.movie) yield* ctx.movie(0x8006aee4 + 36 * (k & 0xffff)); else ctx.call(0x800343b0, [0x8006aee4 + 36 * (k & 0xffff)], sp);

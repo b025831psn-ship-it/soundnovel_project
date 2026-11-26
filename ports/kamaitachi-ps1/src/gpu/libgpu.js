@@ -146,22 +146,45 @@ export class LibGpu {
   }
 
   // 0x8004b574 with mode 1 (ResetGraph(1): cancel drawing, keep the environment)
-  reset(mode) {
+  reset(mode) { // 0x8004b574
     this.w32(G.rMask, this.setIntrMask(0)); this.w32(G.qTail, 0); this.w32(G.qHead, this.r32(G.qTail));
-    if ((mode & 7) !== 1) unported(0x8004b5b0);
+    const v = mode & 7;
+    if (v !== 0 && v !== 1) unported(0x8004b5b0);
     this.w32(this.reg(G.d2chcr), 0x401);
     const dpcr = this.reg(G.dpcr); this.w32(dpcr, this.r32(dpcr) | 0x800);
-    this.w32(this.reg(G.gp1), 0x02000000); this.w32(this.reg(G.gp1), 0x01000000);
+    if (v === 0) {
+      this.w32(this.reg(G.gp1), 0);
+      for (let i = 0; i < 0x100; i++) this.w8(G.gp1Shadow + i, 0);
+      for (let i = 0; i < 0x1800; i++) this.w8(0x801fa950 + i, 0);
+    } else { this.w32(this.reg(G.gp1), 0x02000000); this.w32(this.reg(G.gp1), 0x01000000); }
     this.setIntrMask(this.r32(G.rMask));
-    return 0;
+    if (v !== 0) return 0;
+    this.w32(this.reg(G.gp1), 0x10000007); // 0x8004b978: GPU version
+    if ((this.r32(this.reg(G.gp0)) & 0xffffff) !== 2) unported(0x8004b9b0);
+    if (mode & 8) unported(0x8004b9f0);
+    return 1;
   }
 
   // --- libgpu API ---
   ResetGraph(mode) { // 0x80048f38
     const v = mode & 7;
-    if (v === 0 || v === 3 || v === 5) unported(0x80048f84);
+    if (v === 3 || v === 5) unported(0x80048f84);
+    if (v === 0) { // full reset; the "ResetGraph:jtb=..." printf, ResetCallback (done already) and BIOS GPU_cw are left out
+      for (let i = 0; i < 0x80; i++) this.w8(G.env + i, 0);
+      this.w8(G.env, this.reset(mode)); this.w8(G.queued, 1);
+      const k = this.r8(G.env);
+      this.w16(G.vramW, this.r16(0x80072bd0 + 4 * k)); this.w16(G.vramH, this.r16(0x80072bdc + 4 * k));
+      for (let i = 0; i < 0x5c; i++) this.w8(G.drawEnv + i, 0xff);
+      for (let i = 0; i < 0x14; i++) this.w8(G.dispEnv + i, 0xff);
+      return this.r8(G.env);
+    }
     if (this.r8(G.debug) >= 2) unported(0x80049060);
     return this.reset(1);
+  }
+  SetGraphDebug(level) { // 0x800490ac
+    const old = this.r8(G.debug); this.w8(G.debug, level);
+    if (level & 0xff) unported(0x800490d4);
+    return old;
   }
   SetDispMask(on) { // 0x8004921c
     if (this.r8(G.debug) >= 2) unported(0x80049248);
@@ -269,6 +292,76 @@ export class LibGpu {
     this.w16(e + 2, s16(this.r16(c + 2)) + s16(this.r16(G.dispY + 2 * i)));
     this.PutDrawEnv(e);
   }
+  // libgs set-up
+  GsInitGraph(w, h, intmode, dither, vram) { // 0x8004cde8 (vram: 5th argument, from the stack)
+    w &= 0xffff; h &= 0xffff; intmode &= 0xffff; dither &= 0xffff;
+    this.initEnvs(w, h, intmode, dither, vram & 0xffff);
+    this.initGeom();
+    this.w16(G.psdIdx, 0);
+    this.initScreen(w, h);
+    this.putActiveDrawEnv();
+    this.setGeomOffset();
+    return 0;
+  }
+  initEnvs(w, h, intmode, dither, vram) { // 0x8004ce5c
+    if (((intmode >> 4) & 3) === 3) unported(0x8004cea8);
+    this.ResetGraph(0);
+    const d = G.drawEnvA;
+    for (const o of [0xa, 8, 0xe, 0xc, 0x10, 0x12]) this.w16(d + o, 0); // +8.. of 0x801d64b8
+    this.w16(d + 0x14, 0); this.w8(d + 0x16, dither); this.w8(d + 0x17, 0); this.w8(d + 0x18, 0);
+    this.PutDrawEnv(d);
+    const e = G.dispEnvA;
+    this.w16(e, 0); this.w16(e + 2, 0); this.w16(e + 4, w); this.w16(e + 6, h);
+    this.w16(e + 8, 0); this.w16(e + 0xa, 0); this.w16(e + 0xc, 0); this.w16(e + 0xe, 0);
+    if (this.videoMode() === 1) unported(0x8004cf2c);
+    this.w8(e + 0x10, intmode & 1);
+    this.w16(G.offsetMode, intmode & 4);
+    this.w8(e + 0x11, vram);
+    this.PutDispEnv(e);
+  }
+  initGeom() { // 0x8004dd08: InitGeom (GTE registers and the kernel patch: not modelled), offsets 0
+    this.w32(0x80072e00, 0x8004dd18); this.w32(0x8008a420, 0x8004df40); // the return addresses it saves
+    this.w16(G.offY, 0); this.w16(G.offX, 0);
+  }
+  initScreen(w, h) { // 0x8004cfe0: the default matrices, origin, clip and clear packets
+    this.w32(G.clearH, w); this.w32(G.clearW, h);
+    const proj = Math.trunc((this.r32(G.clearW) << 14) / (this.r32(G.clearH) | 0)) | 0;
+    const M = 0x801eef18;
+    for (const o of [4, 2, 0xa, 6, 0xe, 0xc]) this.w16(M + o, 0);
+    for (const o of [0x1c, 0x18, 0x14]) this.w32(M + o, 0);
+    this.w16(M, 0x1000); this.w16(M + 8, 0x1000); this.w16(M + 0x10, 0x1000);
+    const copy = (src, dst) => { for (let i = 0; i < 0x20; i += 4) this.w32(dst + i, this.r32(src + i)); };
+    copy(M, 0x801f66b8);
+    copy(M, 0x801d58c8); this.w16(0x801d58c8 + 0x10, 0); this.w16(0x801d58c8 + 8, 0); this.w16(0x801d58c8, 0);
+    copy(0x801d58c8, 0x801d66a8);
+    this.w16(0x8009ece0, 0); this.w16(0x8009ece2, 0); this.w16(0x8009ece4, 0); this.w16(0x8009ece6, 0);
+    this.w16(G.geomOfs + 2, 0); this.w16(G.geomOfs, 0);
+    this.w16(G.clipX + 2, 0);
+    const third = Math.floor(proj * 0x55555556 / 0x100000000) - (proj >> 31);
+    this.w16(0x801f66b8 + 8, third);
+    this.w16(G.clipX, 0);
+    for (const p of [G.clearPackets, G.clearPackets + 0x10]) { this.w8(p + 3, 3); this.w8(p + 7, 2); }
+    this.w32(G.psdCount, 1);
+    this.w16(G.clipX + 4, this.r16(G.clearH)); this.w16(G.clipX + 6, this.r16(G.clearW));
+  }
+  GsDefDispBuff(x0, y0, x1, y1) { // 0x8004d5e8
+    this.w16(G.dispX, x0); this.w16(G.dispX + 2, x1); this.w16(G.dispY, y0); this.w16(G.dispY + 2, y1);
+    if (s16(this.r16(G.offsetMode))) unported(0x8004d61c);
+    this.w16(0x8009ece0, x0); this.w16(0x8009ece2, x1); this.w16(0x8009ece4, y0); this.w16(0x8009ece6, y1);
+    this.putActiveDrawEnv();
+    this.setGeomOffset();
+  }
+  GsInit3D() { // 0x8004d688
+    const half = (v) => ((v | 0) + ((v | 0) >>> 31)) >> 1;
+    this.w16(G.geomOfs, half(this.r32(G.clearH))); this.w16(G.geomOfs + 2, half(this.r32(G.clearW)));
+    this.setGeomOffset();
+    this.w32(0x801fdf90, 0xa); this.w32(0x801fd788, 0); this.w32(0x801f66b0, 0x3fff);
+    return 0x3fff;
+  }
+  GsSetOrign(x, y) { this.w16(G.geomOfs, x); this.w16(G.geomOfs + 2, y); return G.geomOfs; } // 0x8004d5c8
+  GsSetDrawBuffClip(rect) { for (let i = 0; i < 8; i += 2) this.w16(G.clipX + i, this.r16(rect + i)); return this.r16(rect + 6); } // 0x8004d4d8
+  GsSetDrawBuffClipActive() { this.putActiveDrawEnv(); return G.drawEnvA; } // 0x8004d458
+
   GsSwapDispBuff() { // 0x8004d518
     const i = s16(this.r16(G.psdIdx)), d = G.dispEnvA;
     this.w16(d, this.r16(G.dispX + 2 * i)); this.w16(d + 2, this.r16(G.dispY + 2 * i));
@@ -358,4 +451,6 @@ export const LIBGPU_ENTRY = {
   PutDrawEnv: 0x80049918, PutDispEnv: 0x80049ae4, LoadTPage: 0x80046c28, LoadClut: 0x80046d10,
   GsSortBoxFill: 0x8004c5e8, GsSortFastSprite: 0x8004cc68, GsSortClear: 0x8004d200, GsGetActiveBuff: 0x8004d338,
   GsSwapDispBuff: 0x8004d518, GsDrawOt: 0x8004dc78, GsClearOt: 0x8004dca8, GsGetTimInfo: 0x8004dd58, GsSetWorkBase: 0x8004df18,
+  SetGraphDebug: 0x800490ac, GsInitGraph: 0x8004cde8, GsDefDispBuff: 0x8004d5e8, GsInit3D: 0x8004d688, GsSetOrign: 0x8004d5c8,
+  GsSetDrawBuffClip: 0x8004d4d8, GsSetDrawBuffClipActive: 0x8004d458,
 };
