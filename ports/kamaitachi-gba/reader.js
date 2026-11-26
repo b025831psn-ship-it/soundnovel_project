@@ -64,6 +64,7 @@ let editVersion = 0;
 // Read again whenever the picture changes, so a value saved in the editor shows without reloading
 // the player (the editor's own preview sends its values instead).
 const PREVIEW = new URLSearchParams(location.search).has("preview");
+let previewSite = null, previewPeople = "";
 let editsText = "";
 function loadEdits() {
   fetch("/art/portrait-edits.json", { cache: "no-cache" }).then((r) => (r.ok ? r.text() : "{}"))
@@ -80,6 +81,15 @@ loadEdits();
 // shows on it too
 if (!PREVIEW) setInterval(() => { if (document.visibilityState === "visible") loadEdits(); }, 3000);
 let currentId = null;
+// The scene: where in the script the picture on screen was asked for (window.kamaitachi.sceneSite,
+// "bb:oooo"), null when not known. A scene's own values (edits["<id>@<site>"]) go over the picture's,
+// as one picture serves many scenes (태우 2026-11-26).
+let currentSite = null;
+const sceneKey = (id, site) => (site ? `${id}@${site}` : null);
+function editsOf(id) {
+  const scene = id === currentId ? edits[sceneKey(id, currentSite)] : undefined;
+  return edits[id] || scene ? { ...(edits[id] ?? {}), ...(scene ?? {}) } : undefined;
+}
 // Every picture: the original whole over a blurred backdrop of itself, at 120%, centred (태우 2026-11-26;
 // AI-extended margins were given up). The editor's values for a picture go on top.
 const DEFAULT_EDIT = { mode: "frame", zoom: 1.2, crop: 50 };
@@ -124,7 +134,7 @@ fetch("/art/extended/index.json", { cache: "no-cache" }).then((r) => (r.ok ? r.j
 const waits = new Map(); // id -> when the wait began
 function awaited(id) {
   if (id === null || id === undefined) return false;
-  const mode = edits[id]?.mode;
+  const mode = editsOf(id)?.mode;
   if (mode === "fill" || mode === "frame") return false;
   if (extendedList && (!extendedList.has(id) || extendedImage(id) || extended.get(id) === null)) {
     waits.delete(id);
@@ -135,8 +145,9 @@ function awaited(id) {
 }
 const editFor = (id) => {
   if (id === null || id === undefined) return null;
-  const edit = { ...DEFAULT_EDIT, ...(edits[id] ?? {}) };
-  const wanted = edits[id]?.mode ?? (extendedImage(id) ? "extend" : "frame");
+  const own = editsOf(id);
+  const edit = { ...DEFAULT_EDIT, ...(own ?? {}) };
+  const wanted = own?.mode ?? (extendedImage(id) ? "extend" : "frame");
   edit.mode = wanted === "fill" ? "fill" : wanted === "extend" && extendedImage(id) ? "extend" : "frame";
   return edit;
 };
@@ -490,8 +501,12 @@ function paintFigures(screen, row) {
     const nibble = x & 1 ? byte >> 4 : byte & 15;
     if (!nibble || !shades[nibble]) continue;
     const at = 4 * (y * 240 + x);
-    image.data.set(shades[nibble], at);
-    image.data[at + 3] = 208;
+    // (13 * layer + 7 * picture) / 16: opacity 9/16 leaves the picture its 7/16, the layer's colour
+    // raised by 13/9 to give its 13/16 (capped at white, as the cartridge's sum is).
+    const shade = shades[nibble];
+    image.data[at] = Math.min(255, (shade[0] * 13) / 9); image.data[at + 1] = Math.min(255, (shade[1] * 13) / 9);
+    image.data[at + 2] = Math.min(255, (shade[2] * 13) / 9);
+    image.data[at + 3] = 144;
   }
   figureSource.getContext("2d").putImageData(image, 0, 0);
   figuresCtx.imageSmoothingEnabled = false;
@@ -506,8 +521,11 @@ function drawPicture(game) {
   if (!base || !size.height) return;
   // The id is the one of the picture on screen: the scene names the next picture as soon as it is
   // asked for, while the screen still shows (and fades) the last one until the new one is drawn.
-  if (screen.background && !backgroundIds.has(screen.background)) backgroundIds.set(screen.background, pictureId(game));
-  const id = screen.background ? backgroundIds.get(screen.background) : pictureId(game);
+  if (screen.background && !backgroundIds.has(screen.background))
+    backgroundIds.set(screen.background, { id: pictureId(game), site: PREVIEW ? previewSite : game.sceneSite ?? null });
+  const shown = screen.background ? backgroundIds.get(screen.background) : { id: pictureId(game), site: null };
+  const id = shown.id;
+  currentSite = id === shown.id ? shown.site : null;
   // The next picture's extension starts loading as soon as the scene asks for the picture, while
   // the old one is still fading out.
   extendedImage(pictureId(game));
@@ -529,7 +547,7 @@ function drawPicture(game) {
     if (!(screen.background === shownBackground) || crop < 0) {
       const people = [game.vm?.scene?.layerBuffer, screen.silhouette?.vram].some((v) => v && v.some((b) => b));
       // An extended picture already fills the upright screen: 100% unless the editor says otherwise.
-      settledZoom = Number.isFinite(edits[currentId]?.zoom) ? zoomOf(edit) : people || edit?.mode === "extend" ? 1 : zoomOf(edit);
+      settledZoom = Number.isFinite(editsOf(currentId)?.zoom) ? zoomOf(edit) : people || edit?.mode === "extend" ? 1 : zoomOf(edit);
     }
     const width = Math.min(240, (source.height * size.width) / (size.height * settledZoom));
     // Across, the place is settled when a picture first shows: the editor's value, or centred on the
@@ -804,10 +822,16 @@ if (new URLSearchParams(location.search).has("preview")) {
     if (event.origin !== location.origin || event.data?.type !== "preview") return;
     const game = window.kamaitachi;
     if (!game?.vm) return;
-    const { id, edit } = event.data;
+    // site: the scene being edited (its values go over the picture's), silhouettes: that scene's ids.
+    const { id, edit, site = null, sceneEdit = null, silhouettes = [] } = event.data;
     if (edit) edits[id] = edit; else delete edits[id];
+    const key = sceneKey(id, site);
+    if (key) { if (sceneEdit) edits[key] = sceneEdit; else delete edits[key]; }
     editVersion++;
-    if (pictureId(game) !== id || game.vm.waiting !== "hold") {
+    const people = silhouettes.join();
+    if (pictureId(game) !== id || game.vm.waiting !== "hold" || previewSite !== site || previewPeople !== people) {
+      previewSite = site;
+      previewPeople = people;
       game.vm.waiting = "hold";
       game.boot.run = null;
       game.page.hideMenu?.();
@@ -816,6 +840,12 @@ if (new URLSearchParams(location.search).has("preview")) {
       game.screen.setSilhouetteLayer?.(null);
       game.screen.setBrightness(1, 0x8000);
       game.screen.setBrightness(5, 0x8000);
+      const scene = game.vm.scene;
+      scene.silhouetteClear?.();
+      if (silhouettes.length) {
+        for (const silhouette of silhouettes) scene.silhouetteAdd?.(silhouette);
+        scene.silhouetteShow?.(0, game.vm.tint?.() ?? [5, 0, 15]);
+      }
     }
     parent.postMessage({ type: "preview-shown", id }, location.origin);
   });

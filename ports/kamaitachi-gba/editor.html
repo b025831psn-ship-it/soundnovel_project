@@ -50,6 +50,11 @@
 <section class="side">
   <h1 id="title">그림을 고르세요</h1>
   <div>
+    <h2>적용 범위</h2>
+    <div class="row"><select id="scope"></select></div>
+    <p class="hint">한 그림이 여러 장면에 쓰여요. 장면을 고르면 그 장면에서만 바뀌고, 나머지 값은 그림 전체 값을 따라요.</p>
+  </div>
+  <div>
     <h2>표시 방식</h2>
     <div class="modes" id="modes">
       <button data-mode="">기본</button>
@@ -101,17 +106,49 @@ const $ = (id) => document.getElementById(id);
 const IDS = Array.from({ length: 298 }, (_, i) => i);
 const pad = (id) => String(id).padStart(3, "0");
 let edits = {}, current = null, filter = "all", dirty = false, shownId = null;
+// The scene being edited (bb:oooo, where the script asks for the picture), or null for the whole
+// picture. A scene's values are kept as edits["<id>@<site>"] and go over the picture's.
+let site = null;
+const asked = new URLSearchParams(location.search);
+const askedSilhouettes = (asked.get("sil") ?? "").split(",").filter(Boolean).map(Number).filter(Number.isFinite);
+// Scenes from the debug scene list, when this PC has made one (port-data/debug-scenes.json).
+const sceneList = await fetch("/kamaitachi-gba-kor/port-data/debug-scenes.json", { cache: "no-cache" })
+  .then((r) => (r.ok ? r.json() : null)).catch(() => null);
+const sceneEntries = Array.isArray(sceneList) ? sceneList : Array.isArray(sceneList?.scenes) ? sceneList.scenes : [];
+const keyOf = () => (site ? `${current}@${site}` : current);
+const scenesOf = (id) => {
+  const sites = new Map();
+  for (const entry of sceneEntries) if (entry?.picture === id && entry.site) sites.set(entry.site, entry);
+  for (const key of Object.keys(edits)) { const [pic, at] = key.split("@"); if (at && Number(pic) === id && !sites.has(at)) sites.set(at, { site: at }); }
+  if (site && !sites.has(site)) sites.set(site, { site });
+  return [...sites.values()];
+};
+const silhouettesOf = (id, at) => {
+  const entry = sceneEntries.find((e) => e?.picture === id && e.site === at);
+  return Array.isArray(entry?.silhouettes) ? entry.silhouettes : at && at === asked.get("scene") ? askedSilhouettes : [];
+};
+function renderScope() {
+  const scope = $("scope");
+  const scenes = current === null ? [] : scenesOf(current);
+  scope.replaceChildren(new Option("그림 전체", ""), ...scenes.map((entry, n) => {
+    const label = [`장면 ${n + 1}`, entry.site, entry.node !== undefined ? `노드 ${entry.node}` : "", entry.line ?? "",
+      edits[`${current}@${entry.site}`] ? "편집함" : ""].filter(Boolean).join(" · ");
+    return new Option(label, entry.site);
+  }));
+  scope.value = site ?? "";
+}
 const extendedIds = new Set(await fetch("/art/extended/index.json", { cache: "no-cache" }).then((r) => (r.ok ? r.json() : [])).catch(() => []));
-const modeOf = (id) => edits[id]?.mode ?? (extendedIds.has(id) ? "extend" : "frame");
+const modeOf = (id) => (site && id === current ? edits[`${id}@${site}`]?.mode : undefined) ?? edits[id]?.mode ?? (extendedIds.has(id) ? "extend" : "frame");
 
 edits = await fetch("/art/portrait-edits.json", { cache: "no-cache" }).then((r) => (r.ok ? r.json() : {})).catch(() => ({})) ?? {};
 
 function tags(id) {
-  return [extendedIds.has(id) ? "확장" : "", edits[id] ? "편집" : ""].filter(Boolean).join(" · ");
+  const scenes = Object.keys(edits).filter((key) => key.startsWith(`${id}@`)).length;
+  return [extendedIds.has(id) ? "확장" : "", edits[id] ? "편집" : "", scenes ? `장면 ${scenes}` : ""].filter(Boolean).join(" · ");
 }
 function renderGrid() {
   const grid = $("grid");
-  grid.replaceChildren(...IDS.filter((id) => filter === "all" || (filter === "extended" ? extendedIds.has(id) : edits[id])).map((id) => {
+  grid.replaceChildren(...IDS.filter((id) => filter === "all" || (filter === "extended" ? extendedIds.has(id) : edits[id] || Object.keys(edits).some((key) => key.startsWith(`${id}@`)))).map((id) => {
     const button = document.createElement("button");
     button.className = "pic";
     button.dataset.id = id;
@@ -122,7 +159,8 @@ function renderGrid() {
   }));
 }
 function syncControls() {
-  const edit = edits[current] ?? {};
+  renderScope();
+  const edit = { ...(edits[current] ?? {}), ...(site ? edits[keyOf()] ?? {} : {}) };
   $("title").textContent = current === null ? "그림을 고르세요" : `그림 ${pad(current)}`;
   for (const button of $("modes").children) {
     button.setAttribute("aria-pressed", String((edit.mode ?? "") === button.dataset.mode));
@@ -158,7 +196,8 @@ let sendTimer = 0;
 function send() {
   clearTimeout(sendTimer);
   if (current === null) return;
-  $("preview").contentWindow?.postMessage({ type: "preview", id: current, edit: edits[current] ?? null }, location.origin);
+  $("preview").contentWindow?.postMessage({ type: "preview", id: current, edit: edits[current] ?? null, site,
+    sceneEdit: site ? edits[keyOf()] ?? null : null, silhouettes: silhouettesOf(current, site) }, location.origin);
   if (shownId !== current) sendTimer = setTimeout(send, 500);
 }
 addEventListener("message", (event) => {
@@ -166,8 +205,9 @@ addEventListener("message", (event) => {
   if (event.data?.type === "preview-shown") shownId = event.data.id;
   if (event.data?.type === "preview-ready") send();
 });
-function select(id) {
+function select(id, at = null) {
   current = id;
+  site = at;
   shownId = null;
   for (const button of $("grid").children) button.setAttribute("aria-current", String(Number(button.dataset.id) === id));
   $("grid").querySelector(`[data-id="${id}"]`)?.scrollIntoView({ block: "nearest" });
@@ -176,13 +216,17 @@ function select(id) {
 }
 function change(patch) {
   if (current === null) return;
-  const edit = { ...(edits[current] ?? {}), ...patch };
-  for (const key of Object.keys(edit)) if (edit[key] === undefined || edit[key] === "" || edit[key] === null) delete edit[key];
-  if (edit.shift === 0) delete edit.shift;
-  if (edit.zoom === (modeOf(current) === "extend" && edit.mode !== "frame" ? 1 : 1.2)) delete edit.zoom;
-  if (edit.blur === 0) delete edit.blur;
-  if (edit.top === 100) delete edit.top;
-  if (Object.keys(edit).length) edits[current] = edit; else delete edits[current];
+  const key = keyOf();
+  const edit = { ...(edits[key] ?? {}), ...patch };
+  for (const name of Object.keys(edit)) if (edit[name] === undefined || edit[name] === "" || edit[name] === null) delete edit[name];
+  // The defaults are left out for the whole picture; a scene keeps what it says (it may undo the picture's).
+  if (!site) {
+    if (edit.shift === 0) delete edit.shift;
+    if (edit.zoom === (modeOf(current) === "extend" && edit.mode !== "frame" ? 1 : 1.2)) delete edit.zoom;
+    if (edit.blur === 0) delete edit.blur;
+    if (edit.top === 100) delete edit.top;
+  }
+  if (Object.keys(edit).length) edits[key] = edit; else delete edits[key];
   dirty = true;
   $("status").textContent = "저장하지 않은 변경이 있어요.";
   syncControls();
@@ -206,7 +250,8 @@ $("core").addEventListener("change", () => change({ core: $("core").checked ? "a
 $("shift").addEventListener("input", () => change({ shift: Number($("shift").value) }));
 $("cropAuto").addEventListener("change", () => change({ crop: $("cropAuto").checked ? undefined : Number($("crop").value) }));
 $("crop").addEventListener("input", () => change({ crop: Number($("crop").value) }));
-$("reset").addEventListener("click", () => { if (current !== null) { delete edits[current]; change({}); } });
+$("reset").addEventListener("click", () => { if (current !== null) { delete edits[keyOf()]; change({}); } });
+$("scope").addEventListener("change", () => { site = $("scope").value || null; shownId = null; syncControls(); send(); });
 const visible = () => [...$("grid").children].map((b) => Number(b.dataset.id));
 const step = (delta) => {
   const list = visible();
@@ -241,7 +286,10 @@ $("filters").addEventListener("click", (event) => {
   renderGrid();
 });
 renderGrid();
-select(0);
+// editor.html?id=200&scene=1b:0fa9&sil=12,13 opens that scene (the debug scene list links here).
+const askedId = Number(asked.get("id"));
+if (Number.isInteger(askedId) && askedId >= 0 && askedId < 298) select(askedId, asked.get("scene") || null);
+else select(0);
 </script>
 </body>
 </html>
