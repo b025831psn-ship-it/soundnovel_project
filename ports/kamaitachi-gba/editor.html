@@ -64,6 +64,9 @@
     <div class="row"><input type="range" id="blur" min="0" max="100" step="20" value="0"><output id="blurOut">0</output></div>
     <div class="row"><label><input type="checkbox" id="core"> 가운데도 AI 그림 그대로 (원본을 덮으면 선이 어긋날 때)</label></div>
     <p class="hint">실루엣이 나와 있을 때는 항상 원본을 덮어요.</p>
+    <h2>원본 위치 (위에 생성한 줄 수, 확장 그림과 맞춰야 해요)</h2>
+    <div class="row"><input type="range" id="top" min="0" max="200" step="10" value="100"><output id="topOut">100</output></div>
+    <p class="hint">100은 가운데, 200은 원본이 맨 아래(위쪽 하늘만 생성)예요.</p>
   </div>
   <div id="shiftBox">
     <h2>위아래 위치</h2>
@@ -125,6 +128,8 @@ function syncControls() {
   $("blur").value = edit.blur ?? 0;
   $("blurOut").textContent = edit.blur ?? 0;
   $("core").checked = edit.core === "ai";
+  $("top").value = edit.top ?? 100;
+  $("topOut").textContent = edit.top ?? 100;
   const zoom = edit.zoom ?? (mode === "extend" ? 1 : 1.2);
   $("zoom").value = Math.round(zoom * 100);
   $("zoomOut").textContent = `${Math.round(zoom * 100)}%`;
@@ -165,6 +170,7 @@ function change(patch) {
   if (edit.shift === 0) delete edit.shift;
   if (edit.zoom === (modeOf(current) === "extend" && edit.mode !== "frame" ? 1 : 1.2)) delete edit.zoom;
   if (edit.blur === 0) delete edit.blur;
+  if (edit.top === 100) delete edit.top;
   if (Object.keys(edit).length) edits[current] = edit; else delete edits[current];
   dirty = true;
   $("status").textContent = "저장하지 않은 변경이 있어요.";
@@ -182,6 +188,7 @@ $("modes").addEventListener("click", (event) => {
 });
 $("zoom").addEventListener("input", () => change({ zoom: Number($("zoom").value) / 100 }));
 $("blur").addEventListener("input", () => change({ blur: Number($("blur").value) }));
+$("top").addEventListener("input", () => change({ top: Number($("top").value) }));
 $("core").addEventListener("change", () => change({ core: $("core").checked ? "ai" : undefined }));
 $("shift").addEventListener("input", () => change({ shift: Number($("shift").value) }));
 $("cropAuto").addEventListener("change", () => change({ crop: $("cropAuto").checked ? undefined : Number($("crop").value) }));
