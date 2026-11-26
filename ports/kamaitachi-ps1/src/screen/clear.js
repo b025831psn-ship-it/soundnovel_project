@@ -5,8 +5,14 @@
 const GP = 0x8007913c, PICTURE = 0x80079440, IDS = 0x801f6698, SHAKE = 0x8009da48, H1 = 0x80079450, TEXT_ON = 0x80079284;
 
 export function clearTick(ctx) {
-  const { m } = ctx, r32 = (a) => m.read(a, 4) >>> 0, sp = ctx.sp - 0x18;
-  if (m.read(GP + 1, 1) !== 1) return;
+  if (ctx.m.read(GP + 1, 1) !== 1) return;
+  clearScreen({ ...ctx, sp: ctx.sp - 0x18 });
+  ctx.m.write(GP + 1, 0, 1);
+}
+
+// The clear itself, shared with scenario command 0x2c; ctx.sp is the caller's own frame.
+export function clearScreen(ctx) {
+  const { m, sp } = ctx, r32 = (a) => m.read(a, 4) >>> 0;
   const clear = () => { const b = r32(PICTURE); for (let i = 0; i < 0x12c00; i++) m.write(b + i, 0, 1); };
   clear();
   ctx.call(0x8003cbb8, [0x18, r32(PICTURE), 0], sp);
@@ -21,5 +27,4 @@ export function clearTick(ctx) {
   ctx.call(0x8002f3c0, [], sp);
   for (let i = 0; i < 16; i++) { m.write(SHAKE + 8 * i + 4, 0, 4); m.write(SHAKE + 8 * i, 0, 4); }
   m.write(0x800795e4, 5, 1); m.write(0x800795e6, 0xf, 1); m.write(0x800795e5, 0, 1);
-  m.write(GP + 1, 0, 1);
 }
