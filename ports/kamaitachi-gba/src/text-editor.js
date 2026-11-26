@@ -34,6 +34,19 @@ function range(a, b) {
   return Array.from({ length: b - a + 1 }, (_, i) => a + i);
 }
 
+// The Korean patch left most of the script in Japanese (only some banks are translated): a run
+// with Shift-JIS lead bytes (81..9F) and no EUC-KR pair is one of those.
+export function untranslated(raw) {
+  let japanese = false;
+  for (let pos = 0; pos + 1 < raw.length; pos++) {
+    const byte = raw[pos];
+    if (byte >= 0xa1) return false;
+    if (byte > 0x80) { japanese ||= byte <= 0x9f; pos++; }
+    else if (ARG_CODES.includes(String.fromCharCode(byte))) pos++;
+  }
+  return japanese;
+}
+
 export class TextCodec {
   constructor(lang, font) {
     this.lang = lang;

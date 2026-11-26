@@ -285,6 +285,25 @@ export class Boot {
     });
   }
 
+  // Web only, debug mode (src/debug-jump.js): the game goes straight to a page state, from the
+  // title or the story alike, the way a book is read back (picture, silhouettes, music, page).
+  debugJump(state) {
+    if (this.run) {
+      try { this.run.return(); } catch { /* the screen's own cleanup */ }
+      this.run = null;
+    }
+    this.layer = null;
+    this.loading = null;
+    this.continueRequest = null;
+    this.resumeWaiting = null;
+    this.jumped = false;
+    this.restore({ state, tone: null });
+    this.resume({ state });
+    this.vm.ram.inGame = 1;
+    this.vm.waiting = "none";
+    this.onMenuClosed?.();
+  }
+
   // Web only: whether the suspend slot has a page to carry on from.
   canContinue() {
     return !!this.books.suspend?.read();
