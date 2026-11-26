@@ -37,3 +37,20 @@ export function loadPicture(ctx, page, src, x = null, y = 0) {
   }
   gs.DrawSync(0);
 }
+
+// 0x8003cbb8 uploadPicture(page, src, rows): the 320x240 8-bit picture to VRAM page `page`
+// at once (rows = 0), or only `rows` lines of every 8 (the reveal of 0x2e).
+export function uploadPicture(ctx, page, src, rows) {
+  const { gs, m } = ctx, rect = ctx.sp - 0x38 + 0x10, p = page & 0xff, y0 = p < 0x10 ? 0 : 0x100;
+  const w16 = (a, v) => m.write(a, v & 0xffff, 2);
+  rows &= 0xffff;
+  if (!rows) {
+    w16(rect + 4, 0xa0); w16(rect + 6, 0xf0); w16(rect + 2, y0); w16(rect, (p & 0xf) << 6);
+    gs.DrawSync(0); gs.LoadImage(rect, src >>> 0); gs.DrawSync(0);
+    return;
+  }
+  for (let y = 0; y < 0xf0; y += 8) {
+    w16(rect + 2, y0); w16(rect + 4, 0xa0); w16(rect, (p & 0xf) << 6); w16(rect + 6, rows); w16(rect + 2, y0 + y);
+    gs.DrawSync(0); gs.LoadImage(rect, (src + y * 320) >>> 0); gs.DrawSync(0);
+  }
+}

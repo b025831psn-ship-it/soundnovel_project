@@ -13,7 +13,8 @@
 import { setGp1e0, spriteFree, waitFade, textSpeed } from "../helpers.js";
 import { HANDLERS } from "./interp.js";
 import { CURSOR, BASE, io, operand, resolveLabel, unported } from "./lib.js";
-import { fadeOut, fadeIn } from "../screen/fader.js";
+import { fadeOut, fadeIn, fadeLevel } from "../screen/fader.js";
+import { uploadPicture } from "../screen/picture.js";
 import { tickText } from "../tick.js";
 import { memcpy } from "../screen/weather.js";
 
@@ -27,7 +28,7 @@ function picture(ctx, fade) {
   if (skipping(m)) { endFrame(m); return; }
   if (m.read(NO_EFFECTS, 1) === 1) unported(fade ? 0x8001d674 : 0x8001d73c);
   ctx.call(0x8001cde4, [(v + m.read(0x800792ba, 1) * 1000) & 0xffff, fade ? 0 : 1], sp);
-  if (fade) { ctx.call(0x8002cae0, [1, 0xff], sp); m.write(0x8007955a, v & 0xff, 1); }
+  if (fade) { fadeLevel(m, 1, 0xff); m.write(0x8007955a, v & 0xff, 1); }
 }
 HANDLERS[0x04] = function* (ctx) { picture(ctx, true); };
 HANDLERS[0x05] = function* (ctx) { picture(ctx, false); };
@@ -58,7 +59,7 @@ HANDLERS[0x09] = function* (ctx) {
   if (skipping(m) || m.read(NO_EFFECTS, 1) === 1) { endFrame(m); return; }
   fadeIn(m, frames, ch); fadeIn(m, frames, 5);
   if (!m.read(0x800792b2, 1)) {
-    ctx.call(0x8003cbb8, [0x18, r32(0x80079440), 0], sp);
+    uploadPicture({ ...ctx, sp }, 0x18, r32(0x80079440), 0);
     pictureSprite(ctx, sp);
     ctx.call(0x8001f690, [], sp);
   }
@@ -180,7 +181,7 @@ HANDLERS[0x23] = function* (ctx) {
   m.write(0x800792ba, (0x1f - a) >> 3 & 0xff, 1);
   const k = m.read(0x800792ba, 1), level = [0xff, 0xc0, 0x80, 0x40][k];
   if (level === undefined) unported(0x8001f4c0); // the level is left over in a1
-  if (!b) ctx.call(0x8002cae0, [0, level], ctx.sp - 0x18);
-  else if (b & 1) ctx.call(0x8002cae0, [1, level], ctx.sp - 0x18);
+  if (!b) fadeLevel(m, 0, level);
+  else if (b & 1) fadeLevel(m, 1, level);
   endFrame(m);
 };

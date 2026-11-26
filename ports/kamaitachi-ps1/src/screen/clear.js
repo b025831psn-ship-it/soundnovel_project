@@ -3,6 +3,7 @@
 // 0x18 (0x8003cbb8), drops the picture sprite (0x801f66a2, via 0x8003bc3c), resets the
 // shake offsets and the 0x800795e4 window defaults. Callees not ported yet go through ctx.call.
 import { spriteFree, dropOverlay } from "../helpers.js";
+import { uploadPicture } from "./picture.js";
 
 const GP = 0x8007913c, PICTURE = 0x80079440, IDS = 0x801f6698, SHAKE = 0x8009da48, H1 = 0x80079450, TEXT_ON = 0x80079284;
 
@@ -17,7 +18,7 @@ export function clearScreen(ctx) {
   const { m, sp } = ctx, r32 = (a) => m.read(a, 4) >>> 0;
   const clear = () => { const b = r32(PICTURE); for (let i = 0; i < 0x12c00; i++) m.write(b + i, 0, 1); };
   clear();
-  ctx.call(0x8003cbb8, [0x18, r32(PICTURE), 0], sp);
+  uploadPicture({ ...ctx, sp }, 0x18, r32(PICTURE), 0);
   const id = m.read(IDS + 0xa, 2);
   if (id) {
     spriteFree(ctx.m, id);

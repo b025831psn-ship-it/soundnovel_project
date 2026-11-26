@@ -152,3 +152,14 @@ HANDLERS[0x13] = function* (ctx) {
   m.write(0x8007913c + 2, 1, 1); m.write(0x8007913c + 0x45c, m.read(0x8007929c, 1), 1);
   for (let i = 0; i < 0x10; i++) m.write(0x80093be8 + i, 0, 1); // 0x80044bc0
 };
+
+// 0x5e 0x800231f8 if bit (u8 b - 1) of 0x80079414 (0x21 setBit) jump label u16, seen2[u16] = 3
+HANDLERS[0x5e] = function* (ctx) {
+  const { m } = ctx, o = operand(m), b = o.u8(), label = o.u16(), k = o.u16();
+  if (m.read(SKIP, 1) !== 1 && (m.read(0x80079414, 2) >>> ((b - 1) & 31)) & 1) {
+    m.write(0x801fa730 + k, 3, 1);
+    const off = resolveLabel({ ...ctx, sp: ctx.sp - 0x20 }, m.read(BASE, 4) >>> 0, label) & 0xffff;
+    m.write(CURSOR, ((m.read(BASE, 4) >>> 0) + off) >>> 0, 4);
+  }
+  endFrame(m);
+};

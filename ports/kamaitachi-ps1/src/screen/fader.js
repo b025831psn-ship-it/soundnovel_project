@@ -76,3 +76,17 @@ export function fadeOut(m, frames, ch) {
   }
   fadeStep(m);
 }
+
+// 0x8002cae0 fadeLevel(k, v): channel k's level = min(v, 0xff) · 256 (the original goes through
+// the soft-float library: int -> double, · 256.0, -> int, exact here) and its set value half
+// of it, or, while channel 0 is not at full level (0x10000), target · level0 >> 8 (0x80044ecc,
+// whose second argument is the level of channel 0 left in a1); then fadeStep.
+export function fadeLevel(m, k, v) {
+  v &= 0xffff; if (v >= 0x100) v = 0xff; k &= 0xff;
+  const level = v * 256;
+  m.write(LEVEL + 4 * k, level, 4); m.write(SET_VALUE + 4 * k, level >> 1, 4);
+  const l0 = m.read(LEVEL, 4) | 0;
+  if (l0 !== 0x10000) m.write(SET_VALUE + 4 * k, fmul(m.read(TARGET + 4 * k, 4) | 0, l0) >>> 0, 4);
+  m.write(SET + 4 * k, 1, 4);
+  fadeStep(m);
+}
