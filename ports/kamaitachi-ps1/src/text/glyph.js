@@ -47,8 +47,8 @@ export function packGlyph(m, w, h) {
   return len & 0xff;
 }
 
-// 0x800380ec: ctx = { m, sp, loadImage(rectAddr, srcAddr) }. The RECT lives in the
-// original's stack frame (sp - 0x28 + 0x10).
+// 0x800380ec: ctx = { m, sp, call(addr, args, sp) } (sp: the caller's; LoadImage is called
+// through ctx.call from this routine's frame, sp - 0x28, where the RECT lives at +0x10).
 export function drawGlyph(ctx, x, y, sjis) {
   const { m } = ctx;
   m.write(G_X, x & 0xff, 1);
@@ -72,7 +72,7 @@ export function drawGlyph(ctx, x, y, sjis) {
   }
   m.write(G_GLYPH_W, w, 1);
   const len = packGlyph(m, w, h);
-  const page = m.read(PAGE, 1), rect = ((ctx.sp - 0x28 + 0x10) >>> 0);
+  const fs = (ctx.sp - 0x28) >>> 0, page = m.read(PAGE, 1), rect = fs + 0x10;
   const rw = len >>> 1, rh = h & 0xff;
   m.write(rect, ((page & 0xf) << 6) + Math.trunc(x / 2), 2);
   m.write(rect + 2, (page < 0x10 ? 0 : 0x100) + y, 2);
@@ -80,6 +80,6 @@ export function drawGlyph(ctx, x, y, sjis) {
   const slot = m.read(G_RING_SLOT, 1), src = RING + slot * RING_SLOT_SIZE;
   const back = m.read(G_BACK, 1);
   if (back) for (let i = 0; i < 2 * rw * rh; i++) if (!(m.read(src + i, 1) & 0xf)) m.write(src + i, back, 1);
-  ctx.loadImage(rect, src);
+  ctx.call(0x80049560, [rect, src], fs); // LoadImage
   m.write(G_RING_SLOT, (m.read(G_RING_SLOT, 1) + 1) & 7, 1);
 }

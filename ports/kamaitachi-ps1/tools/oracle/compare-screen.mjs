@@ -5,16 +5,22 @@
 import { pathToFileURL } from "node:url";
 import { GameBoot, loadDisc, padScript } from "./game-boot.mjs";
 import { drawGlyph } from "../../src/text/glyph.js";
+import { textTask } from "../../src/text/text.js";
 
-export const DEFAULT_PADS = [[300, "circle"], [600, "circle"], [720, "down"], [780, "circle"], ...Array.from({ length: 60 }, (_, i) => [900 + 60 * i, "circle"])];
+// The context a port runs with on the oracle: RAM is the interpreter's, and routines that are
+// not ported run natively with sp set to the caller's frame (stack arguments at sp+0x10).
+export function oracleCtx(c) {
+  const call = (addr, args = [], sp = c.r[29] >>> 0) => { const old = c.r[29]; c.r[29] = (sp + 0x40) | 0; const v = c.call(addr, args); c.r[29] = old; return v; }; // Mips.call drops sp by 0x40
+  return { m: c, sp: c.r[29] >>> 0, call };
+}
+
+export const DEFAULT_PADS = [[300, "circle"], [600, "circle"], [720, "down"], [780, "circle"], ...Array.from({ length: 400 }, (_, i) => [900 + 45 * i, "circle"])];
 
 // Each port: [address, install(game)] — the hook runs the JS routine on the oracle's RAM,
 // calling the game's own code only for what has not been ported yet.
 export const PORTS = {
-  glyph: [0x800380ec, (g) => (c) => {
-    drawGlyph({ m: c, sp: c.r[29] >>> 0, loadImage: (rect, src) => c.call(0x80049560, [rect, src]) }, c.r[4] | 0, c.r[5] | 0, c.r[6] >>> 0);
-    c.ret();
-  }],
+  glyph: [0x800380ec, () => (c) => { drawGlyph(oracleCtx(c), c.r[4] | 0, c.r[5] | 0, c.r[6] >>> 0); c.ret(); }],
+  text: [0x80039288, () => (c) => { textTask(oracleCtx(c)); c.ret(); }],
 };
 
 function hashWords(log, from) { let h = 0x811c9dc5; for (let i = from; i < log.length; i++) { h = Math.imul(h ^ log[i][1], 0x01000193); h = Math.imul(h ^ (log[i][0] === "gp1" ? 1 : 0), 0x01000193); } return h >>> 0; }

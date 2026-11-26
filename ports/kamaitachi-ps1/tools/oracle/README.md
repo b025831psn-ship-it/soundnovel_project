@@ -46,3 +46,6 @@ hooked in at their addresses, and compares every GP0/GP1 word per frame, the pic
 
 `glyph` (`src/text/glyph.js`, 0x800380ec with 0x80037fac): 13,493 calls over the title,
 memory card screens, opening and first story pages, 0 differences.
+
+`text` (`src/text/text.js`, 0x80039288 with 0x80037604): 11,018 calls over 12,000 frames
+(title to the evening at the pension, pages turned every 45 frames), 0 differences.
