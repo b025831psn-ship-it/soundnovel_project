@@ -17,10 +17,12 @@ export class RecordingScene {
   constructor() {
     this.current = null;
     this.site = null;
+    this.requested = false; // set by each request; a suppressed 04/05 (effects off) makes none
   }
 
   // SceneLoader.request: request = argument + 1000 * group, two cases held back in ram.pending.
   request(argument, ram) {
+    this.requested = true;
     const request = argument + 1000 * ram.group;
     if ((ram.slot === 0x61 && argument === 0x4e) || (ram.slot === 0x63 && (argument === 0x51 || argument === 0x54))) {
       ram.pending = request;
