@@ -13,6 +13,8 @@
 // choiceMode (0x80079295) is set by the choice opcode 0x8001e3c0 while choices are typed;
 // backlog (0x800792a0) is set while 0x80024fd0 (R1) replays earlier pages.
 // Calls into code that is not ported yet go through ctx.call(addr, args, sp).
+import { setVar } from "../helpers.js";
+import { checkpoint } from "../scenario/lib.js";
 import { drawGlyph } from "./glyph.js";
 
 const GP = 0x8007913c;
@@ -134,7 +136,7 @@ export function textTask(ctx) {
         w16(T.left + 2 * v, 8); w16(T.x + 2 * v, 8); w16(T.top + 2 * v, 0x11); w16(T.y + 2 * v, 0x11);
         w16(T.speed + 2 * v, 1); w16(T.delay + 2 * v, 1);
         w32(T.pagePtr, r32(T.ptr + 4 * v) + 1);
-        ctx.call(0x8003276c, [], fs); ctx.call(0x800325b0, [], fs);
+        checkpoint(m); ctx.call(0x800325b0, [], fs);
         w8(T.backlogG2, 0);
         return 0;
       }
@@ -211,7 +213,7 @@ export function textTask(ctx) {
       const n = (r16(T.autoCount) + 1) & 0xffff; w16(T.autoCount, n);
       if (n >= 0x5a) { w32(T.pad, 0x21); w16(T.autoCount, 0); } else w32(T.pad, 0);
     }
-    if ((r32(T.pad) & 0x180) && r8(T.menuKey) === 1) { ctx.call(0x8001c8e0, [2, 1], fs); w32(T.pad, 0x21); }
+    if ((r32(T.pad) & 0x180) && r8(T.menuKey) === 1) { setVar(m, 2, 1); w32(T.pad, 0x21); }
     const sprite = (id) => T.sprites + id * 0x48 + 0x3a, ids = [2, 4, 6, 0xa];
     w8(sprite(r16(T.spriteIds + 0x12)), 0);
     if (r32(T.pad + 8) & 2) { w8(sprite(r16(T.spriteIds + 0x12)), 1); w32(T.pad, r32(T.pad) & ~0x22); }

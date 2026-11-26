@@ -10,6 +10,7 @@
 //   0x4e 0x80022198 reset the screen state (sprites, shake, animations, weather)
 //   0x53 0x80022448 seen[u16] = 3 (0x801f5bc0), 0x800792bc = id, three state copies
 //   0x5f 0x80022534 seen[u16] = 3
+import { anyRoute, waitText, resetStream } from "../helpers.js";
 import { HANDLERS } from "./interp.js";
 import { CURSOR, BASE, io, operand, resolveLabel, animStop, checkpoint } from "./lib.js";
 import { pictureSprite } from "./basic.js";
@@ -24,7 +25,7 @@ HANDLERS[0x37] = function* (ctx) { operand(ctx.m).u16(); endFrame(ctx.m); };
 
 HANDLERS[0x3c] = function* (ctx) {
   const { m } = ctx, o = operand(m), a = o.u8(), k = o.u8();
-  if (!quiet(m) && !a) { const v = ctx.call(0x80033868, [], ctx.sp - 0x20) & 0xff; m.write(0x8008dab8 + k, v, 1); m.write(0x80079297, v, 1); }
+  if (!quiet(m) && !a) { const v = anyRoute(m); m.write(0x8008dab8 + k, v, 1); m.write(0x80079297, v, 1); }
   endFrame(m);
 };
 
@@ -61,7 +62,7 @@ HANDLERS[0x4b] = function* (ctx) {
   if (m.read(0x800792c6, 1) === 1) m.write(0x8007928e, 1, 1);
 };
 
-HANDLERS[0x4c] = function* (ctx) { ctx.call(0x8003704c, [], ctx.sp - 0x18); };
+HANDLERS[0x4c] = function* (ctx) { yield* waitText({ ...ctx, sp: ctx.sp - 0x18 }); };
 
 HANDLERS[0x4d] = function* (ctx) {
   const { m } = ctx, k = operand(m).u8(), sp = ctx.sp - 0x20;
@@ -80,7 +81,7 @@ HANDLERS[0x4e] = function* (ctx) {
   spriteClearAll(sub);
   ctx.call(0x80037c1c, [], sp);
   animStop(m);
-  ctx.call(0x800371fc, [], sp);
+  resetStream(m);
 };
 
 HANDLERS[0x53] = function* (ctx) {

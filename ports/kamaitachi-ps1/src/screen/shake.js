@@ -5,6 +5,7 @@
 // for these 16-bit inputs that is exactly v * 256. With gp[0x1c4] set it instead flashes
 // sprite gp 0x801f669c (0x8003bdc0) on the table's timing.
 //   0x80045488 rand(), 0x800354f8 randMod(n)
+import { spriteLayer } from "./sprites.js";
 const GP = 0x8007913c, SHAKE = 0x8009da48, SEED = 0x80079660, FRAME_STEP = 0x80079278, SPRITE_IDS = 0x801f6698;
 const g8 = (m, o) => m.read(GP + o, 1), g16 = (m, o) => m.read(GP + o, 2), g32 = (m, o) => m.read(GP + o, 4) >>> 0;
 const fix256 = (v) => Math.trunc(((v << 16) >> 16) * 256) | 0;
@@ -33,7 +34,7 @@ export function shakeTick(ctx) {
       if (wait) { m.write(GP + 0x1c6, wait - 1, 2); continue; }
       m.write(GP + 0x1c6, m.read(e + 2, 2), 2);
       const on = (m.read(e, 2) << 16) >> 16, id = m.read(SPRITE_IDS + 4, 2);
-      if (id) ctx.call(0x8003bdc0, [id, on ? 0xc : 0xf]);
+      if (id) spriteLayer(m, id, on ? 0xc : 0xf);
       m.write(GP + 0x36a, g16(m, 0x36a) + 1, 2);
       continue;
     }

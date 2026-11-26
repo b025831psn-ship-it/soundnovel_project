@@ -2,6 +2,8 @@
 // scenario. Clears the 320x240 8-bit picture buffer (0x80079440) and uploads it to page
 // 0x18 (0x8003cbb8), drops the picture sprite (0x801f66a2, via 0x8003bc3c), resets the
 // shake offsets and the 0x800795e4 window defaults. Callees not ported yet go through ctx.call.
+import { spriteFree, dropOverlay } from "../helpers.js";
+
 const GP = 0x8007913c, PICTURE = 0x80079440, IDS = 0x801f6698, SHAKE = 0x8009da48, H1 = 0x80079450, TEXT_ON = 0x80079284;
 
 export function clearTick(ctx) {
@@ -18,13 +20,13 @@ export function clearScreen(ctx) {
   ctx.call(0x8003cbb8, [0x18, r32(PICTURE), 0], sp);
   const id = m.read(IDS + 0xa, 2);
   if (id) {
-    ctx.call(0x8003bc3c, [(id << 16) >> 16], sp);
+    spriteFree(ctx.m, id);
     m.write(IDS + 0xa, 0, 2); m.write(TEXT_ON, 0, 1);
     for (let j = 0; j < 4; j++) m.write(H1 + 2 * j, 0xffff, 2);
     clear();
   }
   m.write(GP + 0x15c, 1, 1);
-  ctx.call(0x8002f3c0, [], sp);
+  dropOverlay(ctx.m);
   for (let i = 0; i < 16; i++) { m.write(SHAKE + 8 * i + 4, 0, 4); m.write(SHAKE + 8 * i, 0, 4); }
   m.write(0x800795e4, 5, 1); m.write(0x800795e6, 0xf, 1); m.write(0x800795e5, 0, 1);
 }

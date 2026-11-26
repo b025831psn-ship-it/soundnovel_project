@@ -4,6 +4,7 @@
 // In auto mode the choice is taken after 90 frames. Then: result to 0x8008dab8[0x80079430],
 // route seen (0x801fa730), 0x80019684, jump to the label, save point (0x800325b0).
 // A loaded save (0x80079296 = 1) resumes with the stored choice 0x80079297.
+import { textSpeedReset, markSeen } from "../helpers.js";
 import { HANDLERS } from "./interp.js";
 import { CURSOR, BASE, GP, io, resolveLabel } from "./lib.js";
 import { drawGlyph } from "../text/glyph.js";
@@ -43,7 +44,7 @@ HANDLERS[0x16] = function* (ctx) {
       if (r32(PAD + 8) & 8) { sprites([2, 4, 6, 0xa], 2); w32(PAD, r32(PAD) & ~0x21); }
       if (r32(PAD) & 0x180) { se(); sel = ((sel + 1) & 0xff) % (r8(COUNT) + 1); }
       if (r32(PAD) & 0x5180) { t = 0; ctx.call(0x80037b08, [], sp); ctx.call(0x80037a7c, [(sel & 0xff) + 1], sp); }
-      if (r32(PAD) & 0x21) { if (r8(SE_ON) === 1) ctx.call(0x80028c74, [0], sp); ctx.call(0x8003a67c, [], sp); break; }
+      if (r32(PAD) & 0x21) { if (r8(SE_ON) === 1) ctx.call(0x80028c74, [0], sp); textSpeedReset(m); break; }
       if ((t >>> 0) % 30 < 16) cursor(sel & 0xff);
       textTask(sub);
       ctx.call(0x80018cdc, [], sp);
@@ -61,7 +62,7 @@ HANDLERS[0x16] = function* (ctx) {
   ctx.call(0x8003a5c4, [], sp);
   const k = sel & 0xff;
   w8(0x801fa730 + r16(0x80093be8 + 2 * k), 3);
-  ctx.call(0x80019684, [r16(0x800792bc), k], sp); // a1 is still the choice (0x8001ef04): marks it in 0x801d6110
+  markSeen(m, r16(0x800792bc), k); // 0x80019684: a1 is still the choice (0x8001ef04)
   const off = resolveLabel(sub, r32(BASE), r16(0x801f7348 + 2 * k)) & 0xffff, p = (r32(BASE) + off) >>> 0;
   w32(CURSOR, p); w32(0x8007940c, p); w16(0x800792b4, r16(0x800792b4) - 1);
   ctx.call(0x800325b0, [], sp);

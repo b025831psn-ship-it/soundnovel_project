@@ -10,6 +10,7 @@
 //   0x0d 0x8001dd7c setFlag(u8)        0x801f74b0[min(k, 0x4f)] = 1
 //   0x0e 0x8001def8 ifNot(u8 f, label) / 0x0f 0x8001dfb8 if(u8 f, label): jump
 //   0x21 0x8001de2c setBit(u8 k)       0x80079414 |= 1 << (k - 1)
+import { setGp1e0, spriteFree, waitFade, textSpeed } from "../helpers.js";
 import { HANDLERS } from "./interp.js";
 import { CURSOR, BASE, io, operand, resolveLabel, unported } from "./lib.js";
 import { fadeOut, fadeIn } from "../screen/fader.js";
@@ -36,7 +37,7 @@ HANDLERS[0x08] = function* (ctx) {
   if (skipping(m) || m.read(NO_EFFECTS, 1) === 1) { endFrame(m); return; }
   fadeOut(m, frames, ch);
   endFrame(m);
-  if (ch === 1 && m.read(0x800792b1, 1) === 1) { fadeOut(m, frames, 2); ctx.call(0x80040e90, [frames], ctx.sp - 0x20); }
+  if (ch === 1 && m.read(0x800792b1, 1) === 1) { fadeOut(m, frames, 2); setGp1e0(m, frames); }
 };
 
 // The full-screen picture sprite (page 0x18) if there is none yet.
@@ -69,7 +70,7 @@ HANDLERS[0x0a] = function* (ctx) {
   if (skipping(m) || m.read(NO_EFFECTS, 1) === 1) { endFrame(m); return; }
   if (k >= 0xb) return;
   const id = m.read(IDS + 2 * k, 2);
-  if (id) { ctx.call(0x8003bc3c, [(id << 16) >> 16], ctx.sp - 0x20); m.write(IDS + 2 * k, 0, 2); m.write(0x801fec66 + 2 * k, 0xffff, 2); }
+  if (id) { spriteFree(m, id); m.write(IDS + 2 * k, 0, 2); m.write(0x801fec66 + 2 * k, 0xffff, 2); }
   endFrame(m);
 };
 
@@ -77,7 +78,7 @@ HANDLERS[0x0b] = function* (ctx) {
   const { m } = ctx, k = operand(m).u8();
   if (skipping(m)) { endFrame(m); return; }
   if (m.read(NO_EFFECTS, 1) === 1) unported(0x8001dccc);
-  ctx.call(0x8002cbc0, [k], ctx.sp - 0x18);
+  yield* waitFade({ ...ctx, sp: ctx.sp - 0x18 }, k);
 };
 
 HANDLERS[0x0c] = function* (ctx) {
@@ -120,7 +121,7 @@ HANDLERS[0x14] = function* (ctx) {
   const { m } = ctx, k = operand(m).u8();
   if (m.read(NO_EFFECTS, 1) !== 1) {
     if (m.read(0x800792c6, 1) === 1) m.write(0x8007928e, 1, 1);
-    ctx.call(0x8003a6e4, [k + 8], ctx.sp - 0x18);
+    textSpeed(m, k + 8);
   }
   endFrame(m);
 };

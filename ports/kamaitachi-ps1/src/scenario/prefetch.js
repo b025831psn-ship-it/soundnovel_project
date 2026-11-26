@@ -3,7 +3,7 @@
 // CD is already busy when the script gets there. gp[0x5b] = 1 stops the lookahead.
 //   0x80023778 prefetchLabel(label)  the SCE resource of a jump target (label / 1000);
 //                                    0x8007927e/0x80079280 = what was last fetched (id, kind)
-//   0x65 text  0x8003919c(cursor)    0x78 choice (0x13)    0x81 (0x1c)    0x82 (0x1d)
+//   0x65 text  (skipped, 0x8003919c)    0x78 choice (0x13)    0x81 (0x1c)    0x82 (0x1d)
 //   0x95 se (0x30)  0x97 seVol (0x32)  0xbb jump (0x56)  0xbc route table (0x57)
 import { HANDLERS } from "./interp.js";
 import { CURSOR, GP, operand, unported } from "./lib.js";
@@ -24,7 +24,11 @@ export function prefetchLabel(ctx, label) { // 0x80023778
   m.write(LAST_KIND, 2, 2); m.write(LAST_ID, res, 2);
 }
 
-HANDLERS[0x65] = function* (ctx) { ctx.call(0x8003919c, [ctx.m.read(CURSOR, 4) >>> 0], ctx.sp - 0x18); };
+export function textSkip(m, p) { // 0x8003919c: past the text (2-byte characters from 0x80) and its 0
+  for (let b; (b = m.read(p, 1)); ) p += b < 0x80 ? 1 : 2;
+  m.write(CURSOR, (p + 1) >>> 0, 4);
+}
+HANDLERS[0x65] = function* (ctx) { textSkip(ctx.m, ctx.m.read(CURSOR, 4) >>> 0); };
 
 HANDLERS[0x78] = function* (ctx) {
   const { m } = ctx, o = operand(m), n = o.u8(); o.skip(1);
