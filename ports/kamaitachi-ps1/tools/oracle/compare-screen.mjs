@@ -8,6 +8,7 @@ import { drawGlyph } from "../../src/text/glyph.js";
 import { textTask } from "../../src/text/text.js";
 import { LibGpu, LIBGPU_ENTRY } from "../../src/gpu/libgpu.js";
 import { frameFlip } from "../../src/screen/frame.js";
+import { weatherTick } from "../../src/screen/weather.js";
 import { spriteInit, spriteClearAll, spriteNew, spriteAdd, spriteLayer, spriteOr } from "../../src/screen/sprites.js";
 import { waveTick } from "../../src/screen/wave.js";
 import { shakeTick } from "../../src/screen/shake.js";
@@ -60,6 +61,7 @@ export const PORTS = {
       [0x8003bdc0, (c) => { spriteLayer(c, a(c, 0), a(c, 1)); c.ret(); }], [0x8003be10, (c) => { spriteOr(c, a(c, 0), a(c, 1)); c.ret(); }],
     ];
   }, null],
+  weather: [0x800416a4, () => (c) => { weatherTick({ ...oracleCtx(c), gs: libgpuOf(c) }); c.ret(); }],
   shake: [0x8003ede0, () => (c) => { shakeTick(oracleCtx(c)); c.ret(); }],
   wave: [0x8002cf5c, () => (c) => { waveTick(oracleCtx(c)); c.ret(); }],
   fader: [() => [
