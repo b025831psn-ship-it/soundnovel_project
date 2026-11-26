@@ -11,6 +11,8 @@ import { Controls } from "./controls.js";
 import { SeqVol } from "./seqvol.js";
 import { Entry } from "./entry.js";
 import { Reverb } from "./reverb.js";
+import { Malloc } from "./malloc.js";
+import { Vab } from "./vab.js";
 
 export const ADDR = {
   // entry points
@@ -23,6 +25,13 @@ export const ADDR = {
   spuRegAddr: 0x8005f154, SpuSetReverb: 0x800603b8, spuReverbOverlap: 0x80060508, SpuSetReverbModeParam: 0x80060598,
   spuSetReverbRegs: 0x80060a78, SpuClearReverbWorkArea: 0x80060ff8, spuWaitEvent: 0x80061198, spuTransfer: 0x8005edec,
   dmaDpcrWrite: 0x8005f2d0, dmaDpcrRead: 0x8005f2f8,
+  // SPU memory and VAB
+  SpuInitMalloc: 0x8005f3b8, spuMallocTidy: 0x8005f6e8, SpuMalloc: 0x8005f418, SpuMallocWithStartAddr: 0x8005fd48,
+  spuMallocSplit: 0x8005f9e8, SpuFree: 0x8005fff8,
+  spuSetBusy: 0x800615a8, spuIsBusy: 0x800615d0, SsVabOpenHeadSticky: 0x8005e188, vabOpenHead: 0x8005e1e8,
+  SsVabTransBody: 0x8005e5b8, SsVabTransCompleted: 0x8005e678, SsVabClose: 0x8005e0d8,
+  SpuSetTransferMode: 0x800614b8, SpuSetTransferStartAddr: 0x80061458, SpuWrite: 0x800613f8, spuWriteData: 0x8005f06c,
+  spuWriteIO: 0x8005eac8, spuDelay: 0x8005f320, printf: 0x80045678, SpuIsTransferCompleted: 0x800614e8, spuTestEvent: 0x80061598,
   // sequencer
   SsSeqCalledTbyT: 0x80054738, seqCrescendo: 0x800549a8, seqDecrescendo: 0x80054cb8,
   seqPause: 0x80055058, seqPlayTick: 0x800550f8, seqTick: 0x80055128, seqEndOfTrack: 0x80055224,
@@ -66,4 +75,4 @@ export class SoundLib {
     return this[name](...args);
   }
 }
-Object.assign(SoundLib.prototype, Access, SeqPlay, Voice, SpuVoice, Notes, Controls, SeqVol, Entry, Reverb);
+Object.assign(SoundLib.prototype, Access, SeqPlay, Voice, SpuVoice, Notes, Controls, SeqVol, Entry, Reverb, Malloc, Vab);
