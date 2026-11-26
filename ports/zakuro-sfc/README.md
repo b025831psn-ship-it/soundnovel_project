@@ -83,3 +83,17 @@
 ## 테스트
 
 `npm test` (직접 조립한 프로그램만 사용, 24개).
+
+## Player (`index.html`)
+
+The touch player runs the original program in the 65c816 VM (Codex, `vm/`) with its PPU and the
+sound path above, from private port-data only (`?data=` overrides `../../zakuro-sfc-kor/port-data/`).
+It follows the Kamaitachi Advance shell: tap the screen = A; tap a choice = move the game's own
+cursor to it (reading `$0081` back each press) and press A, once `choice.ready`; the corner button = B
+(previous page while reading). Keyboard: Z A, X B, arrows, Enter START, A Y, S X, Q L, W R; F full screen.
+SRAM is kept in localStorage (`zakuro-sfc.sram`) through the VM's SRAM hooks.
+`?replay` (verification only) plays the recorded native input first, then hands over to the player.
+
+Known blockers (2026-11-26): the ROM-free program image covers only what the reference run read
+(a choice off that path stops with "unmapped program byte"), and the PPU renders at ~15 ms per field,
+so the game runs at ~0.6× real time. Both are requested from the VM side in PR #31.
