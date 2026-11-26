@@ -80,6 +80,6 @@ export function drawGlyph(ctx, x, y, sjis) {
   const slot = m.read(G_RING_SLOT, 1), src = RING + slot * RING_SLOT_SIZE;
   const back = m.read(G_BACK, 1);
   if (back) for (let i = 0; i < 2 * rw * rh; i++) if (!(m.read(src + i, 1) & 0xf)) m.write(src + i, back, 1);
-  ctx.call(0x80049560, [rect, src], fs); // LoadImage
+  ctx.gs.LoadImage(rect, src);
   m.write(G_RING_SLOT, (m.read(G_RING_SLOT, 1) + 1) & 7, 1);
 }

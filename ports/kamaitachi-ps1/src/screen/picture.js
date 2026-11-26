@@ -7,6 +7,7 @@
 // The palette's first entry is transparent unless 0x80079294 is 1; the others get the
 // semi-transparency bit (0x8000) so that black stays opaque.
 import { memcpy } from "./weather.js";
+import { tick } from "../tick.js";
 
 const CLUTS = 0x800c4820, PAGES = 0x801fd270, KEEP_FIRST = 0x80079294;
 
@@ -52,5 +53,33 @@ export function uploadPicture(ctx, page, src, rows) {
   for (let y = 0; y < 0xf0; y += 8) {
     w16(rect + 2, y0); w16(rect + 4, 0xa0); w16(rect, (p & 0xf) << 6); w16(rect + 6, rows); w16(rect + 2, y0 + y);
     gs.DrawSync(0); gs.LoadImage(rect, (src + y * 320) >>> 0); gs.DrawSync(0);
+  }
+}
+
+// 0x80035498 maybeTick(): a frame when 0x80079264 is set (loading with the screen running).
+export function* maybeTick(ctx) { if (ctx.m.read(0x80079264, 4)) yield* tick({ ...ctx, sp: ctx.sp - 0x18 }); }
+
+// 0x8003b398 drawSdw(page, src, dst, mode): blend the 8-bit TIM images of a silhouette
+// file into the picture buffer: mode 3 lighter of the two, 2 clear where the silhouette
+// is, 1 copy where it is, 0 plain copy; in eight passes (maybeTick between them).
+export function* drawSdw(ctx, page, src, dst, mode) {
+  const { m, gs } = ctx, sp = ctx.sp - 0x58, tim = sp + 0x10, sub = { ...ctx, sp }, r16 = (a) => m.read(a, 2);
+  mode &= 0xff; src >>>= 0; dst >>>= 0;
+  for (;;) {
+    const id = m.read(src, 4) >>> 0; src += 4;
+    if (id !== 0x10) return;
+    gs.GsGetTimInfo(src, tim);
+    let pix = m.read(tim + 0xc, 4) >>> 0;
+    src += (Math.trunc(Math.imul(r16(tim + 8), r16(tim + 0xa)) / 2) << 2) + 0x10;
+    yield* maybeTick(sub);
+    const n = () => Math.trunc(Math.imul(r16(tim + 8), r16(tim + 0xa) * 2) / 8) >>> 0;
+    const passes = (f) => function* () { for (let p = 0; p < 8; p++) { for (let i = 0; i < n(); i++) { f(m.read(pix, 1)); pix++; dst++; } yield* maybeTick(sub); } };
+    if (mode === 3) yield* passes((v) => { if (m.read(dst, 1) < v) m.write(dst, v, 1); })();
+    else if (mode === 2) yield* passes((v) => { if (v) m.write(dst, 0, 1); })();
+    else if (mode === 1) yield* passes((v) => { if (v) m.write(dst, v, 1); })();
+    else if (mode === 0) memcpy(m, pix, dst, Math.imul(r16(tim + 8), r16(tim + 0xa) * 2));
+    yield* maybeTick(sub);
+    if (((mode - 2) & 0xff) >= 2 && (m.read(tim, 4) >>> 3) & 1) throw new Error("picture: path at 0x8003b600 (silhouette palette) is not ported");
+    yield* maybeTick(sub);
   }
 }

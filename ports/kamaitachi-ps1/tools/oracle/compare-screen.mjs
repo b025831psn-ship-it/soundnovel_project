@@ -94,8 +94,8 @@ export const PORTS = {
     [0x8002c8e8, (c) => { fadeTo(c, c.r[4], c.r[5]); c.ret(); }], [0x8002ca08, (c) => { fadeOut(c, c.r[4], c.r[5]); c.ret(); }],
   ], null],
   frame: [0x800353b8, () => (c) => { drive(frameFlip({ ...oracleCtx(c), gs: libgpuOf(c) }), c); c.ret(); }],
-  glyph: [0x800380ec, () => (c) => { drawGlyph(oracleCtx(c), c.r[4] | 0, c.r[5] | 0, c.r[6] >>> 0); c.ret(); }],
-  text: [0x80039288, () => (c) => { textTask(oracleCtx(c)); c.ret(); }],
+  glyph: [0x800380ec, () => (c) => { drawGlyph({ ...oracleCtx(c), gs: libgpuOf(c) }, c.r[4] | 0, c.r[5] | 0, c.r[6] >>> 0); c.ret(); }],
+  text: [0x80039288, () => (c) => { textTask({ ...oracleCtx(c), gs: libgpuOf(c) }); c.ret(); }],
 };
 
 function hashWords(log, from) { let h = 0x811c9dc5; for (let i = from; i < log.length; i++) { h = Math.imul(h ^ log[i][1], 0x01000193); h = Math.imul(h ^ (log[i][0] === "gp1" ? 1 : 0), 0x01000193); } return h >>> 0; }

@@ -8,7 +8,7 @@
 //                   (a = 0 or b = 0x7f) or in 8 steps 2 frames apart (0x8003cbb8 step 1..8)
 //   0x2d 0x800202b8 unsilhouette(u8 hi, u16 lo): draw mode 2, forget it
 import { fadeLevel, windowPalette } from "../screen/fader.js";
-import { uploadPicture } from "../screen/picture.js";
+import { uploadPicture, drawSdw } from "../screen/picture.js";
 import { HANDLERS } from "./interp.js";
 import { io, operand, unported } from "./lib.js";
 import { clearScreen } from "../screen/clear.js";
@@ -27,7 +27,7 @@ HANDLERS[0x29] = function* (ctx) {
   const k = r8(RING_AT);
   w8(RING_AT, (k + 1) & 3); w16(RING + 2 * k, id);
   ctx.call(0x800369f8, [4, r32(SDW_BUF), id], sp);
-  ctx.call(0x8003b398, [0x18, r32(SDW_BUF), r32(PICTURE), 3], sp);
+  yield* drawSdw({ ...ctx, sp }, 0x18, r32(SDW_BUF), r32(PICTURE), 3);
   windowPalette({ ...ctx, sp }); windowPalette({ ...ctx, sp });
 };
 
@@ -48,7 +48,7 @@ HANDLERS[0x2d] = function* (ctx) {
   if (quiet(m)) { endFrame(m); return; }
   const id = (lo + hi * 256) & 0xffff;
   ctx.call(0x800369f8, [4, r32(SDW_BUF), id], sp);
-  ctx.call(0x8003b398, [0x18, r32(SDW_BUF), r32(PICTURE), 2], sp);
+  yield* drawSdw({ ...ctx, sp }, 0x18, r32(SDW_BUF), r32(PICTURE), 2);
   w8(0x800792b2, 1);
   for (let j = 0; j < 4; j++) if (((r16(RING + 2 * j) << 16) >> 16) === id) w16(RING + 2 * j, 0xffff);
 };
