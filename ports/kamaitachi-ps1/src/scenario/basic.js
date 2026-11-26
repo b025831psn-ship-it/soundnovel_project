@@ -39,21 +39,26 @@ HANDLERS[0x08] = function* (ctx) {
   if (ch === 1 && m.read(0x800792b1, 1) === 1) { fadeOut(m, frames, 2); ctx.call(0x80040e90, [frames], ctx.sp - 0x20); }
 };
 
+// The full-screen picture sprite (page 0x18) if there is none yet.
+export function pictureSprite(ctx, sp) {
+  const { m } = ctx, { r16, r32, w8, w16, w32 } = io(m);
+  if (r16(IDS + 0xa)) return;
+  ctx.call(0x8003b87c, [0x18, 0, -4, 0x140, 0xf0], sp);
+  w16(IDS + 0xa, r16(0x80079528));
+  let s = r32(NEW);
+  w8(s + 0x31, 5); w32(s, r32(s) | 0x40000000);
+  s = r32(NEW); w8(s + 0x33, 8); w16(s + 0x1e, 0x1000);
+  w8(r32(NEW) + 0x38, 5);
+  w32(0x801fd270 + 0xc4, 0x1f8); w32(0x801fd270 + 0xc0, 0); w32(0x801fd270 + 0xc8, 0x1000000);
+}
+
 HANDLERS[0x09] = function* (ctx) {
   const { m } = ctx, { r16, r32, w8, w16, w32 } = io(m), o = operand(m), frames = halfFrames(o.u16()), ch = o.u8(), sp = ctx.sp - 0x20;
   if (skipping(m) || m.read(NO_EFFECTS, 1) === 1) { endFrame(m); return; }
   fadeIn(m, frames, ch); fadeIn(m, frames, 5);
   if (!m.read(0x800792b2, 1)) {
     ctx.call(0x8003cbb8, [0x18, r32(0x80079440), 0], sp);
-    if (!r16(IDS + 0xa)) {
-      ctx.call(0x8003b87c, [0x18, 0, -4, 0x140, 0xf0], sp);
-      w16(IDS + 0xa, r16(0x80079528));
-      let s = r32(NEW);
-      w8(s + 0x31, 5); w32(s, r32(s) | 0x40000000);
-      s = r32(NEW); w8(s + 0x33, 8); w16(s + 0x1e, 0x1000);
-      w8(r32(NEW) + 0x38, 5);
-      w32(0x801fd270 + 0xc4, 0x1f8); w32(0x801fd270 + 0xc0, 0); w32(0x801fd270 + 0xc8, 0x1000000);
-    }
+    pictureSprite(ctx, sp);
     ctx.call(0x8001f690, [], sp);
   }
   endFrame(m);

@@ -4,10 +4,14 @@
 //                   it in the 4-entry ring 0x80079450 (index 0x80079284)
 //   0x2b 0x8001febc 0x8002cae0(u8, min(u16, 0xff))
 //   0x2c 0x8001ff68 clear the screen now (screen/clear.js)
-//   0x2d 0x8001ffbc... 0x800202b8 unsilhouette(u8 hi, u16 lo): draw mode 2, forget it
+//   0x2e 0x800203d0 reveal(u8 a, u8 b)  after a silhouette change: upload the picture at once
+//                   (a = 0 or b = 0x7f) or in 8 steps 2 frames apart (0x8003cbb8 step 1..8)
+//   0x2d 0x800202b8 unsilhouette(u8 hi, u16 lo): draw mode 2, forget it
 import { HANDLERS } from "./interp.js";
 import { io, operand, unported } from "./lib.js";
 import { clearScreen } from "../screen/clear.js";
+import { pictureSprite } from "./basic.js";
+import { ticks } from "../tick.js";
 
 const SKIP = 0x80079295, NO_EFFECTS = 0x800792a0, SDW_BUF = 0x80079484, PICTURE = 0x80079440, RING = 0x80079450, RING_AT = 0x80079284;
 const endFrame = (m) => m.write(0x8007913c + 0x15c, 1, 1);
@@ -45,4 +49,20 @@ HANDLERS[0x2d] = function* (ctx) {
   ctx.call(0x8003b398, [0x18, r32(SDW_BUF), r32(PICTURE), 2], sp);
   w8(0x800792b2, 1);
   for (let j = 0; j < 4; j++) if (((r16(RING + 2 * j) << 16) >> 16) === id) w16(RING + 2 * j, 0xffff);
+};
+
+HANDLERS[0x2e] = function* (ctx) {
+  const { m } = ctx, o = operand(m), a = o.u8(), b = o.u8(), sp = ctx.sp - 0x30;
+  if (m.read(SKIP, 1) === 1) { endFrame(m); return; }
+  if (m.read(NO_EFFECTS, 1) === 1) unported(0x80020448);
+  ctx.call(0x8001f690, [], sp);
+  if (!m.read(0x800792b2, 1)) return;
+  const pic = m.read(PICTURE, 4) >>> 0;
+  if (!a || b === 0x7f) { ctx.call(0x8003cbb8, [0x18, pic, 0], sp); pictureSprite(ctx, sp); ctx.call(0x8001f690, [], sp); return; }
+  for (let i = 0; i < 8; i++) {
+    ctx.call(0x8003cbb8, [0x18, m.read(PICTURE, 4) >>> 0, i + 1], sp);
+    pictureSprite(ctx, sp);
+    ctx.call(0x8001f690, [], sp);
+    yield* ticks({ ...ctx, sp }, 2);
+  }
 };
