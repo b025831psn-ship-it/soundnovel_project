@@ -337,6 +337,11 @@ html.filled, html.filled body { overflow: hidden; }
   filter: blur(.4px); /* the picture at the cartridge's own brightness (태우 2026-11-26) */
   will-change: transform;
 }
+#figures {
+  position: absolute; top: 0; left: 0; display: block; pointer-events: none;
+  image-rendering: auto; filter: blur(.4px); will-change: transform;
+}
+#figures[hidden] { display: none; }
 #picture.pan { transition: transform .9s cubic-bezier(.4, 0, .2, 1); }
 .veil {
   position: absolute; inset: 0; pointer-events: none;

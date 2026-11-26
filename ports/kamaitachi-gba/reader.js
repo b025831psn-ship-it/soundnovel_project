@@ -4,12 +4,18 @@
 // window.kamaitachi (the picture before text, the page's glyphs, the choice lists) and answers taps
 // the way the screen does. The game's own screens (title, bookmarks, menu) show the original screen.
 import { toneColor } from "./src/screen.js";
+import { tintColor } from "./src/silhouette.js";
 
 const $ = (id) => document.getElementById(id);
 const shell = $("shell");
 const stage = $("stage");
 const reader = $("reader");
 const picture = $("picture");
+// The silhouettes on a layer of their own, for a picture whose silhouettes are enlarged apart from it.
+const figures = Object.assign(document.createElement("canvas"), { id: "figures" });
+figures.setAttribute("aria-hidden", "true");
+picture.after(figures);
+const figuresCtx = figures.getContext("2d");
 const words = $("words");
 const choiceList = $("choices");
 const store = {
@@ -48,6 +54,9 @@ const EXTENDED_TOP = 100, EXTENDED_HEIGHT = 360;
 //         over it would not line up, e.g. cables), unless silhouettes are up
 //   top   "extend" only: GBA rows above the original in the extended picture, 0 to 200 (default 100;
 //         200 = the original sits on the bottom edge and only the sky above is made)
+//   figureZoom  the silhouettes' own enlargement (1 to 3), when it differs from the picture's (태우
+//         2026-11-26: "배경 100에 실루엣 130"); they are then drawn on a layer of their own, blended over
+//         the picture as the cartridge blends BG1 (13/16), and grow from the same place as the picture
 //   mode  "extend" (the default where an extended picture exists): the picture extended above and
 //         below (/art/extended/NNN.png, 2:3, kept on the test PC only), the original laid over its middle
 let edits = {};
@@ -435,6 +444,60 @@ function cropLeft(base, layer, width) {
 }
 
 let shownBase = null, shownBackground = null, shownLayer = null, crop = -1, shownEdit = -1, settledZoom = 1.2;
+// The silhouettes' own enlargement, or null when they go with the picture.
+const figureZoomOf = (edit) => (Number.isFinite(edit?.figureZoom) ? Math.max(1, Math.min(3, edit.figureZoom)) : null);
+// The picture as renderBackground draws it, without the silhouette layer (same palette, tone and fade).
+let plainKey = null, plainPixels = null;
+function plainBase(screen) {
+  const { tiles, palette, variant } = screen.background;
+  const key = [screen.background, screen.brightness[1], screen.tone.brightness, screen.tone.saturation];
+  if (plainKey && key.every((v, i) => v === plainKey[i])) return plainPixels;
+  const factor = [15, 13, 11, 6][variant] ?? 15;
+  const coefficient = Math.max(0, (screen.brightness[1] >> 11) - 1);
+  const adjustment = coefficient ? Math.max(-31, screen.tone.brightness + (coefficient - 15) * 3) : -31;
+  const rgb8 = (channel) => (channel << 3) | (channel >> 2);
+  const colors = [];
+  for (let index = 0; index < 256; index++) {
+    let color = palette[2 * index] | (palette[2 * index + 1] << 8);
+    if (index < 236 && color & 0x7fff) color = toneColor(color, screen.tone.saturation, adjustment, factor);
+    colors.push([rgb8(color & 31), rgb8((color >> 5) & 31), rgb8((color >> 10) & 31)]);
+  }
+  const out = new Uint8ClampedArray(240 * 160 * 4);
+  for (let y = 0; y < 160; y++) for (let x = 0; x < 240; x++) {
+    const color = colors[tiles[((y >> 3) * 30 + (x >> 3)) * 64 + (y & 7) * 8 + (x & 7)]];
+    const at = 4 * (y * 240 + x);
+    out[at] = color[0]; out[at + 1] = color[1]; out[at + 2] = color[2]; out[at + 3] = 255;
+  }
+  plainKey = key; plainPixels = out;
+  return out;
+}
+// The silhouette layer alone, its colours (bank 15 through 08001138 and slot 5) at 13/16 opacity, as
+// the cartridge blends it over the picture (BLDALPHA 0x070D).
+const figureSource = Object.assign(document.createElement("canvas"), { width: 240, height: 160 });
+function paintFigures(screen, row) {
+  const layer = screen.silhouette;
+  figures.width = 240 * UP; figures.height = source.height * UP;
+  figuresCtx.clearRect(0, 0, figures.width, figures.height);
+  if (!layer?.vram) return;
+  const shades = layer.colors.map((raw, index) => {
+    if (!index) return null;
+    const color = screen.menuColor(tintColor(raw, layer.tint));
+    return [color & 31, (color >> 5) & 31, (color >> 10) & 31].map((c) => (c << 3) | (c >> 2));
+  });
+  const image = new ImageData(240, 160);
+  for (let y = 0; y < 160; y++) for (let x = 0; x < 240; x++) {
+    const byte = layer.vram[((y >> 3) * 30 + (x >> 3)) * 32 + (y & 7) * 4 + ((x & 7) >> 1)];
+    const nibble = x & 1 ? byte >> 4 : byte & 15;
+    if (!nibble || !shades[nibble]) continue;
+    const at = 4 * (y * 240 + x);
+    image.data.set(shades[nibble], at);
+    image.data[at + 3] = 208;
+  }
+  figureSource.getContext("2d").putImageData(image, 0, 0);
+  figuresCtx.imageSmoothingEnabled = false;
+  figuresCtx.drawImage(figureSource, 0, row * UP, 240 * UP, 160 * UP);
+}
+let figureCrop = 0;
 const backgroundIds = new WeakMap();
 function drawPicture(game) {
   const screen = game.screen;
@@ -455,7 +518,11 @@ function drawPicture(game) {
   if (base !== shownBase || editVersion !== shownEdit) {
     const edited = editVersion !== shownEdit;
     shownEdit = editVersion;
-    compose(screen, base);
+    // Silhouettes enlarged apart: the picture without them, and the layer drawn by itself.
+    const apart = figureZoomOf(edit) !== null && screen.background;
+    compose(screen, apart ? plainBase(screen) : base);
+    if (apart) paintFigures(screen, edit.mode === "extend" ? topOf(edit) : edit.mode === "fill" ? 0 : EXTENDED_TOP);
+    figures.hidden = !apart;
     if (edited) crop = -1;
     // The zoom too is settled when the picture first shows: the editor's, or 120% unless silhouettes
     // are on it then (or about to be), which stay whole at 100% (태우 2026-11-26).
@@ -471,8 +538,11 @@ function drawPicture(game) {
     const same = screen.background === shownBackground;
     if (!same || crop < 0) {
       const layer = game.vm?.scene?.layerBuffer ? { vram: game.vm.scene.layerBuffer } : screen.silhouette;
-      crop = Number.isFinite(edit?.crop)
-        ? Math.round((Math.max(0, Math.min(100, edit.crop)) / 100) * Math.max(0, 240 - width)) : cropLeft(base, layer, width);
+      const cropFor = (width) => (Number.isFinite(edit?.crop)
+        ? Math.round((Math.max(0, Math.min(100, edit.crop)) / 100) * Math.max(0, 240 - width)) : cropLeft(base, layer, width));
+      crop = cropFor(width);
+      const figureZoom = figureZoomOf(edit);
+      if (figureZoom !== null) figureCrop = cropFor(Math.min(240, (source.height * size.width) / (size.height * figureZoom)));
       picture.classList.remove("pan");
     }
     shownBase = base;
@@ -488,6 +558,12 @@ function drawPicture(game) {
   // its silhouettes rise with the zoom, 태우 2026-11-26).
   const anchor = edit?.mode === "extend" ? topOf(edit) / 200 : 0.5;
   picture.style.transform = `translate(${-crop * scale}px, ${-(zoom - 1) * size.height * anchor}px)`;
+  const figureZoom = figureZoomOf(edit);
+  if (figureZoom === null || figures.hidden) return;
+  const figureScale = (size.height * figureZoom) / source.height;
+  figures.style.width = `${240 * figureScale}px`;
+  figures.style.height = `${size.height * figureZoom}px`;
+  figures.style.transform = `translate(${-figureCrop * figureScale}px, ${-(figureZoom - 1) * size.height * anchor}px)`;
 }
 // The editor's enlargement (zoom, 1 to 3), on top of filling the screen's height.
 const zoomOf = (edit) => (Number.isFinite(edit?.zoom) ? Math.max(1, Math.min(3, edit.zoom)) : 1);
