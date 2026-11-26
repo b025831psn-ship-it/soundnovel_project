@@ -116,6 +116,8 @@ let edits = {}, current = null, filter = "all", dirty = false, shownId = null;
 // picture. A scene's values are kept as edits["<id>@<site>"] and go over the picture's.
 let site = null;
 const asked = new URLSearchParams(location.search);
+// The debug list links with scene=<picture>@<site>; the site alone is accepted too.
+if (asked.get("scene")?.includes("@")) asked.set("scene", asked.get("scene").split("@")[1]);
 const askedSilhouettes = (asked.get("sil") ?? "").split(",").filter(Boolean).map(Number).filter(Number.isFinite);
 // Scenes from the debug scene list, when this PC has made one (port-data/debug-scenes.json).
 const sceneList = await fetch("/kamaitachi-gba-kor/port-data/debug-scenes.json", { cache: "no-cache" })
