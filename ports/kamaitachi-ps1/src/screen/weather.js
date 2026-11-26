@@ -15,7 +15,9 @@
 //   0x80044904 memcpy         0x80044be4 bzeroWords
 import { randMod } from "./shake.js";
 import { spriteAdd, spriteLayer } from "./sprites.js";
-import { dropLayer } from "../helpers.js";
+import { dropLayer, dropOverlay } from "../helpers.js";
+import { animStop } from "../scenario/lib.js";
+import { waveReset } from "./wave.js";
 
 const GP = 0x8007913c, SPRITES = 0x801eef68, NEW = 0x800794f4, FRAME_STEP = 0x80079278, IDS = 0x801f6698;
 const FAR = 0x800c8820, NEAR = 0x800a6db8, PLANE = 0x800b1c20, CLUTS = 0x800c4820, SNOW_CLUT = 0x800c8420;
@@ -190,4 +192,36 @@ export function weatherTick(ctx) { // 0x800416a4
   if (g8(0x1d2) === 1) unported(0x800417d4);
   if (g8(0x1d3) === 1) unported(0x8004188c);
   if (g8(0x1e4) === 1) unported(0x80041484); // 0x80041464
+}
+
+// 0x80031e8c effectsOff(): the screen effects' flags (gp 0x444, 0x4bc, 0x474, 0x320, 0x38e
+// and 0x80079584 / 0x800795fc / 0x800795b4) cleared, the overlay sprite dropped.
+export function effectsOff(m) {
+  for (const o of [0x444, 0x4bc, 0x474, 0x320]) m.write(GP + o, 0, 4);
+  for (const a of [0x80079584, 0x800795fc, 0x800795b4]) m.write(a, 0, 4);
+  dropOverlay(m);
+  m.write(GP + 0x38e, 0, 1);
+}
+
+// 0x800418d0 effect(mode): the scene effects switch; only mode 0 (all off) is ported.
+// Mode 0: animations stopped (unless 0x800792c3), the weather ended (gp[0x1d8] != -1),
+// effects off, the wave reset, the flash sprite back to layer 0xc, layers 2 and 3 dropped.
+export function effect(ctx, mode) {
+  const { m } = ctx, g8 = (o) => m.read(GP + o, 1);
+  if ((mode & 0xffff) >= 0x100) return;
+  if ((mode & 0xffff) !== 0) unported(0x800418f0);
+  const keep = m.read(0x800792c3, 1);
+  if (!keep) animStop(m);
+  m.write(GP + 0x1cc, 0, 4); m.write(GP + 0x390, 0, 1);
+  if (s8(g8(0x1d8)) !== -1) { m.write(GP + 0x1d8, 0xff, 1); dropLayer(m, 3); m.write(GP + 0x1e0, 0xffff, 2); }
+  effectsOff(m);
+  if (g8(0x1c9)) unported(0x800419d4);
+  waveReset(m); waveReset(m);
+  const shake = m.read(GP + 0x1c0, 4); m.write(GP + 0x1d3, 0, 1);
+  if (shake) unported(0x80041a00);
+  m.write(GP + 0x1d0, 0, 1);
+  spriteLayer(m, m.read(IDS + 4, 2), 0xc);
+  if (g8(0x1d2) === 1) unported(0x80041a6c);
+  if (!m.read(0x800792c3, 1)) { dropLayer(m, 2); dropLayer(m, 3); }
+  m.write(0x800792ae, 0, 1); m.write(0x800792ac, 0, 1);
 }

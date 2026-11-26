@@ -10,6 +10,7 @@
 //   0x8003c988  sortBoxes()            queued boxes into the OT
 //   0x8003ce2c  sortOverlays()         8 overlay sprites (0x801d5628), re-added through 0x8001c838
 const GP = 0x8007913c;
+import { waveReset } from "./wave.js";
 const SPRITES = 0x801eef68, SPRITE_SIZE = 0x48, SPRITE_COUNT = 160, INDEX = 0x800794c8, CURRENT = 0x80079470;
 const OT = 0x80079468, BRIGHT = 0x801f7500, SHAKE = 0x8009da48;
 const BOXES = 0x801d5910, BOX_Z = 0x801d66c8, BOX_COUNT = GP + 0x1ba, BOX2_COUNT = GP + 0x1bc, OVERLAYS = 0x801d5628;
@@ -158,12 +159,12 @@ export function spriteInit(m) {
   w8(s + 0x38, 0); w8(s + 0x39, 0); w8(s + 0x3a, 0);
 }
 
-// 0x8003b7ec: every sprite back to its defaults, then 0x8002d388 (not ported yet: ctx.call).
+// 0x8003b7ec: every sprite back to its defaults, then waveReset (0x8002d388).
 export function spriteClearAll(ctx) {
   const { m } = ctx;
   for (let i = 0; i < SPRITE_COUNT; i++) { m.write(ALLOC, i, 2); m.write(NEW, SPRITES + i * SPRITE_SIZE, 4); spriteInit(m); }
   m.write(ALLOC, SPRITE_COUNT, 2);
-  ctx.call(0x8002d388, []);
+  waveReset(m);
 }
 
 // 0x8003ba54: take the first free sprite from 1 and set it up from texture page `page`

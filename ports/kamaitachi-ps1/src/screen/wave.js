@@ -27,3 +27,15 @@ export function waveTick(ctx) {
     if (g(0xac) && g(0xb0)) pv = (pv + dv) | 0;
   }
 }
+
+// 0x8002d388 waveReset(): the wave parameters (gp 0x84-0xc4) and the 240 line offsets back
+// to rest: line i at x 0, y i·256 (the original converts through the soft-float library,
+// exact here).
+export function waveReset(m) {
+  const g32 = (o, v) => m.write(GP + o, v >>> 0, 4), g16 = (o, v) => m.write(GP + o, v & 0xffff, 2);
+  for (const o of [0x90, 0x98, 0xb0, 0xb8]) g32(o, 0x6400);
+  g32(0x84, 0); g16(0x88, 0); for (const o of [0x8c, 0x94, 0x9c, 0xa0, 0xa4]) g32(o, 0);
+  g16(0xa8, 0); for (const o of [0xac, 0xb4, 0xbc, 0xc0]) g32(o, 0);
+  g32(0xc4, 0x100);
+  for (let i = 0; i < 0xf0; i++) { m.write(TABLE + 8 * i, 0, 4); m.write(TABLE + 8 * i + 4, i * 256, 4); }
+}

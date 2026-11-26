@@ -16,7 +16,7 @@ import { CURSOR, BASE, io, operand, resolveLabel, animStop, checkpoint } from ".
 import { pictureSprite } from "./basic.js";
 import { windowPalette } from "../screen/fader.js";
 import { spriteClearAll } from "../screen/sprites.js";
-import { memcpy } from "../screen/weather.js";
+import { memcpy, effect } from "../screen/weather.js";
 import { loadPicture } from "../screen/picture.js";
 
 const SKIP = 0x80079295, NO_EFFECTS = 0x800792a0, VARS = 0x80079558, SEEN = 0x801f5bc0;
@@ -79,7 +79,7 @@ HANDLERS[0x4e] = function* (ctx) {
   sceneReset(sub);
   for (let i = 0; i < 16; i++) { m.write(0x8009da48 + 8 * i + 4, 0, 4); m.write(0x8009da48 + 8 * i, 0, 4); }
   m.write(0x800795e4, 5, 1); m.write(0x800795e6, 0xf, 1); m.write(0x800795e5, 0, 1);
-  ctx.call(0x800418d0, [0], sp);
+  effect(sub, 0);
   spriteClearAll(sub);
   textWindowReset(sub);
   animStop(m);
