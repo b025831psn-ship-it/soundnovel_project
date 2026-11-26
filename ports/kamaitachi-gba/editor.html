@@ -124,13 +124,22 @@ const sceneEntries = Array.isArray(sceneList) ? sceneList : Array.isArray(sceneL
 const keyOf = () => (site ? `${current}@${site}` : current);
 const scenesOf = (id) => {
   const sites = new Map();
-  for (const entry of sceneEntries) if (entry?.picture === id && entry.site) sites.set(entry.site, entry);
+  for (const entry of sceneEntries) if (entry?.picture === id && entry.site) {
+    sites.set(entry.site, entry);
+    if (entry.silhouettes?.length) { const at = `${entry.site}#${[...entry.silhouettes].sort((a, b) => a - b).join("+")}`; sites.set(at, { ...entry, site: at }); }
+  }
+  // The debug link's silhouettes: the scene with just those up.
+  if (site && asked.get("scene") === site.split("#")[0] && askedSilhouettes.length) {
+    const at = `${site.split("#")[0]}#${[...askedSilhouettes].sort((a, b) => a - b).join("+")}`;
+    if (!sites.has(at)) sites.set(at, { site: at });
+  }
   for (const key of Object.keys(edits)) { const [pic, at] = key.split("@"); if (at && Number(pic) === id && !sites.has(at)) sites.set(at, { site: at }); }
   if (site && !sites.has(site)) sites.set(site, { site });
   return [...sites.values()];
 };
 const silhouettesOf = (id, at) => {
   const entry = sceneEntries.find((e) => e?.picture === id && e.site === at);
+  if (at?.includes("#")) return at.split("#")[1].split("+").map(Number).filter(Number.isFinite);
   return Array.isArray(entry?.silhouettes) ? entry.silhouettes : at && at === asked.get("scene") ? askedSilhouettes : [];
 };
 function renderScope() {

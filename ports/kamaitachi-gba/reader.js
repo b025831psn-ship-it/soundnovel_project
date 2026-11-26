@@ -88,9 +88,16 @@ let currentId = null;
 // as one picture serves many scenes (태우 2026-11-26).
 let currentSite = null;
 const sceneKey = (id, site) => (site ? `${id}@${site}` : null);
+// Within a scene, values for one set of silhouettes ("<id>@<site>#<ids joined by +>") go over the
+// scene's: the picture stays while standing silhouettes give way to sitting ones, and each may want
+// its own framing (태우 2026-11-26, the living room 009 at 1b:1031).
+let currentPeople = "";
+const peopleKeyOf = (game) => [...(game?.vm?.ram?.silhouettes ?? [])].filter((v) => v !== 0xffff).sort((a, b) => a - b).join("+");
 function editsOf(id) {
-  const scene = id === currentId ? edits[sceneKey(id, currentSite)] : undefined;
-  return edits[id] || scene ? { ...(edits[id] ?? {}), ...(scene ?? {}) } : undefined;
+  const key = id === currentId ? sceneKey(id, currentSite) : null;
+  const scene = key ? edits[key] : undefined;
+  const people = key && currentPeople ? edits[`${key}#${currentPeople}`] : undefined;
+  return edits[id] || scene || people ? { ...(edits[id] ?? {}), ...(scene ?? {}), ...(people ?? {}) } : undefined;
 }
 // Every picture: the original whole over a blurred backdrop of itself, at 120%, centred (태우 2026-11-26;
 // AI-extended margins were given up). The editor's values for a picture go on top.
@@ -514,7 +521,7 @@ function paintFigures(screen, row) {
   figuresCtx.imageSmoothingEnabled = false;
   figuresCtx.drawImage(figureSource, 0, row * UP, 240 * UP, 160 * UP);
 }
-let figureCrop = 0;
+let figureCrop = 0, settledY = null, glide = false;
 // Where the script asked for the picture: the scene loader's request is wrapped once to note the
 // opcode's place (04/05 are three bytes, so it starts three before the cursor), unless the engine
 // gives window.kamaitachi.sceneSite itself. A picture loaded any other way (a bookmark) has none.
@@ -556,9 +563,18 @@ function drawPicture(game) {
   if (awaited(id)) return;
   if (id !== currentId && !PREVIEW) loadEdits();
   currentId = id;
+  // Other silhouettes on the same picture: framed again (gliding there) only where the editor has
+  // values for this set or the last one; otherwise the place holds, as before.
+  const peopleNow = peopleKeyOf(game);
+  if (peopleNow !== currentPeople) {
+    const scene = sceneKey(id, currentSite);
+    const specific = scene && (edits[`${scene}#${peopleNow}`] || (currentPeople && edits[`${scene}#${currentPeople}`]));
+    currentPeople = peopleNow;
+    if (specific && screen.background === shownBackground) { glide = true; shownEdit = -1; }
+  }
   const edit = editFor(currentId);
   if (base !== shownBase || editVersion !== shownEdit) {
-    const edited = editVersion !== shownEdit;
+    const edited = editVersion !== shownEdit || glide;
     shownEdit = editVersion;
     // Silhouettes enlarged apart: the picture without them, and the layer drawn by itself.
     const apart = figureZoomOf(edit) !== null && screen.background;
@@ -571,6 +587,7 @@ function drawPicture(game) {
     if (!(screen.background === shownBackground) || crop < 0) {
       const people = [game.vm?.scene?.layerBuffer, screen.silhouette?.vram].some((v) => v && v.some((b) => b));
       // An extended picture already fills the upright screen: 100% unless the editor says otherwise.
+      settledY = Number.isFinite(edit?.y) ? edit.y : null;
       settledZoom = Number.isFinite(editsOf(currentId)?.zoom) ? zoomOf(edit) : people || edit?.mode === "extend" ? 1 : zoomOf(edit);
     }
     const width = Math.min(240, (source.height * size.width) / (size.height * settledZoom));
@@ -585,7 +602,9 @@ function drawPicture(game) {
       crop = cropFor(width);
       const figureZoom = figureZoomOf(edit);
       if (figureZoom !== null) figureCrop = cropFor(Math.min(240, (source.height * size.width) / (size.height * figureZoom)));
-      picture.classList.remove("pan");
+      picture.classList.toggle("pan", glide);
+      figures.classList.toggle("pan", glide);
+      glide = false;
     }
     shownBase = base;
     shownBackground = screen.background;
@@ -600,8 +619,8 @@ function drawPicture(game) {
   // its silhouettes rise with the zoom, 태우 2026-11-26).
   const anchor = edit?.mode === "extend" ? topOf(edit) / 200 : 0.5;
   // The editor's top row, when given: that row at the screen's top, never past the picture's bottom.
-  const lift = (z) => Number.isFinite(edit?.y)
-    ? Math.max(0, Math.min(source.height * (1 - 1 / z), edit.y)) * ((size.height * z) / source.height)
+  const lift = (z) => settledY !== null
+    ? Math.max(0, Math.min(source.height * (1 - 1 / z), settledY)) * ((size.height * z) / source.height)
     : (z - 1) * size.height * anchor;
   picture.style.transform = `translate(${-crop * scale}px, ${-lift(zoom)}px)`;
   const figureZoom = figureZoomOf(edit);
@@ -857,8 +876,9 @@ if (new URLSearchParams(location.search).has("preview")) {
     if (key) { if (sceneEdit) edits[key] = sceneEdit; else delete edits[key]; }
     editVersion++;
     const people = silhouettes.join();
-    if (pictureId(game) !== id || game.vm.waiting !== "hold" || previewSite !== site || previewPeople !== people) {
-      previewSite = site;
+    const sceneSite = site ? site.split("#")[0] : null; // "<site>#<ids>": that scene with those silhouettes
+    if (pictureId(game) !== id || game.vm.waiting !== "hold" || previewSite !== sceneSite || previewPeople !== people) {
+      previewSite = sceneSite;
       previewPeople = people;
       game.vm.waiting = "hold";
       game.boot.run = null;
@@ -870,6 +890,9 @@ if (new URLSearchParams(location.search).has("preview")) {
       game.screen.setBrightness(5, 0x8000);
       const scene = game.vm.scene;
       scene.silhouetteClear?.();
+      // The 02000728 slots too, which pick the silhouette set's own values.
+      const slots = game.vm.ram.silhouettes;
+      if (slots) { slots.fill(0xffff); silhouettes.slice(0, slots.length).forEach((v, i) => { slots[i] = v; }); }
       if (silhouettes.length) {
         for (const silhouette of silhouettes) scene.silhouetteAdd?.(silhouette);
         scene.silhouetteShow?.(0, game.vm.tint?.() ?? [5, 0, 15]);
