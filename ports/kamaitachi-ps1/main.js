@@ -25,4 +25,19 @@ const runtime = {
   menuMode: () => "menu",
 };
 draw();
-window.kamaitachiPs1 = { runtime, sound: { resume() {}, setVolume() {} } };
+// The real sound (Claude-PS1, sound/web/ps1-sound.js) when this PC has made its data: after the first
+// tap the title music (song 1) plays, as an audio check until the game drives it.
+const quiet = { resume() {}, setVolume() {} };
+window.kamaitachiPs1 = { runtime, sound: quiet };
+import("./sound/web/ps1-sound.js")
+  .then(({ createPs1Sound }) => createPs1Sound({ data: "/kamaitachi-ps1-kor/port-data/sound/" }))
+  .then((sound) => {
+    let started = false;
+    window.kamaitachiPs1.sound = {
+      ...sound,
+      resume() { const r = sound.resume(); if (!started) { started = true; sound.play(1); } return r; },
+      setVolume: (v) => sound.setVolume(v),
+    };
+    last = "소리 준비됨 (탭하면 타이틀 음악)"; draw();
+  })
+  .catch((error) => { last = `소리 없음: ${error.message}`; draw(); });

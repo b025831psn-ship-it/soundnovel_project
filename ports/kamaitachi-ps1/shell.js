@@ -54,10 +54,12 @@ function routeTouch(runtime, x, y) {
   else runtime.moveCursor(hit.index - current);
 }
 
-whenReady(({ runtime, sound }) => {
+whenReady(({ runtime }) => {
+  // The sound object may arrive after the runtime (its data loads separately): always ask for the current one.
+  const sound = () => window.kamaitachiPs1?.sound;
   $("loading").hidden = true;
   stage.classList.add("ready");
-  const resume = () => sound?.resume?.();
+  const resume = () => { sound()?.resume?.(); apply(); };
   // iPhone Safari starts audio only at the end of a touch: wake it on those too.
   for (const type of ["touchend", "click", "keydown"]) addEventListener(type, resume, { capture: true, passive: true });
 
@@ -114,7 +116,7 @@ whenReady(({ runtime, sound }) => {
   let muted = store.get("kamaitachi-ps1.muted", "0") === "1";
   volume.value = store.get("kamaitachi-ps1.volume", "80");
   const apply = () => {
-    sound?.setVolume?.(muted ? 0 : Number(volume.value) / 100);
+    sound()?.setVolume?.(muted ? 0 : Number(volume.value) / 100);
     mute.setAttribute("aria-pressed", String(muted));
     mute.setAttribute("aria-label", muted ? "소리 켜기" : "소리 끄기");
     volume.style.setProperty("--fill", `${volume.value}%`);

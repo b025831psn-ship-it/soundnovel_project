@@ -35,9 +35,10 @@ const routes = new Map([
 const portTypes = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8',
   '.css': 'text/css; charset=utf-8', '.json': 'application/json; charset=utf-8', '.bin': 'application/octet-stream', '.tsv': 'text/tab-separated-values; charset=utf-8',
   '.mjs': 'text/javascript; charset=utf-8', '.png': 'image/png', '.jpg': 'image/jpeg', '.webp': 'image/webp', '.svg': 'image/svg+xml',
-  '.wasm': 'application/wasm', '.ogg': 'audio/ogg', '.mp3': 'audio/mpeg', '.wav': 'audio/wav', '.woff2': 'font/woff2', '.mp4': 'video/mp4', '.txt': 'text/plain; charset=utf-8' };
+  '.wasm': 'application/wasm', '.ogg': 'audio/ogg', '.mp3': 'audio/mpeg', '.wav': 'audio/wav', '.woff2': 'font/woff2', '.mp4': 'video/mp4', '.txt': 'text/plain; charset=utf-8', '.PAC': 'application/octet-stream', '.pac': 'application/octet-stream' };
 // Kamaitachi 2 (PS2) web build lives in the private kamaitachi2-ps2-kor checkout on this PC; its web/ folder path is
 // in a local, uncommitted serve.ps2web (one line). Disc images are never among the served types.
+const ps1Data = (() => { try { return path.resolve(__dirname, fs.readFileSync(path.join(__dirname, 'serve.ps1data'), 'utf8').trim()); } catch { return path.resolve(__dirname, '..', '..', '_claude-work', 'ps1-web'); } })();
 const ps2Web = (() => { try { return path.resolve(__dirname, fs.readFileSync(path.join(__dirname, 'serve.ps2web'), 'utf8').trim()); } catch { return ''; } })();
 function portRoute(url) {
   for (const [prefix, dir, exts] of [
@@ -51,6 +52,11 @@ function portRoute(url) {
     ['/sfc-vm/', path.join(__dirname, 'sfc-vm'), ['.js']],
     // Code shared by every port (save store and sync client); its tests and the reference server stay out.
     ['/shared/', path.join(__dirname, 'shared'), ['.js']],
+    // PS1 port: its page, and the private data made on this PC from the user's disc (sound PACs and
+    // tables for now; folder in serve.ps1data, default ../../_claude-work/ps1-web). Not an open-beta
+    // path: through the tunnel it asks for the test password.
+    ['/ports/kamaitachi-ps1/', path.join(__dirname, 'ports', 'kamaitachi-ps1'), ['.html', '.js', '.css']],
+    ['/kamaitachi-ps1-kor/port-data/', ps1Data, ['.json', '.bin', '.PAC', '.pac']],
     ['/kamaitachi2-ps2/', ps2Web, ['.html', '.js', '.mjs', '.css', '.json', '.bin', '.png', '.jpg', '.webp', '.svg', '.wasm', '.ogg', '.mp3', '.wav', '.mp4', '.woff2', '.txt']],
   ]) {
     if (!url.startsWith(prefix) || !dir) continue;
