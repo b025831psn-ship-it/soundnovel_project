@@ -25,7 +25,9 @@ const store = {
 const embedded = window.parent !== window;
 const touch = matchMedia("(pointer: coarse)").matches;
 const asked = new URLSearchParams(location.search).get("reader");
-let enabled = asked ? asked === "1" : store.get("kamaitachi.reader", touch ? "1" : "0") === "1";
+// On hold (태우 2026-11-26 "세로보기 방식을 보류"): every device shows the original screen; the
+// upright reader comes on only with ?reader=1 (the editor's preview and tests), its bar button hidden.
+let enabled = asked === "1";
 
 // The picture: drawn three times over with whole pixels, then scaled by the browser with smoothing,
 // so edges soften a little without the blur of stretching 240x160 straight to a phone.
@@ -861,6 +863,7 @@ toggle.addEventListener("click", () => {
   showToggle();
 });
 showToggle();
+toggle.hidden = asked !== "1";
 
 // Editor preview (editor.html frames the player with ?preview=1): the game holds still and shows the
 // picture the editor names, with the editor's unsaved choices for it.
