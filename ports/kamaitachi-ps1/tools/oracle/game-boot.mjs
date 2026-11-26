@@ -16,55 +16,28 @@ import { pathToFileURL } from "node:url";
 import { GpuOracle } from "./gpu-oracle.mjs";
 import { Spu } from "../../sound/spu.js";
 import { encodePng } from "./png.mjs";
+import { LibCd, LIBCD_ENTRY, DISC_LBA } from "../../src/libcd.js";
 
-// ISO 9660 extents of the files on the disc (SLPS-01794); CdSearchFile reports these.
-export const DISC_LBA = { SCE: 250, VCE: 581, BGD: 5600, SDW: 21279, BIN: 29098, MUS: 29963, ANM: 37429, VCP: 37873 };
+// ISO 9660 extents of the files on the disc (SLPS-01794): src/libcd.js DISC_LBA.
+export { DISC_LBA };
 export const BUTTON = { select: 1, start: 8, up: 16, right: 32, down: 64, left: 128, l2: 256, r2: 512, l1: 1024, r1: 2048, triangle: 4096, circle: 8192, cross: 16384, square: 32768 };
 const ADDR = {
   entry: 0x800622d8, vsync: 0x800530f8, vsyncCount: 0x800785c0, vsyncCallback: 0x800785b0,
   padBuffer: 0x801d6660, cardSync: 0x80063748, cardCommand: 0x8008ca80, cardPending: 0x8008ca40, movie: 0x800343b0,
-  cdInit: 0x8004e928, cdSync: 0x8004eb7c, cdFlush: 0x8004efa0, cdControl: 0x8004ebe4, cdControlB: 0x8004ee54,
-  cdSearchFile: 0x80050988, cdRead: 0x80051928, cdReadSync: 0x80051a28, cdReadCallback: 0x8004e6d8, cdDataCallback: 0x8004e6a8,
 };
-const bcd = (n) => ((n / 10) | 0) << 4 | n % 10;
-const fromBcd = (b) => (b >> 4) * 10 + (b & 15);
 
 export class GameBoot {
   constructor({ exe, pacs, card = 1, buttons = () => 0, onFrame = null }) {
     this.o = new GpuOracle(exe); this.cpu = this.o.cpu; this.spu = new Spu();
-    this.frames = 0; this.loc = 0; this.events = []; this.buttons = buttons; this.onFrame = onFrame; this.card = card;
-    this.files = Object.entries(DISC_LBA).map(([name, lba]) => ({ name, lba, data: pacs[name] ?? new Uint8Array(0) }));
+    this.frames = 0; this.events = []; this.buttons = buttons; this.onFrame = onFrame; this.card = card;
     const c = this.cpu, o = this.o, spu = this.spu, r0 = o.ioRead.bind(o), w0 = o.ioWrite.bind(o);
     o.ioRead = (a, w) => { if (a >= 0x1f801c00 && a < 0x1f802000) { const k = a - 0x1f801c00; return w === 4 ? spu.read16(k) | spu.read16(k + 2) << 16 : spu.read16(k & ~1); } return r0(a, w); };
     o.ioWrite = (a, v, w) => { if (a >= 0x1f801c00 && a < 0x1f802000) { const k = a - 0x1f801c00; spu.write16(k, v & 0xffff); if (w === 4) spu.write16(k + 2, v >>> 16); return; } return w0(a, v, w); };
     c.io = { read: (a, w) => o.ioRead(a, w), write: (a, v, w) => o.ioWrite(a, v, w) };
     const H = (a, f) => c.hooks.set(a, (cc) => { f(cc); cc.ret(); });
-    H(ADDR.cdInit, (cc) => { cc.r[2] = 1; });
-    H(ADDR.cdSync, (cc) => { cc.r[2] = 2; }); // CdlComplete
-    H(ADDR.cdFlush, (cc) => { cc.r[2] = 1; });
-    H(ADDR.cdReadCallback, (cc) => { cc.r[2] = 1; });
-    H(ADDR.cdDataCallback, (cc) => { cc.r[2] = 0; });
-    const control = (cc) => {
-      const com = cc.r[4] & 0xff, p = cc.r[5] >>> 0;
-      if (com === 2 && p) this.loc = (fromBcd(c.read(p, 1)) * 60 + fromBcd(c.read(p + 1, 1))) * 75 + fromBcd(c.read(p + 2, 1)) - 150; // CdlSetloc
-      cc.r[2] = 1;
-    };
-    H(ADDR.cdControl, control); H(ADDR.cdControlB, control);
-    H(ADDR.cdSearchFile, (cc) => {
-      const fp = cc.r[4] >>> 0, name = this.str(cc.r[5] >>> 0), f = this.files.find((x) => name.startsWith("\\" + x.name + "."));
-      this.events.push({ frame: this.frames, search: name, found: !!f });
-      if (!f) { cc.r[2] = 0; return; }
-      const l = f.lba + 150;
-      c.write(fp, bcd((l / 4500) | 0), 1); c.write(fp + 1, bcd(((l / 75) | 0) % 60), 1); c.write(fp + 2, bcd(l % 75), 1); c.write(fp + 3, 0, 1);
-      c.write(fp + 4, f.data.length, 4); cc.r[2] = fp;
-    });
-    H(ADDR.cdRead, (cc) => {
-      const n = cc.r[4], buf = cc.r[5] >>> 0, f = this.files.find((x) => this.loc >= x.lba && this.loc < x.lba + x.data.length / 2048);
-      if (f) { const off = (this.loc - f.lba) * 2048; c.setBytes(buf, f.data.subarray(off, off + n * 2048)); }
-      this.events.push({ frame: this.frames, read: f?.name ?? null, sector: f ? this.loc - f.lba : this.loc, count: n });
-      this.loc += n; cc.r[2] = 1;
-    });
-    H(ADDR.cdReadSync, (cc) => { cc.r[2] = 0; });
+    this.cd = new LibCd({ m: c, pacs, onEvent: (e) => this.events.push(e), frame: () => this.frames });
+    for (const name of ["CdInit", "CdSync", "CdFlush", "CdControl", "CdControlB", "CdSearchFile", "CdRead", "CdReadSync", "CdReadCallback", "CdDataCallback"])
+      H(LIBCD_ENTRY[name], (cc) => { cc.r[2] = this.cd[name](cc.r[4] | 0, cc.r[5] | 0, cc.r[6] | 0) | 0; });
     H(ADDR.cardSync, (cc) => {
       const a1 = cc.r[5] >>> 0, a2 = cc.r[6] >>> 0;
       if (a1) c.write(a1, c.read(ADDR.cardCommand, 4), 4);

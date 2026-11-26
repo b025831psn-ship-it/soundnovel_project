@@ -3,7 +3,8 @@
 // (0 or -1), an "ike"-compressed file is copied to the work buffer (0x800794d8) and unpacked
 // back into place (0x800356c8), and the load slot (0x801d58f8 + 20·gp[0x114]) is marked
 // loaded {state 2, address, size}.
-//   ctx.call(0x80051a28, [1, result]) is libcd's CdReadSync (HLE in the browser machine).
+//   libcd's CdReadSync goes through libcd(ctx) (libcd.js).
+import { libcd } from "./libcd.js";
 import { ike } from "./screen/ike.js";
 
 const GP = 0x8007913c, RESULT = 0x80079420, WORK = 0x800794d8, FILE = 0x801f7430, SLOTS = 0x801d58f8;
@@ -18,7 +19,7 @@ export function copyBytes(m, src, dst, n) { // 0x80045448
 export function cdTick(ctx) {
   const { m } = ctx, r32 = (a) => m.read(a, 4) >>> 0, w32 = (a, v) => m.write(a, v >>> 0, 4);
   if (!m.read(GP + 0x10c, 1)) return;
-  const r = ctx.call(0x80051a28, [1, RESULT], ctx.sp - 0x18) | 0;
+  const r = libcd({ ...ctx, sp: ctx.sp - 0x18 }).CdReadSync(1, RESULT) | 0;
   w32(GP + 0x2d4, r);
   if (r !== 0 && r !== -1) return;
   const buf = r32(GP + 0x2f0);

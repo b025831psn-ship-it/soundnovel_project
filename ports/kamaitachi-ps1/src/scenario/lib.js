@@ -3,6 +3,7 @@
 //   label/1000 if it is not the current one, returns its offset of entry label%1000
 //   0x8003276c checkpoint()   snapshot of the display state for the jump targets
 //   0x8003cf28 animStop()     0x800390ec textStart(p)
+import { cdLoad } from "../cd-load.js";
 export const GP = 0x8007913c, CURSOR = 0x80079578, BASE = 0x8007948c, RESOURCE = 0x8007929c;
 export const unported = (addr) => { throw new Error(`scenario: path at 0x${addr.toString(16)} is not ported`); };
 export const s8 = (v) => (v << 24) >> 24, s16 = (v) => (v << 16) >> 16;
@@ -46,7 +47,7 @@ export function switchResource(ctx, res, at) {
   return false;
 }
 
-export function resolveLabel(ctx, table, label) { // 0x8001bfb8
+export function* resolveLabel(ctx, table, label) { // 0x8001bfb8
   const { m } = ctx, { r16, r32, w8, w16, g8, p8 } = io(m), sp = ctx.sp - 0x28;
   label &= 0xffff;
   p8(0x330, Math.trunc(label / 1000));
@@ -57,7 +58,7 @@ export function resolveLabel(ctx, table, label) { // 0x8001bfb8
     else if (res === 0x1f) unported(0x8001c068);
     p8(4, 1);
     animStop(m);
-    ctx.call(0x800369f8, [2, base, res], sp); // synchronous SCE load: not ported yet
+    yield* cdLoad({ ...ctx, sp }, 2, base, res);
     p8(4, 0);
     w16(RESOURCE, res);
   }

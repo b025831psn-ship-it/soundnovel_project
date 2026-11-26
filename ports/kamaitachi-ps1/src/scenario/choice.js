@@ -11,6 +11,7 @@ import { drawGlyph } from "../text/glyph.js";
 import { textTask } from "../text/text.js";
 import { tick } from "../tick.js";
 import { menu, backlog } from "../menu.js";
+import { sound } from "../sound-bridge.js";
 
 const PAD = 0x801eef40, SPR = 0x801eef68, IDS = 0x801f6698, POS = 0x801fec90, COUNT = 0x800794cb;
 const AUTO = 0x800792c6, AUTO_T = 0x800792c8, SE_ON = 0x800792a5, ABORT = 0x800792a3, NO_EFFECTS = 0x800792a0;
@@ -18,7 +19,7 @@ const s16 = (v) => (v << 16) >> 16;
 
 HANDLERS[0x16] = function* (ctx) {
   const { m } = ctx, { r8, r16, r32, w8, w16, w32 } = io(m), sp = ctx.sp - 0x40, sub = { ...ctx, sp };
-  const se = () => { if (r8(SE_ON) === 1) ctx.call(0x80028c74, [3], sp); };
+  const se = () => { if (r8(SE_ON) === 1) sound(ctx).playUi(3, sp); };
   const sprites = (offs, v) => { for (const o of offs) { const id = r16(IDS + o); if (id) w8(SPR + id * 72 + 0x3a, v); } };
   const cursor = (sel) => drawGlyph(sub, s16(r16(POS + 2 * sel)), s16(r16(POS + 0x10 + 2 * sel)), 0x848b);
   let sel = 0, t = 0, aborted = false;
@@ -45,7 +46,7 @@ HANDLERS[0x16] = function* (ctx) {
       if (r32(PAD + 8) & 8) { sprites([2, 4, 6, 0xa], 2); w32(PAD, r32(PAD) & ~0x21); }
       if (r32(PAD) & 0x180) { se(); sel = ((sel + 1) & 0xff) % (r8(COUNT) + 1); }
       if (r32(PAD) & 0x5180) { t = 0; choiceColoursReset({ ...ctx, sp }); choiceColour({ ...ctx, sp }, (sel & 0xff) + 1); }
-      if (r32(PAD) & 0x21) { if (r8(SE_ON) === 1) ctx.call(0x80028c74, [0], sp); textSpeedReset(m); break; }
+      if (r32(PAD) & 0x21) { if (r8(SE_ON) === 1) sound(ctx).playUi(0, sp); textSpeedReset(m); break; }
       if ((t >>> 0) % 30 < 16) cursor(sel & 0xff);
       textTask(sub);
       menu(sub);
@@ -64,7 +65,7 @@ HANDLERS[0x16] = function* (ctx) {
   const k = sel & 0xff;
   w8(0x801fa730 + r16(0x80093be8 + 2 * k), 3);
   markSeen(m, r16(0x800792bc), k); // 0x80019684: a1 is still the choice (0x8001ef04)
-  const off = resolveLabel(sub, r32(BASE), r16(0x801f7348 + 2 * k)) & 0xffff, p = (r32(BASE) + off) >>> 0;
+  const off = (yield* resolveLabel(sub, r32(BASE), r16(0x801f7348 + 2 * k))) & 0xffff, p = (r32(BASE) + off) >>> 0;
   w32(CURSOR, p); w32(0x8007940c, p); w16(0x800792b4, r16(0x800792b4) - 1);
   savePoint(m);
 };

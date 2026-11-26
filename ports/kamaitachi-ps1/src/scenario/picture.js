@@ -7,6 +7,7 @@
 //   0x2e 0x800203d0 reveal(u8 a, u8 b)  after a silhouette change: upload the picture at once
 //                   (a = 0 or b = 0x7f) or in 8 steps 2 frames apart (0x8003cbb8 step 1..8)
 //   0x2d 0x800202b8 unsilhouette(u8 hi, u16 lo): draw mode 2, forget it
+import { cdLoad } from "../cd-load.js";
 import { fadeLevel, windowPalette } from "../screen/fader.js";
 import { uploadPicture, drawSdw } from "../screen/picture.js";
 import { HANDLERS } from "./interp.js";
@@ -26,7 +27,7 @@ HANDLERS[0x29] = function* (ctx) {
   if (m.read(0x8007913c + 1, 1)) unported(0x8001fc60); // a clear is pending
   const k = r8(RING_AT);
   w8(RING_AT, (k + 1) & 3); w16(RING + 2 * k, id);
-  ctx.call(0x800369f8, [4, r32(SDW_BUF), id], sp);
+  yield* cdLoad({ ...ctx, sp }, 4, r32(SDW_BUF), id);
   yield* drawSdw({ ...ctx, sp }, 0x18, r32(SDW_BUF), r32(PICTURE), 3);
   windowPalette({ ...ctx, sp }); windowPalette({ ...ctx, sp });
 };
@@ -47,7 +48,7 @@ HANDLERS[0x2d] = function* (ctx) {
   const { m } = ctx, { r16, r32, w8, w16 } = io(m), o = operand(m), hi = o.u8(), lo = o.u16(), sp = ctx.sp - 0x20;
   if (quiet(m)) { endFrame(m); return; }
   const id = (lo + hi * 256) & 0xffff;
-  ctx.call(0x800369f8, [4, r32(SDW_BUF), id], sp);
+  yield* cdLoad({ ...ctx, sp }, 4, r32(SDW_BUF), id);
   yield* drawSdw({ ...ctx, sp }, 0x18, r32(SDW_BUF), r32(PICTURE), 2);
   w8(0x800792b2, 1);
   for (let j = 0; j < 4; j++) if (((r16(RING + 2 * j) << 16) >> 16) === id) w16(RING + 2 * j, 0xffff);

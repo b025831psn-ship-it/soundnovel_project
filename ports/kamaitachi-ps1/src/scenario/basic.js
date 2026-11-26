@@ -10,6 +10,7 @@
 //   0x0d 0x8001dd7c setFlag(u8)        0x801f74b0[min(k, 0x4f)] = 1
 //   0x0e 0x8001def8 ifNot(u8 f, label) / 0x0f 0x8001dfb8 if(u8 f, label): jump
 //   0x21 0x8001de2c setBit(u8 k)       0x80079414 |= 1 << (k - 1)
+import { cdLoad } from "../cd-load.js";
 import { setGp1e0, spriteFree, waitFade, textSpeed, dropLayer } from "../helpers.js";
 import { HANDLERS } from "./interp.js";
 import { CURSOR, BASE, io, operand, resolveLabel, unported } from "./lib.js";
@@ -17,7 +18,7 @@ import { fadeOut, fadeIn, fadeLevel, windowPalette } from "../screen/fader.js";
 import { uploadPicture, loadPicture } from "../screen/picture.js";
 import { spritePage } from "../screen/sprites.js";
 import { tickText } from "../tick.js";
-import { memcpy } from "../screen/weather.js";
+import { memcpy, effect } from "../screen/weather.js";
 
 const SKIP = 0x80079295, NO_EFFECTS = 0x800792a0, FLAGS = 0x801f74b0, IDS = 0x801f6698, NEW = 0x800794f4, SDW_BUF = 0x80079484;
 const halfFrames = (v) => (v & 0xffff) === 0x7f ? 1 : (v & 0xffff) >>> 1;
@@ -34,7 +35,7 @@ export function* showPicture(ctx, id, layer) {
   dropLayer(m, layer + 1);
   layer &= 0xff;
   w16(0x801fec68 + 2 * layer, id);
-  ctx.call(0x800369f8, [1, r32(SDW_BUF), id & 0xffff], sp);
+  yield* cdLoad({ ...ctx, sp }, 1, r32(SDW_BUF), id & 0xffff);
   const lp = LAYER_PAGE[layer];
   if (lp) {
     const [page, n, z] = lp;
@@ -131,16 +132,16 @@ HANDLERS[0x21] = function* (ctx) {
   endFrame(m);
 };
 
-function branch(ctx, when) {
+function* branch(ctx, when) {
   const { m } = ctx, o = operand(m), f = o.u8(), label = o.u16();
   if (!skipping(m) && !!m.read(FLAGS + f, 1) === when) {
-    const base = m.read(BASE, 4) >>> 0, off = resolveLabel({ ...ctx, sp: ctx.sp - 0x20 }, base, label);
+    const base = m.read(BASE, 4) >>> 0, off = yield* resolveLabel({ ...ctx, sp: ctx.sp - 0x20 }, base, label);
     m.write(CURSOR, (m.read(BASE, 4) >>> 0) + off, 4);
   }
   endFrame(m);
 }
-HANDLERS[0x0e] = function* (ctx) { branch(ctx, false); };
-HANDLERS[0x0f] = function* (ctx) { branch(ctx, true); };
+HANDLERS[0x0e] = function* (ctx) { yield* branch(ctx, false); };
+HANDLERS[0x0f] = function* (ctx) { yield* branch(ctx, true); };
 
 //   0x14 0x8001e7b8 0x8003a6e4(u8 + 8)   0x1c 0x8001f19c 0x800418d0(u8)   0x1d 0x8001f20c 0x80044384(u8)
 //   0x15 0x8001e830 return (only while skipping; 0x03 is the normal return)
@@ -155,15 +156,15 @@ HANDLERS[0x14] = function* (ctx) {
   }
   endFrame(m);
 };
-function simple(addr) {
+function simple(fn) {
   return function* (ctx) {
     const { m } = ctx, k = operand(m).u8();
-    if (!skipping(m) && m.read(NO_EFFECTS, 1) !== 1) ctx.call(addr, [k], ctx.sp - 0x18);
+    if (!skipping(m) && m.read(NO_EFFECTS, 1) !== 1) fn({ ...ctx, sp: ctx.sp - 0x18 }, k);
     endFrame(m);
   };
 }
-HANDLERS[0x1c] = simple(0x800418d0);
-HANDLERS[0x1d] = simple(0x80044384);
+HANDLERS[0x1c] = simple(effect);
+HANDLERS[0x1d] = simple((ctx, k) => ctx.call(0x80044384, [k], ctx.sp)); // special scenes (0x6c cases): not ported
 
 HANDLERS[0x15] = function* (ctx) {
   const { m } = ctx, { r16, r32, w16, w32, g8, p8 } = io(m);

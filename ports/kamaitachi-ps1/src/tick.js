@@ -8,7 +8,7 @@
 //   0x80014198 ticks(n)        n frames of tick
 // The frame step 0x80079278 (frames per update, 1..2) follows the VSync count of the last
 // flip (0x80079274, in hblanks: 260 per frame). Sound's per-frame routine 0x80029008 goes
-// through ctx.call (the sound module in the browser).
+// through the sound bridge (sound-bridge.js).
 import { fadeTick } from "./screen/fader.js";
 import { inputTick } from "./input.js";
 import { clearTick } from "./screen/clear.js";
@@ -19,6 +19,7 @@ import { cdTick } from "./cd.js";
 import { shakeTick } from "./screen/shake.js";
 import { frameFlip } from "./screen/frame.js";
 import { textTask } from "./text/text.js";
+import { sound as soundOf } from "./sound-bridge.js";
 
 const VSYNC_RESULT = 0x80079274, FRAME_STEP = 0x80079278;
 
@@ -32,7 +33,7 @@ export function* body(ctx, { clear = true, sound = true, anim = true, shakeFirst
   fadeTick(m);
   inputTick(ctx);
   if (clear) clearTick(ctx);
-  if (sound) ctx.call(0x80029008, [], ctx.sp);
+  if (sound) soundOf(ctx).frame(ctx.sp);
   if (anim) animTick(ctx);
   weatherTick(ctx);
   if (shakeFirst) shakeTick(ctx);

@@ -10,6 +10,7 @@
 //   0x4e 0x80022198 reset the screen state (sprites, shake, animations, weather)
 //   0x53 0x80022448 seen[u16] = 3 (0x801f5bc0), 0x800792bc = id, three state copies
 //   0x5f 0x80022534 seen[u16] = 3
+import { cdLoad } from "../cd-load.js";
 import { anyRoute, waitText, resetStream, choiceColoursReset, savePoint, textWindowReset } from "../helpers.js";
 import { HANDLERS } from "./interp.js";
 import { CURSOR, BASE, io, operand, resolveLabel, animStop, checkpoint } from "./lib.js";
@@ -44,7 +45,7 @@ HANDLERS[0x3e] = function* (ctx) {
 HANDLERS[0x40] = function* (ctx) {
   const { m } = ctx, o = operand(m), i = o.u8(), v = o.u8(), label = o.u16();
   if (m.read(VARS + i, 1) === v) {
-    const off = resolveLabel({ ...ctx, sp: ctx.sp - 0x20 }, m.read(BASE, 4) >>> 0, label) & 0xffff;
+    const off = (yield* resolveLabel({ ...ctx, sp: ctx.sp - 0x20 }, m.read(BASE, 4) >>> 0, label)) & 0xffff;
     m.write(CURSOR, ((m.read(BASE, 4) >>> 0) + off) >>> 0, 4);
   }
   endFrame(m);
@@ -76,7 +77,7 @@ HANDLERS[0x4d] = function* (ctx) {
 
 HANDLERS[0x4e] = function* (ctx) {
   const { m } = ctx, sp = ctx.sp - 0x18, sub = { ...ctx, sp };
-  sceneReset(sub);
+  yield* sceneReset(sub);
   for (let i = 0; i < 16; i++) { m.write(0x8009da48 + 8 * i + 4, 0, 4); m.write(0x8009da48 + 8 * i, 0, 4); }
   m.write(0x800795e4, 5, 1); m.write(0x800795e6, 0xf, 1); m.write(0x800795e5, 0, 1);
   effect(sub, 0);
@@ -104,7 +105,7 @@ HANDLERS[0x5f] = function* (ctx) {
 // 0x56 0x800227e8 jump(label u16, k u16) with a checkpoint; seen2[k] = 3 (0x801fa730)
 HANDLERS[0x56] = function* (ctx) {
   const { m } = ctx, o = operand(m), label = o.u16(), k = o.u16();
-  const off = resolveLabel({ ...ctx, sp: ctx.sp - 0x20 }, m.read(BASE, 4) >>> 0, label) & 0xffff;
+  const off = (yield* resolveLabel({ ...ctx, sp: ctx.sp - 0x20 }, m.read(BASE, 4) >>> 0, label)) & 0xffff;
   const p = ((m.read(BASE, 4) >>> 0) + off) >>> 0;
   m.write(CURSOR, p, 4); m.write(0x8007940c, p, 4);
   if (m.read(NO_EFFECTS, 1) !== 1) { m.write(0x801fa730 + k, 3, 1); checkpoint(m); }
@@ -160,22 +161,22 @@ HANDLERS[0x5e] = function* (ctx) {
   const { m } = ctx, o = operand(m), b = o.u8(), label = o.u16(), k = o.u16();
   if (m.read(SKIP, 1) !== 1 && (m.read(0x80079414, 2) >>> ((b - 1) & 31)) & 1) {
     m.write(0x801fa730 + k, 3, 1);
-    const off = resolveLabel({ ...ctx, sp: ctx.sp - 0x20 }, m.read(BASE, 4) >>> 0, label) & 0xffff;
+    const off = (yield* resolveLabel({ ...ctx, sp: ctx.sp - 0x20 }, m.read(BASE, 4) >>> 0, label)) & 0xffff;
     m.write(CURSOR, ((m.read(BASE, 4) >>> 0) + off) >>> 0, 4);
   }
   endFrame(m);
 };
 
 // 0x8001c7fc loadPage30(id): BGD `id` through the SDW buffer to texture page 0x1e.
-function loadPage30(ctx, id) {
+function* loadPage30(ctx, id) {
   const { m } = ctx, sp = ctx.sp - 0x18;
-  ctx.call(0x800369f8, [1, m.read(0x80079484, 4) >>> 0, id & 0xffff], sp);
+  yield* cdLoad({ ...ctx, sp }, 1, m.read(0x80079484, 4) >>> 0, id & 0xffff);
   loadPicture({ ...ctx, sp }, 0x1e, m.read(0x80079484, 4) >>> 0);
 }
 
 // 0x8001bbc4 sceneReset(): no layer sprites or pictures, the scene flags back to their
 // defaults; the first time (0x80079288) also the shared page 0x1e (BGD 0x23f6).
-export function sceneReset(ctx) {
+export function* sceneReset(ctx) {
   const { m } = ctx, w8 = (a, v) => m.write(a, v & 0xff, 1), w16 = (a, v) => m.write(a, v & 0xffff, 2);
   for (let i = 0; i < 0x16; i++) w16(0x801f6698 + 2 * i, 0);
   for (let i = 0; i < 4; i++) { w16(0x801fec68 + 2 * i, -1); w16(0x801f7320 + 2 * i, -1); }
@@ -185,6 +186,6 @@ export function sceneReset(ctx) {
   w8(0x8007913c + 0x15c, 0); w8(0x8007913c + 1, 0); w8(0x8007913c + 2, 0);
   w8(0x800792b1, 1); w8(0x800792b2, 0); w8(0x8007913c + 3, -1); w8(0x8007913c + 0x45c, -1);
   w8(0x8007929a, 0); w8(0x80079299, 0); w8(0x800792ba, 0); w8(0x800792b9, 0);
-  if (first) loadPage30({ ...ctx, sp: ctx.sp - 0x18 }, 0x23f6);
+  if (first) yield* loadPage30({ ...ctx, sp: ctx.sp - 0x18 }, 0x23f6);
   w8(0x80079288, 1);
 }

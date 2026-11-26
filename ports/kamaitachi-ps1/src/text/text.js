@@ -17,6 +17,7 @@ import { setVar, savePoint } from "../helpers.js";
 import { backlog } from "../menu.js";
 import { checkpoint } from "../scenario/lib.js";
 import { drawGlyph } from "./glyph.js";
+import { sound } from "../sound-bridge.js";
 
 const GP = 0x8007913c;
 export const TEXT = {
@@ -31,7 +32,6 @@ export const TEXT = {
 };
 const T = TEXT;
 const KINSOKU = new Set([0x8142, 0x8149, 0x8148, 0x8141, 0x8145, 0x8176, 0x8178, 0x816a, 0x8163, 0x815c, 0x8160]);
-const LIB = { drawSync: 0x800492b4, clearImage: 0x80049438, loadImage: 0x80049560 };
 
 // 0x80037604: clip to 320x240, fill a w x h byte buffer on the stack, LoadImage it into the
 // text page (8-bit, page from 0x800792ca). sp is the caller's sp (the 5th argument sits at sp+0x10).
@@ -50,7 +50,7 @@ export function fillText(ctx, sp, x, y, w, h, colour) {
   m.write(rect, ((page & 0xf) << 6) + (s16(x) >> 1), 2);
   m.write(rect + 2, (page < 0x10 ? 0 : 0x100) + y, 2);
   m.write(rect + 4, s16(cols) >> 1, 2); m.write(rect + 6, rows, 2);
-  ctx.call(LIB.loadImage, [rect, buf], fs);
+  ctx.gs.LoadImage(rect, buf);
 }
 
 // 0x80039288
@@ -61,7 +61,6 @@ export function textTask(ctx) {
   const win = () => r8(T.window);
   const glyph = (x, y, code) => drawGlyph(sub, x, y, code);
   const fill = (x, y, w, h, c) => { m.write(fs + 0x10, c, 4); fillText(ctx, fs, x, y, w, h, c); };
-  const lib = (addr, args) => ctx.call(addr, args, fs);
   const newLine = (w) => { // the shared "x = margin (or 8), y += 22" of '@', 'r' and 'L'
     if (r8(T.choiceMode) === 1) w16(T.x + 2 * w, r16(T.left + 2 * w)); else { w16(T.left + 2 * w, 8); w16(T.x + 2 * w, 8); }
   };
@@ -132,7 +131,7 @@ export function textTask(ctx) {
         if (r8(T.choiceMode)) return 1;
         const page = r8(T.page), rect = fs + 0x20;
         w16(rect + 2, page < 0x10 ? 0 : 0x100); w16(rect, (r8(T.page) & 0xf) << 6); w16(rect + 4, 0xa0); w16(rect + 6, 0xf0);
-        lib(LIB.clearImage, [rect, 0, 0, 0]);
+        ctx.gs.ClearImage(rect, 0, 0, 0);
         const v = win();
         w16(T.left + 2 * v, 8); w16(T.x + 2 * v, 8); w16(T.top + 2 * v, 0x11); w16(T.y + 2 * v, 0x11);
         w16(T.speed + 2 * v, 1); w16(T.delay + 2 * v, 1);
@@ -207,7 +206,7 @@ export function textTask(ctx) {
     const b = r8(T.blink + win());
     if (!(b & 0xf)) {
       if ((b >> 4) & 1) glyph(mx, my, r8(T.markType + win()) ? 0x8483 : 0x8484);
-      else { for (let i = 0; i < 4; i++) { lib(LIB.drawSync, [0]); fill(s16(mx), s16(my + 4 * i), 0x60, 4, 0); } lib(LIB.drawSync, [0]); fill(s16(mx), s16(my + 16), 0x60, 0, 0); }
+      else { for (let i = 0; i < 4; i++) { ctx.gs.DrawSync(0); fill(s16(mx), s16(my + 4 * i), 0x60, 4, 0); } ctx.gs.DrawSync(0); fill(s16(mx), s16(my + 16), 0x60, 0, 0); }
     }
     w8(T.blink + win(), r8(T.blink + win()) + 1);
     if (r8(T.auto)) {
@@ -224,12 +223,12 @@ export function textTask(ctx) {
       w32(T.pad, r32(T.pad) & ~0x22);
     }
     if ((r32(T.pad) & 0x21) || r8(T.keyFlag)) { // next page: clear the marker
-      if (r8(T.keySound) === 1 && !r8(T.keyFlag)) ctx.call(0x80028c74, [0], fs);
+      if (r8(T.keySound) === 1 && !r8(T.keyFlag)) sound(ctx).playUi(0, fs);
       w8(T.keyFlag, 0); w8(T.wait + win(), 0); w8(T.blink + win(), 0); w8(T.markType + win(), 0);
       w8(T.gWait + win(), 0); w8(T.kWait + win(), 0);
       const cx = r16(fs + 0x18), cy = r16(fs + 0x1a);
-      for (let i = 0; i < 4; i++) { lib(LIB.drawSync, [0]); fill(s16(cx), s16(cy + 4 * i), 0x30, 4, 0); }
-      lib(LIB.drawSync, [0]); fill(s16(cx), s16(cy + 16), 0x30, 0, 0);
+      for (let i = 0; i < 4; i++) { ctx.gs.DrawSync(0); fill(s16(cx), s16(cy + 4 * i), 0x30, 4, 0); }
+      ctx.gs.DrawSync(0); fill(s16(cx), s16(cy + 16), 0x30, 0, 0);
       w8(T.waiting, 0);
     }
     backlog({ ...ctx, sp: fs });
