@@ -559,13 +559,40 @@ reader.addEventListener("pointerdown", (event) => {
 const upright = () => {
   const type = globalThis.screen?.orientation?.type;
   const device = type ? type.startsWith("portrait") : globalThis.screen.height > globalThis.screen.width;
-  return touch ? device : innerHeight > innerWidth * 1.15;
+  // On a PC (태우 2026-11-26) the reading view is the phone's, in a phone-shaped column, whatever the
+  // window's shape: switched on with the bar button.
+  return touch ? device : true;
 };
+const PHONE = 1179 / 2080; // width to height of the phone page (태우's iPhone, picture area)
+const forcedLarge = new URLSearchParams(location.search).has("bigtext");
+let largeLoading = false;
+// PC: the phone's column and the phone's large story type while reading is on; the original screen
+// and type when it is off.
+function desk(game, wanted) {
+  if (touch) return;
+  shell.classList.toggle("desk", wanted);
+  if (wanted) {
+    const width = Math.min(shell.clientWidth, Math.round(stage.clientHeight * PHONE));
+    if (stage.style.width !== `${width}px`) stage.style.width = `${width}px`;
+  } else if (stage.style.width) stage.style.width = "";
+  const page = game?.page;
+  if (!page || forcedLarge) return;
+  if (wanted && !page.large && !largeLoading) {
+    largeLoading = true;
+    import("./src/large-text.js").then(({ LargeText }) => { page.large = new LargeText(game.screen.canvas); page.drawn = -1; });
+  }
+  if (page.large && page.large.enabled !== wanted) {
+    page.large.enabled = wanted;
+    page.drawn = -1;
+    if (!wanted) page.large.clear();
+  }
+}
 export const readerWanted = () => enabled && upright();
 let wantedPosted = null;
 function frame() {
   const game = window.kamaitachi;
   const wanted = readerWanted();
+  desk(game, wanted);
   if (embedded && wanted !== wantedPosted) {
     parent.postMessage({ type: "reader", on: wanted }, location.origin); // the hub makes its frame tall
     wantedPosted = wanted;

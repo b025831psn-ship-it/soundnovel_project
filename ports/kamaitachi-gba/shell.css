@@ -391,3 +391,7 @@ html.filled, html.filled body { overflow: hidden; }
 /* Upright game screens: the stage beyond the picture continues its outer rows' colors; no blurred glow. */
 .shell.reader-on.extended:not(.reading) #glow { display: none; }
 .shell.reader-on.extended:not(.reading) .stage { background: linear-gradient(var(--edge-top, #000) 50%, var(--edge-bottom, #000) 50%); }
+
+/* PC with upright reading on (reader.js desk): the phone's page, a phone-shaped column in the middle. */
+.shell.desk .stage { flex: 1; align-self: center; width: 100%; }
+.shell.desk { background: #000; }
