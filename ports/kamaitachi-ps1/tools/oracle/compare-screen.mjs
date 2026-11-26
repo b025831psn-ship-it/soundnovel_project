@@ -9,6 +9,11 @@ import { textTask } from "../../src/text/text.js";
 import { LibGpu, LIBGPU_ENTRY } from "../../src/gpu/libgpu.js";
 import { frameFlip } from "../../src/screen/frame.js";
 import { weatherTick } from "../../src/screen/weather.js";
+import { animTick } from "../../src/screen/anim.js";
+import { loadPicture } from "../../src/screen/picture.js";
+import { ike } from "../../src/screen/ike.js";
+import { cdTick } from "../../src/cd.js";
+import { clearTick } from "../../src/screen/clear.js";
 import { spriteInit, spriteClearAll, spriteNew, spriteAdd, spriteLayer, spriteOr } from "../../src/screen/sprites.js";
 import { waveTick } from "../../src/screen/wave.js";
 import { shakeTick } from "../../src/screen/shake.js";
@@ -62,6 +67,14 @@ export const PORTS = {
     ];
   }, null],
   weather: [0x800416a4, () => (c) => { weatherTick({ ...oracleCtx(c), gs: libgpuOf(c) }); c.ret(); }],
+  anim: [0x8003dbe0, () => (c) => { animTick(oracleCtx(c)); c.ret(); }],
+  picture: [() => [
+    [0x8003afc8, (c) => { loadPicture({ ...oracleCtx(c), gs: libgpuOf(c) }, c.r[4] | 0, c.r[5] >>> 0); c.ret(); }],
+    [0x8003b19c, (c) => { loadPicture({ ...oracleCtx(c), gs: libgpuOf(c) }, c.r[4] | 0, c.r[5] >>> 0, c.r[6] | 0, c.r[7] | 0); c.ret(); }],
+  ], null],
+  ike: [0x800356c8, () => (c) => { c.r[2] = ike(c, c.r[4] >>> 0, c.r[5] >>> 0); c.ret(); }],
+  cd: [0x80036bd4, () => (c) => { cdTick(oracleCtx(c)); c.ret(); }],
+  clear: [0x80020108, () => (c) => { clearTick(oracleCtx(c)); c.ret(); }],
   shake: [0x8003ede0, () => (c) => { shakeTick(oracleCtx(c)); c.ret(); }],
   wave: [0x8002cf5c, () => (c) => { waveTick(oracleCtx(c)); c.ret(); }],
   fader: [() => [
