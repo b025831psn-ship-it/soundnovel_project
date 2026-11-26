@@ -17,6 +17,7 @@ import { clearTick } from "../../src/screen/clear.js";
 import { tick, tickQuiet, tickStill, tickText, ticks } from "../../src/tick.js";
 import { mainLoop } from "../../src/main-loop.js";
 import { init } from "../../src/init.js";
+import { vsyncCallback } from "../../src/vsync.js";
 import { spriteInit, spriteClearAll, spriteNew, spriteAdd, spriteLayer, spriteOr } from "../../src/screen/sprites.js";
 import { waveTick } from "../../src/screen/wave.js";
 import { shakeTick } from "../../src/screen/shake.js";
@@ -89,6 +90,7 @@ export const PORTS = {
     const ctx = { ...oracleCtx(c), gs: libgpuOf(c), padState: (port) => c.call(0x80064be4, [port]) | 0 };
     drive((function* () { yield* init(ctx); yield* mainLoop({ ...ctx, sp: ctx.sp - 0x18 }); })(), c);
   }],
+  vsync: [0x8002d46c, () => (c) => { vsyncCallback({ ...oracleCtx(c), gs: libgpuOf(c) }); c.ret(); }],
   main: [0x8001443c, () => (c) => { drive(mainLoop({ ...oracleCtx(c), gs: libgpuOf(c), padState: (port) => c.call(0x80064be4, [port]) | 0 }), c); }],
   shake: [0x8003ede0, () => (c) => { shakeTick(oracleCtx(c)); c.ret(); }],
   wave: [0x8002cf5c, () => (c) => { waveTick(oracleCtx(c)); c.ret(); }],

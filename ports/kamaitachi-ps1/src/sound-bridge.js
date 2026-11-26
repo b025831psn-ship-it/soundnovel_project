@@ -23,6 +23,12 @@ export function ramSound(ctx) {
     playUi: (n, sp) => call(0x80028c74, [n], sp),
     frame: (sp) => call(0x80029008, [], sp),
     reset: (sp) => call(0x80028ccc, [], sp),
+    vsync: (sp) => { // the sound part of the VSync callback 0x8002d46c
+      if (m.read(GP + 0x7b, 1) !== 1) return;
+      if (!m.read(0x8007928d, 1)) call(0x80027490, [], sp); // effect scripts
+      call(0x80054738, [], sp); // SsSeqCalledTbyT
+      if (m.read(GP + 0x82, 1) === 1) { const v = m.read(GP + 0x4b4, 2); if (((v + 1) & 0xffff) >= 2) m.write(GP + 0x4b4, v - 1, 2); }
+    },
     start: (sp) => { // the library part of 0x80028e74
       call(0x80055f28, [], sp); call(0x80058ec8, [0x801fc568, 16, 1], sp); call(0x800590e8, [0x1000], sp); call(0x800589a8, [], sp);
       call(0x800585b8, [0, 0, 1], sp);
@@ -48,6 +54,7 @@ export function moduleSound(mod) {
     frame: () => mod.frame(),
     reset: () => mod.reset(),
     start: () => {}, // the module starts the library when it is made
+    vsync: () => {}, // the audio thread runs the module's VSync part on its own clock
     song: () => s16(mod.music.song),
     effectPlaying: (n) => mod.ch.some((c) => s16(c.id) === n),
     done: (n) => mod.done[n] === 1,
