@@ -48,6 +48,23 @@ mapping, font extraction, and build-time `ike` conversion are connected and
 fresh original RGBA captures are available; the previously deleted captures
 are not replaced with reconstructed screenshots.
 
+### Web shell entry point
+
+`index.html` uses the touch-only shell from `ba1e884`; `main.js` is the real
+bootstrap rather than its former test-card placeholder. It fetches the private
+port data, creates the AudioWorklet sound object, passes that same object into
+`createRuntime`, publishes `window.kamaitachiPs1 = { runtime, sound, stop }`,
+and copies the live RGBA framebuffer into `canvas#screen` once per animation
+frame. The default private paths are:
+
+- `../../kamaitachi-ps1-kor/port-data/`
+- `../../kamaitachi-ps1-kor/port-data/sound/`
+
+For a local private-data server they can be overridden without changing the
+public tree: `?data=/private/port-data/&sound=/private/port-data/sound/`.
+Startup fails visibly if either source is absent; it never falls back to the
+old synthetic grid or choice buttons.
+
 ## Headless API
 
 ```js

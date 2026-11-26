@@ -20,6 +20,7 @@ export async function createRuntime(portDataRoot, { sound = null, renderer = new
     get framebuffer() { return renderer.rgba; },
     touchRows: () => state.rows,
     cursorIndex: () => state.cursor,
+    menuMode: () => state.waiting && !state.failure ? "menu" : "none",
     moveCursor(delta) { if (!state.choice) return; state.cursor = (state.cursor + delta + state.choice.options.length) % state.choice.options.length; },
     async step() {
       const keys = input.consumeFrame().trigger;
