@@ -389,8 +389,11 @@ function drawPicture(game) {
   const scale = (size.height * zoom) / source.height;
   picture.style.width = `${240 * scale}px`;
   picture.style.height = `${size.height * zoom}px`;
-  // A zoomed picture is cut evenly above and below.
-  picture.style.transform = `translate(${-crop * scale}px, ${(-(zoom - 1) * size.height) / 2}px)`;
+  // A zoomed picture is cut evenly above and below; an extended picture is cut in proportion to where
+  // its original sits, so one on the bottom edge keeps its bottom and grows upward (the original and
+  // its silhouettes rise with the zoom, 태우 2026-11-26).
+  const anchor = edit?.mode === "extend" ? topOf(edit) / 200 : 0.5;
+  picture.style.transform = `translate(${-crop * scale}px, ${-(zoom - 1) * size.height * anchor}px)`;
 }
 // The editor's enlargement (zoom, 1 to 3), on top of filling the screen's height.
 const zoomOf = (edit) => (Number.isFinite(edit?.zoom) ? Math.max(1, Math.min(3, edit.zoom)) : 1);
