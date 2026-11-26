@@ -9,6 +9,7 @@
 //   0x8002f3c0 dropOverlay()     sprite 0x801f66a8 freed
 // (* generators: they wait frames)
 import { tick, tickText } from "./tick.js";
+import { memcpy } from "./screen/weather.js";
 
 const GP = 0x8007913c, WINDOW = 0x800792a7, SPRITES = 0x801eef68, IDS = 0x801f6698;
 
@@ -35,3 +36,62 @@ export function* waitFade(ctx, k) {
   yield* tick(sub);
 }
 export function dropOverlay(m) { const id = m.read(IDS + 0x10, 2); if (id) { spriteFree(m, id); m.write(IDS + 0x10, 0, 2); } }
+
+// The choice highlight in the text window's palette (slot 0x800792ca of 0x800c4820, also
+// in VRAM rows 0x1e0 + slot and 0x1e2 + slot):
+//   0x80037b08 choiceColoursReset()  rows 0-7 plain (0x8006b64c), 8-15 from the 8 shades
+//   0x80037a7c choiceColour(k)       row k highlighted (0x8006b68c)
+const CLUTS = 0x800c4820, CLUT_SLOT = 0x800792ca;
+function loadWindowClut(ctx, frame) {
+  const p = ctx.m.read(CLUT_SLOT, 1), src = CLUTS + (p << 9), sp = ctx.sp - frame - 0x28;
+  ctx.gs.LoadClut(src, 0, p + 0x1e0, sp);
+  ctx.gs.LoadClut(src, 0, ctx.m.read(CLUT_SLOT, 1) + 0x1e2, sp);
+}
+export function choiceColour(ctx, k) {
+  const { m } = ctx;
+  memcpy(m, 0x8006b68c, CLUTS + (m.read(CLUT_SLOT, 1) << 9) + ((k & 0xff) << 5), 0x20);
+  loadWindowClut(ctx, 0x18);
+}
+export function choiceColoursReset(ctx) {
+  const { m } = ctx;
+  for (let i = 0; i < 8; i++) memcpy(m, 0x8006b64c, CLUTS + (m.read(CLUT_SLOT, 1) << 9) + (i << 5), 0x20);
+  for (let i = 0; i < 8; i++) memcpy(m, 0x8006b64c + (i << 5), CLUTS + (m.read(CLUT_SLOT, 1) << 9) + ((i + 8) << 5), 0x20);
+  loadWindowClut(ctx, 0x20);
+}
+
+// Filled boxes in the text page (VRAM page 0x800792ca, 8-bit pixels, two per VRAM word):
+//   0x80037604 fillRect(x, y, w, h, c)  w·h <= 0x800 pixels, clipped to 320x240, through a
+//                                       buffer on the stack and LoadImage
+//   0x80037784 fillBox(x, y, w, h, c)   in strips of 4 lines
+export function fillRect(ctx, x, y, w, h, c) {
+  const { m, gs } = ctx, sp = ctx.sp - 0x820, buf = sp + 0x18, rect = sp + 0x10, s16 = (v) => (v << 16) >> 16;
+  let cols = w, rows = h;
+  const W = s16(w), H = s16(h), X = s16(x), Y = s16(y);
+  if (Math.imul(W, H) > 0x800 || !W || !H || X >= 0x140 || Y >= 0xf0) return;
+  if (X + W >= 0x140) cols = 0x140 - x;
+  if (Y + H >= 0xf0) rows = 0xf0 - y;
+  let k = 0;
+  for (let r = 0; r < s16(rows); r++) for (let i = 0; i < s16(cols); i++) m.write(buf + (k++ & 0xffff), c & 0xff, 1);
+  const p = m.read(CLUT_SLOT, 1);
+  m.write(rect + 4, s16(cols) >> 1, 2); m.write(rect + 6, rows & 0xffff, 2);
+  m.write(rect, (((p & 0xf) << 6) + (X >> 1)) & 0xffff, 2); m.write(rect + 2, ((p < 0x10 ? 0 : 0x100) + y) & 0xffff, 2);
+  gs.LoadImage(rect, buf);
+}
+export function fillBox(ctx, x, y, w, h, c) {
+  const { gs } = ctx, sub = { ...ctx, sp: ctx.sp - 0x40 }, s16 = (v) => (v << 16) >> 16, H = s16(h);
+  const strips = Math.trunc(H / 4) & 0xff;
+  let i = 0;
+  for (; i < strips; i++) { gs.DrawSync(0); fillRect(sub, s16(x), s16(y + 4 * i), s16(w), 4, c & 0xff); }
+  gs.DrawSync(0); fillRect(sub, s16(x), s16(y + 4 * i), s16(w), s16(H - Math.trunc(H / 4) * 4), c & 0xff);
+}
+
+// 0x8003a5c4 textClear(): clear the text page and restart the current window's text at
+// its left/top margins (0x800794b0/b4 -> 0x800794b8/bc).
+export function textClear(ctx) {
+  const { m, gs } = ctx, rect = ctx.sp - 0x20 + 0x10, p = m.read(CLUT_SLOT, 1);
+  m.write(rect + 2, p < 0x10 ? 0 : 0x100, 2); m.write(rect + 4, 0xa0, 2); m.write(rect + 6, 0xf0, 2); m.write(rect, (m.read(CLUT_SLOT, 1) & 0xf) << 6, 2);
+  gs.ClearImage(rect, 0, 0, 0);
+  const i = m.read(WINDOW, 1);
+  m.write(0x800794b8 + 2 * i, m.read(0x800794b0 + 2 * i, 2), 2);
+  m.write(0x800794bc + 2 * i, m.read(0x800794b4 + 2 * i, 2), 2);
+}

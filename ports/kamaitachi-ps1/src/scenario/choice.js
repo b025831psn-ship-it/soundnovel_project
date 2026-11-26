@@ -4,7 +4,7 @@
 // In auto mode the choice is taken after 90 frames. Then: result to 0x8008dab8[0x80079430],
 // route seen (0x801fa730), 0x80019684, jump to the label, save point (0x800325b0).
 // A loaded save (0x80079296 = 1) resumes with the stored choice 0x80079297.
-import { textSpeedReset, markSeen } from "../helpers.js";
+import { textSpeedReset, markSeen, choiceColour, choiceColoursReset, fillBox, textClear } from "../helpers.js";
 import { HANDLERS } from "./interp.js";
 import { CURSOR, BASE, GP, io, resolveLabel } from "./lib.js";
 import { drawGlyph } from "../text/glyph.js";
@@ -23,8 +23,8 @@ HANDLERS[0x16] = function* (ctx) {
   let sel = 0, t = 0, aborted = false;
   if (r8(0x80079296)) sel = r8(0x80079297);
   else {
-    ctx.call(0x80037b08, [], sp);
-    ctx.call(0x80037a7c, [1], sp);
+    choiceColoursReset({ ...ctx, sp });
+    choiceColour({ ...ctx, sp }, 1);
     cursor(0);
     for (;;) {
       if (r8(AUTO) === 1) {
@@ -34,7 +34,7 @@ HANDLERS[0x16] = function* (ctx) {
       }
       const s0 = sel & 0xff;
       w8(0x8007929e, 1);
-      ctx.call(0x80037784, [s16(r16(POS + 2 * s0)), s16(r16(POS + 0x10 + 2 * s0)), 10, 16, 0], sp);
+      fillBox(sub, s16(r16(POS + 2 * s0)), s16(r16(POS + 0x10 + 2 * s0)), 10, 16, 0);
       if ((r32(PAD) & 0x1000) && s0) { se(); sel--; }
       if ((r32(PAD) & 0x4000) && (sel & 0xff) !== r8(COUNT)) { se(); sel++; }
       if (r8(AUTO) === 1) w32(PAD + 8, r32(PAD + 8) & ~0x19a);
@@ -43,7 +43,7 @@ HANDLERS[0x16] = function* (ctx) {
       sprites([2, 4, 6, 0xa], 0);
       if (r32(PAD + 8) & 8) { sprites([2, 4, 6, 0xa], 2); w32(PAD, r32(PAD) & ~0x21); }
       if (r32(PAD) & 0x180) { se(); sel = ((sel + 1) & 0xff) % (r8(COUNT) + 1); }
-      if (r32(PAD) & 0x5180) { t = 0; ctx.call(0x80037b08, [], sp); ctx.call(0x80037a7c, [(sel & 0xff) + 1], sp); }
+      if (r32(PAD) & 0x5180) { t = 0; choiceColoursReset({ ...ctx, sp }); choiceColour({ ...ctx, sp }, (sel & 0xff) + 1); }
       if (r32(PAD) & 0x21) { if (r8(SE_ON) === 1) ctx.call(0x80028c74, [0], sp); textSpeedReset(m); break; }
       if ((t >>> 0) % 30 < 16) cursor(sel & 0xff);
       textTask(sub);
@@ -59,7 +59,7 @@ HANDLERS[0x16] = function* (ctx) {
   const abort = r8(ABORT);
   m.write(GP + 2, 0, 1); m.write(GP + 0x45c, 0xff, 1); w8(0x80079295, 0); w8(0x80079296, 0);
   if (abort) { w8(ABORT, 0); return; }
-  ctx.call(0x8003a5c4, [], sp);
+  textClear(sub);
   const k = sel & 0xff;
   w8(0x801fa730 + r16(0x80093be8 + 2 * k), 3);
   markSeen(m, r16(0x800792bc), k); // 0x80019684: a1 is still the choice (0x8001ef04)

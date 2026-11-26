@@ -10,7 +10,7 @@
 //   0x4e 0x80022198 reset the screen state (sprites, shake, animations, weather)
 //   0x53 0x80022448 seen[u16] = 3 (0x801f5bc0), 0x800792bc = id, three state copies
 //   0x5f 0x80022534 seen[u16] = 3
-import { anyRoute, waitText, resetStream } from "../helpers.js";
+import { anyRoute, waitText, resetStream, choiceColoursReset } from "../helpers.js";
 import { HANDLERS } from "./interp.js";
 import { CURSOR, BASE, io, operand, resolveLabel, animStop, checkpoint } from "./lib.js";
 import { pictureSprite } from "./basic.js";
@@ -120,7 +120,7 @@ HANDLERS[0x57] = function* (ctx) {
   pairs.forEach(([a, b], k) => { m.write(0x801f7348 + 2 * k, a, 2); m.write(0x80093be8 + 2 * k, b, 2); });
   m.write(SKIP, 1, 1);
   if (m.read(NO_EFFECTS, 1) === 1) { endFrame(m); return; }
-  ctx.call(0x80037b08, [], ctx.sp - 0x48);
+  choiceColoursReset({ ...ctx, sp: ctx.sp - 0x48 });
   memcpy(m, m.read(BASE, 4) >>> 0, ((m.read(0x80079544, 4) >>> 0) + 0x28000) >>> 0, 0xb000);
   m.write(0x8007913c + 2, 1, 1); m.write(0x8007913c + 0x45c, m.read(0x8007929c, 1), 1);
 };
@@ -147,7 +147,7 @@ HANDLERS[0x13] = function* (ctx) {
   for (let k = 0; k <= 8; k++) if (k === 0 || n >= k) labels.push(o.u16());
   labels.forEach((a, k) => m.write(0x801f7348 + 2 * k, a, 2));
   m.write(SKIP, 1, 1);
-  ctx.call(0x80037b08, [], ctx.sp - 0x30);
+  choiceColoursReset({ ...ctx, sp: ctx.sp - 0x30 });
   if (m.read(NO_EFFECTS, 1) === 1) { endFrame(m); return; }
   memcpy(m, m.read(BASE, 4) >>> 0, ((m.read(0x80079544, 4) >>> 0) + 0x28000) >>> 0, 0xb000);
   m.write(0x8007913c + 2, 1, 1); m.write(0x8007913c + 0x45c, m.read(0x8007929c, 1), 1);
