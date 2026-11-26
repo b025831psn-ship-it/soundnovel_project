@@ -2,6 +2,7 @@ import { CPU } from './cpu.js';
 import { ZakuroBus } from './bus.js';
 import { vblankBoundary, vblankOrdinal } from './master-clock.js';
 import { readTouchState } from './touch-state.js';
+import { PPU } from './ppu.js';
 
 // Measured reset release -> first CPU bus cycle offset in the reference trace.
 // The CPU core begins at vector fetch, so the VM supplies the preceding S-CPU
@@ -10,7 +11,8 @@ export const RESET_MASTER_CYCLES = 176;
 
 export class ZakuroVM {
   constructor(options) {
-    this.bus = new ZakuroBus(options);
+    this.ppu = options.ppu ?? new PPU({ onFrame: options.onFrame });
+    this.bus = new ZakuroBus({ ...options, ppu: this.ppu });
     this.cpu = new CPU(this.bus);
     this.nmiTriggerMaster = null;
     // A low-to-high NMITIMEN edge during VBlank is recognized after the
@@ -19,7 +21,8 @@ export class ZakuroVM {
   }
   reset() { this.nmiTriggerMaster = null; this.bus.clock.idle(RESET_MASTER_CYCLES); this.cpu.reset(); }
   setJoypad(mask) { this.bus.setJoypad(mask); }
-  getTouchState() { return readTouchState(this.bus.wram); }
+  getTouchState() { return readTouchState(this.bus.wram, this.bus.wramWritten); }
+  getFrame() { return this.ppu.getFrame?.() ?? null; }
   exportSram() { return this.bus.exportSram(); }
   importSram(bytes) { this.bus.importSram(bytes); }
   step() {
@@ -42,6 +45,7 @@ export class ZakuroVM {
     const beforeVblank = vblankOrdinal(beforeMaster);
     const afterVblank = vblankOrdinal(afterMaster);
     if (afterVblank > beforeVblank) {
+      this.ppu.presentField?.(afterVblank, afterMaster);
       this.bus.setInputField(afterVblank);
       this.bus.nmiFlag = true;
       // Snes9x schedules the VBlank NMI at HC=12 and enters it at the first

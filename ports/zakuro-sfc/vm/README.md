@@ -72,10 +72,14 @@ mask is queued. Choice-mode WRAM uses `$007F` as the active flag, `$0081` as the
 cursor, `$0082` as the last option index, and `$0083/$0085/$0087/$0089` as the
 four target block IDs. Save/load uses selected slot `$0348` (0-2); exact menu
 row hit boxes still need PPU/text-row observation. `vm.getTouchState()` exposes
-the proven choice state and full-width touch rectangles. The initial rectangle
+the proven choice state and full-width touch rectangles. Power-on `$55` is
+ignored until the game writes `$007F`; `choice.ready` remains false and its
+rectangles stay empty while zero/unwritten targets are still being built. The initial rectangle
 derivation comes from the native 256x224 first-choice capture: y=20+48*n,
 height=48. Non-choice screens currently report `text`; menu and bookmark/save
 must not be inferred from that value until their native WRAM flags are traced.
+Startup validation walks `$0348` through 0, 1, 2, and 0 without displaying a
+save screen, so `saveSlot` deliberately remains null.
 `vm.exportSram()` and `vm.importSram()` move the complete 8 KiB battery image.
 Browser persistence can pass `onSramWrite` to the VM constructor and debounce
 storage writes using the callback's monotonically increasing `revision`, or
@@ -102,12 +106,18 @@ All legacy `[WP]` and `[STUCK]` diagnostics are disabled unless
 `globalThis.ZAKURO_VM_DEBUG` is explicitly enabled, so they no longer print or
 perform timing-visible watchpoint reads in normal runs.
 
-Screen-output bring-up is separate from the timing-complete CPU/APU path. The
-bus already forwards `$2100-$213F` and DMA B-bus accesses to an injected `ppu`,
-but this repository does not yet contain a pixel renderer. Native reference
-hashes exist for the opening, first text page, first choice, and both first
-choice branches. Pixel-for-pixel VM comparison must remain open until VRAM,
-CGRAM, OAM, background composition, and frame presentation are implemented;
-the audio/APUIO result does not imply PPU correctness.
+Screen-output bring-up is separate from the timing-complete CPU/APU path.
+`PPU` receives `$2100-$213F` and DMA B-bus accesses, maintains VRAM, CGRAM,
+OAM, scroll, and color state, and presents a 256x224 RGBA frame per field. The
+compositor covers tiled BG modes, sprites, windows, brightness, fixed/subscreen
+color math, and mode 7; the native Zakuro replay through the first choice uses
+only BGMODE 1. `tools/check-vm-ppu.mjs` converts frames back to the reference
+core's little-endian RGB565 stream and searches for the four private hashes.
+The first end-to-end run reached choice-ready at field 3502 and rendered the
+expected scene, but none of the four hashes matched yet. The current choice and
+branch hashes are `e57338a2387b3f6ffcc93f81c490f5da1280140e7eabc8829db14414f1e88d8f`
+and `15419ff10fc4099c378b132c2e8e63047192d59bc6da1467fbc6d2f30e272339`.
+The verifier intentionally exits nonzero until priority/palette timing becomes
+bit-exact; the audio/APUIO result does not imply PPU correctness.
 
 The CPU core provenance and license are in `THIRD_PARTY_NOTICES.md`.

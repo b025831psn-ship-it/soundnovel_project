@@ -126,16 +126,36 @@ test('SRAM import/export and write hook support browser persistence', () => {
 
 test('touch state exposes choice cursor, targets and screen rectangles', () => {
   const vm = new ZakuroVM({ rom: fixtureRom([]), masterLink: { read: () => 0, write() {} } });
-  vm.bus.wram[0x7f] = 1; vm.bus.wram[0x81] = 1; vm.bus.wram[0x82] = 1;
-  vm.bus.wram.set([7, 0, 8, 0], 0x83); vm.bus.wram[0x348] = 2;
+  for (const [address, value] of [[0x7f, 1], [0x81, 1], [0x82, 1], [0x83, 7], [0x84, 0], [0x85, 8], [0x86, 0], [0x348, 2]])
+    vm.bus.write(address, value);
   assert.deepEqual(vm.getTouchState(), {
     mode: 'choice',
-    choice: { cursor: 1, count: 2, targets: [7, 8], rectangles: [
+    choice: { cursor: 1, count: 2, targets: [7, 8], ready: true, rectangles: [
       { index: 0, x: 0, y: 20, width: 256, height: 48 },
       { index: 1, x: 0, y: 68, width: 256, height: 48 },
     ] },
-    saveSlot: 2,
+    saveSlot: null,
   });
+});
+
+test('touch state ignores power-on fill and incomplete choice targets', () => {
+  const vm = new ZakuroVM({ rom: fixtureRom([]), masterLink: { read: () => 0, write() {} } });
+  assert.equal(vm.getTouchState().mode, 'text');
+  vm.bus.write(0x00007f, 1); vm.bus.write(0x000082, 1);
+  vm.bus.write(0x000083, 7); vm.bus.write(0x000084, 0);
+  assert.deepEqual(vm.getTouchState().choice, {
+    cursor: 0, count: 2, targets: [7, 0], ready: false, rectangles: [],
+  });
+});
+
+test('PPU receives VRAM/CGRAM writes and presents a 256x224 RGBA field', () => {
+  const vm = new ZakuroVM({ rom: fixtureRom([]), masterLink: { read: () => 0, write() {} } });
+  vm.ppu.write(0x2115, 0x80); vm.ppu.write(0x2116, 1); vm.ppu.write(0x2117, 0);
+  vm.ppu.write(0x2118, 0x12); vm.ppu.write(0x2119, 0x34);
+  vm.ppu.write(0x2121, 2); vm.ppu.write(0x2122, 0x56); vm.ppu.write(0x2122, 0x78);
+  assert.equal(vm.ppu.vram[2], 0x12); assert.equal(vm.ppu.vram[3], 0x34);
+  assert.equal(vm.ppu.cgram[4], 0x56); assert.equal(vm.ppu.cgram[5], 0x78);
+  assert.equal(vm.ppu.presentField(1, 357368).length, 256 * 224 * 4);
 });
 
 test('recorded joypad frames feed auto-joypad registers and serial reads', () => {

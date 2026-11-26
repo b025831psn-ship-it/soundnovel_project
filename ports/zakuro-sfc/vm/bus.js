@@ -18,6 +18,7 @@ export class ZakuroBus {
     // Zakuro reads untouched $01EC during its first enabled NMI, so this is
     // observable state rather than an interchangeable debugging default.
     this.wram.fill(wramFill & 0xff);
+    this.wramWritten = new Uint8Array(128 * 1024);
     const sramExponent = this.rom?.[0x7fd8] ?? 0;
     const headerSram = sramExponent ? {
       size: 1 << (sramExponent + 10), fill: 0x60,
@@ -77,7 +78,7 @@ export class ZakuroBus {
   write(address, value) {
     const a = address & 0xffffff, v = value & 0xff, master = this.clock.charge(a, this.fastRom); this.accessCount++;
     const bank = a >>> 16, offset = a & 0xffff;
-    if (bank === 0x7e || bank === 0x7f) { this.wram[a & 0x1ffff] = v; return; }
+    if (bank === 0x7e || bank === 0x7f) { const index = a & 0x1ffff; this.wram[index] = v; this.wramWritten[index] = 1; return; }
     if (this.isLoRomSram(bank, offset)) {
       const sramOffset = this.loRomSramAddress(a);
       if (this.sram[sramOffset] !== v) {
@@ -86,7 +87,7 @@ export class ZakuroBus {
       }
       return;
     }
-    if ((bank & 0x40) === 0 && offset < 0x2000) { this.wram[offset] = v; return; }
+    if ((bank & 0x40) === 0 && offset < 0x2000) { this.wram[offset] = v; this.wramWritten[offset] = 1; return; }
     if ((bank & 0x40) === 0 && offset >= 0x2140 && offset <= 0x2143) {
       const port = offset & 3; this.masterLink.write(master, port, v);
       this.trace?.({ master, dir: 'w', port, value: v }); return;
@@ -155,6 +156,7 @@ export class ZakuroBus {
   writeWramPort(offset, value) {
     if (offset === 0x2180) {
       this.wram[this.wramAddress] = value;
+      this.wramWritten[this.wramAddress] = 1;
       this.wramAddress = (this.wramAddress + 1) & 0x1ffff;
     } else if (offset === 0x2181) {
       this.wramAddress = (this.wramAddress & 0x1ff00) | value;
@@ -182,8 +184,8 @@ export class ZakuroBus {
 
   writeMapped(address, value) {
     const a = address & 0xffffff, bank = a >>> 16, offset = a & 0xffff;
-    if (bank === 0x7e || bank === 0x7f) this.wram[a & 0x1ffff] = value;
-    else if ((bank & 0x40) === 0 && offset < 0x2000) this.wram[offset] = value;
+    if (bank === 0x7e || bank === 0x7f) { const index = a & 0x1ffff; this.wram[index] = value; this.wramWritten[index] = 1; }
+    else if ((bank & 0x40) === 0 && offset < 0x2000) { this.wram[offset] = value; this.wramWritten[offset] = 1; }
   }
 
   writeBbus(offset, value) {
