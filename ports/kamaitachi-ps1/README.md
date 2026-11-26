@@ -111,14 +111,17 @@ opcode `53` checkpoint ID is `N + 1`. This yields 260 native checkpoint entries;
 records 54, 200, 203, and 263 have no such control-flow-aligned marker and are
 reported separately as internal control rows rather than assumed menu entries.
 The retail `53` handler
-at `0x80022448` stores its u16 operand as the current checkpoint, which is the
-native-code link between the saved menu index and these SCE records. The native
-selector at `0x800292b0` reduces its saved label to a record index at
-`0x80029370`–`0x800293a8`, applies its table/unlock policy at
-`0x800293b4` and `0x800296b8`–`0x80029738`, and passes the selected index to
-the resource loader at `0x80029404` or `0x8002975c`. Thus the root list is
-generated from actual checkpoint producers, not from the resource's record
-count. Resource 31
+at `0x80022448` stores its u16 operand at `0x800792bc` as the current
+checkpoint. The native checkpoint screen reads that value at `0x80019df8` and
+`0x80019f58`. Its confirm path subtracts one at `0x8001a2c4` and passes the
+result to `0x8001c6a0`. That routine loads SCE resource 39 when necessary
+(`0x8001c6ec`–`0x8001c774`), indexes its u16 record-offset table with the
+selected value (`0x8001c778`–`0x8001c790`), and installs the resulting scenario
+cursor at `0x8001c798`–`0x8001c7a4`. This is the native-code link between an
+opcode-`53` checkpoint value `N + 1` and entry `39:N`, so the root list is
+generated from actual checkpoint producers rather than from the resource's
+record count. The previously cited `0x800292b0` is unrelated: it is the sound-ID
+play routine used by scenario sound opcodes. Resource 31
 initializes/returns from the title flow, while each `39:N` is one native-indexed
 scenario/bookmark menu entry with its own flag checks and destination. These roots are
 reported separately from fresh play rather than silently inflating it.

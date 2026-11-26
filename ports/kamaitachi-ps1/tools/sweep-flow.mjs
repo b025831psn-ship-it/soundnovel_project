@@ -46,7 +46,7 @@ const titleMenu = await sweep(root, { includeFreshRoot: false, unlockPolicy: "bo
 ] });
 const catalog = await catalogTransfers(root, 31);
 const scenarioSelect = {
-  evidence: "decoded opcode 0x53 checkpoint id equals resource-39 record id + 1",
+  evidence: "opcode 0x53 stores checkpoint N+1; native 0x8001a2c4 -> 0x8001c6a0 selects SCE 39:N",
   menuEntries: scenarioSelectEntries.filter((row) => row.menuEntry),
   internalEntries: scenarioSelectEntries.filter((row) => !row.menuEntry),
 };
