@@ -14,6 +14,7 @@ import { anyRoute, waitText, resetStream } from "../helpers.js";
 import { HANDLERS } from "./interp.js";
 import { CURSOR, BASE, io, operand, resolveLabel, animStop, checkpoint } from "./lib.js";
 import { pictureSprite } from "./basic.js";
+import { windowPalette } from "../screen/fader.js";
 import { spriteClearAll } from "../screen/sprites.js";
 import { memcpy } from "../screen/weather.js";
 
@@ -69,7 +70,7 @@ HANDLERS[0x4d] = function* (ctx) {
   if (quiet(m)) { endFrame(m); return; }
   m.write(0x800792b2, k, 1);
   pictureSprite(ctx, sp);
-  ctx.call(0x8001f690, [], sp);
+  windowPalette({ ...ctx, sp });
 };
 
 HANDLERS[0x4e] = function* (ctx) {

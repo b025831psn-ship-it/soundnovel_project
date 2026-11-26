@@ -7,6 +7,7 @@
 //   0x8002c8e8 fadeTo(frames, ch)        from the current value to the level
 //   0x8002ca08 fadeOut(frames, ch)       from the current value to black
 //   0x80044ecc fmul(a, b)                (a * b) / 256, rounded toward zero
+import { loadClutSlot } from "./weather.js";
 const CUR = 0x801f7500, TARGET = 0x801fdf98, STEP = 0x801fe070, LEFT = 0x8008cda8, LEVEL = 0x801f5e68;
 const SET = 0x801f1cb0, SET_VALUE = 0x801f5d08, LATER = 0x800a7058, LATER_WAIT = 0x800c89a0;
 const CHANNELS = 11;
@@ -90,3 +91,18 @@ export function fadeLevel(m, k, v) {
   m.write(SET + 4 * k, 1, 4);
   fadeStep(m);
 }
+
+// 0x8001f690 windowPalette(): the text window colours. Two base colours (b, g, r bytes at
+// 0x800795e4 and 0x8007960c) give entries 1-7 and 9-15 of palette 0x18 (copy 0x800c7820),
+// each channel scaled by 179/256, 3/4, 51/64, 217/256, 115/128, 243/256 and 1 (the channel
+// sums are added, not masked, as in the original); then the palette goes to VRAM.
+const WINDOW_SHADES = [[179, 8], [3, 2], [51, 6], [217, 8], [115, 7], [243, 8], [1, 0]];
+const WINDOW_PAL = 0x800c4820 + 0x3000;
+export function windowColours(m) {
+  const pal = WINDOW_PAL;
+  for (const [base, at] of [[0x800795e4, pal + 2], [0x8007960c, pal + 0x12]]) {
+    const b = m.read(base, 1), g = m.read(base + 1, 1), r = m.read(base + 2, 1);
+    WINDOW_SHADES.forEach(([k, s], i) => m.write(at + 2 * i, (((r * k) >> s << 10) + ((g * k) >> s << 5) + ((b * k) >> s) - 0x8000) & 0xffff, 2));
+  }
+}
+export function windowPalette(ctx) { windowColours(ctx.m); loadClutSlot({ ...ctx, sp: ctx.sp - 0x18 }, WINDOW_PAL, 0x18); }

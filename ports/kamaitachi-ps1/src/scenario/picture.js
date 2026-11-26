@@ -7,7 +7,7 @@
 //   0x2e 0x800203d0 reveal(u8 a, u8 b)  after a silhouette change: upload the picture at once
 //                   (a = 0 or b = 0x7f) or in 8 steps 2 frames apart (0x8003cbb8 step 1..8)
 //   0x2d 0x800202b8 unsilhouette(u8 hi, u16 lo): draw mode 2, forget it
-import { fadeLevel } from "../screen/fader.js";
+import { fadeLevel, windowPalette } from "../screen/fader.js";
 import { uploadPicture } from "../screen/picture.js";
 import { HANDLERS } from "./interp.js";
 import { io, operand, unported } from "./lib.js";
@@ -28,7 +28,7 @@ HANDLERS[0x29] = function* (ctx) {
   w8(RING_AT, (k + 1) & 3); w16(RING + 2 * k, id);
   ctx.call(0x800369f8, [4, r32(SDW_BUF), id], sp);
   ctx.call(0x8003b398, [0x18, r32(SDW_BUF), r32(PICTURE), 3], sp);
-  ctx.call(0x8001f690, [], sp); ctx.call(0x8001f690, [], sp);
+  windowPalette({ ...ctx, sp }); windowPalette({ ...ctx, sp });
 };
 
 HANDLERS[0x2b] = function* (ctx) {
@@ -57,14 +57,14 @@ HANDLERS[0x2e] = function* (ctx) {
   const { m } = ctx, o = operand(m), a = o.u8(), b = o.u8(), sp = ctx.sp - 0x30;
   if (m.read(SKIP, 1) === 1) { endFrame(m); return; }
   if (m.read(NO_EFFECTS, 1) === 1) unported(0x80020448);
-  ctx.call(0x8001f690, [], sp);
+  windowPalette({ ...ctx, sp });
   if (!m.read(0x800792b2, 1)) return;
   const pic = m.read(PICTURE, 4) >>> 0;
-  if (!a || b === 0x7f) { uploadPicture({ ...ctx, sp }, 0x18, pic, 0); pictureSprite(ctx, sp); ctx.call(0x8001f690, [], sp); return; }
+  if (!a || b === 0x7f) { uploadPicture({ ...ctx, sp }, 0x18, pic, 0); pictureSprite(ctx, sp); windowPalette({ ...ctx, sp }); return; }
   for (let i = 0; i < 8; i++) {
     uploadPicture({ ...ctx, sp }, 0x18, m.read(PICTURE, 4) >>> 0, i + 1);
     pictureSprite(ctx, sp);
-    ctx.call(0x8001f690, [], sp);
+    windowPalette({ ...ctx, sp });
     yield* ticks({ ...ctx, sp }, 2);
   }
 };

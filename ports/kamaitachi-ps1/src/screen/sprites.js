@@ -184,6 +184,23 @@ export function spriteNew(ctx, page, x, y, u, v, w, h) {
   w32(SPRITES, FREE);
 }
 
+// 0x8003b87c: spriteNew for a whole texture page (u = v = 0, size w x h); the search for a
+// free sprite starts at 1 and falls back to sprite 0 when all are taken.
+export function spritePage(ctx, page, x, y, w, h) {
+  const { m, gs } = ctx, { r16, r32, w8, w16, w32 } = io(m);
+  let i = 1;
+  for (;;) { w16(ALLOC, i); i = s16(r16(ALLOC)); if (i >= 0xa0) { w16(ALLOC, 0); i = 0; break; } if (r32(SPRITES + i * SPRITE_SIZE) === FREE) break; i++; }
+  w32(NEW, SPRITES + i * SPRITE_SIZE);
+  spriteInit(m);
+  const pg = s16(page), e = PAGES + pg * 8, s = r32(NEW);
+  w32(s, r32(e + 8)); w16(s + 8, w); w16(s + 0xa, h);
+  const ty = pg < 0x10 ? 0 : 0x100, tx = s16(pg - Math.trunc(pg / 16) * 16) << 6;
+  w16(s + 4, r16(s + 4) + x); w16(s + 6, r16(s + 6) + y);
+  w16(s + 0xc, gs.GetTPage(r32(s), 0, s16(tx), s16(ty)));
+  w8(s + 0xf, 0); w8(s + 0xe, 0);
+  w16(s + 0x10, r16(e)); w16(s + 0x12, r16(e + 4));
+}
+
 // 0x8001c838: spriteNew (y - 4), then attr |= bits, layer, one-frame sprite (0x39 = 1).
 export function spriteAdd(ctx, page, x, y, u, v, w, h, bits, layer) {
   const { m } = ctx, { r32, w8, w16, w32 } = io(m);

@@ -13,8 +13,9 @@
 import { setGp1e0, spriteFree, waitFade, textSpeed } from "../helpers.js";
 import { HANDLERS } from "./interp.js";
 import { CURSOR, BASE, io, operand, resolveLabel, unported } from "./lib.js";
-import { fadeOut, fadeIn, fadeLevel } from "../screen/fader.js";
+import { fadeOut, fadeIn, fadeLevel, windowPalette } from "../screen/fader.js";
 import { uploadPicture } from "../screen/picture.js";
+import { spritePage } from "../screen/sprites.js";
 import { tickText } from "../tick.js";
 import { memcpy } from "../screen/weather.js";
 
@@ -45,7 +46,7 @@ HANDLERS[0x08] = function* (ctx) {
 export function pictureSprite(ctx, sp) {
   const { m } = ctx, { r16, r32, w8, w16, w32 } = io(m);
   if (r16(IDS + 0xa)) return;
-  ctx.call(0x8003b87c, [0x18, 0, -4, 0x140, 0xf0], sp);
+  spritePage({ ...ctx, sp }, 0x18, 0, -4, 0x140, 0xf0);
   w16(IDS + 0xa, r16(0x80079528));
   let s = r32(NEW);
   w8(s + 0x31, 5); w32(s, r32(s) | 0x40000000);
@@ -61,7 +62,7 @@ HANDLERS[0x09] = function* (ctx) {
   if (!m.read(0x800792b2, 1)) {
     uploadPicture({ ...ctx, sp }, 0x18, r32(0x80079440), 0);
     pictureSprite(ctx, sp);
-    ctx.call(0x8001f690, [], sp);
+    windowPalette({ ...ctx, sp });
   }
   endFrame(m);
 };

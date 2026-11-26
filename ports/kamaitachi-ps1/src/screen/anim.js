@@ -6,6 +6,9 @@
 // When a channel ends, its kind (0x80079416) decides what follows: 1 / 2 run the scene
 // command 0x8001db2c(2 / 3), 0 runs 0x8001fd1c(5) unless 0x800792c1 is set.
 //   0x80044e50 pacMember(pac, i): address of member i (big-endian offsets after the count)
+import { loadPicture } from "./picture.js";
+import { windowPalette } from "./fader.js";
+
 const GP = 0x8007913c, FRAME_STEP = 0x80079278, AUTO = 0x800792c6, AUTO_HOLD = 0x8007928e;
 const OFF = 0x80079283, ACTIVE = 0x80079530, OP = 0x8007950c, SCRIPT = 0x801fdfc8, PC = 0x8007949a, WAIT = 0x80079436;
 const KIND = 0x80079416, BUF = 0x800794d8, X = 0x80079494, Y = 0x800794a0, LAYERS = 0x801fe058;
@@ -50,9 +53,10 @@ export function animTick(ctx) {
     w8(WAIT + i, r8(pair(i) + 1));
     call(0x800360b8, [pacMember(m, r32(GP + 0x3bc), s8(r8(OP + i))), r32(BUF)]);
     const k = r8(KIND + i), at = [r32(BUF), r16(X + 2 * i), r16(Y + 2 * i)];
-    if (k === 1) call(0x8003b19c, [0xb, ...at]);
-    else if (k === 2) call(0x8003b19c, [0x15, ...at]);
-    else if (k === 0) { call(0x8003b19c, [0x18, ...at]); call(0x8001f690, []); }
+    const sub = { ...ctx, sp };
+    if (k === 1) loadPicture(sub, 0xb, ...at);
+    else if (k === 2) loadPicture(sub, 0x15, ...at);
+    else if (k === 0) { loadPicture(sub, 0x18, ...at); windowPalette(sub); }
     w8(PC + i, r8(PC + i) + 1);
     w8(WAIT + i, r8(WAIT + i) - r8(FRAME_STEP));
   }
