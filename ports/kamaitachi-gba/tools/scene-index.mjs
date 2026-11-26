@@ -77,7 +77,11 @@ while (queue.length && totalSteps < MAX_TOTAL_STEPS) {
       scene.site = site;
       const occurrence = (counts.get(site) ?? 0) + 1;
       counts.set(site, occurrence);
-      if (entries.has(site) || scene.current === null) return;
+      // A site also runs with effects off (a pass that only sets the page up): it is listed the
+      // first time its request really goes to the scene loader.
+      const requested = scene.requested;
+      scene.requested = false;
+      if (entries.has(site) || !requested || scene.current === null) return;
       const { image, variant } = resolvePicture(scene.current);
       const entry = { site, opcode: event.opcode, picture: image, request: scene.current, image, variant, node: vm.ram.node,
         path: decisions.slice(0, decision), occurrence, order: entries.size, foundAt: totalSteps };
