@@ -42,6 +42,7 @@
   <div class="filters" id="filters">
     <button data-filter="all" aria-pressed="true">전체</button>
     <button data-filter="edited" aria-pressed="false">편집함</button>
+    <button data-filter="extended" aria-pressed="false">확장 그림</button>
   </div>
   <div class="grid" id="grid"></div>
 </section>
@@ -51,10 +52,18 @@
   <div>
     <h2>표시 방식</h2>
     <div class="modes" id="modes">
-      <button data-mode="">기본 (원본 + 흐린 배경)</button>
+      <button data-mode="">기본</button>
+      <button data-mode="frame">원본 + 흐린 배경</button>
+      <button data-mode="extend">확장 그림</button>
       <button data-mode="fill">꽉 채워 자르기</button>
     </div>
-    <p class="hint">기본은 원본 + 흐린 배경, 확대 120%, 좌우 가운데예요.</p>
+    <p class="hint">기본은 확장 그림이 있으면 확장 그림(확대 100%), 없으면 원본 + 흐린 배경(확대 120%, 좌우 가운데)이에요.</p>
+  </div>
+  <div id="extendBox">
+    <h2>위아래 블러 폭 (게임 픽셀)</h2>
+    <div class="row"><input type="range" id="blur" min="0" max="100" step="20" value="0"><output id="blurOut">0</output></div>
+    <div class="row"><label><input type="checkbox" id="core"> 가운데도 AI 그림 그대로 (원본을 덮으면 선이 어긋날 때)</label></div>
+    <p class="hint">실루엣이 나와 있을 때는 항상 원본을 덮어요.</p>
   </div>
   <div id="shiftBox">
     <h2>위아래 위치</h2>
@@ -83,15 +92,17 @@ const $ = (id) => document.getElementById(id);
 const IDS = Array.from({ length: 298 }, (_, i) => i);
 const pad = (id) => String(id).padStart(3, "0");
 let edits = {}, current = null, filter = "all", dirty = false, shownId = null;
+const extendedIds = new Set(await fetch("/art/extended/index.json", { cache: "no-cache" }).then((r) => (r.ok ? r.json() : [])).catch(() => []));
+const modeOf = (id) => edits[id]?.mode ?? (extendedIds.has(id) ? "extend" : "frame");
 
 edits = await fetch("/art/portrait-edits.json", { cache: "no-cache" }).then((r) => (r.ok ? r.json() : {})).catch(() => ({})) ?? {};
 
 function tags(id) {
-  return [edits[id] ? "편집" : ""].filter(Boolean).join(" · ");
+  return [extendedIds.has(id) ? "확장" : "", edits[id] ? "편집" : ""].filter(Boolean).join(" · ");
 }
 function renderGrid() {
   const grid = $("grid");
-  grid.replaceChildren(...IDS.filter((id) => filter === "all" || edits[id]).map((id) => {
+  grid.replaceChildren(...IDS.filter((id) => filter === "all" || (filter === "extended" ? extendedIds.has(id) : edits[id])).map((id) => {
     const button = document.createElement("button");
     button.className = "pic";
     button.dataset.id = id;
@@ -105,12 +116,18 @@ function syncControls() {
   const edit = edits[current] ?? {};
   $("title").textContent = current === null ? "그림을 고르세요" : `그림 ${pad(current)}`;
   for (const button of $("modes").children) {
-    button.setAttribute("aria-pressed", String((edit.mode === "fill" ? "fill" : "") === button.dataset.mode));
+    button.setAttribute("aria-pressed", String((edit.mode ?? "") === button.dataset.mode));
+    if (button.dataset.mode === "extend") button.disabled = !extendedIds.has(current);
   }
-  const mode = edit.mode === "fill" ? "fill" : "frame";
-  $("shiftBox").hidden = mode === "fill";
-  $("zoom").value = Math.round((edit.zoom ?? 1.2) * 100);
-  $("zoomOut").textContent = `${Math.round((edit.zoom ?? 1.2) * 100)}%`;
+  const mode = modeOf(current);
+  $("shiftBox").hidden = mode !== "frame";
+  $("extendBox").hidden = mode !== "extend";
+  $("blur").value = edit.blur ?? 0;
+  $("blurOut").textContent = edit.blur ?? 0;
+  $("core").checked = edit.core === "ai";
+  const zoom = edit.zoom ?? (mode === "extend" ? 1 : 1.2);
+  $("zoom").value = Math.round(zoom * 100);
+  $("zoomOut").textContent = `${Math.round(zoom * 100)}%`;
   $("shift").value = edit.shift ?? 0;
   $("shiftOut").textContent = edit.shift ?? 0;
   const auto = !Number.isFinite(edit.crop);
@@ -146,7 +163,8 @@ function change(patch) {
   const edit = { ...(edits[current] ?? {}), ...patch };
   for (const key of Object.keys(edit)) if (edit[key] === undefined || edit[key] === "" || edit[key] === null) delete edit[key];
   if (edit.shift === 0) delete edit.shift;
-  if (edit.zoom === 1.2) delete edit.zoom;
+  if (edit.zoom === (modeOf(current) === "extend" && edit.mode !== "frame" ? 1 : 1.2)) delete edit.zoom;
+  if (edit.blur === 0) delete edit.blur;
   if (Object.keys(edit).length) edits[current] = edit; else delete edits[current];
   dirty = true;
   $("status").textContent = "저장하지 않은 변경이 있어요.";
@@ -163,6 +181,8 @@ $("modes").addEventListener("click", (event) => {
   if (mode !== undefined) change({ mode: mode || undefined });
 });
 $("zoom").addEventListener("input", () => change({ zoom: Number($("zoom").value) / 100 }));
+$("blur").addEventListener("input", () => change({ blur: Number($("blur").value) }));
+$("core").addEventListener("change", () => change({ core: $("core").checked ? "ai" : undefined }));
 $("shift").addEventListener("input", () => change({ shift: Number($("shift").value) }));
 $("cropAuto").addEventListener("change", () => change({ crop: $("cropAuto").checked ? undefined : Number($("crop").value) }));
 $("crop").addEventListener("input", () => change({ crop: Number($("crop").value) }));

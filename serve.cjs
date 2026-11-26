@@ -75,6 +75,7 @@ const sfcRom = (() => { try { return fs.readFileSync(path.join(__dirname, 'serve
 if (sfcRom) routes.set(SFC_GAME, [path.resolve(__dirname, sfcRom), 'application/octet-stream']);
 // portrait-edits-2.json since the AI-extended margins were given up (2026-11-26).
 const EDITS = path.join(__dirname, 'portrait-edits-2.json');
+const EXTENDED = (() => { try { return path.resolve(__dirname, fs.readFileSync(path.join(__dirname, 'serve.extended'), 'utf8').trim()); } catch { return path.resolve(__dirname, '..', '..', 'upscaled', 'extended'); } })();
 const cartridges = new Set(['/AGB-AHZJ.gba', '/AGB-AKZJ.gba', SFC_GAME]);
 // Open beta: while a local, uncommitted serve.open file exists (or SOUNDNOVEL_OPEN=1), tunnel visitors
 // need no password for the hub and the GBA player (and its data and saves). Everything else (PS2 build,
@@ -205,6 +206,18 @@ http.createServer((request, response) => {
     });
     return;
   }
+  // Extended upright pictures (reader.js "extend"): NNN.png, 2:3, kept on this PC only (not in git), in
+  // the folder named by a local, uncommitted serve.extended (one line) or ../../upscaled/extended.
+  // index.json lists the picture numbers there.
+  if (url === '/art/extended/index.json' && request.method === 'GET') {
+    fs.readdir(EXTENDED, (error, names) => {
+      const ids = error ? [] : names.map(name => /^(\d{3})\.png$/.exec(name)?.[1]).filter(Boolean).map(Number).sort((a, b) => a - b);
+      response.writeHead(200, {'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-cache'}).end(JSON.stringify(ids));
+    });
+    return;
+  }
+  const wide = /^\/art\/extended\/(\d{3}\.png)$/.exec(url);
+  if (wide) routes.set(url, [path.join(EXTENDED, wide[1]), 'image/png']);
   // scene images from kamaitachi-gba-kor/tools/export_images.py: NNN.png and palette variants NNN-v.png
   const bg = /^\/kamaitachi-gba-kor\/assets\/bg\/(\d{3}(?:-[1-3])?\.png)$/.exec(url);
   const route = bg ? [path.join(__dirname, 'kamaitachi-gba-kor', 'assets', 'bg', bg[1]), 'image/png'] : routes.get(url) ?? portRoute(url);

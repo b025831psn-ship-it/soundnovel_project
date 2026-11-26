@@ -41,6 +41,11 @@ const EXTENDED_TOP = 100, EXTENDED_HEIGHT = 360;
 //   shift GBA rows the picture moves (+ down) in "frame"
 //   zoom  enlargement, 1 to 3 (cut evenly above and below)
 //   crop  where the part shown across sits, 0 (left edge) to 100 (right edge)
+//   blur  "extend" only: GBA rows at the top and bottom softened into blur, 0 to 100
+//   core  "extend" only: "ai" shows the extended picture's own middle (where the original laid back
+//         over it would not line up, e.g. cables), unless silhouettes are up
+//   mode  "extend" (the default where an extended picture exists): the picture extended above and
+//         below (/art/extended/NNN.png, 2:3, kept on the test PC only), the original laid over its middle
 let edits = {};
 let editVersion = 0;
 // Read again whenever the picture changes, so a value saved in the editor shows without reloading
@@ -65,10 +70,34 @@ let currentId = null;
 // Every picture: the original whole over a blurred backdrop of itself, at 120%, centred (태우 2026-11-26;
 // AI-extended margins were given up). The editor's values for a picture go on top.
 const DEFAULT_EDIT = { mode: "frame", zoom: 1.2, crop: 50 };
+// Extended pictures (태우 2026-11-26): made outside the game (OpenAI, Photoshop) and kept on the test
+// PC; a picture without one keeps the blurred backdrop.
+const extended = new Map(); // id -> Image (complete once loaded) or null when there is none
+function extendedImage(id) {
+  if (id === null || id === undefined || !extendedList?.has(id)) return null;
+  if (!extended.has(id)) {
+    const image = new Image();
+    extended.set(id, image);
+    image.onload = () => { editVersion++; };
+    image.onerror = () => { extended.set(id, null); };
+    image.src = `/art/extended/${String(id).padStart(3, "0")}.png`;
+  }
+  const image = extended.get(id);
+  return image && image.complete && image.naturalWidth ? image : null;
+}
+// The list of extended pictures, loaded ahead so a picture never shows first without its extension;
+// a picture not on the list has none (no request for it).
+let extendedList = null;
+fetch("/art/extended/index.json", { cache: "no-cache" }).then((r) => (r.ok ? r.json() : [])).catch(() => [])
+  .then((list) => {
+    extendedList = new Set(Array.isArray(list) ? list : []);
+    for (const id of extendedList) extendedImage(id);
+  });
 const editFor = (id) => {
   if (id === null || id === undefined) return null;
   const edit = { ...DEFAULT_EDIT, ...(edits[id] ?? {}) };
-  if (edit.mode !== "fill") edit.mode = "frame";
+  const wanted = edits[id]?.mode ?? (extendedImage(id) ? "extend" : "frame");
+  edit.mode = wanted === "fill" ? "fill" : wanted === "extend" && extendedImage(id) ? "extend" : "frame";
   return edit;
 };
 function pictureId(game) {
@@ -76,10 +105,43 @@ function pictureId(game) {
   if (!scene || scene.current === undefined || scene.current === null) return null;
   return scene.resolve(scene.current).image;
 }
+// The extended picture, the original laid over its middle (silhouettes and all), and the top and
+// bottom softened into blur over `blur` GBA rows, more toward the edge.
+function paintExtended(ctx, image, edit, people, width, height) {
+  const scale = width / 240;
+  ctx.save();
+  ctx.imageSmoothingEnabled = true;
+  ctx.drawImage(image, 0, 0, width, height);
+  ctx.imageSmoothingEnabled = false;
+  if (edit.core !== "ai" || people) ctx.drawImage(middle, 0, EXTENDED_TOP * scale, width, 160 * scale);
+  ctx.restore();
+  const rows = Math.max(0, Math.min(100, Number(edit.blur) || 0)) * scale;
+  if (!rows) return;
+  soft.width = width; soft.height = height;
+  const k = soft.getContext("2d");
+  k.filter = `blur(${Math.round(10 * scale)}px)`;
+  k.drawImage(ctx.canvas, 0, 0);
+  k.filter = "none";
+  k.globalCompositeOperation = "destination-in";
+  const fade = k.createLinearGradient(0, 0, 0, height);
+  const edge = rows / height;
+  fade.addColorStop(0, "#000"); fade.addColorStop(edge, "rgba(0,0,0,0)");
+  fade.addColorStop(1 - edge, "rgba(0,0,0,0)"); fade.addColorStop(1, "#000");
+  k.fillStyle = fade; k.fillRect(0, 0, width, height);
+  k.globalCompositeOperation = "source-over";
+  ctx.drawImage(soft, 0, 0);
+}
+const soft = document.createElement("canvas");
 // The original whole, over a blurred, darkened enlargement of itself.
-function paintFrame(ctx, base, width, height) {
+function paintFrame(ctx, base, width, height, screen) {
   const scale = width / 240;
   middleCtx.putImageData(new ImageData(new Uint8ClampedArray(base), 240, 160), 0, 0);
+  const edit = editFor(currentId);
+  if (edit?.mode === "extend") {
+    const people = [screen?.silhouette?.vram].some((v) => v && v.some((b) => b));
+    paintExtended(ctx, extendedImage(currentId), edit, people, width, height);
+    return;
+  }
   const cover = height / 160;
   ctx.save();
   ctx.imageSmoothingEnabled = true;
@@ -93,7 +155,7 @@ function paintFrame(ctx, base, width, height) {
   if (shift) shiftPicture(ctx, width, height, shift, scale);
 }
 function compose(screen, base) {
-  if (editFor(currentId)?.mode !== "fill") { sizeTo(EXTENDED_HEIGHT); paintFrame(pictureCtx, base, picture.width, picture.height); return EXTENDED_TOP; }
+  if (editFor(currentId)?.mode !== "fill") { sizeTo(EXTENDED_HEIGHT); paintFrame(pictureCtx, base, picture.width, picture.height, screen); return EXTENDED_TOP; }
   sizeTo(160);
   sourceCtx.putImageData(new ImageData(new Uint8ClampedArray(base), 240, 160), 0, 0);
   pictureCtx.drawImage(source, 0, 0, picture.width, picture.height);
@@ -239,7 +301,8 @@ function drawPicture(game) {
     // are on it then (or about to be), which stay whole at 100% (태우 2026-11-26).
     if (!(screen.background === shownBackground) || crop < 0) {
       const people = [game.vm?.scene?.layerBuffer, screen.silhouette?.vram].some((v) => v && v.some((b) => b));
-      settledZoom = Number.isFinite(edits[currentId]?.zoom) ? zoomOf(edit) : people ? 1 : zoomOf(edit);
+      // An extended picture already fills the upright screen: 100% unless the editor says otherwise.
+      settledZoom = Number.isFinite(edits[currentId]?.zoom) ? zoomOf(edit) : people || edit?.mode === "extend" ? 1 : zoomOf(edit);
     }
     const width = Math.min(240, (source.height * size.width) / (size.height * settledZoom));
     // Across, the place is settled when a picture first shows: the editor's value, or centred on the
