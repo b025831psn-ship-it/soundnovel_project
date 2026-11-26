@@ -5,7 +5,7 @@
 //   ctx.sound unset -> ramSound(ctx): the original routines through ctx.call and RAM reads
 //                      (on the oracle, so the ports stay checked against the original)
 // Driver entry points: 0x800292b0 play(id, fade)  0x80029174 stop(id, fade)
-//   0x80026534 setVariant(bank, id)  0x80028c74 playUi(n)  0x80029008 frame()  0x80028ccc reset()
+//   0x80026534 setVariant(bank, id)  0x80028c74 playUi(n)  0x80028334 fadeMusic(frames; 0 = stop now)  0x80029008 frame()  0x80028ccc reset()
 // Driver state: gp+0x7e current song (-1 = none); 0x801d6240 six effect channels of 0x68
 //   bytes, +6 = effect number; 0x801fd388 done flags by effect number.
 const GP = 0x8007913c, CHANNELS = 0x801d6240, DONE = 0x801fd388;
@@ -24,6 +24,7 @@ export function ramSound(ctx) {
     stop: (id, fade, sp) => call(0x80029174, [id, fade], sp),
     setVariant: (bank, id, sp) => call(0x80026534, [bank, id], sp),
     playUi: (n, sp) => call(0x80028c74, [n], sp),
+    fadeMusic: (n, sp) => call(0x80028334, [n], sp),
     frame: (sp) => call(0x80029008, [], sp),
     reset: () => {}, // the game's part is ported (sound-reset.js); the library calls come through lib
     lib: (addr, args, sp) => call(addr, args, sp),
@@ -56,6 +57,7 @@ export function moduleSound(mod) {
     stop: (id, fade) => mod.stop(id, fade),
     setVariant: (bank, id) => mod.setVariant(bank, id),
     playUi: (n) => mod.playUi(n),
+    fadeMusic: (n) => mod.fadeMusic?.(n),
     frame: () => mod.frame(),
     reset: () => mod.reset(),
     lib: (addr, args) => mod.lib?.(addr, args) ?? LIB_DEFAULT(addr),
@@ -74,6 +76,6 @@ export const sound = (ctx) => ctx.sound ?? ramSound(ctx);
 // No audio (a browser without sound yet, or muted start-up): every effect has finished.
 export function silentSound() {
   const no = () => {};
-  return { play: no, stop: no, keyOn: no, lib: (addr) => LIB_DEFAULT(addr), setVariant: no, playUi: no, frame: no, reset: no, start: no, vsync: no,
+  return { play: no, stop: no, keyOn: no, lib: (addr) => LIB_DEFAULT(addr), setVariant: no, playUi: no, fadeMusic: no, frame: no, reset: no, start: no, vsync: no,
     song: () => -1, effectPlaying: () => false, done: () => true, clearDone: no };
 }
