@@ -16,6 +16,38 @@ SHA-256, and both executable dispatch tables in `port-data/manifest.json`.
 The verified disc currently produces 42 SCE, 994 BGD, 13 BIN, and 968 SDW
 resources, plus 3,912 decoded SCE records. No payload belongs in Git.
 
+## Browser runtime and framebuffer
+
+`createRuntime(portDataRoot, options)` returns the object consumed by the web
+shell: `step()`, a live 320x240 RGBA `framebuffer`, `input.pulse()`,
+`touchRows()`, `cursorIndex()`, and `moveCursor()`. Each step executes original
+SCE bytes through `ScenarioVM`; opcodes `2f`, `30`, `31`, `32`, `35`, and `36`
+are forwarded to the sound module's `scenarioOp`, followed by one `vsync()` and
+`frame()` tick. Jump, call, choice, and branch targets use the same decimal-label
+versus resource-offset resolver as the exhaustive flow sweep.
+
+`RetailFramebuffer` implements native-size RGBA clear, alpha/tint blits,
+rectangles, decoded retail glyph masks, fades, and horizontal wipes. TIM 4/8/
+16/24-bpp and embedded or separately supplied CLUT decoding is implemented.
+Seven observed SDW images use that separate-CLUT path. SDW `LZS` uses the observed retail
+Okumura stream (4096-byte ring, cursor `0xfee`); the first flag is byte 3, with
+no invented size header. Runtime callers inject the opcode-to-asset renderer,
+the extracted retail font provider, and retail choice-row geometry. Missing
+glyphs or an `ike` member without the verified `0x800356c8` build-time decoder
+fail explicitly instead of substituting a guessed font or layout.
+
+Raw RGBA captures can be compared without PNG conversion:
+
+```sh
+npm run compare-frames -- original.rgba port.rgba
+```
+
+It reports differing pixels and mean/maximum channel error. Opening, first
+choice, and ending parity remain unclaimed until the retail renderer command
+mapping, font extraction, and build-time `ike` conversion are connected and
+fresh original RGBA captures are available; the previously deleted captures
+are not replaced with reconstructed screenshots.
+
 ## Headless API
 
 ```js

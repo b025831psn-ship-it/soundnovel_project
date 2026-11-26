@@ -79,12 +79,14 @@ function nestedLength(bytes, opcodePc, primaryLengths, prefix) {
 }
 
 export class ScenarioVM {
-  constructor({ primaryHandlers, sub1dHandlers, primaryLengths = [], sub1dLengths = [], choicePolicy = "first", maxSteps = 100000 }) {
+  constructor({ primaryHandlers, sub1dHandlers, primaryLengths = [], sub1dLengths = [], choicePolicy = "first",
+    maxSteps = 100000, sound = null, skip = false }) {
     if (primaryHandlers.length !== 256) throw new Error("primary handler table must contain 256 entries");
     if (sub1dHandlers.length !== 108) throw new Error("1d handler table must contain 108 entries");
     this.primaryHandlers = primaryHandlers; this.sub1dHandlers = sub1dHandlers;
     this.primaryLengths = primaryLengths; this.sub1dLengths = sub1dLengths;
     this.choicePolicy = choicePolicy; this.maxSteps = maxSteps;
+    this.sound = sound; this.skip = skip;
   }
 
   run(bytes, { resourceId, recordId, offset: startOffset = 0 }) {
@@ -139,6 +141,10 @@ export class ScenarioVM {
         throw new ScenarioFault("unknown-operand-length", stopped, events);
       }
       const operands = [...bytes.slice(pc, pc + length)]; pc += length;
+      if ([0x2f, 0x30, 0x31, 0x32, 0x35, 0x36].includes(opcode)) {
+        const soundLength = opcode === 0x30 ? 2 : opcode === 0x32 ? 4 : operands.length;
+        this.sound?.scenarioOp?.(opcode, operands.slice(0, soundLength), this.skip);
+      }
       if (opcode === 0x01 || opcode === 0x02) {
         const target = scenarioTarget(resourceId, operands);
         events.push({ ...event, status: "implemented", kind: opcode === 0x01 ? "jump" : "call",

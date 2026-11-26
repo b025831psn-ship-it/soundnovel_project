@@ -4,7 +4,7 @@ import { ScenarioFault, ScenarioVM } from "./vm.js";
 const locationKey = ({ resourceId, recordId, offset = 0 }) => `${resourceId}:${recordId}+${offset}`;
 const isEndingTarget = (target) => target?.resourceId === 31 && target?.recordId === 11;
 
-function resolveLocation(data, location) {
+export function resolveLocation(data, location) {
   if (!location) return null;
   if (location.kind === "label-or-resource-offset") {
     const labelResource = data.resources.get(Number(location.labelTarget.resourceId));

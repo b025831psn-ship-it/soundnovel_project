@@ -5,6 +5,7 @@
     "run": "node tools/run-headless.mjs",
     "run-all": "node tools/run-all.mjs",
     "sweep": "node tools/sweep-flow.mjs",
-    "opcodes": "node tools/opcode-report.mjs"
+    "opcodes": "node tools/opcode-report.mjs",
+    "compare-frames": "node tools/compare-framebuffers.mjs"
   }
 }
