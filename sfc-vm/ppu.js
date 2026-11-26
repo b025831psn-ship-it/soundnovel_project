@@ -46,8 +46,9 @@ function renderObjects(bus, width, height) {
     for (let py = 0; py < size; py++) { const sy = (oy + py) & 0xff; if (sy >= height) continue;
       for (let px = 0; px < size; px++) { const sx = ox + px; if (sx < 0 || sx >= width) continue;
         const tx = attr & 0x40 ? size - 1 - px : px, ty = attr & 0x80 ? size - 1 - py : py;
-        const tile = bus.oam[at + 2] | ((attr & 1) << 8) | ((tx >>> 3) + (ty >>> 3) * 16);
-        const value = decodeTilePixel(bus.vram, tileBase + tile * 32, tx & 7, ty & 7, 4);
+        const tile = (bus.oam[at + 2] + (tx >>> 3) + (ty >>> 3) * 16) & 0xff;
+        const nameBase = attr & 1 ? ((((obsel >>> 3) & 3) + 1) * 0x2000) : 0;
+        const value = decodeTilePixel(bus.vram, (tileBase + nameBase + tile * 32) & 0xffff, tx & 7, ty & 7, 4);
         if (!value) continue;
         const priority = (attr >>> 4) & 3, palette = 128 + ((attr >>> 1) & 7) * 16 + value;
         layer[sy * width + sx] = (priority << 9) | palette;

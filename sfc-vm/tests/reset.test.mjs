@@ -416,16 +416,14 @@ test('reports an NMI-enable rising edge at its bus transaction', () => {
   assert.deepEqual(enables, [200]);
 });
 
-test('NMI latches the standard auto-joypad result', () => {
+test('controller latch publishes the standard auto-joypad result', () => {
   const rom = fixture();
   rom[0x7fea] = 0x00;
   rom[0x7feb] = 0x80;
   const bus = new SfcBus(rom);
-  const cpu = new Cpu65816(bus);
-  cpu.e = false;
   bus.write8(0x4200, 1);
   bus.setController1(0x1080); // Hardware JOY1 bits: Start + A
-  cpu.nmi();
+  bus.latchControllers();
   assert.equal(bus.read16(0x4218), 0x1080);
 });
 
@@ -532,4 +530,15 @@ test('mode 1 BG3 2bpp palettes start at CGRAM colour zero', () => {
   bus.cgram[3] = 0x7f; // colour 1 = white
   bus.cgram[130] = 0x1f; // old incorrect BG3 colour 65 = red
   assert.deepEqual([...renderFrame(bus, 1, 1)], [255, 255, 255, 255]);
+});
+
+test('OBJ name-select uses the OBSEL gap instead of a fixed tile-256 base', () => {
+  const bus = new SfcBus(new Uint8Array(0x8000));
+  bus.io[0x2100 - 0x2000] = 15;
+  bus.io[0x2101 - 0x2000] = 0x08; // name-select gap = two 8-KiB blocks
+  bus.io[0x212c - 0x2000] = 0x10;
+  bus.oam.set([0, 0, 0, 1], 0); // object 0 selects the second name table
+  bus.vram[0x4000] = 0x80;
+  bus.cgram[258] = 0x1f; // OBJ palette 0, colour 1 = red
+  assert.deepEqual([...renderFrame(bus, 1, 1)], [255, 0, 0, 255]);
 });

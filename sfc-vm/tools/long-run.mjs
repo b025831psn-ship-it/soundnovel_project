@@ -41,14 +41,14 @@ const pixelFd = pixelDumpPath ? fs.openSync(pixelDumpPath, 'w') : null;
 const recordedJoypad = new Map();
 if (joypadPath) for (const line of fs.readFileSync(joypadPath, 'utf8').trim().split('\n').slice(1)) {
   const [frameText,, addressText, valueText] = line.split('\t');
-  const nmi = Number(frameText) - 45, shift = Number.parseInt(addressText, 16) === 0x4219 ? 8 : 0;
-  recordedJoypad.set(nmi, (recordedJoypad.get(nmi) ?? 0) | (Number.parseInt(valueText, 16) << shift));
+  const frame = Number(frameText), shift = Number.parseInt(addressText, 16) === 0x4219 ? 8 : 0;
+  recordedJoypad.set(frame, (recordedJoypad.get(frame) ?? 0) | (Number.parseInt(valueText, 16) << shift));
 }
 
 machine = new SfcMachine({
   rom: fs.readFileSync(romPath),
   apu,
-  joypad: (nmi) => joypadPath ? (recordedJoypad.get(nmi) ?? 0)
+  joypad: (nmi, frame) => joypadPath ? (recordedJoypad.get(frame) ?? 0)
     : period && nmi > 300 && nmi % period < 2 ? 0x0080 : 0,
   cpuOptions: { traceLimit: 0 },
   busOptions: {

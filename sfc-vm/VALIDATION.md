@@ -78,3 +78,39 @@ node sfc-vm/tools/compare-timing-matrix.mjs native.tsv vm.tsv differences.json
 node sfc-vm/tools/long-run.mjs ROM.sfc ports/kamaitachi-sfc/sound/apu.js vm-long.tsv 20000
 node sfc-vm/tools/compare-long-run.mjs native-long.tsv vm-long.tsv comparison.json
 ```
+
+## Bundle 5: colour and input phase
+
+Framebuffer comparison now quantizes both captures to SNES BGR555 before
+comparison, reports the maximum 5-bit channel delta for every mismatching
+frame, and also compares VM NMI `n` with native `n-1`, `n`, and `n+1`.
+
+| alignment | comparable frames | mismatching frames | different pixels |
+| --- | ---: | ---: | ---: |
+| native `n-1` | 5,699 | 5,250 | 214,886,946 |
+| native `n` | 5,700 | 5,258 | 217,799,338 |
+| native `n+1` | 5,699 | 5,264 | 219,177,975 |
+
+The aligned frame wins 5,070 of 5,700 per-frame comparisons; `n-1` wins 509
+and `n+1` wins 121.  There is therefore no global one-frame framebuffer
+offset.  NMI 19 is specifically a capture-boundary case: its aligned 8x8
+region has 13 different pixels (maximum BGR delta 14/14/0), while VM NMI 19
+equals native NMI 18 exactly.  NMI 100--120 retains the same 58x72 OBJ region,
+falling from 631 to 228 different pixels, with up to 31/31/31 channel delta.
+It is not removed by either adjacent-frame comparison.  OBJ name-select is now
+decoded from the OBSEL gap instead of using a fixed tile-256 base, with a
+dedicated regression test; the remaining early region is a renderer defect,
+not a frame-wide phase error.
+
+Controller input is now sampled at the physical frame event.  Auto-joypad sets
+`$4212` bit 0 for 4,224 master cycles and publishes `$4218-$421f` only when the
+read completes.  Replaying the recorded input one physical frame earlier or
+later causes PC and semantic APUIO divergence at NMI 408/409; the current
+alignment remains clean there.  The first current-alignment WRAM mismatch is a
+transient controller-history value at NMI 501, and the persistent interval
+starts at NMI 676.  The reference `joypad.tsv` contains completed `$4218/19`
+results, whereas libretro polls physical input at `retro_run` entry (and can
+poll more than once per NMI).  Thus the NMI 501/676 WRAM difference is a replay
+harness sampling-granularity artifact, not a global VM input-frame offset.  A
+physical-poll/auto-read-completion trace is required to reproduce that history
+byte exactly.

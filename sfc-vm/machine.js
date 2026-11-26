@@ -27,6 +27,7 @@ export class SfcMachine {
     this.onNmiVector = onNmiVector;
     this.onInstruction = onInstruction;
     this.buttons = null;
+    this.physicalButtons = 0;
     this.inVblank = false;
     this.pendingNmiAt = Infinity;
     this.nextFrame = 1_368;
@@ -43,6 +44,7 @@ export class SfcMachine {
     this.nextIrq = Infinity;
     this.pendingIrq = false;
     this.pendingNmi = false;
+    this.nextJoypadComplete = Infinity;
     this.renderedPpuRevision = -1;
 
     const externalNmiEnable = busOptions.onNmiEnable;
@@ -77,7 +79,7 @@ export class SfcMachine {
 
   enterNmi() {
     this.nmiCount++;
-    const mask = this.buttons ?? this.joypad(this.nmiCount, this.frame) ?? 0;
+    const mask = this.buttons ?? this.physicalButtons;
     this.bus.setController1(mask);
     this.onNmi?.(this.frame, this.master);
     this.cpu.nmi();
@@ -127,6 +129,7 @@ export class SfcMachine {
       ['irq', this.nextIrq], ['hdma-init', this.nextHdmaInit], ['render', this.nextRenderLine],
       ['hdma', this.nextHdma], ['frame', this.nextFrame], ['nmi', this.nextNmi],
       ['nmi-edge', this.pendingNmiAt],
+      ['joypad', this.nextJoypadComplete],
     ];
     let selected = events[0];
     for (const event of events.slice(1)) if (event[1] < selected[1]) selected = event;
@@ -159,6 +162,7 @@ export class SfcMachine {
     if (type === 'frame') {
       this.frame++;
       this.inVblank = false;
+      if (this.buttons === null) this.physicalButtons = this.joypad(this.nmiCount + 1, this.frame) ?? 0;
       if (this.onFrame) {
         this.framebuffer = this.rasterFramebuffer.slice();
         this.onFrame(this.frame, this.framebuffer);
@@ -171,8 +175,18 @@ export class SfcMachine {
       this.inVblank = true;
       this.bus.latchNmi();
       if (this.bus.io[0x4200 - 0x2000] & 0x80) this.pendingNmi = true;
+      if (this.bus.io[0x4200 - 0x2000] & 1) {
+        this.bus.io[0x4212 - 0x2000] |= 1;
+        this.nextJoypadComplete = master + 4_224;
+      }
       this.nextNmi += this.nmiFrameLength;
       this.nmiFrameLength = this.nmiFrameLength === 357_368 ? 357_364 : 357_368;
+      return 0;
+    }
+    if (type === 'joypad') {
+      this.bus.latchControllers();
+      this.bus.io[0x4212 - 0x2000] &= 0xfe;
+      this.nextJoypadComplete = Infinity;
       return 0;
     }
     this.pendingNmiAt = Infinity;

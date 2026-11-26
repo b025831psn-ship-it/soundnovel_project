@@ -281,7 +281,6 @@ export class Cpu65816 {
   }
 
   nmi() {
-    this.bus.latchControllers?.();
     this.bus.latchNmi?.();
     // IRQ/NMI begin with an opcode-fetch I/O cycle followed by one internal
     // cycle.  The fetch uses the interrupted PC's memory speed (8 master
