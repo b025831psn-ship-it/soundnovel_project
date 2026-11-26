@@ -35,3 +35,14 @@ against these frames and GP0 streams. About 50 frames of story per second of run
 
 The pad script above starts a game without a memory card. Frames are the game's pictures:
 keep them local.
+
+## Screen ports against the original (`compare-screen.mjs`)
+
+Runs the game twice with the same pad script, once original and once with the JS ports
+hooked in at their addresses, and compares every GP0/GP1 word per frame, the picture every
+10 frames and all RAM below the stack at the end.
+
+    node tools/oracle/compare-screen.mjs <dir> 1500 [--ports glyph]
+
+`glyph` (`src/text/glyph.js`, 0x800380ec with 0x80037fac): 13,493 calls over the title,
+memory card screens, opening and first story pages, 0 differences.
