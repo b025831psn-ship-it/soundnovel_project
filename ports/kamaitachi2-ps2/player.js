@@ -683,7 +683,7 @@ function drawStory(time) {
   const rubies = sn4Mode ? sn4Style.rubies : (block.rubies ?? (block.ruby ? [block.ruby] : []));
   const readings = rubies.length ? new Map() : undefined;
   for (const ruby of rubies) {
-    const start = block.firstRuby ? storyText().indexOf(ruby.word) : storyText().lastIndexOf(ruby.word);
+    const start = ruby.offset ?? (block.firstRuby ? storyText().indexOf(ruby.word) : storyText().lastIndexOf(ruby.word));
     if (start >= 0) ruby.readings.forEach((reading, i) => readings.set(start + i, reading));
   }
   screen.c.save();
@@ -710,8 +710,15 @@ function drawStory(time) {
     }, 0);
     return width < max ? x + (max - width) / 2 : x;
   } : undefined;
-  const end = screen.text(text, x, y, {...metrics, scale, max, readings, colors:textColors,
-    lineStart, styleAt, moves:sn4Mode ? sn4Style.moves : [], lines:sn4Mode ? sn4Style.lines : []});
+  const textOptions = {...metrics, scale, max, readings, colors:textColors, lineStart, styleAt,
+    moves:sn4Mode ? sn4Style.moves : [], lines:sn4Mode ? sn4Style.lines : []};
+  // The EE message window scrolls ordinary flowing text when a new line passes
+  // the physical 448px bottom. Absolute-position title/lyric layouts do not scroll.
+  const measured = sn4Mode ? screen.text(text, x, y, {...textOptions, measureOnly:true}) : null;
+  const finalStyle = sn4Mode ? styleAt(text.length) : null;
+  const scrollY = sn4Mode && !sn4Style.moves.some(move => move.absolute)
+    ? Math.max(0, measured.y + 33 * finalStyle.scale - 448) : 0;
+  const end = screen.text(text, x, y - scrollY, textOptions);
   screen.c.restore();
   if (revealed >= storyText().length) {
     const tick = Math.floor(time * 6);
@@ -982,9 +989,11 @@ try {
     marginBottom:value => { sn4Style.marginBottom = value; },
     command5a:value => sn4Style.effects.push({name:'MojiAfterParam2', value, offset:sn4.text.length}),
     command5c:value => sn4Style.effects.push({name:'MojiAllInOutParam', value, offset:sn4.text.length}),
-    ruby:(word, readings) => { sn4Style.rubies.push({word, readings}); },
+    ruby:(word, readings, offset) => { sn4Style.rubies.push({word, readings, offset}); },
+    mojiSync:() => sn4Style.effects.length ? 1 : 0,
     clearText:() => {
       sn4Shown = ''; sn4Style.moves = []; sn4Style.lines = []; sn4Style.styles = []; sn4Style.effects = [];
+      sn4Style.fontType = 0; sn4Style.fontSize = 33;
       sn4Style.centers = []; sn4Style.rubies = []; markStyle(0);
     },
     scene:value => { sn4Style.scenePack = value; },

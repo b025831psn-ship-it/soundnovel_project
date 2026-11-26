@@ -74,5 +74,13 @@ run([{op:0x53, offset:0x123, args:[7]}], {letterSpacing:(value, offset) => spaci
 assert.deepEqual(spacing, [{value:7, offset:0}], '0x53 sets EE letter spacing');
 const cancelable = run([{op:0x51, offset:3, args:[45]}]).event;
 assert.deepEqual(cancelable, {type:'wait', reason:'cancelable', label:'a', offset:3, ticks:45, text:''});
+const pageBreak = run([{op:0x02, offset:0, args:['page']}, {op:0x0c, offset:4, args:[]}]).event;
+assert.deepEqual(pageBreak, {type:'pause', reason:'page-break', label:'a', offset:4, text:'page'});
+const effectWait = run([{op:0x15, offset:5, args:[]}], {mojiSync:() => 3}).event;
+assert.deepEqual(effectWait, {type:'wait', reason:'text-effect', label:'a', offset:5, ticks:3, text:''});
+const ruby = [];
+run([{op:0x02, offset:0, args:['底']}, {op:0x106, offset:1, args:['　',['そ']]}],
+  {ruby:(word, readings, offset) => ruby.push({word,readings,offset})});
+assert.deepEqual(ruby, [{word:'　', readings:['そ'], offset:1}], 'ruby keeps its absolute text offset');
 assert.equal(classes.size + 3, 47, 'all 47 formerly unknown opcodes are covered');
 console.log('sn4 variable/condition semantics: PASS');

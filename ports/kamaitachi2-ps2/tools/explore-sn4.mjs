@@ -113,7 +113,10 @@ function makeVm() {
       else if (name === 'position') L.moves.push({offset:args[1], ...point(args[0])});
       else if (name === 'absolutePosition') L.moves.push({offset:args[1], ...point(args[0]), absolute:true});
       else if (name === 'line') L.lines.push({type:args[0], width:args[1], offset:args[2]});
-      else if (name === 'clearText') { L.moves = []; L.lines = []; L.styles = []; L.centers = []; mark(0); }
+      else if (name === 'clearText') {
+        L.moves = []; L.lines = []; L.styles = []; L.centers = [];
+        L.fontSize = 33; mark(0);
+      }
       else if (name === 'command' && args[0] === 'Center') L.centers.push(vm.text.length);
       else if (name === 'command' && args[0] === 'Default') {
         const value = args[1][0] ?? 32, op = args[2].op;
@@ -157,7 +160,7 @@ function checkLayout(vm, raw) {
   const L = vm.layout ?? {letterSpacing:0, lineSpacing:7, fontSize:33,
     marginLeft:32, marginRight:32, marginTop:32, marginBottom:32, moves:[], lines:[], styles:[], centers:[]};
   const at = where(vm);
-  const x = L.marginLeft, y = L.marginTop, right = 640 - L.marginRight, bottom = 448 - L.marginBottom;
+  const x = L.marginLeft, y = L.marginTop, right = 640 - L.marginRight, bottom = 448;
   let px = x, py = y, offset = 0, lineStart = true, overRight = false;
   const styleAt = o => L.styles.findLast(mark => mark.offset <= o) ?? L;
   const advance = (ch, o) => {
@@ -168,7 +171,8 @@ function checkLayout(vm, raw) {
     if (!L.centers.includes(o)) return x;
     const line = text.slice(o).split('\n')[0];
     let p = o, w = 0; for (const ch of line) { w += advance(ch, p); p += ch.length; }
-    if (w >= right - x) report('layout-center-too-wide', line.slice(0, 24), at);
+    // CommandCenter leaves the cursor at the left margin when the line does
+    // not fit; this is a valid fallback, not an overflow.
     return w < right - x ? x + (right - x - w) / 2 : x;
   };
   px = centerAt(0);
@@ -187,13 +191,15 @@ function checkLayout(vm, raw) {
     const pushOpening = NO_END.has(ch) && next && px + a + nextA > right;
     if (ch === '\n' || wrap || pushOpening) { px = centerAt(offset); py += leading; }
     if (ch === '\n') { offset += ch.length; px = centerAt(offset); continue; }
-    // Closing marks may hang past the right margin (EE 0x16f278); anything else is drawn off the box.
     if (px + a > right + 1 && !NO_START.has(ch) && !overRight) {
       overRight = true; report('layout-positioned-past-right', `${vm.label} (${Math.round(px + a)}px)`, at);
     }
     px += a; offset += ch.length;
   }
-  if (py + styleAt(offset).fontSize > bottom) report('layout-past-bottom', `${vm.label} (${Math.round(py)}px)`, at);
+  // Flowing message text scrolls upward at the physical bottom. Only authored
+  // absolute layouts can genuinely place a glyph outside the framebuffer.
+  if (L.moves.some(move => move.absolute) && py + styleAt(offset).fontSize > bottom)
+    report('layout-past-bottom', `${vm.label} (${Math.round(py)}px)`, at);
 }
 
 function checkText(vm, text) {

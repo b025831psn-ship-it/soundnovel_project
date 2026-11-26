@@ -55,7 +55,7 @@ export class Screen {
   }
 
   text(str, x, y, { scale = 1, max = Infinity, leading = 40, spacing = 1, widthScale = scale,
-    readings, colors, tint, lineStart, styleAt, moves = [], lines = [] } = {}) {
+    readings, colors, tint, lineStart, styleAt, moves = [], lines = [], measureOnly = false } = {}) {
     // lineStart(offset) may move the first glyph of a line (SN4 CommandCenter).
     let px = lineStart?.(0) ?? x, py = y, offset = 0;
     const noStart = new Set('、。？！＿ヽヾゝゞ々仝〃ー’”）〕］〉」』】＞ぁぃぅぇぉっゃゅょゎァィゥェォッャュョヮ');
@@ -71,8 +71,10 @@ export class Screen {
         const width = Math.max(0, line.width ?? 0);
         const lineHeight = styleAt?.(offset)?.leading ?? leading;
         if (px !== x && px + width > x + max) { px = lineStart?.(offset) ?? x; py += lineHeight; }
-        this.c.fillStyle = tint ? `rgb(${tint.join(',')})` : '#fff';
-        this.c.fillRect(Math.round(px), Math.round(py + Math.max(1, (line.type ?? 0))), width, 1);
+        if (!measureOnly) {
+          this.c.fillStyle = tint ? `rgb(${tint.join(',')})` : '#fff';
+          this.c.fillRect(Math.round(px), Math.round(py + Math.max(1, (line.type ?? 0))), width, 1);
+        }
         px += width;
       }
       const rgb = colors?.get(offset);
@@ -93,8 +95,8 @@ export class Screen {
       const reading = readings?.get(offset);
       offset += ch.length;
       if (ch === '\n') { px = lineStart?.(offset) ?? px; continue; }
-      if (reading) this.centered(reading, px + advance / 2, py - 10, .38);
-      if (glyph) {
+      if (reading && !measureOnly) this.centered(reading, px + advance / 2, py - 10, .38);
+      if (glyph && !measureOnly) {
         const [gx, gy, w, h, top] = glyph;
         const x = Math.round(px), y = Math.round(py + top * glyphScale);
         if (tint && w && h) this.c.drawImage(this.tintedGlyph(ch, tint, gx, gy, w, h), x, y, w * glyphWidthScale, h * glyphScale);
