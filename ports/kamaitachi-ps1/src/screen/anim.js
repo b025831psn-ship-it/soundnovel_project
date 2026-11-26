@@ -3,11 +3,12 @@
 // (unpacked by 0x800360b8 into the buffer at 0x800794d8, then put on screen by 0x8003b19c
 // at the channel's x/y) and waits `frames`. Negative ops: -1 end, -2 restart, -4 jump by
 // frames/2 pairs, -5 end with a hand-off to the text side, -6 (not ported).
-// When a channel ends, its kind (0x80079416) decides what follows: 1 / 2 run the scene
-// command 0x8001db2c(2 / 3), 0 runs 0x8001fd1c(5) unless 0x800792c1 is set.
+// When a channel ends, its kind (0x80079416) decides what follows: 1 / 2 run
+// 0x8001db2c dropLayer(2 / 3), 0 dropPicture(5) (0x8001fd1c) unless 0x800792c1 is set.
 //   0x80044e50 pacMember(pac, i): address of member i (big-endian offsets after the count)
 import { loadPicture } from "./picture.js";
 import { windowPalette } from "./fader.js";
+import { dropLayer, dropPicture } from "../helpers.js";
 
 const GP = 0x8007913c, FRAME_STEP = 0x80079278, AUTO = 0x800792c6, AUTO_HOLD = 0x8007928e;
 const OFF = 0x80079283, ACTIVE = 0x80079530, OP = 0x8007950c, SCRIPT = 0x801fdfc8, PC = 0x8007949a, WAIT = 0x80079436;
@@ -42,9 +43,9 @@ export function animTick(ctx) {
     if (op() === -1) {
       w8(HANDOFF, -1); w8(ACTIVE + i, 0);
       const k = r8(KIND + i);
-      if (k === 1) call(0x8001db2c, [2]);
-      else if (k === 2) call(0x8001db2c, [3]);
-      else if (k === 0 && !r8(NO_NEXT)) call(0x8001fd1c, [5]);
+      if (k === 1) dropLayer(m, 2);
+      else if (k === 2) dropLayer(m, 3);
+      else if (k === 0 && !r8(NO_NEXT)) dropPicture(m, 5);
       for (let j = 0; j < 3; j++) w8(ACTIVE + j, 0);
       for (let j = 0; j < 3; j++) { const p = LAYERS + 8 * j; m.write(p, 0, 2); w8(p + 2, 0); m.write(p + 4, 0, 2); m.write(p + 6, 0, 2); }
       w8(HANDOFF, -1);

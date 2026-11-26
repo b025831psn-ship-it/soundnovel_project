@@ -112,3 +112,27 @@ export function savePoint(m) {
   m.write(COUNT, n + 1, 2);
   if (((n + 1) & 0xffff) >= 0x400) throw new Error("savePoint: path at 0x800326e0 (history full) is not ported");
 }
+
+// 0x8001db2c dropLayer(k): free sprite slot k (< 11) of 0x801f6698 and forget its picture
+// (0x801fec66 + 2k = -1); ends the frame when k is in range.
+export function dropLayer(m, k) {
+  k &= 0xff;
+  if (k >= 0xb) return;
+  const id = m.read(IDS + 2 * k, 2);
+  if (id) { spriteFree(m, id); m.write(IDS + 2 * k, 0, 2); m.write(0x801fec66 + 2 * k, 0xffff, 2); }
+  m.write(GP + 0x15c, 1, 1);
+}
+
+// 0x8001fd1c dropPicture(k): like dropLayer, and the silhouette ring (0x80079450) and the
+// 8-bit picture buffer (0x80079440) are cleared.
+export function dropPicture(m, k) {
+  k &= 0xff;
+  const id = m.read(IDS + 2 * k, 2);
+  if (id) {
+    spriteFree(m, id); m.write(IDS + 2 * k, 0, 2); m.write(0x80079284, 0, 1);
+    for (let i = 0; i < 4; i++) m.write(0x80079450 + 2 * i, 0xffff, 2);
+    const pic = m.read(0x80079440, 4) >>> 0;
+    for (let i = 0; i < 0x12c00; i++) m.write(pic + i, 0, 1);
+  }
+  m.write(GP + 0x15c, 1, 1);
+}

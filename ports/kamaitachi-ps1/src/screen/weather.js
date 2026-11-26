@@ -1,7 +1,7 @@
 // Snow and rain, ported from the per-frame weather routine 0x800416a4 and its helpers.
 // State stays in PS1 RAM at the original addresses. gp[0x1d8] is the weather mode
 // (-1 off, 0 light snow, 1 blizzard, 2 still wind, 3 rain), gp[0x1dc] a frame counter,
-// gp[0x1e0] a countdown that ends the weather (0x8001db2c(3)), gp[0x1e2] the number of
+// gp[0x1e0] a countdown that ends the weather (dropLayer 3, 0x8001db2c), gp[0x1e2] the number of
 // pending particle steps (0x8004106c adds them, up to 4).
 //
 // Two particle sets of 8 bytes {s16 x, s16 y, u8 step, u8 kind, u8 pattern, u8 ?}:
@@ -15,6 +15,7 @@
 //   0x80044904 memcpy         0x80044be4 bzeroWords
 import { randMod } from "./shake.js";
 import { spriteAdd, spriteLayer } from "./sprites.js";
+import { dropLayer } from "../helpers.js";
 
 const GP = 0x8007913c, SPRITES = 0x801eef68, NEW = 0x800794f4, FRAME_STEP = 0x80079278, IDS = 0x801f6698;
 const FAR = 0x800c8820, NEAR = 0x800a6db8, PLANE = 0x800b1c20, CLUTS = 0x800c4820, SNOW_CLUT = 0x800c8420;
@@ -110,7 +111,7 @@ function countdown(ctx) { // shared tail: the weather's remaining time
   p16(0x1e0, g16(0x1e0) - r16(FRAME_STEP));
   if (s16(g16(0x1e0)) > 0 || s8(g8(0x1d8)) === -1) return;
   p8(0x1d8, -1);
-  ctx.call(0x8001db2c, [3]); // the scene command that ends the weather: not ported yet
+  dropLayer(ctx.m, 3);
   p16(0x1e0, -1);
 }
 // Wind: each value moves `step` toward its target, every frame.

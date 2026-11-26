@@ -10,7 +10,7 @@
 //   0x0d 0x8001dd7c setFlag(u8)        0x801f74b0[min(k, 0x4f)] = 1
 //   0x0e 0x8001def8 ifNot(u8 f, label) / 0x0f 0x8001dfb8 if(u8 f, label): jump
 //   0x21 0x8001de2c setBit(u8 k)       0x80079414 |= 1 << (k - 1)
-import { setGp1e0, spriteFree, waitFade, textSpeed } from "../helpers.js";
+import { setGp1e0, spriteFree, waitFade, textSpeed, dropLayer } from "../helpers.js";
 import { HANDLERS } from "./interp.js";
 import { CURSOR, BASE, io, operand, resolveLabel, unported } from "./lib.js";
 import { fadeOut, fadeIn, fadeLevel, windowPalette } from "../screen/fader.js";
@@ -24,14 +24,14 @@ const halfFrames = (v) => (v & 0xffff) === 0x7f ? 1 : (v & 0xffff) >>> 1;
 const skipping = (m) => m.read(SKIP, 1) === 1;
 const endFrame = (m) => m.write(0x8007913c + 0x15c, 1, 1);
 
-// 0x8001cde4 showPicture(id, layer): the scene change for layer + 1 (0x8001db2c), the BGD
+// 0x8001cde4 showPicture(id, layer): drops layer + 1 (0x8001db2c), then the BGD
 // picture `id` (0x801fec68[layer]) loaded to the SDW buffer and put on page 8 / 0xb / 0x15
 // as the layer's full-screen sprite (0x801f6698 + 2 + 2·layer).
 const LAYER_PAGE = [[8, 1, 0xe], [0xb, 2, 0xc], [0x15, 3, 0xd]];
 export function* showPicture(ctx, id, layer) {
   const { m } = ctx, { r16, r32, w8, w16 } = io(m), sp = ctx.sp - 0x30, sub = { ...ctx, sp };
   if (m.read(SKIP, 1) === 1 || m.read(NO_EFFECTS, 1) === 1) { endFrame(m); return; }
-  ctx.call(0x8001db2c, [(layer + 1) & 0xff], sp);
+  dropLayer(m, layer + 1);
   layer &= 0xff;
   w16(0x801fec68 + 2 * layer, id);
   ctx.call(0x800369f8, [1, r32(SDW_BUF), id & 0xffff], sp);
