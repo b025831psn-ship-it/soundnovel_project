@@ -12,6 +12,9 @@ const GP = 0x8007913c, CHANNELS = 0x801d6240, DONE = 0x801fd388;
 const s16 = (v) => (v << 16) >> 16;
 
 // 0x800264f0: an effect id's number within its bank, (id - 1000) mod 1000, as u16.
+// What a library call returns when there is no sound: VAB opens fail (-1), the rest 0.
+const LIB_DEFAULT = (addr) => (addr === 0x8005e188 ? -1 : 0);
+
 export const soundIndex = (id) => (((id & 0xffff) - 1000) % 1000) & 0xffff;
 
 export function ramSound(ctx) {
@@ -22,7 +25,9 @@ export function ramSound(ctx) {
     setVariant: (bank, id, sp) => call(0x80026534, [bank, id], sp),
     playUi: (n, sp) => call(0x80028c74, [n], sp),
     frame: (sp) => call(0x80029008, [], sp),
-    reset: (sp) => call(0x80028ccc, [], sp),
+    reset: () => {}, // the game's part is ported (sound-reset.js); the library calls come through lib
+    lib: (addr, args, sp) => call(addr, args, sp),
+    keyOn: (vab, prog, tone, note, fine, voll, volr, sp) => call(0x80059cd8, [vab, prog, tone, note], sp), // SsUtKeyOn; the caller put fine/voll/volr at sp+0x10
     vsync: (sp) => { // the sound part of the VSync callback 0x8002d46c
       if (m.read(GP + 0x7b, 1) !== 1) return;
       if (!m.read(0x8007928d, 1)) call(0x80027490, [], sp); // effect scripts
@@ -53,6 +58,8 @@ export function moduleSound(mod) {
     playUi: (n) => mod.playUi(n),
     frame: () => mod.frame(),
     reset: () => mod.reset(),
+    lib: (addr, args) => mod.lib?.(addr, args) ?? LIB_DEFAULT(addr),
+    keyOn: (...a) => mod.keyOn?.(...a.slice(0, 7)),
     start: () => {}, // the module starts the library when it is made
     vsync: () => {}, // the audio thread runs the module's VSync part on its own clock
     song: () => s16(mod.music.song),
@@ -63,3 +70,10 @@ export function moduleSound(mod) {
 }
 
 export const sound = (ctx) => ctx.sound ?? ramSound(ctx);
+
+// No audio (a browser without sound yet, or muted start-up): every effect has finished.
+export function silentSound() {
+  const no = () => {};
+  return { play: no, stop: no, keyOn: no, lib: (addr) => LIB_DEFAULT(addr), setVariant: no, playUi: no, frame: no, reset: no, start: no, vsync: no,
+    song: () => -1, effectPlaying: () => false, done: () => true, clearDone: no };
+}

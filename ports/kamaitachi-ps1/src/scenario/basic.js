@@ -19,6 +19,7 @@ import { uploadPicture, loadPicture } from "../screen/picture.js";
 import { spritePage } from "../screen/sprites.js";
 import { tickText } from "../tick.js";
 import { memcpy, effect } from "../screen/weather.js";
+import { special } from "../title.js";
 
 const SKIP = 0x80079295, NO_EFFECTS = 0x800792a0, FLAGS = 0x801f74b0, IDS = 0x801f6698, NEW = 0x800794f4, SDW_BUF = 0x80079484;
 const halfFrames = (v) => (v & 0xffff) === 0x7f ? 1 : (v & 0xffff) >>> 1;
@@ -159,12 +160,16 @@ HANDLERS[0x14] = function* (ctx) {
 function simple(fn) {
   return function* (ctx) {
     const { m } = ctx, k = operand(m).u8();
-    if (!skipping(m) && m.read(NO_EFFECTS, 1) !== 1) fn({ ...ctx, sp: ctx.sp - 0x18 }, k);
+    if (!skipping(m) && m.read(NO_EFFECTS, 1) !== 1) { const r = fn({ ...ctx, sp: ctx.sp - 0x18 }, k); if (r?.next) yield* r; }
     endFrame(m);
   };
 }
 HANDLERS[0x1c] = simple(effect);
-HANDLERS[0x1d] = simple((ctx, k) => ctx.call(0x80044384, [k], ctx.sp)); // special scenes (0x6c cases): not ported
+HANDLERS[0x1d] = function* (ctx) { // special scenes (title.js)
+  const { m } = ctx, k = operand(m).u8();
+  if (!skipping(m) && m.read(NO_EFFECTS, 1) !== 1) yield* special({ ...ctx, sp: ctx.sp - 0x18 }, k);
+  endFrame(m);
+};
 
 HANDLERS[0x15] = function* (ctx) {
   const { m } = ctx, { r16, r32, w16, w32, g8, p8 } = io(m);

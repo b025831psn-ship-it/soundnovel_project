@@ -80,7 +80,7 @@ HANDLERS[0x4e] = function* (ctx) {
   yield* sceneReset(sub);
   for (let i = 0; i < 16; i++) { m.write(0x8009da48 + 8 * i + 4, 0, 4); m.write(0x8009da48 + 8 * i, 0, 4); }
   m.write(0x800795e4, 5, 1); m.write(0x800795e6, 0xf, 1); m.write(0x800795e5, 0, 1);
-  effect(sub, 0);
+  yield* effect(sub, 0);
   spriteClearAll(sub);
   textWindowReset(sub);
   animStop(m);
@@ -168,7 +168,7 @@ HANDLERS[0x5e] = function* (ctx) {
 };
 
 // 0x8001c7fc loadPage30(id): BGD `id` through the SDW buffer to texture page 0x1e.
-function* loadPage30(ctx, id) {
+export function* loadPage30(ctx, id) {
   const { m } = ctx, sp = ctx.sp - 0x18;
   yield* cdLoad({ ...ctx, sp }, 1, m.read(0x80079484, 4) >>> 0, id & 0xffff);
   loadPicture({ ...ctx, sp }, 0x1e, m.read(0x80079484, 4) >>> 0);

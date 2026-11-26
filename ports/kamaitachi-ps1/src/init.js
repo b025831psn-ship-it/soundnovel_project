@@ -12,6 +12,7 @@ import { checkpoint, animStop } from "./scenario/lib.js";
 import { sceneReset } from "./scenario/state.js";
 import { cdReadFile, cdLoad } from "./cd-load.js";
 import { sound } from "./sound-bridge.js";
+import { soundReset } from "./sound-reset.js";
 import { libcd } from "./libcd.js";
 import { tickQuiet } from "./tick.js";
 import { loadPicture } from "./screen/picture.js";
@@ -82,11 +83,12 @@ export function* buildIndex(ctx) {
   }
 }
 
-function copyText(m, src, dst) { // 0x80044cf8: two-byte characters up to the 0 (not copied)
+function copyText(m, src, dst) { // 0x80044cf8: SJIS pairs, single bytes below 0x81, then the 0
   for (let b; (b = m.read(src, 1)); ) {
-    if (b < 0x81) unported(0x80044d34);
-    m.write(dst++, b, 1); m.write(dst++, m.read(src + 1, 1), 1); src += 2;
+    m.write(dst++, b, 1); src++;
+    if (b >= 0x81) { m.write(dst++, m.read(src, 1), 1); src++; }
   }
+  m.write(dst, 0, 1);
 }
 export function textStrings(m) { // 0x8003ab98
   copyText(m, m.read(0x8006b74c, 4) >>> 0, m.read(0x8006b034, 4) >>> 0);
@@ -260,11 +262,11 @@ export function* newGame(ctx) {
   yield* sceneReset(sub);
   for (let i = 0; i < 16; i++) { m.write(0x8009da48 + 8 * i + 4, 0, 4); m.write(0x8009da48 + 8 * i, 0, 4); }
   w8(0x800795e4, 5); w8(0x800795e6, 0xf); w8(0x800795e5, 0);
-  effect(sub, 0);
+  yield* effect(sub, 0);
   textInit(sub);
   spriteClearAll(sub);
   textWindowReset(sub);
-  sound(sub).reset(sp);
+  yield* soundReset(sub);
   animStop(m);
   resetStream(m);
 }
@@ -308,7 +310,7 @@ export function* init(ctx) {
   systemReset(m);
   routeReset(m, 0); // 0x8003360c
   bufferAliases(m);
-  sound(sub).reset(sp);
+  yield* soundReset(sub);
   clearSaves(m);
   step();
   yield* cdLoad({ ...sub, sp: sp - 0x18 }, 0, m.read(0x80079490, 4) >>> 0, 0); // 0x80036b6c

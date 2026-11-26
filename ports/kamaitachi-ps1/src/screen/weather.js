@@ -18,6 +18,8 @@ import { spriteAdd, spriteLayer } from "./sprites.js";
 import { dropLayer, dropOverlay } from "../helpers.js";
 import { animStop } from "../scenario/lib.js";
 import { waveReset } from "./wave.js";
+import { tick } from "../tick.js";
+import { melt, weatherStart, rainStart, rings, fan, waitOverlay } from "./effects.js";
 
 const GP = 0x8007913c, SPRITES = 0x801eef68, NEW = 0x800794f4, FRAME_STEP = 0x80079278, IDS = 0x801f6698;
 const FAR = 0x800c8820, NEAR = 0x800a6db8, PLANE = 0x800b1c20, CLUTS = 0x800c4820, SNOW_CLUT = 0x800c8420;
@@ -203,15 +205,32 @@ export function effectsOff(m) {
   m.write(GP + 0x38e, 0, 1);
 }
 
-// 0x800418d0 effect(mode): the scene effects switch; only mode 0 (all off) is ported.
-// Mode 0: animations stopped (unless 0x800792c3), the weather ended (gp[0x1d8] != -1),
-// effects off, the wave reset, the flash sprite back to layer 0xc, layers 2 and 3 dropped.
-export function effect(ctx, mode) {
-  const { m } = ctx, g8 = (o) => m.read(GP + o, 1);
-  if ((mode & 0xffff) >= 0x100) return;
-  if ((mode & 0xffff) !== 0) { ctx.call(0x800418d0, [mode], ctx.sp); return; } // other modes: not ported yet (native on the oracle)
-  const keep = m.read(0x800792c3, 1);
-  if (!keep) animStop(m);
+// 0x800418d0 effect(mode): the scene effects switch (jump table 0x800125ac). Ported modes:
+//   0 all off: animations stopped (unless 0x80079283), then as 255
+//   255 the weather ended (gp[0x1d8] != -1), effects off, the wave reset, the flash sprite
+//       back to layer 0xc, layers 2 and 3 dropped (unless 0x80079283)
+//   6 melt   8 snow   9 / 56 heavy snow   92 rain   17 rings   20 / 30 fans
+//   36 / 37 0x800792b1 = 0 / 1   44 0x800792ac = 44, gp[0x1d0] = 1
+// Other modes go to the original through ctx.call (native on the oracle).
+export function* effect(ctx, mode) {
+  const { m } = ctx, g8 = (o) => m.read(GP + o, 1), sub = { ...ctx, sp: ctx.sp - 0x20 };
+  mode &= 0xffff;
+  if (mode >= 0x100) return;
+  switch (mode) {
+    case 0: if (!m.read(0x80079283, 1)) animStop(m); break;
+    case 255: break;
+    case 6: yield* melt(sub, 0); return;
+    case 8: m.write(0x800792ae, mode, 1); yield* weatherStart(sub, 0); return;
+    case 9: case 56: m.write(0x800792ae, mode, 1); yield* weatherStart(sub, 1); return;
+    case 92: m.write(0x800792ae, mode, 1); yield* rainStart(sub); return;
+    case 17: yield* rings(sub); return;
+    case 20: fan(sub, 1, 0); m.write(0x800792ac, 0, 1); return;
+    case 30: fan(sub, 1, 1); yield* tick(sub); yield* waitOverlay(sub); m.write(0x800792ac, 0x61, 1); return;
+    case 36: m.write(0x800792b1, 0, 1); return;
+    case 37: m.write(0x800792b1, 1, 1); return;
+    case 44: m.write(0x800792ac, mode, 1); m.write(GP + 0x1d0, 1, 1); return;
+    default: ctx.call(0x800418d0, [mode], ctx.sp); return;
+  }
   m.write(GP + 0x1cc, 0, 4); m.write(GP + 0x390, 0, 1);
   if (s8(g8(0x1d8)) !== -1) { m.write(GP + 0x1d8, 0xff, 1); dropLayer(m, 3); m.write(GP + 0x1e0, 0xffff, 2); }
   effectsOff(m);
@@ -222,6 +241,6 @@ export function effect(ctx, mode) {
   m.write(GP + 0x1d0, 0, 1);
   spriteLayer(m, m.read(IDS + 4, 2), 0xc);
   if (g8(0x1d2) === 1) unported(0x80041a6c);
-  if (!m.read(0x800792c3, 1)) { dropLayer(m, 2); dropLayer(m, 3); }
+  if (!m.read(0x80079283, 1)) { dropLayer(m, 2); dropLayer(m, 3); }
   m.write(0x800792ae, 0, 1); m.write(0x800792ac, 0, 1);
 }
