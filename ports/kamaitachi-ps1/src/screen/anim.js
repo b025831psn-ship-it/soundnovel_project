@@ -9,6 +9,7 @@
 import { loadPicture } from "./picture.js";
 import { windowPalette } from "./fader.js";
 import { dropLayer, dropPicture } from "../helpers.js";
+import { ike } from "./ike.js";
 
 const GP = 0x8007913c, FRAME_STEP = 0x80079278, AUTO = 0x800792c6, AUTO_HOLD = 0x8007928e;
 const OFF = 0x80079283, ACTIVE = 0x80079530, OP = 0x8007950c, SCRIPT = 0x801fdfc8, PC = 0x8007949a, WAIT = 0x80079436;
@@ -52,7 +53,7 @@ export function animTick(ctx) {
       continue;
     }
     w8(WAIT + i, r8(pair(i) + 1));
-    call(0x800360b8, [pacMember(m, r32(GP + 0x3bc), s8(r8(OP + i))), r32(BUF)]);
+    ike(m, pacMember(m, r32(GP + 0x3bc), s8(r8(OP + i))), r32(BUF)); // 0x800360b8
     const k = r8(KIND + i), at = [r32(BUF), r16(X + 2 * i), r16(Y + 2 * i)];
     const sub = { ...ctx, sp };
     if (k === 1) loadPicture(sub, 0xb, ...at);

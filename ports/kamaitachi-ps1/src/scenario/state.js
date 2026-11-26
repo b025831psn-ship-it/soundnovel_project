@@ -17,6 +17,7 @@ import { pictureSprite } from "./basic.js";
 import { windowPalette } from "../screen/fader.js";
 import { spriteClearAll } from "../screen/sprites.js";
 import { memcpy } from "../screen/weather.js";
+import { loadPicture } from "../screen/picture.js";
 
 const SKIP = 0x80079295, NO_EFFECTS = 0x800792a0, VARS = 0x80079558, SEEN = 0x801f5bc0;
 const endFrame = (m) => m.write(0x8007913c + 0x15c, 1, 1);
@@ -75,7 +76,7 @@ HANDLERS[0x4d] = function* (ctx) {
 
 HANDLERS[0x4e] = function* (ctx) {
   const { m } = ctx, sp = ctx.sp - 0x18, sub = { ...ctx, sp };
-  ctx.call(0x8001bbc4, [], sp);
+  sceneReset(sub);
   for (let i = 0; i < 16; i++) { m.write(0x8009da48 + 8 * i + 4, 0, 4); m.write(0x8009da48 + 8 * i, 0, 4); }
   m.write(0x800795e4, 5, 1); m.write(0x800795e6, 0xf, 1); m.write(0x800795e5, 0, 1);
   ctx.call(0x800418d0, [0], sp);
@@ -164,3 +165,26 @@ HANDLERS[0x5e] = function* (ctx) {
   }
   endFrame(m);
 };
+
+// 0x8001c7fc loadPage30(id): BGD `id` through the SDW buffer to texture page 0x1e.
+function loadPage30(ctx, id) {
+  const { m } = ctx, sp = ctx.sp - 0x18;
+  ctx.call(0x800369f8, [1, m.read(0x80079484, 4) >>> 0, id & 0xffff], sp);
+  loadPicture({ ...ctx, sp }, 0x1e, m.read(0x80079484, 4) >>> 0);
+}
+
+// 0x8001bbc4 sceneReset(): no layer sprites or pictures, the scene flags back to their
+// defaults; the first time (0x80079288) also the shared page 0x1e (BGD 0x23f6).
+export function sceneReset(ctx) {
+  const { m } = ctx, w8 = (a, v) => m.write(a, v & 0xff, 1), w16 = (a, v) => m.write(a, v & 0xffff, 2);
+  for (let i = 0; i < 0x16; i++) w16(0x801f6698 + 2 * i, 0);
+  for (let i = 0; i < 4; i++) { w16(0x801fec68 + 2 * i, -1); w16(0x801f7320 + 2 * i, -1); }
+  for (let i = 0; i < 4; i++) { w16(0x80079450 + 2 * i, -1); w16(0x80079618 + 2 * i, -1); }
+  const first = !m.read(0x80079288, 1);
+  w8(0x80079284, 0); w16(0x80079290, -1); w8(0x80079295, 0); w8(0x80079296, 0); w8(0x80079297, 0);
+  w8(0x8007913c + 0x15c, 0); w8(0x8007913c + 1, 0); w8(0x8007913c + 2, 0);
+  w8(0x800792b1, 1); w8(0x800792b2, 0); w8(0x8007913c + 3, -1); w8(0x8007913c + 0x45c, -1);
+  w8(0x8007929a, 0); w8(0x80079299, 0); w8(0x800792ba, 0); w8(0x800792b9, 0);
+  if (first) loadPage30({ ...ctx, sp: ctx.sp - 0x18 }, 0x23f6);
+  w8(0x80079288, 1);
+}
