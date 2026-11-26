@@ -15,11 +15,17 @@ const HOLD = 4; // frames a pulse is held, as a quick press
 async function fetchBytes(url, onProgress) {
   const r = await fetch(url);
   if (!r.ok) throw new Error(`${url}: ${r.status}`);
-  const total = +r.headers.get("content-length") || 0, reader = r.body?.getReader();
-  if (!reader || !total) return new Uint8Array(await r.arrayBuffer());
-  const out = new Uint8Array(total); let n = 0;
-  for (;;) { const { done, value } = await reader.read(); if (done) break; out.set(value, n); n += value.length; onProgress?.(value.length); }
-  return n === total ? out : out.subarray(0, n);
+  // With Content-Encoding (the test server gzips) the length is the compressed size: grow the buffer as needed.
+  let total = +r.headers.get("content-length") || 0;
+  const reader = r.body?.getReader();
+  if (!reader) return new Uint8Array(await r.arrayBuffer());
+  let out = new Uint8Array(total || 1 << 20), n = 0;
+  for (;;) {
+    const { done, value } = await reader.read(); if (done) break;
+    if (n + value.length > out.length) { const grown = new Uint8Array(Math.max(out.length * 2, n + value.length)); grown.set(out.subarray(0, n)); out = grown; }
+    out.set(value, n); n += value.length; onProgress?.(value.length);
+  }
+  return n === out.length ? out : out.subarray(0, n);
 }
 
 export async function startMachine({ canvas, dataRoot, onProgress = null, requestFrame = requestAnimationFrame, now = () => performance.now() }) {
