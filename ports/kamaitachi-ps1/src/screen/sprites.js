@@ -143,3 +143,63 @@ export function sortOverlays(ctx) {
   const { m } = ctx;
   for (let i = 0; i < 8; i++) if ((m.read(OVERLAYS + i * SPRITE_SIZE, 4) >>> 0) !== 0x80000000) unported(0x8003ce6c);
 }
+
+// --- sprite table management ---
+const NEW = 0x800794f4, ALLOC = 0x80079528, PAGES = 0x801fd270, FREE = 0x80000000;
+
+// 0x8003b6fc: reset the sprite at NEW to its defaults (unused, 256x256, colour 0x80, scale 1.0, layer 8).
+export function spriteInit(m) {
+  const { r32, w8, w16, w32 } = io(m), s = r32(NEW);
+  w32(s, FREE); w16(s + 6, 0); w16(s + 4, 0); w16(s + 0xa, 0x100); w16(s + 8, 0x100); w16(s + 0xc, 0);
+  w8(s + 0xf, 0); w8(s + 0xe, 0); w8(s + 0x16, 0x80); w8(s + 0x15, 0x80); w8(s + 0x14, 0x80);
+  w16(s + 0x12, 0); w16(s + 0x10, 0); w8(s + 0x23, 1); w8(s + 0x22, 1); w16(s + 0x1a, 0); w16(s + 0x18, 0);
+  for (const o of [0x26, 0x24, 0x20, 0x1e]) w16(s + o, 0x1000);
+  w8(s + 0x30, 0x80); w32(s + 0x2c, 0); w8(s + 0x31, 0); w8(s + 0x32, 0); w8(s + 0x33, 8); w32(s + 0x34, 0);
+  w8(s + 0x38, 0); w8(s + 0x39, 0); w8(s + 0x3a, 0);
+}
+
+// 0x8003b7ec: every sprite back to its defaults, then 0x8002d388 (not ported yet: ctx.call).
+export function spriteClearAll(ctx) {
+  const { m } = ctx;
+  for (let i = 0; i < SPRITE_COUNT; i++) { m.write(ALLOC, i, 2); m.write(NEW, SPRITES + i * SPRITE_SIZE, 4); spriteInit(m); }
+  m.write(ALLOC, SPRITE_COUNT, 2);
+  ctx.call(0x8002d388, []);
+}
+
+// 0x8003ba54: take the first free sprite from 1 and set it up from texture page `page`
+// (page table 0x801fd270: 8 bytes per page) at (x, y) with (u, v, w, h). NEW = the sprite.
+export function spriteNew(ctx, page, x, y, u, v, w, h) {
+  const { m, gs } = ctx, { r16, r32, w8, w16, w32 } = io(m);
+  let i = 1;
+  for (;;) { w16(ALLOC, i); i = s16(r16(ALLOC)); if (i >= SPRITE_COUNT || r32(SPRITES + i * SPRITE_SIZE) === FREE) break; i++; }
+  w32(NEW, SPRITES + i * SPRITE_SIZE);
+  spriteInit(m);
+  const pg = s16(page), e = PAGES + pg * 8, s = r32(NEW);
+  w32(s, r32(e + 8)); w16(s + 8, w); w16(s + 0xa, h);
+  const ty = pg < 0x10 ? 0 : 0x100, tx = s16(pg - Math.trunc(pg / 16) * 16) << 6;
+  w8(s + 0xe, u); w8(s + 0xf, v);
+  w16(s + 4, r16(s + 4) + x); w16(s + 6, r16(s + 6) + y);
+  w16(s + 0xc, gs.GetTPage(r32(s), 0, s16(tx), s16(ty)));
+  w16(s + 0x10, r16(e)); w16(s + 0x12, r16(e + 4));
+  w32(SPRITES, FREE);
+}
+
+// 0x8001c838: spriteNew (y - 4), then attr |= bits, layer, one-frame sprite (0x39 = 1).
+export function spriteAdd(ctx, page, x, y, u, v, w, h, bits, layer) {
+  const { m } = ctx, { r32, w8, w16, w32 } = io(m);
+  spriteNew(ctx, page & 0xff, s16(x), s16(y) - 4, u & 0xffff, v & 0xffff, w & 0xffff, h & 0xffff);
+  const s = r32(NEW);
+  w8(s + 0x31, 1); w32(s, r32(s) | bits); w8(s + 0x33, layer); w16(s + 0x1e, 0x1000); w8(s + 0x39, 1);
+}
+
+// 0x8003bdc0 / 0x8003be10
+export function spriteLayer(m, id, layer) {
+  if (((id + 1) & 0xffff) < 2) return;
+  const e = SPRITES + s16(id) * SPRITE_SIZE;
+  if ((m.read(e, 4) >>> 0) !== FREE) m.write(e + 0x33, layer & 0xff, 1);
+}
+export function spriteOr(m, id, bits) {
+  id &= 0xffff; if (!id) return;
+  const e = SPRITES + id * SPRITE_SIZE, a = m.read(e, 4) >>> 0;
+  if (a !== FREE) m.write(e, (a | bits) >>> 0, 4);
+}

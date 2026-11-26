@@ -8,6 +8,7 @@ import { drawGlyph } from "../../src/text/glyph.js";
 import { textTask } from "../../src/text/text.js";
 import { LibGpu, LIBGPU_ENTRY } from "../../src/gpu/libgpu.js";
 import { frameFlip } from "../../src/screen/frame.js";
+import { spriteInit, spriteClearAll, spriteNew, spriteAdd, spriteLayer, spriteOr } from "../../src/screen/sprites.js";
 import { waveTick } from "../../src/screen/wave.js";
 import { shakeTick } from "../../src/screen/shake.js";
 import { inputTick, inputClear, padRead } from "../../src/input.js";
@@ -49,6 +50,15 @@ export const PORTS = {
     const ctx = (c) => ({ ...oracleCtx(c), padState: (port) => c.call(0x80064be4, [port]) | 0 });
     return [[0x80025440, (c) => { inputTick(ctx(c)); c.ret(); }], [0x80025600, (c) => { inputClear(c); c.ret(); }],
       [0x80025eec, (c) => { c.r[2] = padRead(ctx(c)); c.ret(); }]];
+  }, null],
+  sprite: [() => {
+    const ctx = (c) => ({ ...oracleCtx(c), gs: libgpuOf(c) }), st = (c, k) => c.read((c.r[29] >>> 0) + 0x10 + 4 * k, 4) | 0, a = (c, k) => c.r[4 + k] | 0;
+    return [
+      [0x8003b6fc, (c) => { spriteInit(c); c.ret(); }], [0x8003b7ec, (c) => { spriteClearAll(ctx(c)); c.ret(); }],
+      [0x8003ba54, (c) => { spriteNew(ctx(c), a(c, 0), a(c, 1), a(c, 2), a(c, 3), st(c, 0) & 0xffff, st(c, 1) & 0xffff, st(c, 2) & 0xffff); c.ret(); }],
+      [0x8001c838, (c) => { spriteAdd(ctx(c), a(c, 0), a(c, 1), a(c, 2), a(c, 3), st(c, 0), st(c, 1), st(c, 2), st(c, 3), st(c, 4) & 0xffff); c.ret(); }],
+      [0x8003bdc0, (c) => { spriteLayer(c, a(c, 0), a(c, 1)); c.ret(); }], [0x8003be10, (c) => { spriteOr(c, a(c, 0), a(c, 1)); c.ret(); }],
+    ];
   }, null],
   shake: [0x8003ede0, () => (c) => { shakeTick(oracleCtx(c)); c.ret(); }],
   wave: [0x8002cf5c, () => (c) => { waveTick(oracleCtx(c)); c.ret(); }],
