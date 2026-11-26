@@ -29,3 +29,22 @@ test("browser runtime steps retail bytes and exposes framebuffer/input/sound hoo
   assert.equal((await runtime.step()).frame, 1);
   assert.deepEqual(calls, [[0x2f, [7, 0, 0, 0], false]]);
 });
+
+test("an option-label return with no call frame advances instead of repeating", async (t) => {
+  const root = await mkdtemp(path.join(tmpdir(), "kamai-return-"));
+  t.after(async () => (await import("node:fs/promises")).rm(root, { recursive: true }));
+  await mkdir(path.join(root, "sce"));
+  await writeFile(path.join(root, "sce", "a.bin"), Uint8Array.of(0x15));
+  await writeFile(path.join(root, "sce", "b.bin"), Uint8Array.of(0x00, 0x41, 0));
+  const handlers = Array.from({ length: 256 }, () => "0x80000000");
+  const subhandlers = Array.from({ length: 108 }, () => "0x80000000");
+  const lengths = Array.from({ length: 256 }, () => ({ classification: "fixed", operandLength: 0 }));
+  const records = [{ id: 10, memberOffset: 0, path: "sce/a.bin" },
+    { id: 11, memberOffset: 1, path: "sce/b.bin" }];
+  await writeFile(path.join(root, "manifest.json"), JSON.stringify({ schema: "kamaitachi.ps1.port-data.v1",
+    opcodeTables: { primary: { handlers, lengths }, sub1d: { handlers: subhandlers, lengths: [] } },
+    archives: { "SCE.PAC": { resources: [{ id: 25, records }] } } }));
+  const runtime = await createRuntime(root, { resourceId: 25, recordId: 10 });
+  await runtime.step(); assert.equal(runtime.state.recordId, 11);
+  await runtime.step(); assert.equal(runtime.state.events[0].kind, "text");
+});

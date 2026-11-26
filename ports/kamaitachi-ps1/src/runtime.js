@@ -15,6 +15,12 @@ export async function createRuntime(portDataRoot, { sound = null, renderer = new
     rows: [], events: [], failure: null, frame: 0 };
   const vm = new ScenarioVM({ primaryHandlers: primary.handlers, sub1dHandlers: sub1d.handlers,
     primaryLengths: primary.lengths || [], sub1dLengths: sub1d.lengths || [], sound });
+  const nextRecord = (from = state) => {
+    const resource = data.resources.get(Number(from.resourceId));
+    const index = resource?.records?.findIndex((row) => row.id === Number(from.recordId)) ?? -1;
+    return index >= 0 && index + 1 < resource.records.length
+      ? { resourceId: from.resourceId, recordId: resource.records[index + 1].id, offset: 0 } : null;
+  };
   const runtime = {
     input, sound, renderer, state,
     get framebuffer() { return renderer.rgba; },
@@ -45,11 +51,13 @@ export async function createRuntime(portDataRoot, { sound = null, renderer = new
         const transfer = [...events].reverse().find((event) => ["jump", "call", "return", "branch", "ending"].includes(event.kind));
         if (!choice && transfer?.kind === "jump") Object.assign(state, resolveLocation(data, transfer.target));
         else if (!choice && transfer?.kind === "call") { state.stack.push(transfer.returnTo); Object.assign(state, resolveLocation(data, transfer.target)); }
-        else if (!choice && transfer?.kind === "return" && state.stack.length) Object.assign(state, state.stack.pop());
+        else if (!choice && transfer?.kind === "return") {
+          const target = state.stack.length ? state.stack.pop() : nextRecord();
+          if (target) Object.assign(state, target);
+        }
         else if (!choice && transfer?.kind === "branch") Object.assign(state,
           resolveLocation(data, branchPolicy(transfer, state) ? transfer.target : transfer.fallthrough));
-        if (!choice && !transfer) { const resource = data.resources.get(state.resourceId), index = resource.records.findIndex((r) => r.id === state.recordId);
-          if (index + 1 < resource.records.length) Object.assign(state, { recordId: resource.records[index + 1].id, offset: 0 }); }
+        if (!choice && !transfer) { const target = nextRecord(); if (target) Object.assign(state, target); }
       }
       renderer.stepEffects(); sound?.frame?.(); state.frame++;
       return { frame: state.frame, waiting: state.waiting, choice: state.choice, events: state.events,

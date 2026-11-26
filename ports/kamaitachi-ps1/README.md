@@ -101,6 +101,12 @@ reaches the next choice at `25:13`; it no longer executes both option bodies
 linearly. `run-all` uses isolated-record mode so every one of the 3,912 records
 is still scanned exactly once.
 
+Choice-label records end in opcode `15` and are entered without a VM call
+frame. A runtime `return` with an empty stack therefore advances to the next
+record instead of re-entering the same label. This fixes the former `25:10`
+loop: fresh play proceeds through `25:12` and reaches the two-row choice at
+`25:13`.
+
 Text opcodes `00` and `17` carry Shift-JIS plus inline renderer escapes rather
 than plain Shift-JIS alone. Observed pairs include `n1`/`n2` name insertion,
 `C4`/`C0` style or name-slot selection, `v0`/`v1` and `c0`/`c1` choice-body
