@@ -334,13 +334,13 @@ html.filled, html.filled body { overflow: hidden; }
 #picture {
   position: absolute; top: 0; left: 0; display: block;
   image-rendering: auto;
-  filter: brightness(.58) saturate(1.05) blur(.4px);
+  filter: blur(.4px); /* the picture at the cartridge's own brightness (태우 2026-11-26) */
   will-change: transform;
 }
 #picture.pan { transition: transform .9s cubic-bezier(.4, 0, .2, 1); }
 .veil {
   position: absolute; inset: 0; pointer-events: none;
-  background: linear-gradient(to bottom, rgba(0, 0, 0, .38), rgba(0, 0, 0, .12) 45%, rgba(0, 0, 0, .3));
+  background: none; /* no shade over the picture: the story glyphs carry their own dark edge */
 }
 .page {
   position: absolute; inset: 0; display: flex; flex-direction: column; gap: 22px;

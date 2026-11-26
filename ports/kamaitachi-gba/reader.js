@@ -3,6 +3,8 @@
 // it in large type. The game itself keeps running on the hidden 240x160 screen; this layer only reads
 // window.kamaitachi (the picture before text, the page's glyphs, the choice lists) and answers taps
 // the way the screen does. The game's own screens (title, bookmarks, menu) show the original screen.
+import { toneColor } from "./src/screen.js";
+
 const $ = (id) => document.getElementById(id);
 const shell = $("shell");
 const stage = $("stage");
@@ -140,16 +142,13 @@ function paintExtended(ctx, image, edit, people, width, height, screen) {
   const scale = width / 240;
   const over = edit.core !== "ai" || people;
   ctx.save();
-  ctx.imageSmoothingEnabled = true;
-  // With the original laid over, the extension's colours are matched to the original's edges first
-  // (the generated picture drifts a little in tone), and the original's top and bottom rows fade
-  // into it, so no line shows where they meet (태우 2026-11-26).
+  // The extension files hold the cartridge's raw colours (as assets/bg does), so they go through the
+  // same 明度, 彩度 and fade as the original: as bright as it, and fading with it (태우 2026-11-26).
+  // With the original laid over, its top and bottom rows fade into the extension.
   const reference = over ? fullOriginal(screen) : null;
-  ctx.drawImage(reference ? matched(image, currentId, topOf(edit), reference) : image, 0, 0, width, height);
-  // The extension fades in and out with the original (the cartridge's slot-1 fade darkens the
-  // picture's palette), so a scene change never shows the original alone and the extension after.
-  const dim = fadeOf(screen);
-  if (dim > 0) { ctx.fillStyle = `rgba(0,0,0,${dim})`; ctx.fillRect(0, 0, width, height); }
+  ctx.imageSmoothingEnabled = false;
+  ctx.drawImage(toned(image, screen, currentId, topOf(edit), reference), 0, 0, width, height);
+  ctx.imageSmoothingEnabled = true;
   if (over) {
     const band = FEATHER * scale;
     seam.width = width; seam.height = 160 * scale;
@@ -182,12 +181,6 @@ function paintExtended(ctx, image, edit, people, width, height, screen) {
   k.globalCompositeOperation = "source-over";
   ctx.drawImage(soft, 0, 0);
 }
-// How far the picture is faded toward black: 08000AC0's coefficient (slot 1 >> 11, less one) shifts
-// every channel down 3 of 31 per step below 15, and 0 is black.
-function fadeOf(screen) {
-  const coefficient = Math.max(0, Math.min(15, ((screen?.brightness?.[1] ?? 0x8000) >> 11) - 1));
-  return coefficient ? Math.min(1, ((15 - coefficient) * 3) / 31) : 1;
-}
 // The original at full brightness (once per picture), for matching colours during a fade too: the
 // screen is drawn once with slot 1 at full and put back as it was.
 const fullCache = new WeakMap(); // screen.background -> RGBA 240x160
@@ -212,49 +205,84 @@ function fullOriginal(screen) {
 const topOf = (edit) => (Number.isFinite(edit?.top) ? Math.max(0, Math.min(200, Math.round(edit.top))) : EXTENDED_TOP);
 const soft = document.createElement("canvas"), seam = document.createElement("canvas");
 const FEATHER = 6; // GBA rows over which the original's top and bottom edges fade into the extension
-// The extension with its part above the original scaled per channel so that its rows next to the
-// original average the same colour as the original's first rows (below: its last rows). Worked out
-// once per picture, from the original as it first shows.
-const matchedCache = new Map(); // id -> { image, small, key, canvas }
-function matched(image, id, at, original) {
-  let hit = matchedCache.get(id);
-  if (hit?.image !== image) {
-    const small = Object.assign(document.createElement("canvas"), { width: 240, height: EXTENDED_HEIGHT });
-    const s = small.getContext("2d", { willReadFrequently: true });
-    s.drawImage(image, 0, 0, 240, EXTENDED_HEIGHT);
-    hit = { image, small: s.getImageData(0, 0, 240, EXTENDED_HEIGHT).data, key: "", canvas: image };
-    matchedCache.set(id, hit);
-  }
-  const mean = (d, from, to) => {
-    const sum = [0, 0, 0]; let n = 0;
-    for (let i = 4 * 240 * from; i < 4 * 240 * to; i += 4, n++) for (let ch = 0; ch < 3; ch++) sum[ch] += d[i + ch];
-    return sum.map((v) => v / n);
+// The extension as the screen would show it: every pixel through 08001D74 (toneColor) with the
+// screen's 明度, 彩度, palette variant and fade step. With the original laid over, the part above the
+// original is also scaled per channel so that its rows next to it average the same colour as the
+// original's first rows (below: its last rows), worked out at full brightness.
+const extensions = new Map(); // id -> { image, raw, canvas, key, gains, gainKey, reference }
+const toneTables = new Map(); // "adjustment,saturation,factor" -> Int32Array over BGR555, -1 until used
+function toneTable(saturation, adjustment, factor) {
+  const key = `${adjustment},${saturation},${factor}`;
+  let table = toneTables.get(key);
+  if (!table) toneTables.set(key, (table = new Int32Array(32768).fill(-1)));
+  return (color) => {
+    if (!color) return 0; // color zero is left untouched
+    if (table[color] < 0) table[color] = toneColor(color, saturation, adjustment, factor);
+    return table[color];
   };
-  const BAND = 12;
-  // A dark original leaves the extension as it is.
-  const gains = (ai, orig) => (orig[0] + orig[1] + orig[2] < 24 ? [1, 1, 1]
-    : ai.map((v, ch) => Math.max(0.6, Math.min(1.6, (orig[ch] + 4) / (v + 4)))));
-  const top = at > 0 ? gains(mean(hit.small, at, at + BAND), mean(original, 0, BAND)) : [1, 1, 1];
-  const bottom = at < 200 ? gains(mean(hit.small, at + 160 - BAND, at + 160), mean(original, 160 - BAND, 160)) : [1, 1, 1];
-  const key = [at, ...top, ...bottom].map((g) => Math.round(g * 50)).join();
-  if (key === hit.key) return hit.canvas;
-  hit.key = key;
-  if (top.concat(bottom).every((g) => Math.round(g * 50) === 50)) { hit.canvas = image; return image; }
-  const w = image.naturalWidth, h = image.naturalHeight;
-  const canvas = Object.assign(document.createElement("canvas"), { width: w, height: h });
-  const c = canvas.getContext("2d", { willReadFrequently: true });
-  c.drawImage(image, 0, 0);
-  const pixels = c.getImageData(0, 0, w, h), data = pixels.data;
-  const split = Math.round(((at + 80) * h) / EXTENDED_HEIGHT);
-  for (let y = 0; y < h; y++) {
-    const g = y < split ? top : bottom;
-    for (let x = 0, i = 4 * y * w; x < w; x++, i += 4) {
-      data[i] = Math.min(255, data[i] * g[0]); data[i + 1] = Math.min(255, data[i + 1] * g[1]); data[i + 2] = Math.min(255, data[i + 2] * g[2]);
+}
+// raw RGBA -> out through `tone`, scaled by gains[0] above row `split` and by gains[1] from it.
+function toneRows(raw, out, tone, gains, split) {
+  const wide = (v) => (v << 3) | (v >> 2);
+  for (let y = 0, i = 0; y < EXTENDED_HEIGHT; y++) {
+    const g = gains[y < split ? 0 : 1];
+    for (let x = 0; x < 240; x++, i += 4) {
+      const color = tone((raw[i] >> 3) | ((raw[i + 1] >> 3) << 5) | ((raw[i + 2] >> 3) << 10));
+      out[i] = wide(color & 31) * g[0];
+      out[i + 1] = wide((color >> 5) & 31) * g[1];
+      out[i + 2] = wide((color >> 10) & 31) * g[2];
+      out[i + 3] = 255;
     }
   }
-  c.putImageData(pixels, 0, 0);
-  hit.canvas = canvas;
-  return canvas;
+  return out;
+}
+function toned(image, screen, id, at, original) {
+  let hit = extensions.get(id);
+  if (hit?.image !== image) {
+    const canvas = Object.assign(document.createElement("canvas"), { width: 240, height: EXTENDED_HEIGHT });
+    const c = canvas.getContext("2d", { willReadFrequently: true });
+    c.imageSmoothingEnabled = false;
+    c.drawImage(image, 0, 0, 240, EXTENDED_HEIGHT);
+    hit = { image, raw: c.getImageData(0, 0, 240, EXTENDED_HEIGHT).data, canvas, key: "", gains: null, gainKey: "" };
+    extensions.set(id, hit);
+  }
+  const { brightness, saturation } = screen?.tone ?? { brightness: 5, saturation: 5 };
+  const factor = [15, 13, 11, 6][screen?.background?.variant] ?? 15;
+  const coefficient = Math.max(0, Math.min(15, ((screen?.brightness?.[1] ?? 0x8000) >> 11) - 1));
+  const adjustment = coefficient ? Math.max(-31, brightness + (coefficient - 15) * 3) : -31;
+  const plain = [[1, 1, 1], [1, 1, 1]];
+  const gainKey = original ? `${at},${brightness},${saturation},${factor}` : "none";
+  if (hit.gainKey !== gainKey || hit.reference !== original) {
+    hit.gainKey = gainKey;
+    hit.reference = original;
+    hit.gains = plain;
+    hit.key = "";
+    if (original) {
+      const full = toneRows(hit.raw, new Uint8ClampedArray(hit.raw.length), toneTable(saturation, brightness, factor), plain, 0);
+      const mean = (d, from, to) => {
+        const sum = [0, 0, 0]; let n = 0;
+        for (let i = 4 * 240 * from; i < 4 * 240 * to; i += 4, n++) for (let ch = 0; ch < 3; ch++) sum[ch] += d[i + ch];
+        return sum.map((v) => v / n);
+      };
+      const BAND = 12;
+      // A dark original leaves the extension as it is.
+      const gains = (ai, orig) => (orig[0] + orig[1] + orig[2] < 24 ? [1, 1, 1]
+        : ai.map((v, ch) => Math.max(0.8, Math.min(1.25, (orig[ch] + 4) / (v + 4)))));
+      hit.gains = [
+        at > 0 ? gains(mean(full, at, at + BAND), mean(original, 0, BAND)) : [1, 1, 1],
+        at < 200 ? gains(mean(full, at + 160 - BAND, at + 160), mean(original, 160 - BAND, 160)) : [1, 1, 1],
+      ];
+    }
+  }
+  const key = `${adjustment},${gainKey}`;
+  if (key !== hit.key) {
+    hit.key = key;
+    const c = hit.canvas.getContext("2d");
+    const pixels = c.createImageData(240, EXTENDED_HEIGHT);
+    toneRows(hit.raw, pixels.data, toneTable(saturation, adjustment, factor), hit.gains, at + 80);
+    c.putImageData(pixels, 0, 0);
+  }
+  return hit.canvas;
 }
 // The original whole, over a blurred, darkened enlargement of itself.
 function paintFrame(ctx, base, width, height, screen) {
