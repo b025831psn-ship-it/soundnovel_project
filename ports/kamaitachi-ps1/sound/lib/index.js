@@ -10,6 +10,7 @@ import { Notes } from "./notes.js";
 import { Controls } from "./controls.js";
 import { SeqVol } from "./seqvol.js";
 import { Entry } from "./entry.js";
+import { Reverb } from "./reverb.js";
 
 export const ADDR = {
   // entry points
@@ -18,6 +19,10 @@ export const ADDR = {
   SsSetMVol: 0x80058678, SsSetRVol: 0x800586c8, SpuSetReverbDepth: 0x80060f48, SpuSetCommonAttr: 0x800615e8,
   SpuGetKeyStatus: 0x80061368, SsUtKeyOffV: 0x8005a4e8, SsUtSetVVol: 0x8005a974, SsUtChangePitch: 0x80059848,
   SsUtKeyOn: 0x80059cd8, SsUtKeyOnV: 0x8005a188,
+  // reverb and transfer
+  spuRegAddr: 0x8005f154, SpuSetReverb: 0x800603b8, spuReverbOverlap: 0x80060508, SpuSetReverbModeParam: 0x80060598,
+  spuSetReverbRegs: 0x80060a78, SpuClearReverbWorkArea: 0x80060ff8, spuWaitEvent: 0x80061198, spuTransfer: 0x8005edec,
+  dmaDpcrWrite: 0x8005f2d0, dmaDpcrRead: 0x8005f2f8,
   // sequencer
   SsSeqCalledTbyT: 0x80054738, seqCrescendo: 0x800549a8, seqDecrescendo: 0x80054cb8,
   seqPause: 0x80055058, seqPlayTick: 0x800550f8, seqTick: 0x80055128, seqEndOfTrack: 0x80055224,
@@ -61,4 +66,4 @@ export class SoundLib {
     return this[name](...args);
   }
 }
-Object.assign(SoundLib.prototype, Access, SeqPlay, Voice, SpuVoice, Notes, Controls, SeqVol, Entry);
+Object.assign(SoundLib.prototype, Access, SeqPlay, Voice, SpuVoice, Notes, Controls, SeqVol, Entry, Reverb);
