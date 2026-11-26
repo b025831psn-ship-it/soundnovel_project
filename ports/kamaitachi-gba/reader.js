@@ -109,11 +109,27 @@ function pictureId(game) {
 // bottom softened into blur over `blur` GBA rows, more toward the edge.
 function paintExtended(ctx, image, edit, people, width, height) {
   const scale = width / 240;
+  const over = edit.core !== "ai" || people;
   ctx.save();
   ctx.imageSmoothingEnabled = true;
-  ctx.drawImage(image, 0, 0, width, height);
-  ctx.imageSmoothingEnabled = false;
-  if (edit.core !== "ai" || people) ctx.drawImage(middle, 0, EXTENDED_TOP * scale, width, 160 * scale);
+  // With the original laid over, the extension's colours are matched to the original's edges first
+  // (the generated picture drifts a little in tone), and the original's top and bottom rows fade
+  // into it, so no line shows where they meet (태우 2026-11-26).
+  ctx.drawImage(over ? matched(image, currentId) : image, 0, 0, width, height);
+  if (over) {
+    const band = FEATHER * scale;
+    seam.width = width; seam.height = 160 * scale;
+    const k = seam.getContext("2d");
+    k.imageSmoothingEnabled = false;
+    k.drawImage(middle, 0, 0, width, seam.height);
+    k.globalCompositeOperation = "destination-in";
+    const fade = k.createLinearGradient(0, 0, 0, seam.height);
+    fade.addColorStop(0, "rgba(0,0,0,0)"); fade.addColorStop(band / seam.height, "#000");
+    fade.addColorStop(1 - band / seam.height, "#000"); fade.addColorStop(1, "rgba(0,0,0,0)");
+    k.fillStyle = fade; k.fillRect(0, 0, width, seam.height);
+    k.globalCompositeOperation = "source-over";
+    ctx.drawImage(seam, 0, EXTENDED_TOP * scale);
+  }
   ctx.restore();
   const rows = Math.max(0, Math.min(100, Number(edit.blur) || 0)) * scale;
   if (!rows) return;
@@ -131,7 +147,53 @@ function paintExtended(ctx, image, edit, people, width, height) {
   k.globalCompositeOperation = "source-over";
   ctx.drawImage(soft, 0, 0);
 }
-const soft = document.createElement("canvas");
+const soft = document.createElement("canvas"), seam = document.createElement("canvas");
+const FEATHER = 6; // GBA rows over which the original's top and bottom edges fade into the extension
+// The extension with its part above the original scaled per channel so that its rows next to the
+// original average the same colour as the original's first rows (below: its last rows). Worked out
+// once per picture, from the original as it first shows.
+const matchedCache = new Map(); // id -> { image, small, key, canvas }
+function matched(image, id) {
+  let hit = matchedCache.get(id);
+  if (hit?.image !== image) {
+    const small = Object.assign(document.createElement("canvas"), { width: 240, height: EXTENDED_HEIGHT });
+    const s = small.getContext("2d", { willReadFrequently: true });
+    s.drawImage(image, 0, 0, 240, EXTENDED_HEIGHT);
+    hit = { image, small: s.getImageData(0, 0, 240, EXTENDED_HEIGHT).data, key: "", canvas: image };
+    matchedCache.set(id, hit);
+  }
+  const original = middleCtx.getImageData(0, 0, 240, 160).data;
+  const mean = (d, from, to) => {
+    const sum = [0, 0, 0]; let n = 0;
+    for (let i = 4 * 240 * from; i < 4 * 240 * to; i += 4, n++) for (let ch = 0; ch < 3; ch++) sum[ch] += d[i + ch];
+    return sum.map((v) => v / n);
+  };
+  const BAND = 12;
+  // A dark or not yet drawn original (fades) leaves the extension as it is.
+  const gains = (ai, orig) => (orig[0] + orig[1] + orig[2] < 24 ? [1, 1, 1]
+    : ai.map((v, ch) => Math.max(0.6, Math.min(1.6, (orig[ch] + 4) / (v + 4)))));
+  const top = gains(mean(hit.small, EXTENDED_TOP, EXTENDED_TOP + BAND), mean(original, 0, BAND));
+  const bottom = gains(mean(hit.small, EXTENDED_TOP + 160 - BAND, EXTENDED_TOP + 160), mean(original, 160 - BAND, 160));
+  const key = [...top, ...bottom].map((g) => Math.round(g * 50)).join();
+  if (key === hit.key) return hit.canvas;
+  hit.key = key;
+  if (key === "50,50,50,50,50,50") { hit.canvas = image; return image; }
+  const w = image.naturalWidth, h = image.naturalHeight;
+  const canvas = Object.assign(document.createElement("canvas"), { width: w, height: h });
+  const c = canvas.getContext("2d", { willReadFrequently: true });
+  c.drawImage(image, 0, 0);
+  const pixels = c.getImageData(0, 0, w, h), data = pixels.data;
+  const split = Math.round(((EXTENDED_TOP + 80) * h) / EXTENDED_HEIGHT);
+  for (let y = 0; y < h; y++) {
+    const g = y < split ? top : bottom;
+    for (let x = 0, i = 4 * y * w; x < w; x++, i += 4) {
+      data[i] = Math.min(255, data[i] * g[0]); data[i + 1] = Math.min(255, data[i + 1] * g[1]); data[i + 2] = Math.min(255, data[i + 2] * g[2]);
+    }
+  }
+  c.putImageData(pixels, 0, 0);
+  hit.canvas = canvas;
+  return canvas;
+}
 // The original whole, over a blurred, darkened enlargement of itself.
 function paintFrame(ctx, base, width, height, screen) {
   const scale = width / 240;
