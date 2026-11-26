@@ -33,6 +33,7 @@ export const TRIVIAL = {
 };
 
 export const HANDLERS = {}; // op -> function*(ctx), filled by the handler modules
+export const OP_COUNT = new Uint32Array(256); // commands run per opcode (coverage)
 
 function trivial(m, t) {
   const [kind, a, b, c] = t;
@@ -42,6 +43,7 @@ function trivial(m, t) {
 }
 
 export function* runOp(ctx, op) {
+  OP_COUNT[op]++;
   const t = TRIVIAL[op];
   if (t) { trivial(ctx.m, t); return; }
   const h = HANDLERS[op];
