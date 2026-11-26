@@ -1,6 +1,9 @@
 // Usage: node tools/oracle/compare-hybrid.mjs <dir> [seconds] [songs=1,2|all] [effects=ids|all|none] [only=name,..]
 // Runs each song/effect twice through sound/module.js: original libsnd only, then with the
 // JS routines from sound/lib swapped in. Reports the first SPU-write and RAM difference.
+// RAMP=frame,up|down,amount,frames[,startVol] starts a crescendo/decrescendo on the song at that frame
+// (the game itself only uses decrescendo, through stopMusic). TEMPO=frame,target,step,frames
+// starts a tempo ramp by setting the fields directly (the EXE has no setter for it).
 import { readFileSync } from "node:fs";
 import { LibsndOracle } from "./libsnd-oracle.mjs";
 import { attachHybrid } from "./hybrid.mjs";
@@ -30,7 +33,22 @@ function run(kind, id, hybrid) {
   const mod = new SoundModule(o.ss, tables, { loadMember: (k, i) => k === "MUS" ? musMember(mus.get(i)) : null });
   mod.reset();
   if (kind === "song") mod.playMusic(id, 0); else mod.startEffect(1000 + id, 0, 0, vceMember(vce.get(id)));
-  for (let f = 0; f < frames; f++) { mod.vsync(); mod.frame(); o.frame(1); }
+  const ramp = process.env.RAMP?.split(","), tempo = process.env.TEMPO?.split(",");
+  for (let f = 0; f < frames; f++) {
+    if (ramp && kind === "song" && f === +ramp[0]) {
+      const acc = mod.music.acc, cpu = o.cpu;
+      if (ramp[4]) cpu.call(0x800592c8, [acc, 0, +ramp[4], +ramp[4]]); // SsSeqSetVol
+      cpu.call(0x80059618, [acc, 0, +ramp[2], +ramp[3]]); // the original ramp setup, native in both runs
+      const p = (cpu.u32(0x801fdfd8 + acc * 4) + 0x98) >>> 0, up = ramp[1] === "up";
+      cpu.write(p, (cpu.u32(p) & ~0x30) | (up ? 0x10 : 0x20), 4);
+    }
+    if (tempo && kind === "song" && f === +tempo[0]) {
+      const cpu = o.cpu, p = (cpu.u32(0x801fdfd8 + mod.music.acc * 4)) >>> 0;
+      cpu.write(p + 0xac, +tempo[1], 4); cpu.write(p + 0x4e, +tempo[2], 2); cpu.write(p + 0xa8, +tempo[3], 4);
+      cpu.write(p + 0x98, cpu.u32(p + 0x98) | 0x40, 4);
+    }
+    mod.vsync(); mod.frame(); o.frame(1);
+  }
   return { o, used };
 }
 const ids = (arg, all) => arg === "none" ? [] : arg === "all" ? all : arg.split(",").map(Number);

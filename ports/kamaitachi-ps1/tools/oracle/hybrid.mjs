@@ -18,7 +18,7 @@ export function attachHybrid(oracle, { only, exclude = [] } = {}) {
     cpu.hooks.set(addr >>> 0, (c) => {
       const r = c.r, sp = r[29];
       const args = [r[4], r[5], r[6], r[7]];
-      for (let i = 4; i < 10; i++) args.push(c.read(sp + 4 * i, 4) | 0);
+      for (let i = 4; i < 13; i++) args.push(c.read(sp + 4 * i, 4) | 0);
       const v = lib[name](...args);
       c.r[2] = v | 0; c.ret();
     });
