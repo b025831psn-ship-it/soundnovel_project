@@ -10,6 +10,7 @@ import "./scenario/flow.js";
 import "./scenario/basic.js";
 import "./scenario/picture.js";
 import "./scenario/sound.js";
+import "./scenario/state.js";
 
 const AUTO = 0x800792c6, PAD_HELD = 0x801eef40, BLOCK = 0x800792a4, FRAME_STEP = 0x80079278;
 
