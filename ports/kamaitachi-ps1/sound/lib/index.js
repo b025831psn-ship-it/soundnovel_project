@@ -13,6 +13,8 @@ import { Entry } from "./entry.js";
 import { Reverb } from "./reverb.js";
 import { Malloc } from "./malloc.js";
 import { Vab } from "./vab.js";
+import { Init } from "./init.js";
+import { JsPlatform } from "./platform.js";
 
 export const ADDR = {
   // entry points
@@ -24,7 +26,7 @@ export const ADDR = {
   // reverb and transfer
   spuRegAddr: 0x8005f154, SpuSetReverb: 0x800603b8, spuReverbOverlap: 0x80060508, SpuSetReverbModeParam: 0x80060598,
   spuSetReverbRegs: 0x80060a78, SpuClearReverbWorkArea: 0x80060ff8, spuWaitEvent: 0x80061198, spuTransfer: 0x8005edec,
-  dmaDpcrWrite: 0x8005f2d0, dmaDpcrRead: 0x8005f2f8,
+  spuBusDmaWrite: 0x8005f2d0, spuBusDmaRead: 0x8005f2f8,
   // SPU memory and VAB
   SpuInitMalloc: 0x8005f3b8, spuMallocTidy: 0x8005f6e8, SpuMalloc: 0x8005f418, SpuMallocWithStartAddr: 0x8005fd48,
   spuMallocSplit: 0x8005f9e8, SpuFree: 0x8005fff8,
@@ -32,6 +34,12 @@ export const ADDR = {
   SsVabTransBody: 0x8005e5b8, SsVabTransCompleted: 0x8005e678, SsVabClose: 0x8005e0d8,
   SpuSetTransferMode: 0x800614b8, SpuSetTransferStartAddr: 0x80061458, SpuWrite: 0x800613f8, spuWriteData: 0x8005f06c,
   spuWriteIO: 0x8005eac8, spuDelay: 0x8005f320, printf: 0x80045678, SpuIsTransferCompleted: 0x800614e8, spuTestEvent: 0x80061598,
+  // set-up, tick, sequence open/close
+  SsInit: 0x80055f28, SpuInit: 0x8005e6a8, spuInitMode: 0x8005e6c8, spuInitHw: 0x8005e848, spuInitEvent: 0x8005e7b0,
+  ssInitVoices: 0x80055e38, ssVoiceInit: 0x8005b428, SsSetTableSize: 0x80058ec8, GetVideoMode: 0x80053e7c,
+  SsSetTickMode: 0x800590e8, SsStart: 0x800589a8, ssStart: 0x80058758, rcntStop: 0x80058ba0, rcntSet: 0x80058a68,
+  SsEnd: 0x80055d88, SsSetSerialAttr: 0x800585b8, SsSetMono: 0x8005e088, SsSetStereo: 0x8005e098,
+  SsSetReservedVoice: 0x8005e0a8, SsSeqOpen: 0x80055f58, seqOpenData: 0x800580c8, SsSeqClose: 0x80055ba4, seqClose: 0x80055a28,
   // sequencer
   SsSeqCalledTbyT: 0x80054738, seqCrescendo: 0x800549a8, seqDecrescendo: 0x80054cb8,
   seqPause: 0x80055058, seqPlayTick: 0x800550f8, seqTick: 0x80055128, seqEndOfTrack: 0x80055224,
@@ -67,7 +75,7 @@ export const ADDR = {
 export const NAME_AT = new Map(Object.entries(ADDR).map(([k, v]) => [v >>> 0, k]));
 
 export class SoundLib {
-  constructor(m) { this.m = m; }
+  constructor(m, platform = new JsPlatform()) { this.m = m; this.platform = platform; }
   // Call through a function pointer stored by the library (SEQ handler table etc.).
   jalr(addr, ...args) {
     const name = NAME_AT.get(addr >>> 0);
@@ -75,4 +83,4 @@ export class SoundLib {
     return this[name](...args);
   }
 }
-Object.assign(SoundLib.prototype, Access, SeqPlay, Voice, SpuVoice, Notes, Controls, SeqVol, Entry, Reverb, Malloc, Vab);
+Object.assign(SoundLib.prototype, Access, SeqPlay, Voice, SpuVoice, Notes, Controls, SeqVol, Entry, Reverb, Malloc, Vab, Init);

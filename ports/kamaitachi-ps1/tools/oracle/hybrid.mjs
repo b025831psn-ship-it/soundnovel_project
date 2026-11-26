@@ -7,8 +7,14 @@ import { SoundLib, ADDR, NAME_AT } from "../../sound/lib/index.js";
 export function attachHybrid(oracle, { only, exclude = [] } = {}) {
   const cpu = oracle.cpu;
   if (!Object.getOwnPropertyDescriptor(cpu, "sp")) Object.defineProperty(cpu, "sp", { get() { return this.r[29]; }, set(v) { this.r[29] = v | 0; } });
-  const lib = new SoundLib(cpu);
   const native = (addr) => (...a) => cpu.call(addr, a.map((x) => x | 0));
+  // libetc/libapi/BIOS calls stay the game's own code.
+  const platform = {
+    resetCallback: native(0x80053318), intCallback: native(0x80053348), dmaCallback: native(0x80053378),
+    vsyncCallbacks: native(0x800533a8), enterCriticalSection: native(0x8004e688), exitCriticalSection: native(0x8004e698),
+    openEvent: native(0x8005e828), enableEvent: native(0x8005e838),
+  };
+  const lib = new SoundLib(cpu, platform);
   const used = [], hits = new Map();
   for (const [name, addr] of Object.entries(ADDR)) {
     const ported = typeof SoundLib.prototype[name] === "function";

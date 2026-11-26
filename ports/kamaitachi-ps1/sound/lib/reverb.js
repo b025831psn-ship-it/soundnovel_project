@@ -14,7 +14,7 @@ export const REV_WORK = 0x80078d20; // work-area start per mode (8-byte units)
 export const REV_PRESET = 0x80078d70; // 68-byte register preset per mode
 export const MALLOC_TABLE = 0x80078d18;
 const XFER_ADDR = 0x80078cc8, XFER_DIR = 0x80078d00, XFER_BUF = 0x80078d04, XFER_BLOCKS = 0x80078d08;
-const DMA_MADR = 0x80078cb4, DMA_BCR = 0x80078cb8, DMA_CHCR = 0x80078cbc, DMA_DPCR = 0x80078cc4;
+const DMA_MADR = 0x80078cb4, DMA_BCR = 0x80078cb8, DMA_CHCR = 0x80078cbc, SPU_DELAY_REG = 0x80078cc4;
 const XFER_MODE = 0x80078ccc, XFER_CALLBACK = 0x80078ce8, XFER_EVENT = 0x80078838, ZERO_BUF = 0x8007889c;
 
 const by127 = (x) => Math.trunc(x / 127);
@@ -44,6 +44,11 @@ export const Reverb = {
   // 0x8005a6e8 SsUtSetReverbFeedback(fb)
   SsUtSetReverbFeedback(fb) {
     this.sw(REV_ATTR + 0x10, s16(fb)); this.sw(REV_ATTR, 0x10);
+    return this.SpuSetReverbModeParam(REV_ATTR);
+  },
+  // 0x8005a568 SsUtSetReverbDelay(delay)
+  SsUtSetReverbDelay(d) {
+    this.sw(REV_ATTR + 0xc, s16(d)); this.sw(REV_ATTR, 8);
     return this.SpuSetReverbModeParam(REV_ATTR);
   },
   SsUtReverbOff() { return this.SpuSetReverb(0); }, // 0x8005a728
@@ -208,7 +213,7 @@ export const Reverb = {
     if (mode !== 3) return 0;
     const want = this.lw(XFER_DIR) === 1 ? 0x30 : 0x20;
     if (!poll(() => (this.lhu(regs + 0x1aa) & 0x30) === want)) return -2;
-    if (this.lw(XFER_DIR) === 1) this.dmaDpcrRead(); else this.dmaDpcrWrite();
+    if (this.lw(XFER_DIR) === 1) this.spuBusDmaRead(); else this.spuBusDmaWrite();
     this.sw(XFER_BUF, a1);
     this.sw(XFER_BLOCKS, ((a2 >>> 6) + ((a2 & 0x3f) !== 0 ? 1 : 0)) | 0);
     this.sw(this.lw(DMA_MADR), this.lw(XFER_BUF));
@@ -216,7 +221,7 @@ export const Reverb = {
     this.sw(this.lw(DMA_CHCR), this.lw(XFER_DIR) === 1 ? 0x01000200 : 0x01000201);
     return 0;
   },
-  // 0x8005f2d0 / 0x8005f2f8: DMA4 priority in DPCR for writes / reads.
-  dmaDpcrWrite() { const p = this.lw(DMA_DPCR); this.sw(p, (this.lw(p) & 0xf0ffffff) | 0x20000000); },
-  dmaDpcrRead() { const p = this.lw(DMA_DPCR); this.sw(p, (this.lw(p) & 0xf0ffffff) | 0x22000000); },
+  // 0x8005f2d0 / 0x8005f2f8: SPU bus timing (0x1f801014, pointer at 0x80078cc4) for DMA writes / reads.
+  spuBusDmaWrite() { const p = this.lw(SPU_DELAY_REG); this.sw(p, (this.lw(p) & 0xf0ffffff) | 0x20000000); },
+  spuBusDmaRead() { const p = this.lw(SPU_DELAY_REG); this.sw(p, (this.lw(p) & 0xf0ffffff) | 0x22000000); },
 };
