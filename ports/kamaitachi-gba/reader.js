@@ -109,7 +109,7 @@ function pictureId(game) {
 }
 // The extended picture, the original laid over its middle (silhouettes and all), and the top and
 // bottom softened into blur over `blur` GBA rows, more toward the edge.
-function paintExtended(ctx, image, edit, people, width, height) {
+function paintExtended(ctx, image, edit, people, width, height, screen) {
   const scale = width / 240;
   const over = edit.core !== "ai" || people;
   ctx.save();
@@ -117,7 +117,12 @@ function paintExtended(ctx, image, edit, people, width, height) {
   // With the original laid over, the extension's colours are matched to the original's edges first
   // (the generated picture drifts a little in tone), and the original's top and bottom rows fade
   // into it, so no line shows where they meet (태우 2026-11-26).
-  ctx.drawImage(over ? matched(image, currentId, topOf(edit)) : image, 0, 0, width, height);
+  const reference = over ? fullOriginal(screen) : null;
+  ctx.drawImage(reference ? matched(image, currentId, topOf(edit), reference) : image, 0, 0, width, height);
+  // The extension fades in and out with the original (the cartridge's slot-1 fade darkens the
+  // picture's palette), so a scene change never shows the original alone and the extension after.
+  const dim = fadeOf(screen);
+  if (dim > 0) { ctx.fillStyle = `rgba(0,0,0,${dim})`; ctx.fillRect(0, 0, width, height); }
   if (over) {
     const band = FEATHER * scale;
     seam.width = width; seam.height = 160 * scale;
@@ -150,6 +155,33 @@ function paintExtended(ctx, image, edit, people, width, height) {
   k.globalCompositeOperation = "source-over";
   ctx.drawImage(soft, 0, 0);
 }
+// How far the picture is faded toward black: 08000AC0's coefficient (slot 1 >> 11, less one) shifts
+// every channel down 3 of 31 per step below 15, and 0 is black.
+function fadeOf(screen) {
+  const coefficient = Math.max(0, Math.min(15, ((screen?.brightness?.[1] ?? 0x8000) >> 11) - 1));
+  return coefficient ? Math.min(1, ((15 - coefficient) * 3) / 31) : 1;
+}
+// The original at full brightness (once per picture), for matching colours during a fade too: the
+// screen is drawn once with slot 1 at full and put back as it was.
+const fullCache = new WeakMap(); // screen.background -> RGBA 240x160
+function fullOriginal(screen) {
+  const background = screen?.background;
+  if (!background) return null;
+  let hit = fullCache.get(background);
+  if (!hit) {
+    const saved = screen.brightness[1];
+    if (((saved >> 11) - 1) >= 15) hit = new Uint8ClampedArray(screen.base);
+    else {
+      screen.brightness[1] = 0x8000;
+      screen.renderBackground();
+      hit = new Uint8ClampedArray(screen.base);
+      screen.brightness[1] = saved;
+      screen.renderBackground();
+    }
+    fullCache.set(background, hit);
+  }
+  return hit;
+}
 const topOf = (edit) => (Number.isFinite(edit?.top) ? Math.max(0, Math.min(200, Math.round(edit.top))) : EXTENDED_TOP);
 const soft = document.createElement("canvas"), seam = document.createElement("canvas");
 const FEATHER = 6; // GBA rows over which the original's top and bottom edges fade into the extension
@@ -157,7 +189,7 @@ const FEATHER = 6; // GBA rows over which the original's top and bottom edges fa
 // original average the same colour as the original's first rows (below: its last rows). Worked out
 // once per picture, from the original as it first shows.
 const matchedCache = new Map(); // id -> { image, small, key, canvas }
-function matched(image, id, at) {
+function matched(image, id, at, original) {
   let hit = matchedCache.get(id);
   if (hit?.image !== image) {
     const small = Object.assign(document.createElement("canvas"), { width: 240, height: EXTENDED_HEIGHT });
@@ -166,14 +198,13 @@ function matched(image, id, at) {
     hit = { image, small: s.getImageData(0, 0, 240, EXTENDED_HEIGHT).data, key: "", canvas: image };
     matchedCache.set(id, hit);
   }
-  const original = middleCtx.getImageData(0, 0, 240, 160).data;
   const mean = (d, from, to) => {
     const sum = [0, 0, 0]; let n = 0;
     for (let i = 4 * 240 * from; i < 4 * 240 * to; i += 4, n++) for (let ch = 0; ch < 3; ch++) sum[ch] += d[i + ch];
     return sum.map((v) => v / n);
   };
   const BAND = 12;
-  // A dark or not yet drawn original (fades) leaves the extension as it is.
+  // A dark original leaves the extension as it is.
   const gains = (ai, orig) => (orig[0] + orig[1] + orig[2] < 24 ? [1, 1, 1]
     : ai.map((v, ch) => Math.max(0.6, Math.min(1.6, (orig[ch] + 4) / (v + 4)))));
   const top = at > 0 ? gains(mean(hit.small, at, at + BAND), mean(original, 0, BAND)) : [1, 1, 1];
@@ -205,7 +236,7 @@ function paintFrame(ctx, base, width, height, screen) {
   const edit = editFor(currentId);
   if (edit?.mode === "extend") {
     const people = [screen?.silhouette?.vram].some((v) => v && v.some((b) => b));
-    paintExtended(ctx, extendedImage(currentId), edit, people, width, height);
+    paintExtended(ctx, extendedImage(currentId), edit, people, width, height, screen);
     return;
   }
   const cover = height / 160;
@@ -349,12 +380,16 @@ function cropLeft(base, layer, width) {
 }
 
 let shownBase = null, shownBackground = null, shownLayer = null, crop = -1, shownEdit = -1, settledZoom = 1.2;
+const backgroundIds = new WeakMap();
 function drawPicture(game) {
   const screen = game.screen;
   const base = screen.base;
   const size = { width: reader.clientWidth, height: reader.clientHeight };
   if (!base || !size.height) return;
-  const id = pictureId(game);
+  // The id is the one of the picture on screen: the scene names the next picture as soon as it is
+  // asked for, while the screen still shows (and fades) the last one until the new one is drawn.
+  if (screen.background && !backgroundIds.has(screen.background)) backgroundIds.set(screen.background, pictureId(game));
+  const id = screen.background ? backgroundIds.get(screen.background) : pictureId(game);
   if (id !== currentId && !PREVIEW) loadEdits();
   currentId = id;
   const edit = editFor(currentId);
