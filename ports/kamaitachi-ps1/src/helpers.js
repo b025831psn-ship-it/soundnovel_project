@@ -10,6 +10,7 @@
 // (* generators: they wait frames)
 import { tick, tickText } from "./tick.js";
 import { memcpy } from "./screen/weather.js";
+import { spritePage } from "./screen/sprites.js";
 
 const BASE = 0x8007948c, RESOURCE = 0x8007929c;
 const GP = 0x8007913c, WINDOW = 0x800792a7, SPRITES = 0x801eef68, IDS = 0x801f6698;
@@ -135,4 +136,27 @@ export function dropPicture(m, k) {
     for (let i = 0; i < 0x12c00; i++) m.write(pic + i, 0, 1);
   }
   m.write(GP + 0x15c, 1, 1);
+}
+
+// 0x80037c1c textWindowReset(): the text page is 5 (0x800792ca); page table entries 5 and
+// 7 (0x801fd270) point at it, its full-screen sprite (0x801f66aa) is made again on top,
+// the choice colours are reset and window 0 is current.
+export function textWindowReset(ctx) {
+  const { m } = ctx, sp = ctx.sp - 0x20, sub = { ...ctx, sp }, PAGES = 0x801fd270, NEW = 0x800794f4;
+  m.write(CLUT_SLOT, 5, 1);
+  const id = m.read(IDS + 0x12, 2);
+  if (id) { spriteFree(m, id); m.write(IDS + 0x12, 0, 2); }
+  const p = m.read(CLUT_SLOT, 1), a = PAGES + 8 * p, b = PAGES + 8 * (p + 2);
+  m.write(a + 8, 0x1000000, 4); m.write(a + 4, p + 0x1e0, 4); m.write(a, 0, 4);
+  m.write(b + 8, m.read(a + 8, 4), 4); m.write(b, m.read(a, 4), 4); m.write(b + 4, m.read(a + 4, 4), 4);
+  spritePage(sub, m.read(CLUT_SLOT, 1), 0, 0, 0x140, 0xf0);
+  m.write(IDS + 0x12, m.read(0x80079528, 2), 2);
+  let s = m.read(NEW, 4) >>> 0;
+  m.write(s + 6, 4, 2); m.write(s + 0xf, 4, 1);
+  m.write((m.read(NEW, 4) >>> 0) + 0x31, 9, 1);
+  s = m.read(NEW, 4) >>> 0;
+  m.write(s + 0x33, 2, 1); m.write(s, (m.read(s, 4) | 0x50000000) >>> 0, 4);
+  m.write((m.read(NEW, 4) >>> 0) + 0x38, 9, 1);
+  choiceColoursReset(sub);
+  m.write(0x800795e2, 0, 1); m.write(WINDOW, 0, 1);
 }
