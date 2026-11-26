@@ -66,6 +66,9 @@ kbd {
   height: min(calc(66.667cqw + 52px), calc(100dvh - var(--top) - 2 * var(--gap)));
   min-height: 300px;
 }
+/* PC with the phone view on (player bar button): the frame takes the window's height under the header,
+   the player draws the phone-shaped page in its middle. */
+body.reader-on:not(.theatre-mode) .theatre iframe { height: calc(100dvh - var(--top) - 2 * var(--gap)) }
 
 /* Title card: a night still from the game, falling snow, the title and one button. */
 .marquee {
