@@ -29,7 +29,7 @@ export const TRIVIAL = {
   0xb4: ["skip", 1], 0xb5: ["skip", 2], 0xb6: ["skipset", 3, 91, 1], 0xb7: ["set", 91, 1], 0xb8: ["skip", 2], 0xb9: ["skipset", 5, 91, 1],
   0xba: ["skipset", 5, 91, 1], 0xbd: ["skip", 2], 0xbe: ["nop"], 0xbf: ["skipset", 1, 91, 1], 0xc0: ["skip", 1], 0xc1: ["skip", 2],
   0xc2: ["skipset", 5, 91, 1], 0xc3: ["skipset", 5, 91, 1], 0xc4: ["skip", 2], 0xc5: ["skip", 1], 0xc6: ["skip", 2], 0xc7: ["skip", 2],
-  0xc8: ["nop"], 0xc9: ["nop"],
+  0xc8: ["nop"], 0xc9: ["nop"], 0x66: ["skipset", 2, 91, 1],
 };
 
 export const HANDLERS = {}; // op -> function*(ctx), filled by the handler modules

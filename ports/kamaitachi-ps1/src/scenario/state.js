@@ -11,7 +11,7 @@
 //   0x53 0x80022448 seen[u16] = 3 (0x801f5bc0), 0x800792bc = id, three state copies
 //   0x5f 0x80022534 seen[u16] = 3
 import { HANDLERS } from "./interp.js";
-import { CURSOR, BASE, io, operand, resolveLabel, animStop } from "./lib.js";
+import { CURSOR, BASE, io, operand, resolveLabel, animStop, checkpoint } from "./lib.js";
 import { pictureSprite } from "./basic.js";
 import { spriteClearAll } from "../screen/sprites.js";
 import { memcpy } from "../screen/weather.js";
@@ -96,4 +96,42 @@ HANDLERS[0x5f] = function* (ctx) {
   const { m } = ctx, id = operand(m).u16();
   if (quiet(m)) { endFrame(m); return; }
   m.write(SEEN + id, 3, 1);
+};
+
+// 0x56 0x800227e8 jump(label u16, k u16) with a checkpoint; seen2[k] = 3 (0x801fa730)
+HANDLERS[0x56] = function* (ctx) {
+  const { m } = ctx, o = operand(m), label = o.u16(), k = o.u16();
+  const off = resolveLabel({ ...ctx, sp: ctx.sp - 0x20 }, m.read(BASE, 4) >>> 0, label) & 0xffff;
+  const p = ((m.read(BASE, 4) >>> 0) + off) >>> 0;
+  m.write(CURSOR, p, 4); m.write(0x8007940c, p, 4);
+  if (m.read(NO_EFFECTS, 1) !== 1) { m.write(0x801fa730 + k, 3, 1); checkpoint(m); }
+  endFrame(m);
+};
+
+// 0x57 0x800228c8 the route table of a branch: (n u8, u8, then n + 1 pairs of u16) to
+// 0x801f7348 / 0x80093be8; skipping starts and the current resource is kept in memory.
+HANDLERS[0x57] = function* (ctx) {
+  const { m } = ctx, o = operand(m), n = o.u8();
+  m.write(0x800794cb, n, 1); m.write(0x80079430, o.u8(), 1);
+  const pairs = [];
+  for (let k = 0; k <= 8; k++) if (k === 0 || n >= k) pairs.push([o.u16(), o.u16()]);
+  pairs.forEach(([a, b], k) => { m.write(0x801f7348 + 2 * k, a, 2); m.write(0x80093be8 + 2 * k, b, 2); });
+  m.write(SKIP, 1, 1);
+  if (m.read(NO_EFFECTS, 1) === 1) { endFrame(m); return; }
+  ctx.call(0x80037b08, [], ctx.sp - 0x48);
+  memcpy(m, m.read(BASE, 4) >>> 0, ((m.read(0x80079544, 4) >>> 0) + 0x28000) >>> 0, 0xb000);
+  m.write(0x8007913c + 2, 1, 1); m.write(0x8007913c + 0x45c, m.read(0x8007929c, 1), 1);
+};
+
+HANDLERS[0x58] = function* (ctx) {
+  const { m } = ctx, id = operand(m).u16();
+  if (quiet(m)) { endFrame(m); return; }
+  m.write(0x801fa730 + id, 3, 1);
+};
+
+// 0x63 0x80023520 0x80059708(0)
+HANDLERS[0x63] = function* (ctx) {
+  const { m } = ctx;
+  if (quiet(m)) { endFrame(m); return; }
+  ctx.call(0x80059708, [0], ctx.sp - 0x18);
 };
