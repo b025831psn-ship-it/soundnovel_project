@@ -15,11 +15,15 @@
 //   0x80044904 memcpy         0x80044be4 bzeroWords
 import { randMod } from "./shake.js";
 import { spriteAdd, spriteLayer } from "./sprites.js";
-import { dropLayer, dropOverlay } from "../helpers.js";
+import { dropLayer, dropOverlay, dropPicture, waitFade } from "../helpers.js";
 import { animStop } from "../scenario/lib.js";
 import { waveReset } from "./wave.js";
 import { tick } from "../tick.js";
-import { melt, weatherStart, rainStart, rings, fan, waitOverlay } from "./effects.js";
+import { melt, weatherStart, rainStart, rings, fan, waitOverlay, clearPlane } from "./effects.js";
+import { fadeIn, fadeOut } from "./fader.js";
+import { clearTextPage } from "../title.js";
+import { sound } from "../sound-bridge.js";
+import { waitEffect } from "../scenario/sound.js";
 
 const GP = 0x8007913c, SPRITES = 0x801eef68, NEW = 0x800794f4, FRAME_STEP = 0x80079278, IDS = 0x801f6698;
 const FAR = 0x800c8820, NEAR = 0x800a6db8, PLANE = 0x800b1c20, CLUTS = 0x800c4820, SNOW_CLUT = 0x800c8420;
@@ -205,11 +209,25 @@ export function effectsOff(m) {
   m.write(GP + 0x38e, 0, 1);
 }
 
+// 0x80045578 strcmp(r32(0x8006b038), 0x80079324) == 0: the hero still has the default name.
+function nameIsDefault(m) {
+  let a = m.read(0x8006b038, 4) >>> 0, b = 0x80079324;
+  if (!a || !b) return a === b;
+  for (;; a++, b++) { const x = m.read(a, 1), y = m.read(b, 1); if (x !== y) return false; if (!x) return true; }
+}
+
+// The shake stopped: offsets of entries 1, 2 and 5 of 0x8009da48 cleared.
+function shakeStop(m) {
+  m.write(GP + 0x1c0, 0, 4);
+  for (const i of [1, 2, 5]) { m.write(0x8009da48 + 8 * i, 0, 4); m.write(0x8009da48 + 8 * i + 4, 0, 4); }
+}
+
 // 0x800418d0 effect(mode): the scene effects switch (jump table 0x800125ac). Ported modes:
 //   0 all off: animations stopped (unless 0x80079283), then as 255
 //   255 the weather ended (gp[0x1d8] != -1), effects off, the wave reset, the flash sprite
 //       back to layer 0xc, layers 2 and 3 dropped (unless 0x80079283)
-//   6 melt   8 snow   9 / 56 heavy snow   92 rain   17 rings   20 / 30 fans
+//   6 melt   8 snow   9 / 56 heavy snow   71 / 72 / 73 blown   57 weather off   92 rain
+//   90 / 91 the name effect (play / wait)   33 / 52 / 53 / 63 / 78 shakes   51 shake off   34 / 69 fade all out and clear   17 rings   20 / 30 fans
 //   36 / 37 0x800792b1 = 0 / 1   44 0x800792ac = 44, gp[0x1d0] = 1
 // Other modes go to the original through ctx.call (native on the oracle).
 export function* effect(ctx, mode) {
@@ -223,6 +241,39 @@ export function* effect(ctx, mode) {
     case 8: m.write(0x800792ae, mode, 1); yield* weatherStart(sub, 0); return;
     case 9: case 56: m.write(0x800792ae, mode, 1); yield* weatherStart(sub, 1); return;
     case 92: m.write(0x800792ae, mode, 1); yield* rainStart(sub); return;
+    case 33: case 63: case 78: { // shakes: table 0x8006f928 / 0x8006f920 / 0x8006f91c
+      const [kind, table, flag] = { 33: [2, 0x8006f928, 1], 63: [2, 0x8006f920, 0], 78: [1, 0x8006f91c, 0] }[mode];
+      m.write(GP + 0x1c8, kind, 1); m.write(0x800792ac, mode, 1); m.write(GP + 0x1c4, 0, 1); m.write(GP + 0x1c0, table, 4);
+      m.write(GP + 0x2f8, flag, 1); m.write(GP + 0x36a, 0, 2); m.write(GP + 0x4ac, m.read(table, 4) >>> 0, 4); return;
+    }
+    case 52: case 53: { // shakes that leave 0x800792ac alone: table 0x8006f924 / 0x8006f930 (53 also sets gp[0x1c4] = 1)
+      const table = mode === 52 ? 0x8006f924 : 0x8006f930;
+      m.write(GP + 0x1c8, 2, 1); m.write(GP + 0x1c4, 0, 1); m.write(GP + 0x1c0, table, 4); m.write(GP + 0x2f8, 0, 1);
+      if (mode === 53) { m.write(GP + 0x1c4, 1, 1); m.write(GP + 0x1c6, 0, 2); }
+      m.write(GP + 0x36a, 0, 2); m.write(GP + 0x4ac, m.read(table, 4) >>> 0, 4); return;
+    }
+    case 51: m.write(0x800792ac, mode, 1); if (m.read(GP + 0x1c0, 4)) shakeStop(m); return;
+    case 90: case 91: { // the effect for the hero's name: the default name (0x8006b038) or another
+      const named = !nameIsDefault(m), snd = sound(sub);
+      if (mode === 90) { const id = named ? 0x481 : 0x43c; snd.setVariant(0, id, sub.sp); snd.play(id, 0, sub.sp); }
+      else yield* waitEffect(sub, named ? 0x99 : 0x54);
+      return;
+    }
+    case 34: case 69: { // everything faded out over 120 frames, cleared, and the channels back up at once
+      for (const ch of [1, 2, 3, 5, 9]) fadeOut(m, 0x78, ch);
+      yield* waitFade(sub, 9);
+      dropLayer(m, 1); dropLayer(m, 2); dropLayer(m, 3); dropPicture(m, 5);
+      clearTextPage(sub);
+      for (const ch of [1, 2, 3, 5, 9]) fadeIn(m, 1, ch);
+      return;
+    }
+    case 57: if (s8(g8(0x1d8)) !== -1) { m.write(GP + 0x1d8, 0xff, 1); dropLayer(m, 3); m.write(GP + 0x1e0, 0xffff, 2); } return;
+    case 71: case 72: case 73: { // the heavy fall blown sideways (71 to the left, 72 / 73 to the right)
+      m.write(0x800792ae, mode, 1); yield* weatherStart(sub, 1);
+      const wind = mode === 71 ? -0x800 : 0x200;
+      m.write(GP + 0x46c, wind, 4); m.write(GP + 0x44c, wind, 4); m.write(GP + 0x480, 0x100, 4); m.write(GP + 0x450, 0x100, 4);
+      m.write(GP + 0x1d8, 2, 1); return;
+    }
     case 17: yield* rings(sub); return;
     case 20: fan(sub, 1, 0); m.write(0x800792ac, 0, 1); return;
     case 30: fan(sub, 1, 1); yield* tick(sub); yield* waitOverlay(sub); m.write(0x800792ac, 0x61, 1); return;
@@ -234,13 +285,13 @@ export function* effect(ctx, mode) {
   m.write(GP + 0x1cc, 0, 4); m.write(GP + 0x390, 0, 1);
   if (s8(g8(0x1d8)) !== -1) { m.write(GP + 0x1d8, 0xff, 1); dropLayer(m, 3); m.write(GP + 0x1e0, 0xffff, 2); }
   effectsOff(m);
-  if (g8(0x1c9)) unported(0x800419d4);
+  if (g8(0x1c9)) { m.write(GP + 0x1c9, 0, 1); dropLayer(m, 1); }
   waveReset(m); waveReset(m);
   const shake = m.read(GP + 0x1c0, 4); m.write(GP + 0x1d3, 0, 1);
-  if (shake) unported(0x80041a00);
+  if (shake) shakeStop(m);
   m.write(GP + 0x1d0, 0, 1);
   spriteLayer(m, m.read(IDS + 4, 2), 0xc);
-  if (g8(0x1d2) === 1) unported(0x80041a6c);
+  if (g8(0x1d2) === 1) { m.write(GP + 0x1d2, 0, 1); dropLayer(m, 1); clearPlane(m); }
   if (!m.read(0x80079283, 1)) { dropLayer(m, 2); dropLayer(m, 3); }
   m.write(0x800792ae, 0, 1); m.write(0x800792ac, 0, 1);
 }

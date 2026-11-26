@@ -3,11 +3,12 @@
 // CD is already busy when the script gets there. gp[0x5b] = 1 stops the lookahead.
 //   0x80023778 prefetchLabel(label)  the SCE resource of a jump target (label / 1000);
 //                                    0x8007927e/0x80079280 = what was last fetched (id, kind)
-//   0x65 text  (skipped, 0x8003919c)    0x78 choice (0x13)    0x81 (0x1c)    0x82 (0x1d)
+//   0x65 text  (skipped, 0x8003919c)    0x67 call (0x02)    0x78 choice (0x13)    0x81 (0x1c)    0x82 (0x1d)
 //   0x95 se (0x30)  0x97 seVol (0x32)  0xbb jump (0x56)  0xbc route table (0x57)
 import { cdLoadAsync } from "../cd-load.js";
 import { soundIndex } from "../sound-bridge.js";
 import { HANDLERS } from "./interp.js";
+import { memcpy } from "../screen/weather.js";
 import { CURSOR, GP, operand, unported } from "./lib.js";
 
 const LAST_ID = 0x8007927e, LAST_KIND = 0x80079280, RESOURCE = 0x8007929c, BUF = 0x80079544, SDW_BUF = 0x80079484, SE_BUF = 0x80079514;
@@ -17,11 +18,14 @@ const s16 = (v) => (v << 16) >> 16;
 export function* prefetchLabel(ctx, label) { // 0x80023778
   const { m } = ctx, sp = ctx.sp - 0x18, res = Math.trunc((label & 0xffff) / 1000) & 0xffff;
   if (!(s16(m.read(LAST_ID, 2)) === res && s16(m.read(LAST_KIND, 2)) === 2) && m.read(RESOURCE, 2) !== res) {
-    if (m.read(GP + 2, 1) === 1 && ((m.read(GP + 0x45c, 1) << 24) >> 24) === res) unported(0x800237f0); // kept in memory
-    if (res === 0x1f) unported(0x8002382c); // the resource in the EXE
-    m.write(GP + 4, 1, 1);
-    yield* cdLoadAsync({ ...ctx, sp }, 2, m.read(BUF, 4) >>> 0, res);
-    m.write(GP + 4, 0, 1);
+    const buf = m.read(BUF, 4) >>> 0;
+    if (m.read(GP + 2, 1) === 1 && ((m.read(GP + 0x45c, 1) << 24) >> 24) === res) memcpy(m, buf + 0x28000, buf, 0xb000); // kept in memory
+    else if (res === 0x1f) memcpy(m, 0x800677e8, buf, 0x12a); // the resource in the EXE data
+    else {
+      m.write(GP + 4, 1, 1);
+      yield* cdLoadAsync({ ...ctx, sp }, 2, buf, res);
+      m.write(GP + 4, 0, 1);
+    }
   }
   m.write(LAST_KIND, 2, 2); m.write(LAST_ID, res, 2);
 }
@@ -72,6 +76,12 @@ function* prefetchSe(ctx, id) { // shared tail of 0x95 and 0x97 (frame 0x28)
 }
 HANDLERS[0x95] = function* (ctx) { yield* prefetchSe(ctx, operand(ctx.m).u16()); };
 HANDLERS[0x97] = function* (ctx) { const o = operand(ctx.m); o.u16(); yield* prefetchSe(ctx, o.u16()); };
+
+HANDLERS[0x67] = function* (ctx) { // 0x80023904 (call, 0x02)
+  const { m } = ctx, label = operand(m).u16();
+  yield* prefetchLabel({ ...ctx, sp: ctx.sp - 0x18 }, label);
+  stop(m);
+};
 
 HANDLERS[0xbb] = function* (ctx) {
   const { m } = ctx, o = operand(m), label = o.u16(); o.skip(2);

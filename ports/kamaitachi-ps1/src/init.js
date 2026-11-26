@@ -7,7 +7,7 @@ import { memcpy } from "./screen/weather.js";
 import { fadeIn, fadeOut } from "./screen/fader.js";
 import { spriteClearAll } from "./screen/sprites.js";
 import { effect } from "./screen/weather.js";
-import { dropLayer, textWindowReset, resetStream } from "./helpers.js";
+import { dropLayer, textWindowReset, resetStream, spriteFree } from "./helpers.js";
 import { checkpoint, animStop } from "./scenario/lib.js";
 import { sceneReset } from "./scenario/state.js";
 import { cdReadFile, cdLoad } from "./cd-load.js";
@@ -204,6 +204,35 @@ export function* logoMovie(ctx, k) {
   bzero(m, r32(0x80079440), 0x12c00); bzero(m, r32(0x80079508), 0x2e000);
   if (ctx.movie) yield* ctx.movie(0x8006aee4 + 36 * (k & 0xffff)); else ctx.call(0x800343b0, [0x8006aee4 + 36 * (k & 0xffff)], sp);
   m.write(0x8007927c, 0, 1);
+}
+
+// 0x80034180(k): a movie inside the story (scenario command 0x3f): as the logo movie, with the
+// overlay sprites 0x801f66aa / 0x801f66ac dropped first; afterwards the lookahead, the text
+// windows, the sound and the stream are reset and the work buffers cleared again.
+export function* storyMovie(ctx, k) {
+  const { m } = ctx, sp = ctx.sp - 0x18, sub = { ...ctx, sp }, r32 = (a) => m.read(a, 4) >>> 0;
+  const buffers = () => { bzero(m, r32(0x80079484), 0x28000); bzero(m, r32(0x800794d8), 0x13800); bzero(m, r32(0x80079440), 0x12c00); bzero(m, r32(0x80079508), 0x2e000); };
+  m.write(0x8007927c, 1, 1);
+  clearVram(sub);
+  ctx.call(0x80053318, [], sp); // ResetCallback
+  libcd(sub).CdInit();
+  ctx.gs.ResetGraph(0);
+  ctx.gs.SetGraphDebug(0);
+  buffers();
+  for (const o of [0x12, 0x14]) { const id = m.read(0x801f6698 + o, 2); if (id) { spriteFree(m, id); m.write(0x801f6698 + o, 0, 2); } } // 0x80037e50, 0x80037e94
+  if (ctx.movie) yield* ctx.movie(0x8006aee4 + 36 * (k & 0xffff)); else ctx.call(0x800343b0, [0x8006aee4 + 36 * (k & 0xffff)], sp);
+  m.write(0x8007927c, 0, 1); m.write(0x80079288, 0, 1); m.write(0x80079287, 0, 1);
+  lookaheadReset(m);
+  textWindowReset(sub);
+  yield* soundReset(sub);
+  resetStream(m);
+  bzero(m, r32(0x80079544), 0x50000);
+  buffers();
+}
+
+export function lookaheadReset(m) { // 0x800235d8
+  m.write(0x8007927e, 0xffff, 2); m.write(0x80079280, 0xffff, 2);
+  m.write(GP + 0x5b, 0, 1); m.write(GP + 0x5c, 0, 2); m.write(GP + 0x5e, 0, 1);
 }
 
 function clearSaves(m) { // 0x8001b380

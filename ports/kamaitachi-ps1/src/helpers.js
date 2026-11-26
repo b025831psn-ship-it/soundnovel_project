@@ -160,3 +160,44 @@ export function textWindowReset(ctx) {
   choiceColoursReset(sub);
   m.write(0x800795e2, 0, 1); m.write(WINDOW, 0, 1);
 }
+
+// 0x80032120 snapshot(slot): the state a bookmark keeps. The work copy at 0x8009eeb8 gets the
+// five name strings (0x8003a7b0), the flag and history tables (four of them packed 4 to a
+// byte by 0x80044b00) and the window colours; slot `slot` of 0x8008cdc0 (100 bytes each) the
+// script position, the display state and the sound channels.
+// 0x800320c0 copySlot(a, b): slot a copied to slot b.
+const SNAP = 0x8009eeb8, SLOTS = 0x8008cdc0, FLAGS = 0x801f74b0;
+function copyName(m, dst, i) { // 0x8003a7b0: name i of 0x8006b030, without its terminator
+  for (let p = m.read(0x8006b030 + 4 * i, 4) >>> 0, b; (b = m.read(p, 1)); ) {
+    m.write(dst++, b, 1); p++;
+    if (b >= 0x80) { m.write(dst++, m.read(p, 1), 1); p++; }
+  }
+}
+function pack4(m, src, dst, n) { // 0x80044b00: four 2-bit values to a byte
+  for (let i = 0; i < n >> 2; i++, src += 4) m.write(dst + i, (((m.read(src, 1) << 2 | m.read(src + 1, 1)) << 2 | m.read(src + 2, 1)) << 2 | m.read(src + 3, 1)) & 0xff, 1);
+}
+export function snapshot(m, slot) {
+  const r8 = (a) => m.read(a, 1), r16 = (a) => m.read(a, 2), w8 = (a, v) => m.write(a, v & 0xff, 1), w16 = (a, v) => m.write(a, v & 0xffff, 2);
+  for (let i = 0; i < 5; i++) copyName(m, SNAP + 0x10 * i, i + 1);
+  memcpy(m, 0x8008dab8, SNAP + 0x50, 0x100); memcpy(m, 0x801fc158, SNAP + 0x350, 0x100);
+  pack4(m, 0x801f5bc0, SNAP + 0x47a, 0x12c); pack4(m, 0x801f5d38, SNAP + 0x4c5, 0x12c);
+  pack4(m, 0x801fa730, SNAP + 0x510, 0x200); pack4(m, 0x801fc258, SNAP + 0x590, 0x200);
+  memcpy(m, 0x801d6110, SNAP + 0x610, 0x12c); memcpy(m, 0x801d6528, SNAP + 0x73c, 0x12c);
+  memcpy(m, 0x801f5e98, SNAP + 0x868, 0x800); memcpy(m, 0x801d67d0, SNAP + 0x1068, 0x400); memcpy(m, 0x801fd790, SNAP + 0x1468, 0x800);
+  w16(SNAP + 0x1c68, r16(0x800792b4)); w8(SNAP + 0x1c6a, r8(0x800792a1));
+  [0x800795e4, 0x800795e5, 0x800795e6, 0x8007960c, 0x8007960d, 0x8007960e].forEach((a, i) => w8(SNAP + 0x1c6b + i, r8(a)));
+  w16(SNAP + 0x1c72, r16(0x800792b6)); w16(SNAP + 0x1c76, r16(0x800792bc)); w8(SNAP + 0x1c74, r8(0x800792b8));
+  for (let i = 0; i < 10; i++) { let v = 0; for (let j = 0; j < 8; j++) v |= r8(FLAGS + 8 * i + j) << (7 - j); w8(SNAP + 0x450 + i, v); }
+  const s = SLOTS + 100 * (slot & 0xff);
+  m.write(s + 0x44, ((m.read(0x80079578, 4) >>> 0) - (m.read(BASE, 4) >>> 0)) >>> 0, 4);
+  w16(s + 0x20, r16(0x80079458)); w16(s + 0x22, r16(0x80079414)); w8(s + 0x42, r8(0x800792b9));
+  for (let i = 0; i < 4; i++) w16(s + 2 + 2 * i, r16(0x801f7320 + 2 * i));
+  w16(s + 0xa, r16(0x80079618)); w16(s + 0xc, r16(0x8007961a)); w16(s + 0xe, r16(0x8007961c));
+  w8(s + 0x25, r8(0x800792ab)); w16(s + 0x1e, r16(0x80079292)); w16(s + 0x10, r16(0x8007961e)); w8(s + 0x5a, r8(0x800792ad)); w8(s + 0x26, r8(0x800792b1));
+  for (let i = 0; i < 3; i++) { const a = 0x801f7300 + 8 * i, b = s + 0x28 + 8 * i; w16(b, r16(a)); w8(b + 2, r8(a + 2)); w16(b + 4, r16(a + 4)); w16(b + 6, r16(a + 6)); }
+  w8(s + 0x40, r8(0x800792bf)); w8(s + 0x5b, r8(0x800792c1));
+  w8(s, r8(0x8007954e)); // overwritten below, as in the original
+  for (let i = 0; i < 6; i++) { w16(s + 0x48 + 2 * i, r16(0x801d55f0 + 2 * i)); w8(s + 0x54 + i, r8(0x800794e8 + i)); }
+  w8(s + 0x24, r8(0x8007929a)); w8(s, r8(0x80079299));
+}
+export function copySlot(m, a, b) { memcpy(m, SLOTS + 100 * (a & 0xff), SLOTS + 100 * (b & 0xff), 0x64); }

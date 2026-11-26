@@ -2,7 +2,9 @@
 //   0x00 0x8001ca24 text      hand the text at the cursor to the text task
 //   0x01 0x8001c98c jump      label (u16): continue there; snapshot for the bookmark
 //   0x02 0x8001ca58 call      label (u16): push the resource and return offset (0x8008da38)
-import { cdLoadAsync } from "../cd-load.js";
+//   0x03 0x8001cbe0 return    pop them: reload the resource if it is not the current one
+import { cdLoad, cdLoadAsync } from "../cd-load.js";
+import { memcpy } from "../screen/weather.js";
 import { HANDLERS } from "./interp.js";
 import { GP, CURSOR, BASE, RESOURCE, s8, io, operand, textStart, resolveLabel, checkpoint, animStop, unported } from "./lib.js";
 
@@ -45,4 +47,21 @@ HANDLERS[0x02] = function* call(ctx) {
     w16(0x8007927e, v);
   }
   p8(0x15c, 1);
+};
+
+HANDLERS[0x03] = function* ret(ctx) {
+  const { m } = ctx, { r16, r32, w16, w32, g8, p8 } = io(m), sub = { ...ctx, sp: ctx.sp - 0x28 };
+  p8(0, g8(0) - 1);
+  const n = g8(0);
+  p8(0, n - 1);
+  const off = r16(STACK + 4 * n), res = r16(STACK + 4 * g8(0));
+  if (r16(RESOURCE) !== res) {
+    const base = r32(BASE);
+    if (g8(2) === 1 && s8(g8(0x45c)) === res) memcpy(m, r32(0x80079544) + 0x28000, base, 0xb000);
+    else if (res === 0x1f) memcpy(m, 0x800677e8, base, 0x12a);
+    else { p8(4, 1); animStop(m); yield* cdLoad(sub, 2, base, res); p8(4, 0); }
+    w16(RESOURCE, res);
+  }
+  p8(0x15c, 1);
+  w32(CURSOR, off + r32(BASE));
 };

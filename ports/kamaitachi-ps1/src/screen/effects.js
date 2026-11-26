@@ -144,7 +144,8 @@ export function* rainStart(ctx) { // 0x800411e8
 
 // ---- the 8-bit plane ----
 function plot(m, x, y, c) { x = s16(x); y = s16(y); if (x >= 0 && y >= 0 && x < 0x140 && y < 0xf0) m.write(PLANE + y * 0x140 + x, c, 1); }
-function clearPlane(m) { for (let y = 0; y < 0xf0; y++) for (let x = 0; x < 0x140; x++) m.write(PLANE + y * 0x140 + x, 0, 1); }
+export function clearPlane(m) { // 0x8002d984
+  for (let y = 0; y < 0xf0; y++) for (let x = 0; x < 0x140; x++) m.write(PLANE + y * 0x140 + x, 0, 1); }
 
 export function ellipse(m, r, x, y, c) { // 0x8002dd08: midpoint circle, y scaled by gp[0xc8]/256
   if (s16(r) < 0) return;
