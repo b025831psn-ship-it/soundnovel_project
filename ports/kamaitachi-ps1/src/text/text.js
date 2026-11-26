@@ -10,7 +10,8 @@
 // returns to the left margin, 'p'/'P' wait for a key (P not inside quotes), 'g' wait/new page,
 // 'k' wait at 'g' unless quoted, 'o' skip the next p/P, 'w'n delay, 's'n speed, 'c'/'C'n colour,
 // 'h'n, 'v'n remember position, 'n'n insert string n; everything else is a 2-byte SJIS glyph.
-// choiceMode (0x80079295) is set by the choice opcode 0x8001e3c0 while choices are typed.
+// choiceMode (0x80079295) is set by the choice opcode 0x8001e3c0 while choices are typed;
+// backlog (0x800792a0) is set while 0x80024fd0 (R1) replays earlier pages.
 // Calls into code that is not ported yet go through ctx.call(addr, args, sp).
 import { drawGlyph } from "./glyph.js";
 
@@ -20,9 +21,9 @@ export const TEXT = {
   ptr: 0x800794c0, delay: 0x80079590, speed: 0x80079560, x: 0x800794b8, y: 0x800794bc, left: 0x800794b0, top: 0x800794b4,
   wait: 0x8007943a, stop: 0x80079500, blink: 0x800794ce, markType: 0x8007951a, insert: 0x800795d2, insertReturn: 0x800795a0,
   quote: 0x800794f0, quote2: 0x800795d0, skipWait: 0x800794ee, kWait: 0x80079510, pWait: 0x80079554, gWait: 0x800795c8,
-  waiting: 0x8007929e, choiceMode: 0x80079295, replay: 0x800792a0, auto: 0x800792c6, autoCount: 0x800792c8, keyFlag: 0x800792a8,
+  waiting: 0x8007929e, choiceMode: 0x80079295, backlog: 0x800792a0, auto: 0x800792c6, autoCount: 0x800792c8, keyFlag: 0x800792a8,
   keySound: 0x800792a5, menuKey: 0x800792a9, hidden: 0x800795e2, ended: 0x80079298, endPtr: 0x80079578, pagePtr: 0x8007940c,
-  replayG: 0x800792a2, replayG2: 0x800792a1, autoV: 0x8007928e, marks: 0x801fec90, strings: 0x8006b030, page: 0x800792ca,
+  backlogG: 0x800792a2, backlogG2: 0x800792a1, autoV: 0x8007928e, marks: 0x801fec90, strings: 0x8006b030, page: 0x800792ca,
   pad: 0x801eef40, sprites: 0x801eef68, spriteIds: 0x801f6698,
 };
 const T = TEXT;
@@ -116,15 +117,15 @@ export function textTask(ctx) {
         const pass = c === 0x70 ? r8(T.choiceMode) || r8(T.pWait + v)
           : r8(T.quote + v) || r8(T.quote2 + v) || r8(T.choiceMode) || r8(T.pWait + v);
         if (pass) { w8(T.skipWait + win(), 0); return 1; }
-        if (r8(T.skipWait + v)) { w8(T.skipWait + v, 0); if (!r8(T.replay)) w8(T.gWait + win(), 1); return 0; }
-        if (r8(T.replay)) return 0;
+        if (r8(T.skipWait + v)) { w8(T.skipWait + v, 0); if (!r8(T.backlog)) w8(T.gWait + win(), 1); return 0; }
+        if (r8(T.backlog)) return 0;
         w8(T.pWait + v, 1); w8(T.wait + win(), 1); w8(T.blink + win(), 0);
         return 0;
       }
       case 0x67: { // 'g'
-        if (!r8(T.replay) && (r8(T.gWait + w) === 1 || r8(T.kWait + w) === 1)) { w8(T.wait + w, 1); w8(T.blink + win(), 0); return 0; }
+        if (!r8(T.backlog) && (r8(T.gWait + w) === 1 || r8(T.kWait + w) === 1)) { w8(T.wait + w, 1); w8(T.blink + win(), 0); return 0; }
         next(win());
-        if (r8(T.replay) === 1) { w8(T.replayG, 1); w8(T.replayG2, 0); return 0; }
+        if (r8(T.backlog) === 1) { w8(T.backlogG, 1); w8(T.backlogG2, 0); return 0; }
         if (r8(T.choiceMode)) return 1;
         const page = r8(T.page), rect = fs + 0x20;
         w16(rect + 2, page < 0x10 ? 0 : 0x100); w16(rect, (r8(T.page) & 0xf) << 6); w16(rect + 4, 0xa0); w16(rect + 6, 0xf0);
@@ -134,7 +135,7 @@ export function textTask(ctx) {
         w16(T.speed + 2 * v, 1); w16(T.delay + 2 * v, 1);
         w32(T.pagePtr, r32(T.ptr + 4 * v) + 1);
         ctx.call(0x8003276c, [], fs); ctx.call(0x800325b0, [], fs);
-        w8(T.replayG2, 0);
+        w8(T.backlogG2, 0);
         return 0;
       }
       case 0x6f: next(w); w8(T.skipWait + w, 1); return 1; // 'o'
@@ -142,7 +143,7 @@ export function textTask(ctx) {
         w32(T.ptr + 4 * w, p + 1);
         if (r8(T.choiceMode)) return 0;
         const v = r8(p + 1); w32(T.ptr + 4 * w, p + 2);
-        if (r8(T.replay)) return 1;
+        if (r8(T.backlog)) return 1;
         w16(T.delay + 2 * w, v); return 0;
       }
       case 0x63: case 0x43: case 0x68: case 0x73: case 0x76: case 0x6e: { // codes with one argument byte
@@ -154,7 +155,7 @@ export function textTask(ctx) {
           w32(T.ptr + 4 * u, r32(T.strings + r8(T.insert + u) * 4));
           return 1;
         }
-        if (r8(T.replay)) return 1;
+        if (r8(T.backlog)) return 1;
         if (c === 0x63) w8(T.palette, v & 7);
         else if (c === 0x43) w8(T.palette, (v & 7) + 8);
         else if (c === 0x68) w8(T.attrH, v & 7);
