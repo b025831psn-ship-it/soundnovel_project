@@ -14,6 +14,8 @@ import { loadPicture } from "../../src/screen/picture.js";
 import { ike } from "../../src/screen/ike.js";
 import { cdTick } from "../../src/cd.js";
 import { clearTick } from "../../src/screen/clear.js";
+import { tick, tickQuiet, tickStill, tickText, ticks } from "../../src/tick.js";
+import { mainLoop } from "../../src/main-loop.js";
 import { spriteInit, spriteClearAll, spriteNew, spriteAdd, spriteLayer, spriteOr } from "../../src/screen/sprites.js";
 import { waveTick } from "../../src/screen/wave.js";
 import { shakeTick } from "../../src/screen/shake.js";
@@ -23,7 +25,7 @@ import { fadeStep, fadeIn, fadeTo, fadeLater, fadeTick, fadeOut } from "../../sr
 // The context a port runs with on the oracle: RAM is the interpreter's, and routines that are
 // not ported run natively with sp set to the caller's frame (stack arguments at sp+0x10).
 export function oracleCtx(c) {
-  const call = (addr, args = [], sp = c.r[29] >>> 0) => { const old = c.r[29]; c.r[29] = (sp + 0x40) | 0; const v = c.call(addr, args); c.r[29] = old; return v; }; // Mips.call drops sp by 0x40
+  const call = (addr, args = [], sp = c.r[29] >>> 0) => { const old = c.r[29]; c.r[29] = (sp + 0x40) | 0; const v = c.call(addr, args, Infinity); c.r[29] = old; return v; }; // Mips.call drops sp by 0x40
   return { m: c, sp: c.r[29] >>> 0, call };
 }
 
@@ -75,6 +77,15 @@ export const PORTS = {
   ike: [0x800356c8, () => (c) => { c.r[2] = ike(c, c.r[4] >>> 0, c.r[5] >>> 0); c.ret(); }],
   cd: [0x80036bd4, () => (c) => { cdTick(oracleCtx(c)); c.ret(); }],
   clear: [0x80020108, () => (c) => { clearTick(oracleCtx(c)); c.ret(); }],
+  tick: [() => {
+    const ctx = (c) => ({ ...oracleCtx(c), gs: libgpuOf(c), padState: (port) => c.call(0x80064be4, [port]) | 0 });
+    return [
+      [0x80013f34, (c) => { drive(tick(ctx(c)), c); c.ret(); }], [0x80013ff0, (c) => { drive(tickQuiet(ctx(c)), c); c.ret(); }],
+      [0x80014050, (c) => { drive(tickStill(ctx(c)), c); c.ret(); }],
+      [0x800140a8, (c) => { drive(tickText(ctx(c), c.r[4] | 0), c); c.ret(); }], [0x80014198, (c) => { drive(ticks(ctx(c), c.r[4] | 0), c); c.ret(); }],
+    ];
+  }, null],
+  main: [0x8001443c, () => (c) => { drive(mainLoop({ ...oracleCtx(c), gs: libgpuOf(c), padState: (port) => c.call(0x80064be4, [port]) | 0 }), c); }],
   shake: [0x8003ede0, () => (c) => { shakeTick(oracleCtx(c)); c.ret(); }],
   wave: [0x8002cf5c, () => (c) => { waveTick(oracleCtx(c)); c.ret(); }],
   fader: [() => [
@@ -89,6 +100,7 @@ export const PORTS = {
 
 function hashWords(log, from) { let h = 0x811c9dc5; for (let i = from; i < log.length; i++) { h = Math.imul(h ^ log[i][1], 0x01000193); h = Math.imul(h ^ (log[i][0] === "gp1" ? 1 : 0), 0x01000193); } return h >>> 0; }
 
+const STOP = Symbol("stop");
 export function run(disc, frames, pads, ports = []) {
   const hashes = [], pics = [];
   let last = 0, g, ram = null;
@@ -96,7 +108,7 @@ export function run(disc, frames, pads, ports = []) {
     hashes.push(hashWords(g.o.log, last)); last = g.o.log.length;
     if (f % 10 === 0) { const d = g.display().rgba; let h = 0x811c9dc5; for (let i = 0; i < d.length; i += 4) h = Math.imul(h ^ (d[i] | d[i + 1] << 8 | d[i + 2] << 16), 0x01000193); pics.push(h >>> 0); }
     if (g.o.log.length > 1 << 22) { g.o.log.length = 0; last = 0; }
-    if (f === frames) ram = g.cpu.ram.slice(); // at the vertical blank, where both runs are at the same point
+    if (f === frames) { ram = g.cpu.ram.slice(); throw STOP; } // at the vertical blank, where both runs are at the same point
   } });
   const calls = {};
   for (const name of ports) {
@@ -104,7 +116,7 @@ export function run(disc, frames, pads, ports = []) {
     const list = make === null ? addr() : [[addr, make(g)]];
     for (const [a, fn] of list) g.cpu.hooks.set(a, (c) => { calls[name]++; return fn(c); });
   }
-  g.runFrames(frames);
+  try { g.runFrames(frames + 1); } catch (e) { if (e !== STOP) throw e; } // ported loops never return: stop from inside
   return { hashes, pics, calls, g, ram };
 }
 
