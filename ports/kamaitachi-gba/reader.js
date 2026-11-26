@@ -57,6 +57,8 @@ const EXTENDED_TOP = 100, EXTENDED_HEIGHT = 360;
 //   figureZoom  the silhouettes' own enlargement (1 to 3), when it differs from the picture's (태우
 //         2026-11-26: "배경 100에 실루엣 130"); they are then drawn on a layer of their own, blended over
 //         the picture as the cartridge blends BG1 (13/16), and grow from the same place as the picture
+//   y     the upright canvas row (GBA rows, 0 to 360) put at the screen's top edge, instead of the
+//         zoom's own place (e.g. a scene's silhouettes' heads at the top, 태우 2026-11-26)
 //   mode  "extend" (the default where an extended picture exists): the picture extended above and
 //         below (/art/extended/NNN.png, 2:3, kept on the test PC only), the original laid over its middle
 let edits = {};
@@ -513,8 +515,30 @@ function paintFigures(screen, row) {
   figuresCtx.drawImage(figureSource, 0, row * UP, 240 * UP, 160 * UP);
 }
 let figureCrop = 0;
+// Where the script asked for the picture: the scene loader's request is wrapped once to note the
+// opcode's place (04/05 are three bytes, so it starts three before the cursor), unless the engine
+// gives window.kamaitachi.sceneSite itself. A picture loaded any other way (a bookmark) has none.
+let ownSite = null, ownRequest = null;
+const hex = (value, width) => value.toString(16).padStart(width, "0");
+function hookScene(game) {
+  const scene = game?.vm?.scene;
+  if (!scene || scene.readerHooked) return;
+  scene.readerHooked = true;
+  const request = scene.request.bind(scene), load = scene.load.bind(scene);
+  scene.request = (argument, ram, ...rest) => {
+    const vm = game.vm;
+    ownSite = Number.isInteger(vm.bank) && Number.isInteger(vm.offset) ? `${hex(vm.bank, 2)}:${hex(vm.offset - 3, 4)}` : null;
+    ownRequest = argument + 1000 * (ram?.group ?? 0);
+    return request(argument, ram, ...rest);
+  };
+  scene.load = (wanted, ...rest) => {
+    if (wanted !== ownRequest) { ownSite = null; ownRequest = null; }
+    return load(wanted, ...rest);
+  };
+}
 const backgroundIds = new WeakMap();
 function drawPicture(game) {
+  hookScene(game);
   const screen = game.screen;
   const base = screen.base;
   const size = { width: reader.clientWidth, height: reader.clientHeight };
@@ -522,7 +546,7 @@ function drawPicture(game) {
   // The id is the one of the picture on screen: the scene names the next picture as soon as it is
   // asked for, while the screen still shows (and fades) the last one until the new one is drawn.
   if (screen.background && !backgroundIds.has(screen.background))
-    backgroundIds.set(screen.background, { id: pictureId(game), site: PREVIEW ? previewSite : game.sceneSite ?? null });
+    backgroundIds.set(screen.background, { id: pictureId(game), site: PREVIEW ? previewSite : game.sceneSite ?? ownSite });
   const shown = screen.background ? backgroundIds.get(screen.background) : { id: pictureId(game), site: null };
   const id = shown.id;
   currentSite = id === shown.id ? shown.site : null;
@@ -575,13 +599,17 @@ function drawPicture(game) {
   // its original sits, so one on the bottom edge keeps its bottom and grows upward (the original and
   // its silhouettes rise with the zoom, 태우 2026-11-26).
   const anchor = edit?.mode === "extend" ? topOf(edit) / 200 : 0.5;
-  picture.style.transform = `translate(${-crop * scale}px, ${-(zoom - 1) * size.height * anchor}px)`;
+  // The editor's top row, when given: that row at the screen's top, never past the picture's bottom.
+  const lift = (z) => Number.isFinite(edit?.y)
+    ? Math.max(0, Math.min(source.height * (1 - 1 / z), edit.y)) * ((size.height * z) / source.height)
+    : (z - 1) * size.height * anchor;
+  picture.style.transform = `translate(${-crop * scale}px, ${-lift(zoom)}px)`;
   const figureZoom = figureZoomOf(edit);
   if (figureZoom === null || figures.hidden) return;
   const figureScale = (size.height * figureZoom) / source.height;
   figures.style.width = `${240 * figureScale}px`;
   figures.style.height = `${size.height * figureZoom}px`;
-  figures.style.transform = `translate(${-figureCrop * figureScale}px, ${-(figureZoom - 1) * size.height * anchor}px)`;
+  figures.style.transform = `translate(${-figureCrop * figureScale}px, ${-lift(figureZoom)}px)`;
 }
 // The editor's enlargement (zoom, 1 to 3), on top of filling the screen's height.
 const zoomOf = (edit) => (Number.isFinite(edit?.zoom) ? Math.max(1, Math.min(3, edit.zoom)) : 1);

@@ -88,6 +88,12 @@
     <div class="row"><input type="range" id="figureZoom" min="100" max="300" step="5" value="100" disabled><output id="figureZoomOut">같이</output></div>
     <p class="hint">실루엣만 따로 키워요. 원본 위치를 기준으로 커져요.</p>
   </div>
+  <div>
+    <h2>위쪽 끝 (세로 화면 맨 위에 올 줄, 0~360)</h2>
+    <div class="row"><label><input type="checkbox" id="yAuto" checked> 기본</label></div>
+    <div class="row"><input type="range" id="y" min="0" max="360" step="2" value="0" disabled><output id="yOut">기본</output></div>
+    <p class="hint">원본은 보통 100~259줄에 있어요. 확대한 만큼만 내려가요.</p>
+  </div>
   <div id="cropBox">
     <h2>좌우 위치 (0 왼쪽 끝, 100 오른쪽 끝)</h2>
     <div class="row"><label><input type="checkbox" id="cropAuto" checked> 기본 (가운데)</label></div>
@@ -182,6 +188,11 @@ function syncControls() {
   $("figureZoom").disabled = figureSame;
   $("figureZoom").value = Math.round((figureSame ? zoom : edit.figureZoom) * 100);
   $("figureZoomOut").textContent = figureSame ? "같이" : `${Math.round(edit.figureZoom * 100)}%`;
+  const yAuto = !Number.isFinite(edit.y);
+  $("yAuto").checked = yAuto;
+  $("y").disabled = yAuto;
+  if (!yAuto) $("y").value = edit.y;
+  $("yOut").textContent = yAuto ? "기본" : edit.y;
   $("shift").value = edit.shift ?? 0;
   $("shiftOut").textContent = edit.shift ?? 0;
   const auto = !Number.isFinite(edit.crop);
@@ -244,6 +255,8 @@ $("modes").addEventListener("click", (event) => {
 $("zoom").addEventListener("input", () => change({ zoom: Number($("zoom").value) / 100 }));
 $("figureSame").addEventListener("change", () => change({ figureZoom: $("figureSame").checked ? undefined : Number($("figureZoom").value) / 100 }));
 $("figureZoom").addEventListener("input", () => change({ figureZoom: Number($("figureZoom").value) / 100 }));
+$("yAuto").addEventListener("change", () => change({ y: $("yAuto").checked ? undefined : Number($("y").value) }));
+$("y").addEventListener("input", () => change({ y: Number($("y").value) }));
 $("blur").addEventListener("input", () => change({ blur: Number($("blur").value) }));
 $("top").addEventListener("input", () => change({ top: Number($("top").value) }));
 $("core").addEventListener("change", () => change({ core: $("core").checked ? "ai" : undefined }));
