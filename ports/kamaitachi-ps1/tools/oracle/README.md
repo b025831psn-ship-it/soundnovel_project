@@ -18,3 +18,20 @@ Interrupts and the CD are not modelled.
 
 First full run (30 s per item): 73/73 songs audible, 301 effects run without error
 (298 audible; 208, 213 and 1091 stay silent alone; 76 loop until the scenario ends them).
+
+## Whole-game ground truth (`game-boot.mjs`)
+
+Boots `SLPS_017.94` from its entry point (0x800622d8) with `gpu-oracle.mjs` (GPU model,
+DMA2/DMA6) and the SPU model, and runs the game's own code headlessly. Only library services
+are replaced: libcd reads are served from the PAC files at their disc extents, libetc VSync
+is one frame (the VSync callback runs, then the libpad buffer at 0x801d6660 gets a digital
+pad report), the memory card sync 0x80063748 reports "no card", and the STR movie player
+0x800343b0 is skipped. Title, memory card screens, the opening owl and the story text with
+pictures and silhouettes all come out of the original code, so screen ports can be compared
+against these frames and GP0 streams. About 50 frames of story per second of run time.
+
+    node tools/oracle/game-boot.mjs <dir with SLPS_017.94 and *.PAC> --out <local dir> \
+      --every 25 --steps 300000000 --pads '[[300,"circle"],[600,"circle"],[720,"down"],[780,"circle"]]'
+
+The pad script above starts a game without a memory card. Frames are the game's pictures:
+keep them local.
