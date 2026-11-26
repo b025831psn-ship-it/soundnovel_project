@@ -6,6 +6,10 @@ import { pathToFileURL } from "node:url";
 import { GameBoot, loadDisc, padScript } from "./game-boot.mjs";
 import { drawGlyph } from "../../src/text/glyph.js";
 import { textTask } from "../../src/text/text.js";
+import { LibGpu, LIBGPU_ENTRY } from "../../src/gpu/libgpu.js";
+import { frameFlip } from "../../src/screen/frame.js";
+import { waveTick } from "../../src/screen/wave.js";
+import { fadeStep, fadeIn, fadeTo, fadeLater, fadeTick, fadeOut } from "../../src/screen/fader.js";
 
 // The context a port runs with on the oracle: RAM is the interpreter's, and routines that are
 // not ported run natively with sp set to the caller's frame (stack arguments at sp+0x10).
@@ -18,7 +22,34 @@ export const DEFAULT_PADS = [[300, "circle"], [600, "circle"], [720, "down"], [7
 
 // Each port: [address, install(game)] — the hook runs the JS routine on the oracle's RAM,
 // calling the game's own code only for what has not been ported yet.
+const libgpuOf = (c) => c.libgpu ??= new LibGpu({ read: (a, w) => c.read(a, w), write: (a, v, w) => c.write(a, v, w), vsync: () => c.read(0x800785c0, 4) });
+// Runs a ported generator routine on the oracle: each yield is a VSync(0), served by the HLE.
+function drive(gen, c) { let r = gen.next(); while (!r.done) r = gen.next(c.call(0x800530f8, [0])); return r.value; }
+
+// libgpu/libgs on the oracle: RAM and I/O are the interpreter's; VSync(-1) reads the counter.
+function libgpuHooks() {
+  const hooks = [];
+  for (const [name, addr] of Object.entries(LIBGPU_ENTRY)) hooks.push([addr, (c) => {
+    const lib = libgpuOf(c);
+    const a = [4, 5, 6, 7].map((k) => c.r[k] | 0);
+    if (name === "ResetGraph" && [0, 3, 5].includes(a[0] & 7)) return false; // boot-time init: not ported yet, runs natively
+    const sp = c.r[29] >>> 0, st = (k) => c.read(sp + 0x10 + 4 * k, 4) | 0;
+    const args = name === "LoadTPage" ? [...a, st(0), st(1), st(2), sp - 0x30] : name === "LoadClut" ? [a[0], a[1], a[2], sp - 0x28] : a;
+    const v = lib[name](...args);
+    c.r[2] = (v ?? c.r[2]) | 0; c.ret();
+  }]);
+  return hooks;
+}
+
 export const PORTS = {
+  libgpu: [libgpuHooks, null],
+  wave: [0x8002cf5c, () => (c) => { waveTick(oracleCtx(c)); c.ret(); }],
+  fader: [() => [
+    [0x8002c5a0, (c) => { fadeStep(c); c.ret(); }], [0x8002c6e4, (c) => { fadeIn(c, c.r[4], c.r[5]); c.ret(); }],
+    [0x8002c80c, (c) => { fadeLater(c, c.r[4], c.r[5], c.r[6]); c.ret(); }], [0x8002c838, (c) => { fadeTick(c); c.ret(); }],
+    [0x8002c8e8, (c) => { fadeTo(c, c.r[4], c.r[5]); c.ret(); }], [0x8002ca08, (c) => { fadeOut(c, c.r[4], c.r[5]); c.ret(); }],
+  ], null],
+  frame: [0x800353b8, () => (c) => { drive(frameFlip({ ...oracleCtx(c), gs: libgpuOf(c) }), c); c.ret(); }],
   glyph: [0x800380ec, () => (c) => { drawGlyph(oracleCtx(c), c.r[4] | 0, c.r[5] | 0, c.r[6] >>> 0); c.ret(); }],
   text: [0x80039288, () => (c) => { textTask(oracleCtx(c)); c.ret(); }],
 };
@@ -27,16 +58,21 @@ function hashWords(log, from) { let h = 0x811c9dc5; for (let i = from; i < log.l
 
 export function run(disc, frames, pads, ports = []) {
   const hashes = [], pics = [];
-  let last = 0, g;
+  let last = 0, g, ram = null;
   g = new GameBoot({ ...disc, buttons: padScript(pads), onFrame: (f) => {
     hashes.push(hashWords(g.o.log, last)); last = g.o.log.length;
     if (f % 10 === 0) { const d = g.display().rgba; let h = 0x811c9dc5; for (let i = 0; i < d.length; i += 4) h = Math.imul(h ^ (d[i] | d[i + 1] << 8 | d[i + 2] << 16), 0x01000193); pics.push(h >>> 0); }
     if (g.o.log.length > 1 << 22) { g.o.log.length = 0; last = 0; }
+    if (f === frames) ram = g.cpu.ram.slice(); // at the vertical blank, where both runs are at the same point
   } });
   const calls = {};
-  for (const name of ports) { const [addr, make] = PORTS[name]; const fn = make(g); calls[name] = 0; g.cpu.hooks.set(addr, (c) => { calls[name]++; fn(c); }); }
+  for (const name of ports) {
+    const [addr, make] = PORTS[name]; calls[name] = 0;
+    const list = make === null ? addr() : [[addr, make(g)]];
+    for (const [a, fn] of list) g.cpu.hooks.set(a, (c) => { calls[name]++; return fn(c); });
+  }
   g.runFrames(frames);
-  return { hashes, pics, calls, g };
+  return { hashes, pics, calls, g, ram };
 }
 
 if (import.meta.url === pathToFileURL(process.argv[1]).href) {
@@ -48,7 +84,7 @@ if (import.meta.url === pathToFileURL(process.argv[1]).href) {
   const fd = a.hashes.findIndex((h, k) => h !== b.hashes[k]), pd = a.pics.findIndex((h, k) => h !== b.pics[k]);
   const ramDiff = [];
   const stackFloor = 0x1ff000; // the stack (0x801ff000-0x801fffff) keeps the original frames' saved registers
-  for (let k = 0; k < stackFloor && ramDiff.length < 8; k++) if (a.g.cpu.ram[k] !== b.g.cpu.ram[k]) ramDiff.push(((0x80000000 | k) >>> 0).toString(16));
+  for (let k = 0; k < stackFloor && ramDiff.length < 8; k++) if (a.ram[k] !== b.ram[k]) ramDiff.push(((0x80000000 | k) >>> 0).toString(16));
   console.log(JSON.stringify({ frames: n, ports, calls: b.calls, firstGpuDiffFrame: fd < 0 ? null : fd + 1, firstPictureDiffFrame: pd < 0 ? null : (pd + 1) * 10, ramDiff: ramDiff }));
   process.exitCode = fd < 0 && pd < 0 && !ramDiff.length ? 0 : 1;
 }
