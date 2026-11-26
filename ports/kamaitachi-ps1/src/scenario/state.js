@@ -10,7 +10,7 @@
 //   0x4e 0x80022198 reset the screen state (sprites, shake, animations, weather)
 //   0x53 0x80022448 seen[u16] = 3 (0x801f5bc0), 0x800792bc = id, three state copies
 //   0x5f 0x80022534 seen[u16] = 3
-import { anyRoute, waitText, resetStream, choiceColoursReset } from "../helpers.js";
+import { anyRoute, waitText, resetStream, choiceColoursReset, savePoint } from "../helpers.js";
 import { HANDLERS } from "./interp.js";
 import { CURSOR, BASE, io, operand, resolveLabel, animStop, checkpoint } from "./lib.js";
 import { pictureSprite } from "./basic.js";
@@ -35,7 +35,7 @@ HANDLERS[0x3e] = function* (ctx) {
   if (m.read(NO_EFFECTS, 1) === 1) { m.write(0x800792a2, 1, 1); m.write(0x800792a1, 0, 1); return; }
   if (m.read(0x800792a1, 1) !== 1) return;
   m.write(0x8007940c, m.read(CURSOR, 4), 4);
-  ctx.call(0x800325b0, [], ctx.sp - 0x18);
+  savePoint(m);
   m.write(0x800792a1, 0, 1);
   endFrame(m);
 };

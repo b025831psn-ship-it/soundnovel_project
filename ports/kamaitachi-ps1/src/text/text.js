@@ -13,7 +13,8 @@
 // choiceMode (0x80079295) is set by the choice opcode 0x8001e3c0 while choices are typed;
 // backlog (0x800792a0) is set while 0x80024fd0 (R1) replays earlier pages.
 // Calls into code that is not ported yet go through ctx.call(addr, args, sp).
-import { setVar } from "../helpers.js";
+import { setVar, savePoint } from "../helpers.js";
+import { backlog } from "../menu.js";
 import { checkpoint } from "../scenario/lib.js";
 import { drawGlyph } from "./glyph.js";
 
@@ -136,7 +137,7 @@ export function textTask(ctx) {
         w16(T.left + 2 * v, 8); w16(T.x + 2 * v, 8); w16(T.top + 2 * v, 0x11); w16(T.y + 2 * v, 0x11);
         w16(T.speed + 2 * v, 1); w16(T.delay + 2 * v, 1);
         w32(T.pagePtr, r32(T.ptr + 4 * v) + 1);
-        checkpoint(m); ctx.call(0x800325b0, [], fs);
+        checkpoint(m); savePoint(m);
         w8(T.backlogG2, 0);
         return 0;
       }
@@ -231,6 +232,6 @@ export function textTask(ctx) {
       lib(LIB.drawSync, [0]); fill(s16(cx), s16(cy + 16), 0x30, 0, 0);
       w8(T.waiting, 0);
     }
-    ctx.call(0x80024fd0, [], fs);
+    backlog({ ...ctx, sp: fs });
   }
 }

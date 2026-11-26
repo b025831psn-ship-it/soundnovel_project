@@ -11,6 +11,7 @@
 import { tick, tickText } from "./tick.js";
 import { memcpy } from "./screen/weather.js";
 
+const BASE = 0x8007948c, RESOURCE = 0x8007929c;
 const GP = 0x8007913c, WINDOW = 0x800792a7, SPRITES = 0x801eef68, IDS = 0x801f6698;
 
 export function textSpeed(m, v) { const i = m.read(WINDOW, 1); m.write(0x800794b0 + 2 * i, v, 2); m.write(0x800794b8 + 2 * i, v, 2); }
@@ -94,4 +95,20 @@ export function textClear(ctx) {
   const i = m.read(WINDOW, 1);
   m.write(0x800794b8 + 2 * i, m.read(0x800794b0 + 2 * i, 2), 2);
   m.write(0x800794bc + 2 * i, m.read(0x800794b4 + 2 * i, 2), 2);
+}
+
+// 0x800325b0 savePoint(): the history of passed points (count 0x800792b4, at most 0x400):
+// offset of 0x8007940c in the resource (0x801f5e98), resource (0x801d67d0), the bits of
+// 0x80079414 (0x801fd790). A point passed before cuts the history back to it.
+export function savePoint(m) {
+  const COUNT = 0x800792b4, here = () => ((m.read(0x8007940c, 2) - m.read(BASE, 2)) & 0xffff);
+  for (let i = 0; i < m.read(COUNT, 2); i++)
+    if (m.read(0x801f5e98 + 2 * i, 2) === here() && m.read(0x801d67d0 + i, 1) === m.read(RESOURCE, 2)) m.write(COUNT, i, 2);
+  const n = m.read(COUNT, 2);
+  m.write(0x80079458, m.read(RESOURCE, 2), 2);
+  m.write(0x801f5e98 + 2 * n, here(), 2);
+  m.write(0x801d67d0 + n, m.read(RESOURCE, 1), 1);
+  m.write(0x801fd790 + 2 * n, m.read(0x80079414, 2), 2);
+  m.write(COUNT, n + 1, 2);
+  if (((n + 1) & 0xffff) >= 0x400) throw new Error("savePoint: path at 0x800326e0 (history full) is not ported");
 }

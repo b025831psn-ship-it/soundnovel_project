@@ -4,12 +4,13 @@
 // In auto mode the choice is taken after 90 frames. Then: result to 0x8008dab8[0x80079430],
 // route seen (0x801fa730), 0x80019684, jump to the label, save point (0x800325b0).
 // A loaded save (0x80079296 = 1) resumes with the stored choice 0x80079297.
-import { textSpeedReset, markSeen, choiceColour, choiceColoursReset, fillBox, textClear } from "../helpers.js";
+import { textSpeedReset, markSeen, choiceColour, choiceColoursReset, fillBox, textClear, savePoint } from "../helpers.js";
 import { HANDLERS } from "./interp.js";
 import { CURSOR, BASE, GP, io, resolveLabel } from "./lib.js";
 import { drawGlyph } from "../text/glyph.js";
 import { textTask } from "../text/text.js";
 import { tick } from "../tick.js";
+import { menu, backlog } from "../menu.js";
 
 const PAD = 0x801eef40, SPR = 0x801eef68, IDS = 0x801f6698, POS = 0x801fec90, COUNT = 0x800794cb;
 const AUTO = 0x800792c6, AUTO_T = 0x800792c8, SE_ON = 0x800792a5, ABORT = 0x800792a3, NO_EFFECTS = 0x800792a0;
@@ -47,8 +48,8 @@ HANDLERS[0x16] = function* (ctx) {
       if (r32(PAD) & 0x21) { if (r8(SE_ON) === 1) ctx.call(0x80028c74, [0], sp); textSpeedReset(m); break; }
       if ((t >>> 0) % 30 < 16) cursor(sel & 0xff);
       textTask(sub);
-      ctx.call(0x80018cdc, [], sp);
-      ctx.call(0x80024fd0, [], sp);
+      menu(sub);
+      backlog(sub);
       if (r8(ABORT) === 1) { aborted = true; break; }
       yield* tick(sub);
       t = (t + r32(0x80079278)) >>> 0;
@@ -65,5 +66,5 @@ HANDLERS[0x16] = function* (ctx) {
   markSeen(m, r16(0x800792bc), k); // 0x80019684: a1 is still the choice (0x8001ef04)
   const off = resolveLabel(sub, r32(BASE), r16(0x801f7348 + 2 * k)) & 0xffff, p = (r32(BASE) + off) >>> 0;
   w32(CURSOR, p); w32(0x8007940c, p); w16(0x800792b4, r16(0x800792b4) - 1);
-  ctx.call(0x800325b0, [], sp);
+  savePoint(m);
 };
