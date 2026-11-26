@@ -14,25 +14,53 @@ import { setGp1e0, spriteFree, waitFade, textSpeed } from "../helpers.js";
 import { HANDLERS } from "./interp.js";
 import { CURSOR, BASE, io, operand, resolveLabel, unported } from "./lib.js";
 import { fadeOut, fadeIn, fadeLevel, windowPalette } from "../screen/fader.js";
-import { uploadPicture } from "../screen/picture.js";
+import { uploadPicture, loadPicture } from "../screen/picture.js";
 import { spritePage } from "../screen/sprites.js";
 import { tickText } from "../tick.js";
 import { memcpy } from "../screen/weather.js";
 
-const SKIP = 0x80079295, NO_EFFECTS = 0x800792a0, FLAGS = 0x801f74b0, IDS = 0x801f6698, NEW = 0x800794f4;
+const SKIP = 0x80079295, NO_EFFECTS = 0x800792a0, FLAGS = 0x801f74b0, IDS = 0x801f6698, NEW = 0x800794f4, SDW_BUF = 0x80079484;
 const halfFrames = (v) => (v & 0xffff) === 0x7f ? 1 : (v & 0xffff) >>> 1;
 const skipping = (m) => m.read(SKIP, 1) === 1;
 const endFrame = (m) => m.write(0x8007913c + 0x15c, 1, 1);
 
-function picture(ctx, fade) {
+// 0x8001cde4 showPicture(id, layer): the scene change for layer + 1 (0x8001db2c), the BGD
+// picture `id` (0x801fec68[layer]) loaded to the SDW buffer and put on page 8 / 0xb / 0x15
+// as the layer's full-screen sprite (0x801f6698 + 2 + 2·layer).
+const LAYER_PAGE = [[8, 1, 0xe], [0xb, 2, 0xc], [0x15, 3, 0xd]];
+export function* showPicture(ctx, id, layer) {
+  const { m } = ctx, { r16, r32, w8, w16 } = io(m), sp = ctx.sp - 0x30, sub = { ...ctx, sp };
+  if (m.read(SKIP, 1) === 1 || m.read(NO_EFFECTS, 1) === 1) { endFrame(m); return; }
+  ctx.call(0x8001db2c, [(layer + 1) & 0xff], sp);
+  layer &= 0xff;
+  w16(0x801fec68 + 2 * layer, id);
+  ctx.call(0x800369f8, [1, r32(SDW_BUF), id & 0xffff], sp);
+  const lp = LAYER_PAGE[layer];
+  if (lp) {
+    const [page, n, z] = lp;
+    if (layer === 0) {
+      w8(0x80079294, 1);
+      for (let i = 0; i < 16; i++) { m.write(0x8009da48 + 8 * i + 4, 0, 4); m.write(0x8009da48 + 8 * i, 0, 4); }
+      w8(0x800795e4, 5); w8(0x800795e6, 0xf); w8(0x800795e5, 0);
+    } else w8(0x80079294, 0);
+    loadPicture(sub, page, r32(SDW_BUF));
+    spritePage(sub, page, 0, -4, 0x140, 0xf0);
+    w16(IDS + 2 + 2 * layer, r16(0x80079528));
+    w8(r32(NEW) + 0x31, n); w8(r32(NEW) + 0x33, z); w16(r32(NEW) + 0x1e, 0x1000); w8(r32(NEW) + 0x38, n);
+    if (layer === 0) w8(0x80079294, 0);
+  }
+  endFrame(m);
+}
+
+function* picture(ctx, fade) {
   const { m } = ctx, v = operand(m).u16(), sp = ctx.sp - 0x18;
   if (skipping(m)) { endFrame(m); return; }
   if (m.read(NO_EFFECTS, 1) === 1) unported(fade ? 0x8001d674 : 0x8001d73c);
-  ctx.call(0x8001cde4, [(v + m.read(0x800792ba, 1) * 1000) & 0xffff, fade ? 0 : 1], sp);
+  yield* showPicture({ ...ctx, sp }, (v + m.read(0x800792ba, 1) * 1000) & 0xffff, fade ? 0 : 1);
   if (fade) { fadeLevel(m, 1, 0xff); m.write(0x8007955a, v & 0xff, 1); }
 }
-HANDLERS[0x04] = function* (ctx) { picture(ctx, true); };
-HANDLERS[0x05] = function* (ctx) { picture(ctx, false); };
+HANDLERS[0x04] = function* (ctx) { yield* picture(ctx, true); };
+HANDLERS[0x05] = function* (ctx) { yield* picture(ctx, false); };
 
 HANDLERS[0x08] = function* (ctx) {
   const { m } = ctx, o = operand(m), frames = halfFrames(o.u16()), ch = o.u8();
