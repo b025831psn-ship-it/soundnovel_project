@@ -9,6 +9,7 @@ import { textTask } from "../../src/text/text.js";
 import { LibGpu, LIBGPU_ENTRY } from "../../src/gpu/libgpu.js";
 import { frameFlip } from "../../src/screen/frame.js";
 import { waveTick } from "../../src/screen/wave.js";
+import { shakeTick } from "../../src/screen/shake.js";
 import { inputTick, inputClear, padRead } from "../../src/input.js";
 import { fadeStep, fadeIn, fadeTo, fadeLater, fadeTick, fadeOut } from "../../src/screen/fader.js";
 
@@ -49,6 +50,7 @@ export const PORTS = {
     return [[0x80025440, (c) => { inputTick(ctx(c)); c.ret(); }], [0x80025600, (c) => { inputClear(c); c.ret(); }],
       [0x80025eec, (c) => { c.r[2] = padRead(ctx(c)); c.ret(); }]];
   }, null],
+  shake: [0x8003ede0, () => (c) => { shakeTick(oracleCtx(c)); c.ret(); }],
   wave: [0x8002cf5c, () => (c) => { waveTick(oracleCtx(c)); c.ret(); }],
   fader: [() => [
     [0x8002c5a0, (c) => { fadeStep(c); c.ret(); }], [0x8002c6e4, (c) => { fadeIn(c, c.r[4], c.r[5]); c.ret(); }],
