@@ -14,6 +14,7 @@ import { HANDLERS } from "./interp.js";
 import { CURSOR, BASE, io, operand, resolveLabel, unported } from "./lib.js";
 import { fadeOut, fadeIn } from "../screen/fader.js";
 import { tickText } from "../tick.js";
+import { memcpy } from "../screen/weather.js";
 
 const SKIP = 0x80079295, NO_EFFECTS = 0x800792a0, FLAGS = 0x801f74b0, IDS = 0x801f6698, NEW = 0x800794f4;
 const halfFrames = (v) => (v & 0xffff) === 0x7f ? 1 : (v & 0xffff) >>> 1;
@@ -104,3 +105,76 @@ function branch(ctx, when) {
 }
 HANDLERS[0x0e] = function* (ctx) { branch(ctx, false); };
 HANDLERS[0x0f] = function* (ctx) { branch(ctx, true); };
+
+//   0x14 0x8001e7b8 0x8003a6e4(u8 + 8)   0x1c 0x8001f19c 0x800418d0(u8)   0x1d 0x8001f20c 0x80044384(u8)
+//   0x15 0x8001e830 return (only while skipping; 0x03 is the normal return)
+//   0x17 0x8001efd0 skip the text up to its 0x15 end (Shift-JIS lead bytes take 3)
+//   0x1e 0x8001f27c goto(u16 offset) when 0x80079296 is set
+//   0x23 0x8001f3e4 palette(u8 a, u8 b): 0x800792ba = (0x1f - a) >> 3, then 0x8002cae0
+HANDLERS[0x14] = function* (ctx) {
+  const { m } = ctx, k = operand(m).u8();
+  if (m.read(NO_EFFECTS, 1) !== 1) {
+    if (m.read(0x800792c6, 1) === 1) m.write(0x8007928e, 1, 1);
+    ctx.call(0x8003a6e4, [k + 8], ctx.sp - 0x18);
+  }
+  endFrame(m);
+};
+function simple(addr) {
+  return function* (ctx) {
+    const { m } = ctx, k = operand(m).u8();
+    if (!skipping(m) && m.read(NO_EFFECTS, 1) !== 1) ctx.call(addr, [k], ctx.sp - 0x18);
+    endFrame(m);
+  };
+}
+HANDLERS[0x1c] = simple(0x800418d0);
+HANDLERS[0x1d] = simple(0x80044384);
+
+HANDLERS[0x15] = function* (ctx) {
+  const { m } = ctx, { r16, r32, w16, w32, g8, p8 } = io(m);
+  if (m.read(NO_EFFECTS, 1) === 1) unported(0x8001e858);
+  if (!skipping(m)) return;
+  const STACK = 0x8008da38;
+  p8(0, g8(0) - 1);
+  const n = g8(0);
+  const off = r16(STACK + 4 * n);
+  p8(0, n - 1);
+  const res = r16(STACK + 4 * g8(0));
+  if (r16(0x8007929c) !== res) {
+    const base = r32(BASE);
+    if (g8(2) === 1 && ((g8(0x45c) << 24) >> 24) === res) memcpy(m, r32(0x80079544) + 0x28000, base, 0xb000);
+    else unported(0x8001e914); // resource 31 from the EXE, or a load
+    w16(0x8007929c, res);
+  }
+  w32(CURSOR, off + r32(BASE));
+};
+
+HANDLERS[0x17] = function* (ctx) {
+  const { m } = ctx, { r8, r32, w32 } = io(m);
+  if (skipping(m)) { endFrame(m); return; }
+  for (;;) {
+    const p = r32(CURSOR), b = r8(p);
+    if (b === 0x15) break;
+    if (b >= 0x81) w32(CURSOR, p + 2);
+    w32(CURSOR, r32(CURSOR) + 1);
+  }
+  endFrame(m);
+  w32(CURSOR, r32(CURSOR) + 1);
+};
+
+HANDLERS[0x1e] = function* (ctx) {
+  const { m } = ctx, off = operand(m).u16();
+  if (m.read(NO_EFFECTS, 1) === 1) unported(0x8001f2c4);
+  if (m.read(0x80079296, 1) === 1) m.write(CURSOR, (m.read(BASE, 4) + off) >>> 0, 4);
+  endFrame(m);
+};
+
+HANDLERS[0x23] = function* (ctx) {
+  const { m } = ctx, o = operand(m), a = o.u8(), b = o.u8();
+  if (skipping(m) || m.read(NO_EFFECTS, 1) === 1) { endFrame(m); return; }
+  m.write(0x800792ba, (0x1f - a) >> 3 & 0xff, 1);
+  const k = m.read(0x800792ba, 1), level = [0xff, 0xc0, 0x80, 0x40][k];
+  if (level === undefined) unported(0x8001f4c0); // the level is left over in a1
+  if (!b) ctx.call(0x8002cae0, [0, level], ctx.sp - 0x18);
+  else if (b & 1) ctx.call(0x8002cae0, [1, level], ctx.sp - 0x18);
+  endFrame(m);
+};
