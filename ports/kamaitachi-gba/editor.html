@@ -1,0 +1,319 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>세로 화면 배경 편집</title>
+<style>
+  :root { --bg: #0e0f12; --panel: #17191e; --line: #2a2d35; --text: #ece8df; --dim: #9a968d; --accent: #d2493c; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text); font: 14px/1.5 system-ui, "Noto Sans KR", sans-serif; }
+  body { display: grid; grid-template-columns: minmax(260px, 1fr) auto 300px; gap: 16px; padding: 16px; height: 100vh; }
+  .list { display: flex; flex-direction: column; min-height: 0; }
+  .filters { display: flex; gap: 6px; margin-bottom: 10px; flex-wrap: wrap; }
+  .filters button, .modes button, .actions button { border: 0; border-radius: 8px; padding: 7px 12px; background: var(--panel); color: var(--text); cursor: pointer; font: inherit; }
+  .filters button[aria-pressed="true"], .modes button[aria-pressed="true"] { background: var(--accent); }
+  .modes button:disabled { opacity: .35; cursor: not-allowed; }
+  .grid { overflow: auto; display: grid; grid-template-columns: repeat(auto-fill, minmax(116px, 1fr)); gap: 8px; align-content: start; grid-auto-rows: max-content; padding-right: 4px; }
+  .pic { position: relative; aspect-ratio: 3 / 2; border: 0; padding: 0; background: #000; border-radius: 6px; overflow: hidden; cursor: pointer; outline: 2px solid transparent; }
+  .pic img { display: block; width: 100%; height: 100%; object-fit: cover; image-rendering: pixelated; }
+  .pic span { position: absolute; left: 4px; top: 4px; padding: 0 5px; border-radius: 4px; background: rgba(0,0,0,.7); font-size: 12px; }
+  .pic .tags { left: auto; right: 4px; }
+  .pic[aria-current="true"] { outline-color: var(--accent); }
+  .phone { width: 390px; height: calc(100vh - 32px); max-height: 756px; /* the picture area of a phone in the hub page (about 0.57 wide to tall, 태우's iPhone) */ border-radius: 22px; overflow: hidden; background: #000; box-shadow: 0 0 0 6px #222; align-self: start; }
+  .phone iframe { width: 390px; height: 100%; border: 0; display: block; }
+  .side { display: flex; flex-direction: column; gap: 18px; }
+  .side h1 { font-size: 18px; margin: 0; }
+  .side h2 { font-size: 13px; color: var(--dim); font-weight: 500; margin: 0 0 6px; }
+  .modes { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+  .row { display: flex; align-items: center; gap: 10px; }
+  .row input[type=range] { flex: 1; accent-color: var(--accent); }
+  .row output { width: 40px; text-align: right; color: var(--dim); }
+  .hint { color: var(--dim); font-size: 12px; margin: 4px 0 0; }
+  .actions { display: flex; gap: 8px; flex-wrap: wrap; }
+  .actions .save { background: var(--accent); }
+  #status { color: var(--dim); min-height: 1.5em; }
+  [hidden] { display: none !important; }
+</style>
+</head>
+<body>
+<section class="list">
+  <div class="filters" id="filters">
+    <button data-filter="all" aria-pressed="true">전체</button>
+    <button data-filter="edited" aria-pressed="false">편집함</button>
+    <button data-filter="extended" aria-pressed="false">확장 그림</button>
+  </div>
+  <div class="grid" id="grid"></div>
+</section>
+<div class="phone"><iframe id="preview" title="휴대폰 미리보기" src="index.html?reader=1&amp;bigtext=1&amp;preview=1"></iframe></div>
+<section class="side">
+  <h1 id="title">그림을 고르세요</h1>
+  <div>
+    <h2>적용 범위</h2>
+    <div class="row"><select id="scope"></select></div>
+    <p class="hint">한 그림이 여러 장면에 쓰여요. 장면을 고르면 그 장면에서만 바뀌고, 나머지 값은 그림 전체 값을 따라요.</p>
+  </div>
+  <div>
+    <h2>표시 방식</h2>
+    <div class="modes" id="modes">
+      <button data-mode="">기본</button>
+      <button data-mode="frame">원본 + 흐린 배경</button>
+      <button data-mode="extend">확장 그림</button>
+      <button data-mode="fill">꽉 채워 자르기</button>
+    </div>
+    <p class="hint">기본은 확장 그림이 있으면 확장 그림(확대 100%), 없으면 원본 + 흐린 배경(확대 120%, 좌우 가운데)이에요.</p>
+  </div>
+  <div id="extendBox">
+    <h2>위아래 블러 폭 (게임 픽셀)</h2>
+    <div class="row"><input type="range" id="blur" min="0" max="100" step="20" value="0"><output id="blurOut">0</output></div>
+    <div class="row"><label><input type="checkbox" id="core"> 가운데도 AI 그림 그대로 (원본을 덮으면 선이 어긋날 때)</label></div>
+    <p class="hint">실루엣이 나와 있을 때는 항상 원본을 덮어요.</p>
+    <h2>원본 위치 (위에 생성한 줄 수, 확장 그림과 맞춰야 해요)</h2>
+    <div class="row"><input type="range" id="top" min="0" max="200" step="10" value="100"><output id="topOut">100</output></div>
+    <p class="hint">100은 가운데, 200은 원본이 맨 아래(위쪽 하늘만 생성)예요.</p>
+  </div>
+  <div id="shiftBox">
+    <h2>위아래 위치</h2>
+    <div class="row"><input type="range" id="shift" min="-100" max="100" step="1" value="0"><output id="shiftOut">0</output></div>
+    <p class="hint">오른쪽으로 갈수록 그림이 아래로 내려가요.</p>
+  </div>
+  <div>
+    <h2>확대</h2>
+    <div class="row"><input type="range" id="zoom" min="100" max="300" step="5" value="100"><output id="zoomOut">100%</output></div>
+  </div>
+  <div>
+    <h2>실루엣 확대</h2>
+    <div class="row"><label><input type="checkbox" id="figureSame" checked> 그림과 같이</label></div>
+    <div class="row"><input type="range" id="figureZoom" min="100" max="300" step="5" value="100" disabled><output id="figureZoomOut">같이</output></div>
+    <p class="hint">실루엣만 따로 키워요. 원본 위치를 기준으로 커져요.</p>
+  </div>
+  <div>
+    <h2>위쪽 끝 (세로 화면 맨 위에 올 줄, 0~360)</h2>
+    <div class="row"><label><input type="checkbox" id="yAuto" checked> 기본</label></div>
+    <div class="row"><input type="range" id="y" min="0" max="360" step="2" value="0" disabled><output id="yOut">기본</output></div>
+    <p class="hint">원본은 보통 100~259줄에 있어요. 확대한 만큼만 내려가요.</p>
+  </div>
+  <div id="cropBox">
+    <h2>좌우 위치 (0 왼쪽 끝, 100 오른쪽 끝)</h2>
+    <div class="row"><label><input type="checkbox" id="cropAuto" checked> 기본 (가운데)</label></div>
+    <div class="row"><input type="range" id="crop" min="0" max="100" step="1" value="50" disabled><output id="cropOut">자동</output></div>
+  </div>
+  <div class="actions">
+    <button id="prev">← 이전</button>
+    <button id="next">다음 →</button>
+    <button id="reset">이 그림 초기화</button>
+    <button id="save" class="save">저장</button>
+  </div>
+  <p id="status"></p>
+</section>
+<script type="module">
+const $ = (id) => document.getElementById(id);
+const IDS = Array.from({ length: 298 }, (_, i) => i);
+const pad = (id) => String(id).padStart(3, "0");
+let edits = {}, current = null, filter = "all", dirty = false, shownId = null;
+// The scene being edited (bb:oooo, where the script asks for the picture), or null for the whole
+// picture. A scene's values are kept as edits["<id>@<site>"] and go over the picture's.
+let site = null;
+const asked = new URLSearchParams(location.search);
+// The debug list links with scene=<picture>@<site>; the site alone is accepted too.
+if (asked.get("scene")?.includes("@")) asked.set("scene", asked.get("scene").split("@")[1]);
+const askedSilhouettes = (asked.get("sil") ?? "").split(",").filter(Boolean).map(Number).filter(Number.isFinite);
+// Scenes from the debug scene list, when this PC has made one (port-data/debug-scenes.json).
+const sceneList = await fetch("/kamaitachi-gba-kor/port-data/debug-scenes.json", { cache: "no-cache" })
+  .then((r) => (r.ok ? r.json() : null)).catch(() => null);
+const sceneEntries = Array.isArray(sceneList) ? sceneList : Array.isArray(sceneList?.scenes) ? sceneList.scenes : [];
+const keyOf = () => (site ? `${current}@${site}` : current);
+const scenesOf = (id) => {
+  const sites = new Map();
+  for (const entry of sceneEntries) if (entry?.picture === id && entry.site) {
+    sites.set(entry.site, entry);
+    if (entry.silhouettes?.length) { const at = `${entry.site}#${[...entry.silhouettes].sort((a, b) => a - b).join("+")}`; sites.set(at, { ...entry, site: at }); }
+  }
+  // The debug link's silhouettes: the scene with just those up.
+  if (site && asked.get("scene") === site.split("#")[0] && askedSilhouettes.length) {
+    const at = `${site.split("#")[0]}#${[...askedSilhouettes].sort((a, b) => a - b).join("+")}`;
+    if (!sites.has(at)) sites.set(at, { site: at });
+  }
+  for (const key of Object.keys(edits)) { const [pic, at] = key.split("@"); if (at && Number(pic) === id && !sites.has(at)) sites.set(at, { site: at }); }
+  if (site && !sites.has(site)) sites.set(site, { site });
+  return [...sites.values()];
+};
+const silhouettesOf = (id, at) => {
+  const entry = sceneEntries.find((e) => e?.picture === id && e.site === at);
+  if (at?.includes("#")) return at.split("#")[1].split("+").map(Number).filter(Number.isFinite);
+  return Array.isArray(entry?.silhouettes) ? entry.silhouettes : at && at === asked.get("scene") ? askedSilhouettes : [];
+};
+function renderScope() {
+  const scope = $("scope");
+  const scenes = current === null ? [] : scenesOf(current);
+  scope.replaceChildren(new Option("그림 전체", ""), ...scenes.map((entry, n) => {
+    const label = [`장면 ${n + 1}`, entry.site, entry.node !== undefined ? `노드 ${entry.node}` : "", entry.line ?? "",
+      edits[`${current}@${entry.site}`] ? "편집함" : ""].filter(Boolean).join(" · ");
+    return new Option(label, entry.site);
+  }));
+  scope.value = site ?? "";
+}
+const extendedIds = new Set(await fetch("/art/extended/index.json", { cache: "no-cache" }).then((r) => (r.ok ? r.json() : [])).catch(() => []));
+const modeOf = (id) => (site && id === current ? edits[`${id}@${site}`]?.mode : undefined) ?? edits[id]?.mode ?? (extendedIds.has(id) ? "extend" : "frame");
+
+edits = await fetch("/art/portrait-edits.json", { cache: "no-cache" }).then((r) => (r.ok ? r.json() : {})).catch(() => ({})) ?? {};
+
+function tags(id) {
+  const scenes = Object.keys(edits).filter((key) => key.startsWith(`${id}@`)).length;
+  return [extendedIds.has(id) ? "확장" : "", edits[id] ? "편집" : "", scenes ? `장면 ${scenes}` : ""].filter(Boolean).join(" · ");
+}
+function renderGrid() {
+  const grid = $("grid");
+  grid.replaceChildren(...IDS.filter((id) => filter === "all" || (filter === "extended" ? extendedIds.has(id) : edits[id] || Object.keys(edits).some((key) => key.startsWith(`${id}@`)))).map((id) => {
+    const button = document.createElement("button");
+    button.className = "pic";
+    button.dataset.id = id;
+    button.setAttribute("aria-current", String(id === current));
+    button.innerHTML = `<img loading="lazy" alt="" src="/kamaitachi-gba-kor/assets/bg/${pad(id)}.png"><span>${pad(id)}</span>${tags(id) ? `<span class="tags">${tags(id)}</span>` : ""}`;
+    button.addEventListener("click", () => select(id));
+    return button;
+  }));
+}
+function syncControls() {
+  renderScope();
+  const edit = { ...(edits[current] ?? {}), ...(site ? edits[keyOf()] ?? {} : {}) };
+  $("title").textContent = current === null ? "그림을 고르세요" : `그림 ${pad(current)}`;
+  for (const button of $("modes").children) {
+    button.setAttribute("aria-pressed", String((edit.mode ?? "") === button.dataset.mode));
+    if (button.dataset.mode === "extend") button.disabled = !extendedIds.has(current);
+  }
+  const mode = modeOf(current);
+  $("shiftBox").hidden = mode !== "frame";
+  $("extendBox").hidden = mode !== "extend";
+  $("blur").value = edit.blur ?? 0;
+  $("blurOut").textContent = edit.blur ?? 0;
+  $("core").checked = edit.core === "ai";
+  $("top").value = edit.top ?? 100;
+  $("topOut").textContent = edit.top ?? 100;
+  const zoom = edit.zoom ?? (mode === "extend" ? 1 : 1.2);
+  $("zoom").value = Math.round(zoom * 100);
+  $("zoomOut").textContent = `${Math.round(zoom * 100)}%`;
+  const figureSame = !Number.isFinite(edit.figureZoom);
+  $("figureSame").checked = figureSame;
+  $("figureZoom").disabled = figureSame;
+  $("figureZoom").value = Math.round((figureSame ? zoom : edit.figureZoom) * 100);
+  $("figureZoomOut").textContent = figureSame ? "같이" : `${Math.round(edit.figureZoom * 100)}%`;
+  const yAuto = !Number.isFinite(edit.y);
+  $("yAuto").checked = yAuto;
+  $("y").disabled = yAuto;
+  if (!yAuto) $("y").value = edit.y;
+  $("yOut").textContent = yAuto ? "기본" : edit.y;
+  $("shift").value = edit.shift ?? 0;
+  $("shiftOut").textContent = edit.shift ?? 0;
+  const auto = !Number.isFinite(edit.crop);
+  $("cropAuto").checked = auto;
+  $("crop").disabled = auto;
+  if (!auto) $("crop").value = edit.crop;
+  $("cropOut").textContent = auto ? "50" : edit.crop;
+}
+// The preview player answers once it has the picture on screen; until then the message is repeated
+// (the player may still be loading).
+let sendTimer = 0;
+function send() {
+  clearTimeout(sendTimer);
+  if (current === null) return;
+  $("preview").contentWindow?.postMessage({ type: "preview", id: current, edit: edits[current] ?? null, site,
+    sceneEdit: site ? edits[keyOf()] ?? null : null, silhouettes: silhouettesOf(current, site) }, location.origin);
+  if (shownId !== current) sendTimer = setTimeout(send, 500);
+}
+addEventListener("message", (event) => {
+  if (event.origin !== location.origin) return;
+  if (event.data?.type === "preview-shown") shownId = event.data.id;
+  if (event.data?.type === "preview-ready") send();
+});
+function select(id, at = null) {
+  current = id;
+  site = at;
+  shownId = null;
+  for (const button of $("grid").children) button.setAttribute("aria-current", String(Number(button.dataset.id) === id));
+  $("grid").querySelector(`[data-id="${id}"]`)?.scrollIntoView({ block: "nearest" });
+  syncControls();
+  send();
+}
+function change(patch) {
+  if (current === null) return;
+  const key = keyOf();
+  const edit = { ...(edits[key] ?? {}), ...patch };
+  for (const name of Object.keys(edit)) if (edit[name] === undefined || edit[name] === "" || edit[name] === null) delete edit[name];
+  // The defaults are left out for the whole picture; a scene keeps what it says (it may undo the picture's).
+  if (!site) {
+    if (edit.shift === 0) delete edit.shift;
+    if (edit.zoom === (modeOf(current) === "extend" && edit.mode !== "frame" ? 1 : 1.2)) delete edit.zoom;
+    if (edit.blur === 0) delete edit.blur;
+    if (edit.top === 100) delete edit.top;
+  }
+  if (Object.keys(edit).length) edits[key] = edit; else delete edits[key];
+  dirty = true;
+  $("status").textContent = "저장하지 않은 변경이 있어요.";
+  syncControls();
+  send();
+  const tile = $("grid").querySelector(`[data-id="${current}"]`);
+  if (tile) {
+    tile.querySelector(".tags")?.remove();
+    if (tags(current)) tile.insertAdjacentHTML("beforeend", `<span class="tags">${tags(current)}</span>`);
+  }
+}
+$("modes").addEventListener("click", (event) => {
+  const mode = event.target.closest("button")?.dataset.mode;
+  if (mode !== undefined) change({ mode: mode || undefined });
+});
+$("zoom").addEventListener("input", () => change({ zoom: Number($("zoom").value) / 100 }));
+$("figureSame").addEventListener("change", () => change({ figureZoom: $("figureSame").checked ? undefined : Number($("figureZoom").value) / 100 }));
+$("figureZoom").addEventListener("input", () => change({ figureZoom: Number($("figureZoom").value) / 100 }));
+$("yAuto").addEventListener("change", () => change({ y: $("yAuto").checked ? undefined : Number($("y").value) }));
+$("y").addEventListener("input", () => change({ y: Number($("y").value) }));
+$("blur").addEventListener("input", () => change({ blur: Number($("blur").value) }));
+$("top").addEventListener("input", () => change({ top: Number($("top").value) }));
+$("core").addEventListener("change", () => change({ core: $("core").checked ? "ai" : undefined }));
+$("shift").addEventListener("input", () => change({ shift: Number($("shift").value) }));
+$("cropAuto").addEventListener("change", () => change({ crop: $("cropAuto").checked ? undefined : Number($("crop").value) }));
+$("crop").addEventListener("input", () => change({ crop: Number($("crop").value) }));
+$("reset").addEventListener("click", () => { if (current !== null) { delete edits[keyOf()]; change({}); } });
+$("scope").addEventListener("change", () => { site = $("scope").value || null; shownId = null; syncControls(); send(); });
+const visible = () => [...$("grid").children].map((b) => Number(b.dataset.id));
+const step = (delta) => {
+  const list = visible();
+  if (!list.length) return;
+  const at = list.indexOf(current);
+  select(list[Math.max(0, Math.min(list.length - 1, at < 0 ? 0 : at + delta))]);
+};
+$("prev").addEventListener("click", () => step(-1));
+$("next").addEventListener("click", () => step(1));
+addEventListener("keydown", (event) => {
+  if (event.target.matches("input")) return;
+  if (event.key === "ArrowLeft") step(-1);
+  if (event.key === "ArrowRight") step(1);
+});
+$("save").addEventListener("click", async () => {
+  $("status").textContent = "저장 중…";
+  try {
+    const response = await fetch("/edit/portrait-edits.json", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(edits) });
+    if (!response.ok) throw new Error(response.status === 403 ? "이 PC에서만 저장할 수 있어요." : `저장 실패 (${response.status})`);
+    dirty = false;
+    $("status").textContent = `저장했어요. 편집한 그림 ${Object.keys(edits).length}장. 게임을 새로고침하면 반영돼요.`;
+  } catch (error) {
+    $("status").textContent = error.message;
+  }
+});
+addEventListener("beforeunload", (event) => { if (dirty) event.preventDefault(); });
+$("filters").addEventListener("click", (event) => {
+  const value = event.target.closest("button")?.dataset.filter;
+  if (!value) return;
+  filter = value;
+  for (const button of $("filters").children) button.setAttribute("aria-pressed", String(button.dataset.filter === filter));
+  renderGrid();
+});
+renderGrid();
+// editor.html?id=200&scene=1b:0fa9&sil=12,13 opens that scene (the debug scene list links here).
+const askedId = Number(asked.get("id"));
+if (Number.isInteger(askedId) && askedId >= 0 && askedId < 298) select(askedId, asked.get("scene") || null);
+else select(0);
+</script>
+</body>
+</html>

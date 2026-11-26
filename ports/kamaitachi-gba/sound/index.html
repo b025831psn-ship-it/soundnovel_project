@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>카마이타치 음원 확인</title>
+<style>
+  :root { color-scheme: dark; --bg: #0d0e12; --fg: #e8e4dc; --dim: #8a8680; --accent: #c8423a; }
+  body { margin: 0; padding: 24px 16px; background: var(--bg); color: var(--fg); font: 15px/1.6 system-ui, sans-serif; }
+  main { max-width: 520px; margin: 0 auto; }
+  h1 { font-size: 18px; font-weight: 600; margin: 0 0 4px; }
+  p { color: var(--dim); margin: 0 0 20px; }
+  .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  input { width: 90px; padding: 8px; background: #16171c; color: var(--fg); border: 1px solid #2a2b31; border-radius: 6px; font: inherit; }
+  button { padding: 8px 14px; background: #16171c; color: var(--fg); border: 1px solid #2a2b31; border-radius: 6px; font: inherit; cursor: pointer; }
+  button.primary { border-color: var(--accent); }
+  #status { margin-top: 16px; color: var(--dim); min-height: 1.6em; }
+</style>
+</head>
+<body>
+<main>
+  <h1>카마이타치 원작 음원 확인</h1>
+  <p>카트리지의 MP2K 곡 데이터를 원작 엔진 방식(18,157Hz 믹서)으로 재생합니다.</p>
+  <div class="row">
+    <button id="prev" aria-label="이전 곡">◀</button>
+    <input id="song" type="number" min="0" value="0" aria-label="곡 번호">
+    <button id="next" aria-label="다음 곡">▶</button>
+    <button id="play" class="primary">재생</button>
+    <button id="fade">페이드아웃</button>
+    <button id="stop">정지</button>
+  </div>
+  <div id="status">불러오는 중…</div>
+</main>
+<script type="module">
+  import { createSound } from './output.js';
+  const $ = (id) => document.getElementById(id);
+  const dataDir = new URL(new URLSearchParams(location.search).get('data') || '/kamaitachi-gba-kor/port-data/sound/', location.href);
+  let sound;
+  try {
+    sound = await createSound(dataDir);
+    window.sound = sound; // for checks from the console or tests
+    $('song').max = sound.songCount - 1;
+    $('status').textContent = `곡 ${sound.songCount}개. 번호를 고르고 재생을 누르세요.`;
+  } catch (e) { $('status').textContent = `음원을 불러오지 못했습니다: ${e.message}`; }
+  const play = async () => { await sound.resume(); sound.stopAll(); sound.startSong(Number($('song').value)); $('status').textContent = `${$('song').value}번 재생 중`; };
+  $('play').onclick = play;
+  $('prev').onclick = () => { $('song').value = Math.max(0, Number($('song').value) - 1); play(); };
+  $('next').onclick = () => { $('song').value = Math.min(sound.songCount - 1, Number($('song').value) + 1); play(); };
+  $('stop').onclick = () => { sound.stopAll(); $('status').textContent = '정지'; };
+  $('fade').onclick = () => { sound.fadeOut(0, 4); $('status').textContent = '페이드아웃'; };
+</script>
+</body>
+</html>

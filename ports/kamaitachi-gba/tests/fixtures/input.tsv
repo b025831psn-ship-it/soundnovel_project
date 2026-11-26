@@ -1,0 +1,5 @@
+frame	button	action
+60	START	down
+61	START	up
+180	A	down
+181	A	up

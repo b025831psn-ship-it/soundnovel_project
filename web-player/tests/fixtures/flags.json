@@ -1,0 +1,35 @@
+{
+  "schemaVersion": 1,
+  "gameId": "test-flags",
+  "title": "플래그 시험",
+  "entry": "q1",
+  "nodes": {
+    "q1": {
+      "kind": "choice",
+      "text": "서랍을 열어 볼까.",
+      "options": [
+        { "key": "A", "label": "서랍을 연다.", "set": { "key": true }, "to": "hall" },
+        { "key": "B", "label": "그냥 지나간다.", "to": "hall" }
+      ]
+    },
+    "hall": {
+      "kind": "passage",
+      "pages": ["복도 끝에 잠긴 문이 있다."],
+      "next": [
+        { "if": { "key": true }, "to": "open" },
+        { "to": "locked" }
+      ]
+    },
+    "locked": {
+      "kind": "passage",
+      "pages": ["문은 열리지 않았다. 돌아가자."],
+      "to": "q1"
+    },
+    "open": {
+      "kind": "passage",
+      "set": { "door": "open" },
+      "pages": ["열쇠로 문을 열었다."],
+      "to": null
+    }
+  }
+}

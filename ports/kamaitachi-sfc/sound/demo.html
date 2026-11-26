@@ -1,0 +1,60 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SFC 사운드 재생 확인</title>
+<style>
+  :root { --bg: #0d0d0f; --fg: #e8e4dc; --muted: #8a857c; --accent: #b3262d; }
+  body { margin: 0; background: var(--bg); color: var(--fg); font: 15px/1.6 "Noto Serif KR", serif; }
+  main { max-width: 640px; margin: 0 auto; padding: 32px 16px; }
+  h1 { font-size: 20px; font-weight: 600; margin: 0 0 8px; }
+  p { color: var(--muted); margin: 0 0 20px; }
+  button { background: none; color: var(--fg); border: 1px solid var(--accent); padding: 8px 18px; font: inherit; cursor: pointer; margin-right: 8px; }
+  button:disabled { opacity: .4; cursor: default; }
+  #stat { margin-top: 20px; font: 13px/1.6 ui-monospace, monospace; color: var(--muted); white-space: pre; }
+  progress { width: 100%; accent-color: var(--accent); margin-top: 16px; }
+</style>
+<main>
+  <h1>카마이타치의 밤 SFC · 사운드 재생 확인</h1>
+  <p>원작 사운드 드라이버를 이식한 SPC700·S-DSP로 reset부터 첫 선택지까지의 기록된 명령을 재생합니다. ROM은 쓰지 않습니다.</p>
+  <button id="play" disabled>불러오는 중…</button><button id="mute" disabled>음소거</button>
+  <progress id="prog" max="1" value="0"></progress>
+  <div id="stat"></div>
+</main>
+<script type="module">
+  import { APU } from './apu.js';
+  import { createAudioOut } from './output.js';
+  import { readIplRecords } from './ipl.js';
+  import { ReplayMachine } from './replay-machine.js';
+  import { runRealtime } from './realtime.js';
+
+  const base = new URL(new URLSearchParams(location.search).get('data') ?? '../../../kamaitachi-sfc-kor/port-data/', location.href);
+  const IPL = 621677;
+  const $ = (id) => document.getElementById(id);
+  const get = (p) => fetch(new URL(p, base)).then((r) => { if (!r.ok) throw new Error(`${p}: ${r.status}`); return r; });
+  let records, gauss, inputs;
+  try {
+    const [rec, g, tsv] = await Promise.all([get('sound/ipl-records.bin').then((r) => r.arrayBuffer()),
+      get('sound/dsp-gauss.bin').then((r) => r.arrayBuffer()), get('trace/spc-ports.tsv').then((r) => r.text())]);
+    records = readIplRecords(new Uint8Array(rec)); gauss = new Int16Array(g);
+    inputs = tsv.split('\n').slice(1).filter(Boolean).map((l) => l.split('\t')).filter((r) => r[1] === 'r')
+      .map(([t, , p, v]) => [Number(t) - IPL, Number(p) & 3, parseInt(v, 16)]).filter((r) => r[0] >= 0);
+    $('play').textContent = '재생'; $('play').disabled = false;
+  } catch (e) { $('play').textContent = '자료 없음'; $('stat').textContent = String(e); }
+
+  let running = false, muted = false;
+  $('play').onclick = async () => {
+    if (running) return; running = true; $('play').disabled = true; $('mute').disabled = false;
+    const out = await createAudioOut(); await out.resume();
+    $('mute').onclick = () => { muted = !muted; out.setMuted(muted); $('mute').textContent = muted ? '소리 켜기' : '음소거'; };
+    const apu = new APU({ gauss }); apu.dsp.onSample = out.sample; apu.boot(records);
+    const machine = new ReplayMachine(apu, inputs);
+    runRealtime(machine, out, {
+      onFrame: (m) => {
+        $('prog').value = m.time / m.end;
+        const s = out.stats();
+        $('stat').textContent = `${m.time.toFixed(1)} / ${m.end.toFixed(1)}초  (SPC ${apu.cpu.clock.toLocaleString()} 클록)\n출력 ${out.context.sampleRate} Hz` + (s ? `  버퍼 ${s.fill}  부족 ${s.underruns}` : '');
+        if (m.time >= m.end) $('play').textContent = '끝';
+      },
+    });
+  };
+</script>
