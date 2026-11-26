@@ -114,3 +114,26 @@ poll more than once per NMI).  Thus the NMI 501/676 WRAM difference is a replay
 harness sampling-granularity artifact, not a global VM input-frame offset.  A
 physical-poll/auto-read-completion trace is required to reproduce that history
 byte exactly.
+
+## Bundle 6: completed-frame colour and performance
+
+The framebuffer callback now publishes the completed 224-line image at vblank
+instead of publishing just after the first line of the next physical frame.
+BG and mode-7 sampling also uses the S-PPU visible-line source row (`y + 1`).
+With those two corrections NMI 2063 is bit-exact after BGR555 quantization: the
+former 33,235-pixel, 26/26/24-channel difference is zero.  `$2100`, `$2105`,
+`$212c-$2133`, enabled HDMA channel descriptors, VRAM, CGRAM, OAM, and scroll
+state already matched; half/subtract, fixed colour, windows, and HDMA were not
+the cause.
+
+The NMI 100--120 Chunsoft logo region was a BG, not an OBJ.  Seventeen of the
+21 frames are now exact.  The only remaining transition frames are NMI 100,
+104, 107, and 113 with 406, 256, 165, and 66 pixels respectively; these are
+partial-update boundaries rather than a persistent 58x72 decode error.
+
+`tools/performance.mjs` measures the same machine with rendering disabled and
+enabled after a JIT warm-up.  On this container, reset through NMI 2108 takes
+27,977 ms for 2,153 rendered frames: 12.995 ms/frame or 76.96 fps.  The
+CPU/scheduler accounts for 79.03% and rendering for 20.97%.  The speedup keeps
+every scanline: OBJ evaluation now decodes only the active line, and unchanged
+scanlines reuse the prior exact pixels based on the monotonic PPU revision.

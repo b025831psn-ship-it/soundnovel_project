@@ -45,7 +45,7 @@ export class SfcMachine {
     this.pendingIrq = false;
     this.pendingNmi = false;
     this.nextJoypadComplete = Infinity;
-    this.renderedPpuRevision = -1;
+    this.renderedLineRevision = new Int32Array(224).fill(-1);
 
     const externalNmiEnable = busOptions.onNmiEnable;
     const externalIrqConfig = busOptions.onIrqConfig;
@@ -149,7 +149,11 @@ export class SfcMachine {
         return stall;
     }
     if (type === 'render') {
-        if (this.onFrame && this.rasterLine < 224) renderScanline(this.bus, this.rasterFramebuffer, this.rasterLine);
+        if (this.onFrame && this.rasterLine < 224
+            && this.renderedLineRevision[this.rasterLine] !== this.bus.ppuRevision) {
+          renderScanline(this.bus, this.rasterFramebuffer, this.rasterLine);
+          this.renderedLineRevision[this.rasterLine] = this.bus.ppuRevision;
+        }
         this.advanceRasterEvent('render');
         return 0;
     }
@@ -162,17 +166,20 @@ export class SfcMachine {
     if (type === 'frame') {
       this.frame++;
       this.inVblank = false;
-      if (this.buttons === null) this.physicalButtons = this.joypad(this.nmiCount + 1, this.frame) ?? 0;
-      if (this.onFrame) {
-        this.framebuffer = this.rasterFramebuffer.slice();
-        this.onFrame(this.frame, this.framebuffer);
-      }
+      // libretro polls physical input at the start of retro_run, before the
+      // upcoming auto-joypad read.  Expose the last completed NMI here; the
+      // sampled value is then consumed by the next vblank auto-read.
+      if (this.buttons === null) this.physicalButtons = this.joypad(this.nmiCount, this.frame) ?? 0;
       this.nextFrame += this.frameLength;
       this.frameLength = this.frameLength === 357_368 ? 357_364 : 357_368;
       return 0;
     }
     if (type === 'nmi') {
       this.inVblank = true;
+      if (this.onFrame) {
+        this.framebuffer = this.rasterFramebuffer.slice();
+        this.onFrame(this.frame, this.framebuffer);
+      }
       this.bus.latchNmi();
       if (this.bus.io[0x4200 - 0x2000] & 0x80) this.pendingNmi = true;
       if (this.bus.io[0x4200 - 0x2000] & 1) {

@@ -48,7 +48,7 @@ test('owns frame, NMI and joypad scheduling', () => {
   assert.equal(machine.frame, 1);
   assert.equal(nmis.length, 1);
   assert.equal(machine.nmiCount, 1);
-  assert.deepEqual(joypads, [[1, 1]]);
+  assert.deepEqual(joypads, [[0, 1]], 'physical poll precedes the first NMI');
   assert.equal(machine.bus.read8(0x4218), 0x34);
   assert.equal(machine.bus.read8(0x4219), 0x12);
 

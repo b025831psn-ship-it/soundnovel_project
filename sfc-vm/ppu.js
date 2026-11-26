@@ -32,27 +32,27 @@ function bgPixel(bus, bg, x, y, bpp) {
   return { rgb: color(bus.cgram, paletteBase + value), priority: ((entry >>> 13) & 1) * 4 + (3 - bg) };
 }
 
-function renderObjects(bus, width, height) {
+function renderObjects(bus, width, y) {
   const io = bus.io, obsel = io[0x2101 - 0x2000];
   const tileBase = (obsel & 7) * 0x4000;
   const sizeTable = [[8,16],[8,32],[8,64],[16,32],[16,64],[32,64],[16,32],[16,32]];
-  const layer = new Int32Array(width * height).fill(-1);
+  const layer = new Int32Array(width).fill(-1);
   for (let object = 127; object >= 0; object--) {
     const at = object * 4, high = bus.oam[512 + (object >>> 2)] >>> ((object & 3) * 2);
     let ox = bus.oam[at] | ((high & 1) << 8); if (ox >= 256) ox -= 512;
     const oy = bus.oam[at + 1], large = (high >>> 1) & 1;
     const size = sizeTable[obsel >>> 5][large];
     const attr = bus.oam[at + 3];
-    for (let py = 0; py < size; py++) { const sy = (oy + py) & 0xff; if (sy >= height) continue;
-      for (let px = 0; px < size; px++) { const sx = ox + px; if (sx < 0 || sx >= width) continue;
-        const tx = attr & 0x40 ? size - 1 - px : px, ty = attr & 0x80 ? size - 1 - py : py;
-        const tile = (bus.oam[at + 2] + (tx >>> 3) + (ty >>> 3) * 16) & 0xff;
-        const nameBase = attr & 1 ? ((((obsel >>> 3) & 3) + 1) * 0x2000) : 0;
-        const value = decodeTilePixel(bus.vram, (tileBase + nameBase + tile * 32) & 0xffff, tx & 7, ty & 7, 4);
-        if (!value) continue;
-        const priority = (attr >>> 4) & 3, palette = 128 + ((attr >>> 1) & 7) * 16 + value;
-        layer[sy * width + sx] = (priority << 9) | palette;
-      }
+    const py = (y - oy) & 0xff;
+    if (py >= size) continue;
+    for (let px = 0; px < size; px++) { const sx = ox + px; if (sx < 0 || sx >= width) continue;
+      const tx = attr & 0x40 ? size - 1 - px : px, ty = attr & 0x80 ? size - 1 - py : py;
+      const tile = (bus.oam[at + 2] + (tx >>> 3) + (ty >>> 3) * 16) & 0xff;
+      const nameBase = attr & 1 ? ((((obsel >>> 3) & 3) + 1) * 0x2000) : 0;
+      const value = decodeTilePixel(bus.vram, (tileBase + nameBase + tile * 32) & 0xffff, tx & 7, ty & 7, 4);
+      if (!value) continue;
+      const priority = (attr >>> 4) & 3, palette = 128 + ((attr >>> 1) & 7) * 16 + value;
+      layer[sx] = (priority << 9) | palette;
     }
   }
   return layer;
@@ -130,17 +130,21 @@ function objectPriority(io, priority) {
 
 function layerPixel(bus, objects, bg, x, y, bpps, direct) {
   if (bg === 4) {
-    const packed = objects?.[y * 256 + x] ?? -1;
+    const packed = objects?.[x] ?? -1;
     return packed < 0 ? null : { rgb: color(bus.cgram, packed & 0x1ff), priority: objectPriority(bus.io, packed >>> 9) };
   }
-  if ((bus.io[0x2105 - 0x2000] & 7) === 7) return mode7Pixel(bus, bg, x, y);
-  const pixel = bgPixel(bus, bg, x, y, bpps[bg]);
+  const sourceY = y + 1;
+  // Visible SNES line 0 samples the first post-vblank PPU scanline.  The
+  // background mosaic/scroll pipeline is therefore one source row ahead of
+  // the zero-based framebuffer coordinate.
+  if ((bus.io[0x2105 - 0x2000] & 7) === 7) return mode7Pixel(bus, bg, x, sourceY);
+  const pixel = bgPixel(bus, bg, x, sourceY, bpps[bg]);
   if (pixel) pixel.priority = bgPriority(bus.io, bg, pixel.priority >= 4 ? 1 : 0);
   if (pixel && direct && bpps[bg] === 8) {
     // Recover the direct-colour inputs without changing the tile decoder API.
     const screen = bus.io[0x2107 + bg - 0x2000], mapBase = ((screen >>> 2) * 0x800) & 0xffff;
     const sx = (x + bus.bgHofs[bg]) & (((screen & 1 ? 64 : 32) * 8) - 1);
-    const sy = (y + bus.bgVofs[bg]) & (((screen & 2 ? 64 : 32) * 8) - 1);
+    const sy = (sourceY + bus.bgVofs[bg]) & (((screen & 2 ? 64 : 32) * 8) - 1);
     const mapWidth = screen & 1 ? 64 : 32, tx = sx >>> 3, ty = sy >>> 3;
     const at = mapBase + (tx >>> 5) * 0x800 + (ty >>> 5) * (mapWidth >>> 5) * 0x800 + (((ty & 31) * 32 + (tx & 31)) << 1);
     const entry = bus.vram[at & 0xffff] | (bus.vram[(at + 1) & 0xffff] << 8);
@@ -179,8 +183,9 @@ function renderLines(bus, rgba, width, height, firstY, lastY) {
   const main = io[0x212c - 0x2000], sub = io[0x212d - 0x2000];
   const cgwsel = io[0x2130 - 0x2000], math = io[0x2131 - 0x2000], half = !!(math & 0x40), subtract = !!(math & 0x80);
   const fixed = fixedColor(bus);
-  const objects = (main | sub) & 0x10 ? renderObjects(bus, width, height) : null;
-  for (let y = firstY; y < lastY; y++) for (let x = 0; x < width; x++) {
+  for (let y = firstY; y < lastY; y++) {
+    const objects = (main | sub) & 0x10 ? renderObjects(bus, width, y) : null;
+    for (let x = 0; x < width; x++) {
     const top = composeScreen(bus, objects, x, y, main, 0x212e, bpps, !!(cgwsel & 1));
     const below = composeScreen(bus, objects, x, y, sub, 0x212f, bpps, !!(cgwsel & 1));
     let rgb = top.rgb;
@@ -200,6 +205,7 @@ function renderLines(bus, rgba, width, height, firstY, lastY) {
     const out = (y * width + x) * 4;
     rgba[out] = rgb[0] * brightness / 15; rgba[out + 1] = rgb[1] * brightness / 15;
     rgba[out + 2] = rgb[2] * brightness / 15; rgba[out + 3] = 255;
+  }
   }
   return rgba;
 }

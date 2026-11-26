@@ -485,7 +485,7 @@ test('renders mode 7 through the affine matrix and interleaved VRAM', () => {
   bus.mode7[0] = 0x100;
   bus.mode7[3] = 0x100;
   bus.vram[0] = 0;
-  bus.vram[1] = 1;
+  bus.vram[17] = 1; // visible line 0 samples mode-7 source row 1
   bus.cgram[2] = 0xe0;
   bus.cgram[3] = 0x03;
   assert.deepEqual([...renderFrame(bus, 1, 1)], [0, 255, 0, 255]);
@@ -523,7 +523,7 @@ test('mode 1 BG3 2bpp palettes start at CGRAM colour zero', () => {
   bus.io[0x2105 - 0x2000] = 1;
   bus.io[0x2109 - 0x2000] = 4; // BG3 map at VRAM byte $0800
   bus.io[0x212c - 0x2000] = 4;
-  bus.vram[0] = 0x80; // tile 0, pixel (0,0) = colour 1
+  bus.vram[2] = 0x80; // tile 0, visible line 0/source row 1 = colour 1
   bus.vram[0x800] = 0;
   bus.vram[0x801] = 0;
   bus.cgram[2] = 0xff;
