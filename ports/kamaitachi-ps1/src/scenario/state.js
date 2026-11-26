@@ -135,3 +135,19 @@ HANDLERS[0x63] = function* (ctx) {
   if (quiet(m)) { endFrame(m); return; }
   ctx.call(0x80059708, [0], ctx.sp - 0x18);
 };
+
+// 0x13 0x8001e3c0 the label table of a choice: (n u8, u8, then n + 1 labels u16) to
+// 0x801f7348, the second table (0x80093be8) cleared; skipping starts as in 0x57.
+HANDLERS[0x13] = function* (ctx) {
+  const { m } = ctx, o = operand(m), n = o.u8();
+  m.write(0x800794cb, n, 1); m.write(0x80079430, o.u8(), 1);
+  const labels = [];
+  for (let k = 0; k <= 8; k++) if (k === 0 || n >= k) labels.push(o.u16());
+  labels.forEach((a, k) => m.write(0x801f7348 + 2 * k, a, 2));
+  m.write(SKIP, 1, 1);
+  ctx.call(0x80037b08, [], ctx.sp - 0x30);
+  if (m.read(NO_EFFECTS, 1) === 1) { endFrame(m); return; }
+  memcpy(m, m.read(BASE, 4) >>> 0, ((m.read(0x80079544, 4) >>> 0) + 0x28000) >>> 0, 0xb000);
+  m.write(0x8007913c + 2, 1, 1); m.write(0x8007913c + 0x45c, m.read(0x8007929c, 1), 1);
+  for (let i = 0; i < 0x10; i++) m.write(0x80093be8 + i, 0, 1); // 0x80044bc0
+};
