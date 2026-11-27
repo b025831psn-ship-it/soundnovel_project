@@ -94,6 +94,7 @@ cursor to it (reading `$0081` back each press) and press A, once `choice.ready`;
 SRAM is kept in localStorage (`zakuro-sfc.sram`) through the VM's SRAM hooks.
 `?replay` (verification only) plays the recorded native input first, then hands over to the player.
 
-Known blockers (2026-11-26): the ROM-free program image covers only what the reference run read
-(a choice off that path stops with "unmapped program byte"), and the PPU renders at ~15 ms per field,
-so the game runs at ~0.6× real time. Both are requested from the VM side in PR #31.
+The VM runs with `skipRender`; the player renders once per display frame and feeds input once per
+field from the field counter. With the complete private program image (Codex 9324a4a) and the Mode 1
+PPU (7edbae9), headless Chromium reaches the first choice in real time (58 s for 3,504 fields), and a
+tap on choice 2 takes that branch.

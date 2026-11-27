@@ -69,14 +69,9 @@ function startGame(data, out) {
   const input = new InputQueue();
   const ctx = canvas.getContext('2d');
   const image = ctx.createImageData(256, 224);
-  let fresh = false, saveTimer = 0;
+  let saveTimer = 0, lastField = -1, shown = null;
   const vm = new ZakuroVM({
     program: data.program, sram: data.program.sram, masterLink: link, inputFrames: data.replay,
-    onFrame({ field, rgba }) {
-      image.data.set(rgba); fresh = true;
-      const mask = input.next(vm.getTouchState());
-      if (mask || !data.replay || field + 1 >= data.replay.length) vm.setJoypad(mask);
-    },
     onSramWrite() {
       if (data.replay) return; // a verification run never overwrites the player's save
       clearTimeout(saveTimer);
@@ -87,6 +82,16 @@ function startGame(data, out) {
   addEventListener('pagehide', saveSram);
   const saved = data.replay ? null : store.get(SRAM_KEY);
   if (saved) { try { vm.importSram(fromBase64(saved)); } catch { /* size changed: start fresh */ } }
+  // The VM renders only when asked (once per display frame, below), so catching up after a stall
+  // costs CPU time only. Input is fed once per field from the field counter instead.
+  vm.skipRender = true;
+  const perField = () => {
+    const field = vm.ppu.field;
+    if (field === lastField) return;
+    lastField = field;
+    const mask = input.next(vm.getTouchState());
+    if (mask || !data.replay || field + 1 >= data.replay.length) vm.setJoypad(mask);
+  };
   vm.reset();
 
   // Paced by the audio buffer: run the VM until ~LEAD s of S-DSP output is queued ahead of playback.
@@ -101,7 +106,7 @@ function startGame(data, out) {
     try {
       while (ahead < LEAD && !vm.cpu.stopped && performance.now() - started < BUDGET_MS) {
         const goal = vm.bus.clock.master + SLICE;
-        while (vm.bus.clock.master < goal && !vm.cpu.stopped) vm.step();
+        while (vm.bus.clock.master < goal && !vm.cpu.stopped) { vm.step(); perField(); }
         link.sync(vm.bus.clock.master);
         ahead = produced / DSP_HZ - (out.context.currentTime - startTime);
       }
@@ -111,8 +116,11 @@ function startGame(data, out) {
       return;
     }
     out.flush();
-    if (fresh) {
-      ctx.putImageData(image, 0, 0); fresh = false;
+    // presentField re-renders only when the PPU state changed since the last render.
+    const frame = vm.ppu.field >= 0 ? vm.ppu.presentField(vm.ppu.field, vm.bus.clock.master, true) : null;
+    if (frame && (frame !== shown || vm.ppu.renderedRevision !== shown.revision)) {
+      image.data.set(frame); ctx.putImageData(image, 0, 0);
+      shown = frame; shown.revision = vm.ppu.renderedRevision;
       if (tick++ % 4 === 0) { glow.globalAlpha = 0.25; glow.drawImage(canvas, 0, 0, 32, 28); }
     }
     if (!vm.cpu.stopped) requestAnimationFrame(step);
