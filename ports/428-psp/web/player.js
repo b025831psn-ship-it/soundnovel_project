@@ -83,7 +83,7 @@ function sound(id, vol, kind) {
 }
 
 // ---- screen state
-const S = { pic: null, next: null, trans: { type: 0, frames: 0, t: 0, run: false }, fade: { a: 0, step: 0 },
+const S = { pic: null, next: null, layers: new Map(), propWait: null, trans: { type: 0, frames: 0, t: 0, run: false }, fade: { a: 0, step: 0 },
   win: 0, lines: [[]], center: false, ruby: null, wait: 0, click: null, choice: null, speed: 2, typing: 0 };
 
 function advanceOps() {
@@ -91,6 +91,7 @@ function advanceOps() {
   for (let guard = 0; guard < 5000; guard++) {
     if (S.movieWait && !S.movieWait.ended && !FAST) return; S.movieWait = null;
     if (S.wait > 0 || S.click || S.choice || (S.trans.run && S.trans.block)) return;
+    if (S.propWait) { const { p, prop } = S.propWait, k = p.pk[prop]; if (!FAST && k?.length && p.t < k.at(-1).t && (S.layers.get(p.layer) === p || S.pic === p)) return; S.propWait = null; }
     const e = vm.step(); if (!e) continue;
     if (KO && (e.type === 'text' || (e.type === 'op' && (e.op === 0x1c || e.op === 0x43)))) { const k = !koSkip && koEntry(e.pc); if (k) { putKo(k.ko); koSkip = true; continue; } if (koSkip && e.type === 'text') continue; }
     if (KO) loadKo(vm.script.name.replace(/\.xml$/, ''));
@@ -109,11 +110,15 @@ function advanceOps() {
     const u16 = o => (a[o] << 8) | a[o + 1], u32 = o => ((a[o] << 24) | (a[o + 1] << 16) | (a[o + 2] << 8) | a[o + 3]) >>> 0;
     switch (e.op) {
       case 0x2d: S.wait = FAST ? 0 : u32(0); break;                                  // wait frames
-      case 0x44: { const e = picture(u16(0)); S.next = e && { id: u16(0), get img() { return e.img; }, keys: [], t: 0 }; break; } // picture to show at next transition
+      case 0x44: { const e = picture(u16(0)), l = a[2]; const p = e && { id: u16(0), layer: l, get img() { return e.img; }, pk: {}, get keys() { return this.pk[8]; }, t: 0, on: false };
+        if (l <= 1) S.next = p; else if (p) S.layers.set(l, p); break; } // layer 1: picture shown at the next transition; 2+: overlay sprite
       case 0x66: case 0x67: key(e.op, a); break;                                     // property keyframe (camera rect = property 8)
-      case 0x69: for (const p of [S.pic, S.next]) if (p && p.id === u16(3)) { p.keys = []; } break; // release the picture's keyframes
-      case 0x63: S.trans = { type: a[0], frames: a.length >= 5 ? u16(3) : 0, t: 0, run: false }; break;
-      case 0x64: if (S.next) { S.trans.run = true; S.trans.t = 0; if (!S.trans.frames || FAST) finishTrans(); } break;
+      case 0x69: { const p = findPic(u16(3)); if (p) delete p.pk[a[0]]; break; } // release one property's keyframes
+      case 0x68: { const p = findPic(u16(3)); if (p) S.propWait = { p, prop: a[0] }; break; } // wait until that property's keyframes have run
+      case 0x6a: { const p = S.layers.get(a[0]); if (p) { p.on = true; } break; } // show overlay layer
+      case 0x6b: if (a[0] > 1) S.layers.delete(a[0]); break;                     // remove overlay layer
+      case 0x63: S.trans = { type: a[0], frames: a[0] === 4 && a.length >= 9 ? u16(7) : a.length >= 5 ? u16(3) : 0, t: 0, run: false, rgb: a[0] === 4 && a.length >= 15 ? [u16(9), u16(11), u16(13)] : null }; break;
+      case 0x64: if (S.next) { S.trans.run = true; S.trans.t = 0; if (!TRANS_TIMED.has(S.trans.type) || !S.trans.frames || FAST) finishTrans(); else if (S.trans.type === 1) { S.pic = S.next; } } break;
       case 0x65: if (S.trans.run) S.trans.block = true; break;                       // wait for transition
       case 0x03: case 0x05: { const n = Math.max(1, u32(0)); S.fade.step = 1 / n; if (FAST) S.fade.a = 1; break; } // darken over n frames
       case 0x07: case 0x09: { const n = Math.max(1, u32(0)); S.fade.step = -1 / n; if (FAST) S.fade.a = 0; break; } // lighten
@@ -156,26 +161,59 @@ function putText(t) {
 // prop 8 (n=6) = [frame, x1, y1, x2, y2, ease]: the source rectangle shown on screen. Units: 1280×720 = 464×256 picture
 // pixels (the size of an ordinary full-screen picture); camera pictures are 752×496. Matched on the original
 // (K01A_0010 c04 end keyframe, correlation 0.98). ease 0 linear, 1–3 eased (curves provisional).
+function findPic(id) { return [S.next, S.pic, ...S.layers.values()].find(p => p && p.id === id); }
+// prop 8 (n=6) [frame, x1, y1, x2, y2, ease] source rect; prop 14 (n=6) [frame, x, y, _, _, ease]? screen position of an
+// overlay (1280×720 units; K08A_0010_1200 scrolls four sprites with it); prop 24 (n=3) [frame, alpha 0–255, ease].
 function key(op, a) {
-  const id = (a[3] << 8) | a[4], n = a[5], v = []; for (let i = 0; i < n; i++) v.push((a[6 + i * 2] << 8) | a[7 + i * 2]);
-  if (a[0] !== 8 || n !== 6) return;
-  const p = [S.next, S.pic].find(p => p && p.id === id); if (!p) return;
-  const k = { t: v[0], r: [v[1] * 464 / 1280, v[2] * 256 / 720, v[3] * 464 / 1280, v[4] * 256 / 720], ease: v[5] };
-  if (op === 0x66) { p.keys = [k]; p.t = 0; } else { p.keys.push(k); p.keys.sort((x, y) => x.t - y.t); }
+  const id = (a[3] << 8) | a[4], n = a[5], v = []; for (let i = 0; i < n; i++) { const x = (a[6 + i * 2] << 8) | a[7 + i * 2]; v.push(x > 0x7fff ? x - 0x10000 : x); }
+  const prop = a[0]; const p = findPic(id); if (!p) return;
+  let k;
+  if (prop === 8 && n === 6) k = { t: v[0], r: [v[1] * 464 / 1280, v[2] * 256 / 720, v[3] * 464 / 1280, v[4] * 256 / 720], ease: v[5] };
+  else if (prop === 14 && n === 6) k = { t: v[0], r: [v[1], v[2], v[3], v[4]], ease: v[5] };
+  else if (prop === 24 && n === 3) k = { t: v[0], r: [v[1] / 255], ease: v[2] };
+  else return;
+  // The frame count of a 67 runs from now (K08A_0010_1230 sends 15-frame moves long after a 6000-frame one, then waits
+  // with 68); for the usual 66-then-67 pair at the same moment this is the same as an absolute time.
+  if (op === 0x66) { p.pk[prop] = [k]; p.t = 0; return; }
+  const cur = valueAt(p.pk[prop], p.t), ks = (p.pk[prop] || []).filter(x => x.t < p.t);
+  if (cur) ks.push({ t: p.t, r: cur, ease: 0 });
+  k.t += p.t; ks.push(k); p.pk[prop] = ks;
 }
 const EASE = [t => t, t => t * t, t => 1 - (1 - t) * (1 - t), t => t * t * (3 - 2 * t)];
-function rectOf(p) {
-  const k = p.keys; if (!k?.length) return null;
-  let i = 0; while (i < k.length - 1 && k[i + 1].t <= p.t) i++;
-  if (i === k.length - 1) return k[i].r;
-  const a = k[i], b = k[i + 1], u = (EASE[b.ease] || EASE[0])((p.t - a.t) / Math.max(1, b.t - a.t));
+function valueAt(k, t) {
+  if (!k?.length) return null;
+  let i = 0; while (i < k.length - 1 && k[i + 1].t <= t) i++;
+  if (i === k.length - 1 || t <= k[0].t) return t <= k[0].t ? k[0].r : k[i].r;
+  const a = k[i], b = k[i + 1], u = (EASE[b.ease] || EASE[0])((t - a.t) / Math.max(1, b.t - a.t));
   return a.r.map((x, j) => x + (b.r[j] - x) * u);
 }
+function rectOf(p) { return valueAt(p.pk?.[8], p.t); }
 function drawPic(p) {
   const r = rectOf(p); const im = p.img; if (!im) return;
-  if (r) g.drawImage(im, r[0], r[1], r[2] - r[0], r[3] - r[1], 0, 0, W, H); else g.drawImage(im, 0, 0, W, H);
+  const al = valueAt(p.pk?.[24], p.t), ga = g.globalAlpha; if (al) g.globalAlpha = ga * Math.max(0, Math.min(1, al[0]));
+  const pos = valueAt(p.pk?.[14], p.t);
+  if (pos) { // overlay sprite at a screen position, drawn at picture scale (464×256 picture px = 480×272 screen)
+    const sw = r ? r[2] - r[0] : im.width, sh = r ? r[3] - r[1] : im.height;
+    const dx = pos[0] * W / 1280, dy = pos[1] * H / 720, dw = sw * W / 464, dh = sh * H / 256;
+    if (r) g.drawImage(im, r[0], r[1], sw, sh, dx, dy, dw, dh); else g.drawImage(im, dx, dy, dw, dh);
+  } else if (r) g.drawImage(im, r[0], r[1], r[2] - r[0], r[3] - r[1], 0, 0, W, H); else g.drawImage(im, 0, 0, W, H);
+  g.globalAlpha = ga;
 }
-function finishTrans() { S.pic = S.next; S.next = null; S.trans.run = false; S.trans.block = false; }
+// 63 transition types (EBOOT table 0x089CAAB4, state functions per type):
+//  1 = new picture at once under a black full-screen rect whose alpha runs 1→0 (fade in from black, 0x0891285C → 0x0888CF40)
+//  2 = black rect over the old picture runs 0→1, then the new picture (fade out to black)
+//  3 = blend weight between old and new layers runs 0→1 (crossfade, 0x08911BD8 → 0x0888ABD0)
+//  4 = colour (r,g,b from the args, e.g. white) over the old picture 0→1, swap, then 1→0 (provisional: flash)
+//  11 = cut. Others (12 = masked wipe with a rule picture, …) fall back to a crossfade until compared.
+const TRANS_TIMED = new Set([1, 2, 3, 4, 12]);
+function transDraw() {
+  const T = S.trans, u = Math.min(1, T.t / Math.max(1, T.frames));
+  if (T.type === 1) return { over: 1 - u };
+  if (T.type === 2) return { over: u };
+  if (T.type === 4) return u < 0.5 ? { over: u * 2, rgb: T.rgb } : { over: 2 - u * 2, rgb: T.rgb, swapped: true };
+  return { blend: u };
+}
+function finishTrans() { if (S.next) S.pic = S.next; S.next = null; S.trans.run = false; S.trans.block = false; }
 
 function click() {
   if (S.choice) return;
@@ -312,13 +350,17 @@ function frame() {
   advanceOps();
   // picture layer
   g.fillStyle = '#000'; g.fillRect(0, 0, W, H);
-  for (const p of [S.pic, S.trans.run && S.next]) if (p && p.keys?.length) p.t++;
-  if (S.pic?.img) drawPic(S.pic);
-  if (S.trans.run && S.next?.img) { g.globalAlpha = S.trans.t / S.trans.frames; drawPic(S.next); g.globalAlpha = 1; }
+  for (const p of new Set([S.pic, S.trans.run && S.next, ...[...S.layers.values()].filter(l => l.on)])) if (p) p.t++;
+  const td = S.trans.run ? transDraw() : {};
+  const base = td.swapped && S.next ? S.next : S.pic;
+  if (base?.img) drawPic(base);
+  if (td.blend != null && S.next?.img) { g.globalAlpha = td.blend; drawPic(S.next); g.globalAlpha = 1; }
+  for (const l of [...S.layers.keys()].sort((x, y) => x - y)) { const p = S.layers.get(l); if (p.on) drawPic(p); }
   // The original shows pictures and movies darker and warmer than the decoded files (measured: ×0.73 R, ×0.69 G,
   // ×0.65 B on K01A_0010 c04; cause not found yet, possibly a vertex colour or a brightness setting).
   if (S.pic || S.next) { g.globalCompositeOperation = 'multiply'; g.fillStyle = 'rgb(186,176,166)'; g.fillRect(0, 0, W, H); g.globalCompositeOperation = 'source-over'; }
   if (S.fade.a) { g.fillStyle = `rgba(0,0,0,${S.fade.a})`; g.fillRect(0, 0, W, H); }
+  if (td.over) { const c = td.rgb || [0, 0, 0]; g.fillStyle = `rgba(${c[0]},${c[1]},${c[2]},${td.over})`; g.fillRect(0, 0, W, H); }
 
   tick++;
   drawWaitIcon(drawText());
