@@ -73,7 +73,11 @@ function startGame(data, out) {
   let picture = null, tick = 0;
   worker.onmessage = ({ data: m }) => {
     if (m.type === 'frame') picture = m.pixels;
-    else if (m.type === 'sram') store.set(SRAM_KEY, toBase64(new Uint8Array(m.bytes)));
+    else if (m.type === 'status') {
+      // The menu button sits over 終り on the name keyboards; it steps aside there.
+      $('menu').classList.toggle('unavailable', m.keyboard); if (m.keyboard) { $('sheet').hidden = true; }
+      window.kamaitachi && (window.kamaitachi.status = m);
+    } else if (m.type === 'sram') store.set(SRAM_KEY, toBase64(new Uint8Array(m.bytes)));
     else if (m.type === 'error') { $('error').hidden = false; $('error').textContent = `게임 실행이 멈췄습니다.\n${m.message}`; }
   };
   worker.onerror = (e) => { $('error').hidden = false; $('error').textContent = `게임 실행이 멈췄습니다.\n${e.message}`; };
