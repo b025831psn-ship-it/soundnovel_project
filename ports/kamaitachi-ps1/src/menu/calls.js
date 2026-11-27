@@ -147,11 +147,11 @@ export function* call(ctx, sp, addr, a0, a1, a2, a3) {
   }
   let r = f({ ...ctx, sp }, a0 | 0, a1 | 0, a2 | 0, a3 | 0);
   if (r && typeof r.next === "function") r = yield* r;
-  // Korean: the flowchart table (LZS in the EXE at 0x800680bb) has just been unpacked to a1
-  if (addr === 0x800355cc && (a0 >>> 0) === 0x800680bb && ctx.m.ko?.chart) {
-    const { m } = ctx, c = m.ko.chart, off = (c.addr - (a1 >>> 0)) >>> 0;
-    m.setBytes(c.addr, c.bytes);
-    for (let k = 0; k < 4; k++) m.write(((a1 >>> 0) + c.header + k) >>> 0, (off >>> (24 - 8 * k)) & 0xff, 1); // big-endian
+  // Korean: the flowchart has just copied its title section (0x210c bytes) to its buffer (gp[0x328]);
+  // the Korean titles are longer, so they stay in spare RAM and the pointer is turned to them
+  if (addr === 0x80044904 && a2 === 0x210c && ctx.m.ko?.chart && (a1 >>> 0) === (ctx.m.read(0x80079464, 4) >>> 0)) {
+    const { m } = ctx, c = m.ko.chart;
+    m.setBytes(c.addr, c.bytes); m.write(0x80079464, c.addr, 4);
   }
   // Korean: the ending list (table and strings) has just been copied from the EXE to a1
   if (addr === 0x80044904 && ctx.m.ko?.endings && (a0 >>> 0) === ctx.m.ko.endings.addr) ctx.m.setBytes(a1 >>> 0, ctx.m.ko.endings.bytes);

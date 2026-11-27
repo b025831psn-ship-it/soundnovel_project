@@ -342,9 +342,9 @@ def main():
         for i in range(n): offs.append(4 * n + len(body)); body += chart[i] + b'\0'
         sec = b''.join(struct.pack('>I', o) for o in offs) + bytes(body)
         # the memory after the table is in use, so a larger section goes to spare RAM: the hook
-        # writes it there and points the table's header (big-endian offset at +0x14) to it
+        # writes it there and turns the flowchart's title pointer to it (src/menu/calls.js)
         if len(sec) > CHART_ROOM: raise SystemExit('the flowchart titles are %d bytes, over %d' % (len(sec), CHART_ROOM))
-        chart_patch = {'addr': CHART_POOL, 'header': 0x14, 'bytes': base64.b64encode(sec).decode()}
+        chart_patch = {'addr': CHART_POOL, 'bytes': base64.b64encode(sec).decode()}
     report['exeStrings'] = {'listed': len(exe_list), 'translated': done, 'moved': len(moved), 'widerThanOriginal': wider, 'flowchartBytes': len(base64.b64decode(chart_patch['bytes'])) if chart_patch else None}
     os.makedirs(out, exist_ok=True)
     open(os.path.join(out, 'ko-font.bin'), 'wb').write(blob)
