@@ -148,7 +148,11 @@ export function* call(ctx, sp, addr, a0, a1, a2, a3) {
   let r = f({ ...ctx, sp }, a0 | 0, a1 | 0, a2 | 0, a3 | 0);
   if (r && typeof r.next === "function") r = yield* r;
   // Korean: the flowchart table (LZS in the EXE at 0x800680bb) has just been unpacked to a1
-  if (addr === 0x800355cc && (a0 >>> 0) === 0x800680bb && ctx.m.ko?.chart) ctx.m.setBytes(((a1 >>> 0) + ctx.m.ko.chart.at) >>> 0, ctx.m.ko.chart.bytes);
+  if (addr === 0x800355cc && (a0 >>> 0) === 0x800680bb && ctx.m.ko?.chart) {
+    const { m } = ctx, c = m.ko.chart, off = (c.addr - (a1 >>> 0)) >>> 0;
+    m.setBytes(c.addr, c.bytes);
+    for (let k = 0; k < 4; k++) m.write(((a1 >>> 0) + c.header + k) >>> 0, (off >>> (24 - 8 * k)) & 0xff, 1); // big-endian
+  }
   return Array.isArray(r) ? r : [typeof r === "number" ? r | 0 : 0, 0];
 }
 
