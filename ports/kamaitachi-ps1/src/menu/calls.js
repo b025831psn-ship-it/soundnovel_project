@@ -3,6 +3,7 @@
 // with the caller's sp and with its stack arguments read where the original leaves them
 // (sp + 0x10 onwards). call() returns [v0, v1]; generators (frame waits) are run with yield*.
 import { TRANSLATED } from "./translated.js";
+import { EFFECTS_TRANSLATED } from "../screen/effects-translated.js";
 import { tick, tickQuiet, ticks, tickText } from "../tick.js";
 import { newGame, titlePicture, animInit, textInit, storyMovie, systemReset, routeReset, textStrings, firstScenario, bufferAliases, bufferInit, bzero, textSlotReset } from "../init.js";
 import { setVar, savePoint, textSpeedReset, dropLayer, dropPicture, waitFade, waitText, choiceColoursReset, textWindowReset, snapshot } from "../helpers.js";
@@ -97,6 +98,9 @@ const PORTED = {
   0x80044384: (c, a0) => special(c, a0),
   0x800492b4: (c, a0) => c.gs.DrawSync(a0),
   0x80049560: (c, a0, a1) => c.gs.LoadImage(a0 >>> 0, a1 >>> 0),
+  0x80049438: (c, a0, a1, a2, a3) => c.gs.ClearImage(a0 >>> 0, a1, a2, a3),
+  0x80046d10: (c, a0, a1, a2) => c.gs.LoadClut(a0 >>> 0, a1, a2, c.sp),
+  0x8004ea28: () => { throw new Error("BIOS B(07h) DeliverEvent (a soft-float error) is not ported"); },
   // memory-card library (libcard / BIOS): native on the oracle, served by the machine
   ...Object.fromEntries([0x800624b4, 0x80062504, 0x80062544, 0x80062798, 0x80062fa0, 0x80063240, 0x80063748, 0x80063864, 0x80063a6c, 0x80063c28]
     .map((a) => [a, (c, a0, a1, a2, a3) => c.call(a, [a0, a1, a2, a3, arg(c, 0)], c.sp)])),
@@ -115,7 +119,7 @@ function scenarioOp(m, addr) {
 }
 
 export function* call(ctx, sp, addr, a0, a1, a2, a3) {
-  const f = TRANSLATED[addr] ?? PORTED[addr];
+  const f = TRANSLATED[addr] ?? PORTED[addr] ?? EFFECTS_TRANSLATED[addr];
   if (!f) {
     const op = scenarioOp(ctx.m, addr);
     if (op === undefined) unported(addr);

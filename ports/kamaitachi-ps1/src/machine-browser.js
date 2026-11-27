@@ -10,6 +10,7 @@
 import { Machine } from "./machine.js";
 import { current } from "./touch.js";
 import { machineSound } from "./machine-sound.js";
+import { rangeSource, xaFileName } from "./xa.js";
 import { PcmQueue } from "../sound/web/pcm-queue.js";
 import { unpack } from "./exe-data.js";
 import { MemoryCard, CARD_BYTES } from "./memory-card.js";
@@ -74,10 +75,12 @@ export async function startMachine({ canvas, dataRoot, audio = true, onProgress 
   const exeData = unpack(await fetchBytes(new URL("exe-data.bin", base), progress));
   const pacs = {};
   await Promise.all(PACS.map(async (k) => { pacs[k] = await fetchBytes(new URL(`${k}.PAC`, base), progress); }));
-  const snd = machineSound({ exeData, pacs, onRumble: (r) => { if (r.on) navigator.vibrate?.(50); } });
+  // CD-XA (the gold bookmark's voice drama): fetched by range only when it plays
+  const xaSources = new Map(), xaSource = (c) => { if (!xaSources.has(c)) xaSources.set(c, rangeSource(new URL(xaFileName(c), base).href)); return xaSources.get(c); };
+  const snd = machineSound({ exeData, pacs, xaSource, onRumble: (r) => { if (r.on) navigator.vibrate?.(50); } });
   const out = audio ? await audioOut() : null;
   const card = new MemoryCard(loadCard());
-  const machine = new Machine({ exeData, pacs, sound: snd.bridge, card, onError: (e) => console.error("[kamaitachi-ps1 machine]", e) });
+  const machine = new Machine({ exeData, pacs, sound: snd.bridge, card, xa: snd.xa, onError: (e) => console.error("[kamaitachi-ps1 machine]", e) });
   machine.onCardWrite = (c) => { storeCard(c.bytes); runtime.onCardChange?.(); };
 
   const ctx2d = canvas.getContext("2d", { alpha: false });

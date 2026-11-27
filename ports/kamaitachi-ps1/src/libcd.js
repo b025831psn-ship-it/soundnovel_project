@@ -10,25 +10,42 @@ export const LIBCD_ENTRY = {
   CdPosToInt: 0x8004f148, CdIntToPos: 0x8004f044, CdSetDebug: 0x8004eb00,
 };
 export const DISC_LBA = { SCE: 250, VCE: 581, BGD: 5600, SDW: 21279, BIN: 29098, MUS: 29963, ANM: 37429, VCP: 37873 };
+// CD-XA files: never read as data; ReadS with the XA mode streams them to the SPU (xa.js).
+export const DISC_XA = { PINK: { lba: 97568, size: 277774336 } };
 const bcd = (n) => ((n / 10) | 0) << 4 | n % 10;
 const fromBcd = (b) => (b >> 4) * 10 + (b & 15);
 
 export class LibCd {
-  constructor({ m, pacs = {}, onEvent = null, frame = () => 0 }) {
-    this.m = m; this.loc = 0; this.onEvent = onEvent; this.frame = frame;
+  // xa: an XaStream (xa.js) the drive plays CD-XA into; without one XA reads are silent.
+  constructor({ m, pacs = {}, onEvent = null, frame = () => 0, xa = null }) {
+    this.m = m; this.loc = 0; this.onEvent = onEvent; this.frame = frame; this.xa = xa; this.filter = { file: 0, chan: 0 }; this.mode = 0;
     this.files = Object.entries(DISC_LBA).map(([name, lba]) => ({ name, lba, data: pacs[name] ?? new Uint8Array(0) }));
   }
   str(a) { let s = ""; for (let ch; (ch = this.m.read(a++, 1)); ) s += String.fromCharCode(ch); return s; }
   CdInit() { return 1; }
   CdSync() { return 2; } // CdlComplete
-  CdFlush() { return 1; }
+  // 0x8004efa0 is CdMix(CdlATV*) (the XA player passes its attenuation; CD L→L, L→R, R→R, R→L)
+  CdFlush(p) { p >>>= 0; if (p >= 0x80000000) { const a = [0, 1, 2, 3].map((i) => this.m.read(p + i, 1)); this.xa?.setMix(a); this.onEvent?.({ frame: this.frame(), cdMix: a }); } return 1; }
   CdReadCallback() { return 1; }
   CdDataCallback() { return 0; }
   CdSetDebug() { return 0; }
-  CdControl(com, p) { com &= 0xff; p >>>= 0; if (com === 2 && p) this.loc = this.CdPosToInt(p); return 1; } // CdlSetloc
+  CdControl(com, p) {
+    com &= 0xff; p >>>= 0;
+    if (com === 2 && p) this.loc = this.CdPosToInt(p); // CdlSetloc
+    if (com === 0x0d && p) this.filter = { file: this.m.read(p, 1), chan: this.m.read(p + 1, 1) }; // CdlSetfilter
+    if (com === 0x0e && p) this.mode = this.m.read(p, 1); // CdlSetmode
+    if ((com === 0x1b || com === 0x06) && p) { // CdlReadS / CdlReadN
+      this.loc = this.CdPosToInt(p);
+      const x = Object.values(DISC_XA).find((f) => this.loc >= f.lba && this.loc < f.lba + f.size / 2048);
+      if (x && (this.mode & 0x40)) { this.xa?.start(this.loc - x.lba, this.filter.chan); this.onEvent?.({ frame: this.frame(), xa: this.loc - x.lba, chan: this.filter.chan }); }
+    }
+    if (com === 0x08 || com === 0x09) { if (this.xa?.playing) this.onEvent?.({ frame: this.frame(), xaStop: com }); this.xa?.stop(); } // CdlStop / CdlPause
+    return 1;
+  }
   CdControlB(com, p) { return this.CdControl(com, p); }
   CdSearchFile(fp, namePtr) {
-    const { m } = this, name = this.str(namePtr >>> 0), f = this.files.find((x) => name.startsWith("\\" + x.name + "."));
+    const { m } = this, name = this.str(namePtr >>> 0);
+    const f = this.files.find((x) => name.startsWith("\\" + x.name + ".")) ?? Object.entries(DISC_XA).filter(([n]) => name.startsWith("\\" + n + ".")).map(([n, x]) => ({ name: n, lba: x.lba, data: { length: x.size } }))[0];
     this.onEvent?.({ frame: this.frame(), search: name, found: !!f });
     if (!f) return 0;
     fp >>>= 0; this.CdIntToPos(f.lba, fp); m.write(fp + 3, 0, 1); m.write(fp + 4, f.data.length, 4);

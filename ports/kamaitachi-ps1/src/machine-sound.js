@@ -11,15 +11,19 @@ import { memberLoader } from "../sound/members.js";
 import { soundTables } from "../sound/container.js";
 import { moduleSound } from "./sound-bridge.js";
 import { reader } from "./exe-data.js";
+import { XaStream } from "./xa.js";
 
-export function machineSound({ exeData, pacs, onRumble = () => {} }) {
+// xaSource(channel): where CD-XA sectors come from (xa.js memorySource / rangeSource); the
+// drive's XA output is mixed into each frame's samples, as the SPU mixes the CD input.
+export function machineSound({ exeData, pacs, onRumble = () => {}, xaSource = () => null }) {
+  const xa = new XaStream(xaSource);
   const js = new JsSs();
   const mod = new SoundModule(js.ss, soundTables(reader(exeData)), { loadMember: memberLoader(pacs), rumble: onRumble });
   return {
-    mod, js,
+    mod, js, xa,
     bridge: (m) => moduleSound(mod, m),
     // The frame just run: Int16Array blocks (stereo interleaved), in order.
-    render() { js.frame(1); js.log.length = 0; return js.out.splice(0); },
+    render() { js.frame(1); js.log.length = 0; const blocks = js.out.splice(0); for (const b of blocks) xa.mix(b); return blocks; },
   };
 }
 export { SAMPLES_PER_FRAME };

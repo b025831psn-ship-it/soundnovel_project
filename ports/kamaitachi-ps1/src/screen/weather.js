@@ -13,6 +13,7 @@
 //   0x80040178 particlesStep  0x80040410 snowTick  0x80040ebc rainStep  0x8004109c rainTick
 //   0x8003abec loadClutSlot   0x8002d934 plot      0x8002f0e8 uploadPage 0x8003ccf8 upload
 //   0x80044904 memcpy         0x80044be4 bzeroWords
+import { effectSwitch } from "./effects-translated.js";
 import { randMod } from "./shake.js";
 import { spriteAdd, spriteLayer } from "./sprites.js";
 import { dropLayer, dropOverlay, dropPicture, waitFade } from "../helpers.js";
@@ -280,7 +281,7 @@ export function* effect(ctx, mode) {
     case 36: m.write(0x800792b1, 0, 1); return;
     case 37: m.write(0x800792b1, 1, 1); return;
     case 44: m.write(0x800792ac, mode, 1); m.write(GP + 0x1d0, 1, 1); return;
-    default: ctx.call(0x800418d0, [mode], ctx.sp); return;
+    default: yield* effectSwitch(ctx, mode); return; // the other modes, translated (effects-translated.js)
   }
   m.write(GP + 0x1cc, 0, 4); m.write(GP + 0x390, 0, 1);
   if (s8(g8(0x1d8)) !== -1) { m.write(GP + 0x1d8, 0xff, 1); dropLayer(m, 3); m.write(GP + 0x1e0, 0xffff, 2); }
