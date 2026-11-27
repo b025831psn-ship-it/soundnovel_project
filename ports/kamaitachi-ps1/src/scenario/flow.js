@@ -37,9 +37,10 @@ HANDLERS[0x02] = function* call(ctx) {
   const back = s8(g8(3));
   if (back !== -1) {
     if (r16(RESOURCE) !== (back & 0xffff)) {
-      if (g8(2) === 1 && s8(g8(0x45c)) === (back & 0xffff)) unported(0x8001cb48);
-      else if ((back & 0xffff) === 0x1f) unported(0x8001cb74);
-      p8(4, 1); yield* cdLoadAsync(sub, 2, r32(0x80079544), back & 0xffff); p8(4, 0); // load resource gp[3]
+      const buf = r32(0x80079544);
+      if (g8(2) === 1 && s8(g8(0x45c)) === (back & 0xffff)) memcpy(m, buf + 0x28000, buf, 0xb000); // 0x8001cb48: the copy kept at +0x28000
+      else if ((back & 0xffff) === 0x1f) memcpy(m, 0x800677e8, buf, 0x12a); // 0x8001cb74: resource 31 from the EXE
+      else { p8(4, 1); yield* cdLoadAsync(sub, 2, buf, back & 0xffff); p8(4, 0); } // load resource gp[3]
     }
     w16(0x80079280, 2);
     const v = s8(g8(3));

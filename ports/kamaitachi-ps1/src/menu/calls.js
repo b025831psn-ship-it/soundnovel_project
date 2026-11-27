@@ -4,6 +4,7 @@
 // (sp + 0x10 onwards). call() returns [v0, v1]; generators (frame waits) are run with yield*.
 import { TRANSLATED } from "./translated.js";
 import { EFFECTS_TRANSLATED } from "../screen/effects-translated.js";
+import { SPECIAL_TRANSLATED } from "../scenario/special-translated.js";
 import { tick, tickQuiet, ticks, tickText } from "../tick.js";
 import { newGame, titlePicture, animInit, textInit, storyMovie, systemReset, routeReset, textStrings, firstScenario, bufferAliases, bufferInit, bzero, textSlotReset } from "../init.js";
 import { setVar, savePoint, textSpeedReset, dropLayer, dropPicture, waitFade, waitText, choiceColoursReset, textWindowReset, snapshot } from "../helpers.js";
@@ -27,7 +28,7 @@ import { HANDLERS, lookahead, textIdle, runOp } from "../scenario/interp.js";
 const arg = (ctx, k) => ctx.m.read((ctx.sp + 0x10 + 4 * k) >>> 0, 4) | 0; // stack argument k (5th = 0)
 const unported = (addr) => { throw new Error(`menu: path at 0x${addr.toString(16)} is not ported`); };
 
-const PORTED = {
+export const PORTED = {
   0x80013f34: (c) => tick(c),
   0x80013ff0: (c) => tickQuiet(c),
   0x800140a8: (c, a0) => tickText(c, a0),
@@ -119,7 +120,7 @@ function scenarioOp(m, addr) {
 }
 
 export function* call(ctx, sp, addr, a0, a1, a2, a3) {
-  const f = TRANSLATED[addr] ?? PORTED[addr] ?? EFFECTS_TRANSLATED[addr];
+  const f = TRANSLATED[addr] ?? PORTED[addr] ?? EFFECTS_TRANSLATED[addr] ?? SPECIAL_TRANSLATED[addr];
   if (!f) {
     const op = scenarioOp(ctx.m, addr);
     if (op === undefined) unported(addr);

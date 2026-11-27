@@ -13,7 +13,7 @@
 import { cdLoad } from "../cd-load.js";
 import { setGp1e0, spriteFree, waitFade, textSpeed, dropLayer } from "../helpers.js";
 import { HANDLERS } from "./interp.js";
-import { CURSOR, BASE, io, operand, resolveLabel, unported } from "./lib.js";
+import { CURSOR, BASE, io, operand, resolveLabel, unported, animStop } from "./lib.js";
 import { fadeOut, fadeIn, fadeLevel, windowPalette } from "../screen/fader.js";
 import { uploadPicture, loadPicture } from "../screen/picture.js";
 import { spritePage } from "../screen/sprites.js";
@@ -192,7 +192,8 @@ HANDLERS[0x15] = function* (ctx) {
   if (r16(0x8007929c) !== res) {
     const base = r32(BASE);
     if (g8(2) === 1 && ((g8(0x45c) << 24) >> 24) === res) memcpy(m, r32(0x80079544) + 0x28000, base, 0xb000);
-    else unported(0x8001e914); // resource 31 from the EXE, or a load
+    else if (res === 0x1f) memcpy(m, 0x800677e8, base, 0x12a); // 0x8001e914: resource 31 from the EXE
+    else { p8(4, 1); animStop(m); yield* cdLoad({ ...ctx, sp: ctx.sp - 0x28 }, 2, base, res); p8(4, 0); } // a load
     w16(0x8007929c, res);
   }
   w32(CURSOR, off + r32(BASE));
