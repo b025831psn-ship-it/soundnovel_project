@@ -68,7 +68,7 @@ async function audioOut() {
   } catch (e) { console.warn("[kamaitachi-ps1 machine] no audio output", e); return null; }
 }
 
-export async function startMachine({ canvas, dataRoot, audio = true, onProgress = null, requestFrame = requestAnimationFrame, now = () => performance.now() }) {
+export async function startMachine({ canvas, dataRoot, audio = true, onProgress = null, requestFrame = requestAnimationFrame, now = () => performance.now(), timer = requestFrame === requestAnimationFrame }) {
   const base = new URL(dataRoot, location.href);
   let loaded = 0;
   const progress = (n) => { loaded += n; onProgress?.(loaded); };
@@ -154,20 +154,28 @@ export async function startMachine({ canvas, dataRoot, audio = true, onProgress 
     const blocks = snd.render(); hold += blocks.length - 1;
     if (out?.ctx.state === "running") for (const b of blocks) { out.send(b); played++; }
   };
-  const loop = () => {
+  // The game's frames follow the clock, not the display: a timer runs them too, so the sound keeps
+  // coming when the display refreshes slowly (a phone in low power mode draws 30 times a second,
+  // a hidden tab not at all). The picture is drawn on the display's own frames.
+  let dirty = false;
+  const tick = () => {
     if (stopped) return;
-    const t = now(); acc = Math.min(acc + t - last, STEP * 4); last = t;
-    let ran = false;
+    const t = now(); acc = Math.min(acc + t - last, STEP * 8); last = t;
     while (acc >= STEP && !machine.error) {
       if (hold > 0) { hold--; acc -= STEP; continue; } // the sound driver is waiting (its samples are already queued)
       machine.frame(held()); soundFrame();
       for (const [k, n] of keys) { if (n !== Infinity) { if (n <= 1) keys.delete(k); else keys.set(k, n - 1); } }
-      acc -= STEP; ran = true;
+      acc -= STEP; dirty = true;
     }
-    if (ran) draw();
+  };
+  const loop = () => {
+    if (stopped) return;
+    tick();
+    if (dirty) { dirty = false; draw(); }
     requestFrame(loop);
   };
   draw(); requestFrame(loop);
+  const pump = timer ? setInterval(tick, 8) : 0;
   const sound = {
     context: out?.ctx ?? null, node: out?.node ?? null,
     get framesPlayed() { return played; },
@@ -175,5 +183,5 @@ export async function startMachine({ canvas, dataRoot, audio = true, onProgress 
     suspend: () => out?.ctx.suspend(),
     setVolume: (v) => { volume = Math.max(0, Math.min(1, +v || 0)); if (out) out.gain.gain.value = volume; for (const el of canvas.parentElement.querySelectorAll("video.movie")) el.volume = volume; },
   };
-  return { runtime, sound, stop() { stopped = true; out?.ctx.close(); } };
+  return { runtime, sound, stop() { stopped = true; clearInterval(pump); out?.ctx.close(); } };
 }
