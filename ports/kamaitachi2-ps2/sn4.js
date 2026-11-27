@@ -112,12 +112,13 @@ export class Sn4Vm {
           return {type:'pause', reason:'choice-separator', label:this.label,
             offset:command.offset, text:this.text};
         case 0x1e: this.hooks.captionSync?.(); break;
-        // BrPage::Execute (0x125170) presents the current page, then clears
-        // the message window before the following command is executed.
+        // BrPage::Execute (0x125170) never checks text length and tail-calls
+        // 0x125048, whose command-id 0x0c path skips the input-wait setup and
+        // returns complete. Clear immediately and continue in the same run.
         case 0x0c:
-          this.clearBeforeRun = true;
-          return {type:'pause', reason:'page-break', label:this.label,
-            offset:command.offset, text:this.text};
+          this.text = '';
+          this.hooks.clearText?.();
+          break;
         // MojiSync::Execute (0x12e4f8) waits for the active MojiInOut/After
         // animation. Static renderers still yield one frame so ordering is kept.
         case 0x15: {

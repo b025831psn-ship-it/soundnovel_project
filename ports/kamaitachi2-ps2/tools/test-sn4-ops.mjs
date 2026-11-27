@@ -74,8 +74,13 @@ run([{op:0x53, offset:0x123, args:[7]}], {letterSpacing:(value, offset) => spaci
 assert.deepEqual(spacing, [{value:7, offset:0}], '0x53 sets EE letter spacing');
 const cancelable = run([{op:0x51, offset:3, args:[45]}]).event;
 assert.deepEqual(cancelable, {type:'wait', reason:'cancelable', label:'a', offset:3, ticks:45, text:''});
-const pageBreak = run([{op:0x02, offset:0, args:['page']}, {op:0x0c, offset:4, args:[]}]).event;
-assert.deepEqual(pageBreak, {type:'pause', reason:'page-break', label:'a', offset:4, text:'page'});
+let pageClears = 0;
+const pageBreak = run([{op:0x02, offset:0, args:['old']}, {op:0x0c, offset:4, args:[]},
+  {op:0x02, offset:5, args:['new']}, {op:0x09, offset:8, args:[]}],
+  {clearText:() => pageClears++}).event;
+assert.equal(pageClears, 1, '0x0c clears the message window immediately');
+assert.deepEqual(pageBreak, {type:'pause', label:'a', offset:8, text:'new'},
+  '0x0c continues without an empty input wait');
 const effectWait = run([{op:0x15, offset:5, args:[]}], {mojiSync:() => 3}).event;
 assert.deepEqual(effectWait, {type:'wait', reason:'text-effect', label:'a', offset:5, ticks:3, text:''});
 const ruby = [];
