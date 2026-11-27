@@ -88,6 +88,13 @@ Browser persistence can pass `onSramWrite` to the VM constructor and debounce
 storage writes using the callback's monotonically increasing `revision`, or
 poll `vm.bus.consumeSramDirty()`. The game continues to own its three native
 save slots inside that opaque image.
+`vm.saveState()` returns a structured-cloneable versioned snapshot and
+`vm.loadState(state)` restores CPU, bus/clock/DMA, WRAM/SRAM, PPU memories and
+registers, pending input/NMI, MasterLink, SPC700/ARAM/timers, and DSP voices.
+Renderer caches are intentionally rebuilt after load. A real first-choice fork
+test replays 123 fields twice and requires all frame hashes and APUIO rows to be
+identical. This full snapshot is the web suspend-save; SRAM export remains the
+game's native three-slot battery save.
 With that input, `tools/vm-full-run.mjs` reaches the end without a stop or CPU
 error and finds all 252,918 reference CPU writes. The former extra idle-clear
 triplets at reference frames 422, 760, and 1798 are gone, and the write sequence
@@ -127,7 +134,9 @@ Mode 1 uses epoch-invalidated decoded-tile, BG-layer, and sprite caches plus
 the reference development machine field 2000 measured 2.30 ms and the heavier
 first-choice field 3520 measured 1.53 ms after warm-up. Set `vm.skipRender=true`
 while catching up to advance PPU state and field numbering without composing a
-frame that the player will discard.
+frame that the player will discard. Calling `ppu.presentField(field, master,
+true)` once from the display loop is the supported way to compose the current
+state after such a catch-up interval.
 
 The native page-wait dispatcher maps A/L to next page and B to the yellow
 previous-page view. X, Y, Start, Select, and R are ignored there; there is no

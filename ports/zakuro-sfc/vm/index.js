@@ -9,3 +9,4 @@ export { ProgramImage } from './program-image.js';
 export { TOUCH_WRAM, choiceRectangles, readTouchState } from './touch-state.js';
 export { PPU } from './ppu.js';
 export { decodeTilePixel, renderFrame, rgbaToRgb565 } from './ppu-renderer.js';
+export { loadVmState, saveVmState } from './state.js';

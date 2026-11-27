@@ -286,3 +286,26 @@ test('VM APU link injects private IPL and applies LINK_TIMING and POWER_ON', () 
   assert.equal(link.readPoint, LINK_TIMING.readPoint);
   assert.equal(link.writeLag, LINK_TIMING.writeLag);
 });
+
+test('VM state round-trips CPU, bus, PPU, link, SPC and DSP state', () => {
+  const ipl = new Uint8Array(64); ipl[62] = 0xc0; ipl[63] = 0xff;
+  const { apu, link } = createApuLink({ ipl, powerOnDsp: new Uint8Array(128) });
+  const vm = new ZakuroVM({ rom: fixtureRom([0xea, 0xea]), masterLink: link });
+  vm.reset(); vm.cpu.A = 0x1234; vm.bus.wram[0x345] = 0x67; vm.bus.sram[0] = 0x89;
+  vm.ppu.vram[2] = 0xab; vm.ppu.cgram[3] = 0xcd; vm.ppu.oam[4] = 0xef;
+  apu.cpu.ram[0x2222] = 0x5a; apu.cpu.a = 0x44; apu.dsp.regs[0x0c] = 0x33;
+  apu.dsp.v[0].env = 0x456; link.pending.push([12.5, 2, 0x99]);
+  vm.nmiTriggerMaster = 4567; vm.skipRender = true;
+  const state = structuredClone(vm.saveState());
+  vm.cpu.A = 0; vm.bus.wram[0x345] = 0; vm.bus.sram[0] = 0;
+  vm.ppu.vram[2] = 0; apu.cpu.ram[0x2222] = 0; apu.dsp.v[0].env = 0; link.pending.length = 0;
+  vm.loadState(state);
+  assert.equal(vm.cpu.A, 0x1234); assert.equal(vm.bus.wram[0x345], 0x67);
+  assert.equal(vm.bus.sram[0], 0x89); assert.equal(vm.ppu.vram[2], 0xab);
+  assert.equal(apu.cpu.ram[0x2222], 0x5a); assert.equal(apu.cpu.a, 0x44);
+  assert.equal(apu.dsp.regs[0x0c], 0x33); assert.equal(apu.dsp.v[0].env, 0x456);
+  assert.deepEqual(link.pending, [[12.5, 2, 0x99]]);
+  assert.equal(vm.nmiTriggerMaster, 4567); assert.equal(vm.skipRender, true);
+  assert.equal(apu.dsp.ram, apu.cpu.ram);
+  assert.deepEqual(vm.saveState(), state);
+});
