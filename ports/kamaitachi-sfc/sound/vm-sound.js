@@ -14,8 +14,9 @@ export const PAD = {
   RIGHT: 0x0100, LEFT: 0x0200, DOWN: 0x0400, UP: 0x0800,
   START: 0x1000, SELECT: 0x2000, Y: 0x4000, B: 0x8000,
 };
+// Same layout in every port (issue #41): Z / Enter decide, X cancels.
 export const DEFAULT_KEYS = {
   ArrowUp: 'UP', ArrowDown: 'DOWN', ArrowLeft: 'LEFT', ArrowRight: 'RIGHT',
-  KeyX: 'A', KeyZ: 'B', KeyS: 'X', KeyA: 'Y', KeyQ: 'L', KeyW: 'R',
-  Enter: 'START', ShiftRight: 'SELECT', ShiftLeft: 'SELECT',
+  KeyZ: 'A', Enter: 'A', NumpadEnter: 'A', KeyX: 'B', KeyC: 'X', KeyA: 'Y', KeyQ: 'L', KeyW: 'R',
+  Space: 'START', ShiftRight: 'SELECT', ShiftLeft: 'SELECT',
 };

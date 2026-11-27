@@ -7,6 +7,7 @@
 // the gold bookmark (0x805 bit 2).
 //   node tools/gold.mjs <rom.sfc> --data <dir: guide-sfc.json, scenario-catalog.json>
 //        --graph <dir: graph.json, learned.json> --seed <endings-43.srm> --work <dir> [--vm <dir>] [--runs N]
+//        [--prefix '["site/option", ...]'] (follow a recorded path first; with --runs 1 for parallel targeted runs)
 // Gold rows: one byte per choice site n at 0xA08+n; option i sets bit 3+i, and the row is
 // complete when (byte & 0xF8) == 0xF8 (the game pre-fills options a site does not have).
 import fs from 'node:fs';
@@ -88,10 +89,19 @@ class Tracker extends Session {
   press(k, wait = 8) { super.press(k, wait + this.pad); }
 }
 
-function run(s, graph, sites, seed) {
+function run(s, graph, sites, seed, prefix = []) {
   const before = goldHave(seed), picked = new Set(), steps = [], visits = new Map();
   bootSlot(s, seed);
   let prev = null;
+  // A recorded path to a missing condition first (graph.json edge path: 'site/option' steps),
+  // then the usual greedy walk to an ending.
+  for (const step of prefix) {
+    const ev = s.advance(), cut = step.lastIndexOf('/'), site = step.slice(0, cut), o = step.slice(cut + 1);
+    if (ev.id !== site) throw new Error(`Prefix expected ${site}, VM reached ${JSON.stringify(ev)}`);
+    if (ev.status === 'choice') { s.pad = (ev.id === SNOW && +o === 0) ? 4 : 0; s.step(20); s.select(+o); picked.add(key(ev.choice_number, +o)); }
+    else { s.dispatches = new Set(); enterCulprit(s, o); s.lastName = null; }
+    steps.push([ev.id, ev.status === 'choice' ? +o : o, 'prefix']);
+  }
   for (let i = 0; i < 250; i++) {
     const ev = s.advance();
     if (prev) {
@@ -145,6 +155,7 @@ async function main() {
   const { SfcMachine } = await import(`${vm}/machine.js`);
   const statePath = path.join(work, 'gold.srm');
   let seed = new Uint8Array(fs.readFileSync(fs.existsSync(statePath) ? statePath : opt('--seed')));
+  const prefix = opt('--prefix') ? JSON.parse(opt('--prefix')) : [];
   let n = fs.readdirSync(work).filter((f) => /^run\d+\.json$/.test(f)).length;
   while (n < runs) {
     if (seed[0x805] & 4) { console.log('gold bookmark set by the game'); break; }
@@ -153,7 +164,7 @@ async function main() {
     const m = new SfcMachine({ rom, apu, busOptions: { masterLink: new MasterLink(apu) } });
     const s = new Tracker(m, rom, catalog), t0 = Date.now(), bits0 = goldHave(seed).size;
     let res;
-    try { res = run(s, graph, sites, seed); } catch (err) {
+    try { res = run(s, graph, sites, seed, prefix); } catch (err) {
       fs.writeFileSync(path.join(work, `run${String(n).padStart(2, '0')}-failure.json`), JSON.stringify({ frames: s.frames, last_script_bit: s.lastBit, reason: String(err.message ?? err) }));
       console.log(`run ${n}: FAIL ${err.message ?? err} at frame ${s.frames}`); process.exitCode = 1; return;
     }

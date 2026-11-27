@@ -16,14 +16,14 @@
     <canvas id="glow" width="32" height="28" aria-hidden="true"></canvas>
     <div class="screen-box" id="screenbox">
       <canvas id="screen" width="256" height="224" aria-label="게임 화면 256×224"></canvas>
-      <button type="button" class="menu-button" id="menu" aria-label="게임 메뉴" aria-expanded="false" title="게임 메뉴">
-        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 7h14M5 12h14M5 17h14"/></svg>
+      <button type="button" class="menu-button" id="menu" aria-label="게임 메뉴 (S)" aria-expanded="false" title="게임 메뉴 (S)">
+        <svg viewBox="0 0 24 24" aria-hidden="true" class="open"><rect x="3" y="3.5" width="7" height="5" rx="1"/><rect x="14" y="9.5" width="7" height="5" rx="1"/><rect x="3" y="15.5" width="7" height="5" rx="1"/><path d="M10 6h2v12h-2M12 12h2"/></svg>
       </button>
       <div class="sheet" id="sheet" role="menu" hidden>
-        <button type="button" role="menuitem" data-b="X">앞 문장 다시 보기</button>
-        <button type="button" role="menuitem" data-b="SELECT">글자 숨기기</button>
-        <button type="button" role="menuitem" data-b="START">START</button>
-        <button type="button" role="menuitem" data-b="B">취소 (B)</button>
+        <button type="button" role="menuitem" data-b="X">앞 문장 다시 보기 (C)</button>
+        <button type="button" role="menuitem" data-b="SELECT">글자 숨기기 (Shift)</button>
+        <button type="button" role="menuitem" data-b="START">START (Space)</button>
+        <button type="button" role="menuitem" data-b="B">취소 (X)</button>
       </div>
     </div>
     <div class="loading" id="loading" role="status">
@@ -37,12 +37,13 @@
     <div class="meta">
       <span class="scale" id="scale" title="원본 256×224 화면을 정수 배율로 확대합니다">×1</span>
       <p class="keys" id="keys">
-        <span><kbd>X</kbd> 결정</span>
-        <span><kbd>Z</kbd> 취소</span>
-        <span><kbd>S</kbd> 앞 문장</span>
+        <span><kbd>Z</kbd> 결정</span>
+        <span><kbd>X</kbd> 취소</span>
         <span><kbd>↑</kbd><kbd>↓</kbd><kbd>←</kbd><kbd>→</kbd> 선택</span>
-        <span><kbd>Enter</kbd> START</span>
+        <span><kbd>C</kbd> 앞 문장</span>
+        <span><kbd>Space</kbd> START</span>
         <span><kbd>Shift</kbd> 글자 숨기기</span>
+        <span><kbd>S</kbd> 메뉴</span>
       </p>
     </div>
     <div class="controls">
