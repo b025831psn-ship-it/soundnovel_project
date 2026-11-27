@@ -2,7 +2,10 @@
 """Korean text for the PS1 machine: the font and the script patch, made from the private
 translation (kamaitachi-ps1-kor script/ja/script.ja.json, script/ko/script.ko.json).
 
-  python3 tools/ko/build-ko.py EXE_DATA.bin SCRIPT_JA.json SCRIPT_KO.json FONT.ttf OUT_DIR
+  python3 tools/ko/build-ko.py EXE_DATA.bin SCRIPT_JA.json SCRIPT_KO.json FONT.ttf OUT_DIR [ORIG_WIDTHS.json]
+
+ORIG_WIDTHS.json ({"sjis code": width}, read from the original font in BIN.PAC) makes the layout
+check exact for the original glyphs; without it kana count as 15 and kanji as 16.
 
 Writes OUT_DIR/ko-font.bin, OUT_DIR/ko-script.json and OUT_DIR/ko-report.json. The two data
 files hold glyphs and the translated script: they are port data (not committed to this
@@ -190,6 +193,7 @@ def main():
     except Exception: pass
     for ch, c in orig.items(): owidth[c] = 16 if '一' <= ch <= '鿿' else 15
     for c in (0x8175, 0x8176, 0x8177, 0x8178): owidth[c] = 7
+    if len(sys.argv) > 6: owidth.update({int(k): v for k, v in json.load(open(sys.argv[6])).items()})
     owidth[0x8140] = 2
 
     hang = {0x8142, 0x8149, 0x8148, 0x8141, 0x8145, 0x8176, 0x8178, 0x816a, 0x8163, 0x815c, 0x8160} | {code[c] for c in HANG if c in code}
