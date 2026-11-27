@@ -107,8 +107,25 @@ export async function startMachine({ canvas, dataRoot, audio = true, onProgress 
   const keys = new Map(); // button -> frames left
   // moveCursor: presses of the direction that moves the original's cursor, 1 frame down, 1 up each
   let steps = []; // [{ key, left, phase, down, up }], run in order: `left` presses of `down` frames, `up` frames apart (key null: a pause)
+  // seek: a tap on another row. The direction is held until the original's own cursor has moved
+  // (at most 6 frames, then let go for 3), again until it stands on the row; only then, in a plain
+  // list, is circle pressed. Nothing is pressed blind, so a frame the game did not read the pad in
+  // cannot turn the tap into a choice of the old row.
+  let seek = null; // { to, pick, down, up, last, age }
+  const seekKey = () => {
+    const t = menuNow(); if (!t || ++seek.age > 180) { seek = null; return 0; }
+    const at = t.index();
+    if (seek.up > 0) { seek.up--; seek.last = at; return 0; }
+    if (at === seek.to) { const pick = seek.pick; seek = null; if (pick) steps = [presses("circle", 1, HOLD, 1)]; return 0; }
+    if (seek.down > 0 && (at !== seek.last || seek.down >= 6)) { seek.down = 0; seek.up = 3; seek.last = at; return 0; }
+    let key;
+    if (t.grid) { const { cols, across } = t.grid, dr = Math.floor(seek.to / cols) - Math.floor(at / cols), dc = (seek.to % cols) - (at % cols); key = dr ? t.keys[dr < 0 ? 0 : 1] : across[dc < 0 ? 0 : 1]; }
+    else key = t.keys[seek.to < at ? 0 : 1];
+    seek.down++; seek.last = at; return BUTTON[key];
+  };
   const held = () => {
     let b = 0; for (const [k, n] of keys) { if (n > 0) b |= BUTTON[k]; }
+    if (seek) return b | seekKey();
     const s = steps[0];
     if (s) { if (s.phase < s.down && s.key) b |= BUTTON[s.key]; if (++s.phase === s.down + s.up) { s.phase = 0; if (--s.left <= 0) steps.shift(); } }
     return b;
@@ -134,11 +151,7 @@ export async function startMachine({ canvas, dataRoot, audio = true, onProgress 
       const t = menuNow(); if (!t || !n) return;
       const button = t.press?.[t.index() + n];
       if (button) { keys.set(button, HOLD); return; }
-      const move = (k, d) => (d ? [presses(k[d < 0 ? 0 : 1], Math.abs(d))] : []);
-      if (!t.grid) { steps = [...move(t.keys, n), presses(null, 1, 0, 2), presses("circle", 1, HOLD, 1)]; return; }
-      // a grid (index = row · cols + column): the rows first, then the columns
-      const { cols, across } = t.grid, from = t.index(), to = from + n;
-      steps = [...move(t.keys, Math.floor(to / cols) - Math.floor(from / cols)), ...move(across, (to % cols) - (from % cols))];
+      steps = []; seek = { to: t.index() + n, pick: !t.grid, down: 0, up: 0, last: t.index(), age: 0 };
     },
     // Dragging (the flowchart, the backlog: screens whose rows include direction buttons): what a
     // drag may press, and n presses of a direction queued behind the ones still running.
