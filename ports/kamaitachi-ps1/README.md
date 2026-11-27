@@ -285,3 +285,14 @@ The per-frame effects 0x800416a4 that `weatherTick` does not port by hand run tr
   the status exchange, 36 for a card's directory, 1 per 128-byte frame read, 2 per frame written).
   The game waits inside the library call, as the original does, with its own "checking the memory
   card" screen up; `new Machine({ cardTiming: false })` finishes every request at once (tests, QA).
+
+## Touch (machine): one tap picks a row, a drag scrolls
+
+- A tap on another row of a list moves the original's cursor there with its own pad presses and
+  chooses it at once (`runtime.moveCursor`); in the flowchart's grid a tap moves the cursor and a
+  second tap chooses.
+- On screens whose rows include direction buttons (the flowchart, the backlog) a drag scrolls:
+  the view follows the finger, one pad press per 14 screen pixels (`runtime.dragKeys`,
+  `runtime.pressSteps`, `shell.js`). The corner button is × there (back).
+- `Gpu.rectangle` has a fast path (drawing area clipped once, texel / blend inline), about 2.7×
+  fewer milliseconds per frame; `rectangleRef` keeps the plain form and a test compares the two.

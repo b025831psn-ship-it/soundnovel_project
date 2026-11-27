@@ -106,13 +106,14 @@ export async function startMachine({ canvas, dataRoot, audio = true, onProgress 
   };
   const keys = new Map(); // button -> frames left
   // moveCursor: presses of the direction that moves the original's cursor, 1 frame down, 1 up each
-  let steps = []; // [{ key, left, phase }], run in order
+  let steps = []; // [{ key, left, phase, down, up }], run in order: `left` presses of `down` frames, `up` frames apart (key null: a pause)
   const held = () => {
     let b = 0; for (const [k, n] of keys) { if (n > 0) b |= BUTTON[k]; }
     const s = steps[0];
-    if (s) { if (s.phase < 1) b |= BUTTON[s.key]; if (++s.phase === 2) { s.phase = 0; if (--s.left <= 0) steps.shift(); } }
+    if (s) { if (s.phase < s.down && s.key) b |= BUTTON[s.key]; if (++s.phase === s.down + s.up) { s.phase = 0; if (--s.left <= 0) steps.shift(); } }
     return b;
   };
+  const presses = (key, left, down = 1, up = 1) => ({ key, left, phase: 0, down, up });
   const menuNow = () => current(machine.touch);
   const runtime = {
     machine, soundModule: snd.mod,
@@ -126,16 +127,23 @@ export async function startMachine({ canvas, dataRoot, audio = true, onProgress 
       && ((machine.read(0x800792b4, 2) - 2) << 16) >= 0 && ![0x19, 0x1f].includes(machine.read(0x8007929c, 2)),
     touchRows: () => menuNow()?.rows ?? [],
     cursorIndex: () => menuNow()?.index() ?? -1,
+    // A tap on another row: the cursor goes there with the original's own pad presses (one frame
+    // each) and, in a plain list, the row is chosen at once (태우 2026-11-28: a tap picks the row).
+    // In a grid (the flowchart) the tap only moves the cursor; a second tap chooses.
     moveCursor(n) {
       const t = menuNow(); if (!t || !n) return;
       const button = t.press?.[t.index() + n];
       if (button) { keys.set(button, HOLD); return; }
-      const move = (k, d) => (d ? [{ key: k[d < 0 ? 0 : 1], left: Math.abs(d), phase: 0 }] : []);
-      if (!t.grid) { steps = move(t.keys, n); return; }
+      const move = (k, d) => (d ? [presses(k[d < 0 ? 0 : 1], Math.abs(d))] : []);
+      if (!t.grid) { steps = [...move(t.keys, n), presses(null, 1, 0, 2), presses("circle", 1, HOLD, 1)]; return; }
       // a grid (index = row · cols + column): the rows first, then the columns
       const { cols, across } = t.grid, from = t.index(), to = from + n;
       steps = [...move(t.keys, Math.floor(to / cols) - Math.floor(from / cols)), ...move(across, (to % cols) - (from % cols))];
     },
+    // Dragging (the flowchart, the backlog: screens whose rows include direction buttons): what a
+    // drag may press, and n presses of a direction queued behind the ones still running.
+    dragKeys: () => Object.values(menuNow()?.press ?? {}).filter((k) => ["up", "down", "left", "right"].includes(k)),
+    pressSteps(key, n = 1) { if (BUTTON[key] && steps.length < 12) steps.push(presses(key, n, 2, 2)); },
     // the memory card in slot 1: a copy of the raw 128 KB image; importCard swaps the card as
     // if a different one were inserted (the library reports a new card on its next request)
     exportCard: () => card.bytes.slice(),

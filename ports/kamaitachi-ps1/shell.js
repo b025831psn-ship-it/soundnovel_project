@@ -61,13 +61,38 @@ whenReady(({ runtime, sound }) => {
   // iPhone Safari starts audio only at the end of a touch: wake it on those too.
   for (const type of ["touchend", "click", "keydown"]) addEventListener(type, resume, { capture: true, passive: true });
 
+  // A tap is ○ or a row; on screens that scroll (the flowchart, the backlog) a drag moves the
+  // view the way the finger goes: every 14 screen pixels press the pad the other way once.
+  const DRAG = 14;
+  let drag = null;
   canvas.addEventListener("pointerdown", (event) => {
     if (!event.isPrimary) return;
     event.preventDefault();
     resume();
-    const { x, y } = nativePoint(event);
-    routeTouch(runtime, x, y);
+    const point = nativePoint(event), dragKeys = runtime.dragKeys?.() ?? [];
+    if (!dragKeys.length) { routeTouch(runtime, point.x, point.y); return; }
+    drag = { id: event.pointerId, x: point.x, y: point.y, from: point, moved: false, keys: dragKeys };
+    canvas.setPointerCapture?.(event.pointerId);
   });
+  canvas.addEventListener("pointermove", (event) => {
+    if (!drag || event.pointerId !== drag.id) return;
+    const { x, y } = nativePoint(event);
+    const step = (delta, back, forward) => {
+      const n = Math.trunc(delta / DRAG); if (!n) return 0;
+      const key = n > 0 ? back : forward;
+      if (drag.keys.includes(key)) runtime.pressSteps(key, Math.abs(n));
+      drag.moved = true; return n * DRAG;
+    };
+    drag.y += step(y - drag.y, "up", "down");
+    drag.x += step(x - drag.x, "left", "right");
+  });
+  const endDrag = (event) => {
+    if (!drag || event.pointerId !== drag.id) return;
+    const d = drag; drag = null;
+    if (!d.moved && event.type === "pointerup") routeTouch(runtime, d.from.x, d.from.y);
+  };
+  canvas.addEventListener("pointerup", endDrag);
+  canvas.addEventListener("pointercancel", endDrag);
   addEventListener("keydown", (event) => {
     if (event.repeat || event.altKey || event.ctrlKey || event.metaKey) return;
     const input = { Enter: "confirm", " ": "confirm", z: "confirm", Escape: "cancel", x: "cancel", s: "menu",
