@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import { pathToFileURL } from 'node:url';
 import { SfcMachine } from '../machine.js';
 
-const [romPath, apuPath, outputPath, targetArg = '3', joypadPath = ''] = process.argv.slice(2);
+const [romPath, apuPath, outputPath, targetArg = '3'] = process.argv.slice(2);
 if (!romPath || !apuPath || !outputPath) throw new Error('usage: instruction-trace.mjs ROM APU output.bin [nmis=3]');
 const { APU } = await import(pathToFileURL(apuPath));
 const apu = new APU(); apu.powerOn();
@@ -11,15 +11,8 @@ const fd = fs.openSync(outputPath, 'w');
 const records = Buffer.allocUnsafe(24 * 4096); let used = 0;
 const flush = () => { if (used) fs.writeSync(fd, records, 0, used * 24); used = 0; };
 let machine;
-const recordedJoypad = new Map();
-if (joypadPath) for (const line of fs.readFileSync(joypadPath, 'utf8').trim().split('\n').slice(1)) {
-  const [frameText,, addressText, valueText] = line.split('\t');
-  const frame = Number(frameText), shift = Number.parseInt(addressText, 16) === 0x4219 ? 8 : 0;
-  recordedJoypad.set(frame, (recordedJoypad.get(frame) ?? 0) | (Number.parseInt(valueText, 16) << shift));
-}
 machine = new SfcMachine({
   rom: fs.readFileSync(romPath), apu,
-  joypad: (nmi, frame) => recordedJoypad.get(frame) ?? 0,
   busOptions: { eventLimit: 0, apuTraceLimit: 0, wramInitialValue: 0x55 },
   cpuOptions: { traceLimit: 0 },
   onInstruction: (pc) => {

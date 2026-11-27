@@ -52,7 +52,7 @@ const joypadAtFrame = (frame) => joypadPath ? (joypad.get(frame) ?? 0)
 machine = new SfcMachine({
   rom: fs.readFileSync(romPath),
   apu,
-  joypad: (nmi, frame) => joypadAtFrame(frame),
+  joypad: joypadAtFrame,
   busOptions: {
     eventLimit: 0,
     apuTraceLimit: 0,
@@ -90,11 +90,8 @@ machine = new SfcMachine({
     for (const address of watchedWram) {
       if (machine.bus.wram[address] === watchedValues.get(address)) continue;
       watchedValues.set(address, machine.bus.wram[address]);
-      watchedWriters.set(address, { frame: machine.frame, masterCycle: machine.cpu.masterCycle,
-        pc: machine.cpu.currentInstruction?.address ?? instructionAddress,
-        nextPc: instructionAddress, opcode: machine.cpu.currentInstruction?.opcode ?? null,
-        value: machine.bus.wram[address], a: machine.cpu.a, x: machine.cpu.x,
-        y: machine.cpu.y, d: machine.cpu.d, dbr: machine.cpu.dbr, p: machine.cpu.p });
+      watchedWriters.set(address, { frame: machine.frame, pc: instructionAddress,
+        value: machine.bus.wram[address] });
     }
     if (machine.cpu.pbr === 0x02 && (machine.cpu.pc & 0xff00) === 0xe100) e1xxInstructions++;
   },
@@ -155,7 +152,5 @@ console.log(JSON.stringify({
   frame: machine.frame, executed: cpu.executed, masterCycle: cpu.masterCycle,
   apuAccesses: bus.apuAccessCount, address: cpu.address(), failure,
   semanticRows, semanticSnapshot, frameStats, e1xxInstructions, pcProbes, pcDistribution,
-  watchedWriters: Object.fromEntries([...watchedWriters].map(([address, writer]) =>
-    [`0x${address.toString(16).padStart(5, '0')}`, writer])),
 }, null, 2));
 if (failure) process.exitCode = 1;

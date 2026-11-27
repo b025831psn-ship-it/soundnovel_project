@@ -1,6 +1,6 @@
 import { SfcBus } from './bus.js';
 import { Cpu65816 } from './cpu.js';
-import { renderFrame, renderScanline } from './ppu.js';
+import { renderFrame } from './ppu.js';
 
 export const NTSC_MASTER_HZ = 21_477_272.7;
 
@@ -27,7 +27,6 @@ export class SfcMachine {
     this.onNmiVector = onNmiVector;
     this.onInstruction = onInstruction;
     this.buttons = null;
-    this.physicalButtons = 0;
     this.inVblank = false;
     this.pendingNmiAt = Infinity;
     this.nextFrame = 1_368;
@@ -35,21 +34,9 @@ export class SfcMachine {
     this.frameLength = 357_368;
     this.nmiFrameLength = 357_368;
     this.framebuffer = null;
-    this.rasterFramebuffer = new Uint8ClampedArray(256 * 224 * 4);
-    this.nextRenderLine = 512;
-    this.nextHdma = 1_106;
-    this.nextHdmaInit = 20;
-    this.rasterLine = 0;
-    this.rasterField = 0;
-    this.nextIrq = Infinity;
-    this.pendingIrq = false;
-    this.pendingNmi = false;
-    this.nextJoypadComplete = Infinity;
-    this.renderedLineRevision = new Int32Array(224).fill(-1);
+    this.renderedPpuRevision = -1;
 
     const externalNmiEnable = busOptions.onNmiEnable;
-    const externalIrqConfig = busOptions.onIrqConfig;
-    const externalIrqAcknowledge = busOptions.onIrqAcknowledge;
     this.bus = new SfcBus(rom, {
       ...busOptions,
       apu,
@@ -57,8 +44,6 @@ export class SfcMachine {
         externalNmiEnable?.(master);
         if (this.inVblank) this.pendingNmiAt = Math.min(this.pendingNmiAt, master + 12);
       },
-      onIrqConfig: (master) => { externalIrqConfig?.(master); this.scheduleIrq(master); },
-      onIrqAcknowledge: () => { externalIrqAcknowledge?.(); this.pendingIrq = false; },
     });
     const externalInterruptVector = cpuOptions.onInterruptVector;
     this.cpu = new Cpu65816(this.bus, {
@@ -69,7 +54,6 @@ export class SfcMachine {
           this.onNmiVector?.(this.nmiCount, this.frame, master);
       },
     });
-    this.cpu.eventScheduler = this;
   }
 
   get master() { return this.cpu.masterCycle; }
@@ -79,7 +63,7 @@ export class SfcMachine {
 
   enterNmi() {
     this.nmiCount++;
-    const mask = this.buttons ?? this.physicalButtons;
+    const mask = this.buttons ?? this.joypad(this.nmiCount, this.frame) ?? 0;
     this.bus.setController1(mask);
     this.onNmi?.(this.frame, this.master);
     this.cpu.nmi();
@@ -93,130 +77,34 @@ export class SfcMachine {
 
   step() {
     if (this.end != null && this.time >= this.end) return null;
-    if (this.pendingIrq && this.cpu.irq()) {
-      this.pendingIrq = false;
-      this.bus.io[0x4211 - 0x2000] &= 0x7f;
-    }
     const instructionAddress = this.cpu.address();
     const result = this.cpu.step();
     this.onInstruction?.(instructionAddress, result);
-    if (this.pendingNmi) { this.pendingNmi = false; this.enterNmi(); }
-    else if (this.pendingIrq && this.cpu.irq()) {
-      this.pendingIrq = false;
-      this.bus.io[0x4211 - 0x2000] &= 0x7f;
-    }
-    return { instructionAddress, result };
-  }
 
-  lineLength(line = this.rasterLine, field = this.rasterField) {
-    return line === 240 && field === 1 ? 1_360 : 1_364;
-  }
-
-  advanceRasterEvent(event) {
-    const length = this.lineLength();
-    if (event === 'render') this.nextRenderLine += length;
-    if (event === 'hdma') this.nextHdma += length;
-    if (event === 'init') this.nextHdmaInit += length;
-  }
-
-  finishRasterLine() {
-    this.rasterLine++;
-    if (this.rasterLine === 262) { this.rasterLine = 0; this.rasterField ^= 1; }
-  }
-
-  nextCpuEvent() {
-    const events = [
-      ['irq', this.nextIrq], ['hdma-init', this.nextHdmaInit], ['render', this.nextRenderLine],
-      ['hdma', this.nextHdma], ['frame', this.nextFrame], ['nmi', this.nextNmi],
-      ['nmi-edge', this.pendingNmiAt],
-      ['joypad', this.nextJoypadComplete],
-    ];
-    let selected = events[0];
-    for (const event of events.slice(1)) if (event[1] < selected[1]) selected = event;
-    return { type: selected[0], master: selected[1] };
-  }
-
-  runCpuEvent({ type, master }) {
-    if (type === 'irq') {
-        this.bus.io[0x4211 - 0x2000] |= 0x80;
-        this.pendingIrq = true;
-        this.scheduleIrq(master + 1);
-        return 0;
-    }
-    if (type === 'hdma-init') {
-        const stall = this.rasterLine === 0 ? this.bus.initHdma(master) : 0;
-        this.advanceRasterEvent('init');
-        return stall;
-    }
-    if (type === 'render') {
-        if (this.onFrame && this.rasterLine < 224
-            && this.renderedLineRevision[this.rasterLine] !== this.bus.ppuRevision) {
-          renderScanline(this.bus, this.rasterFramebuffer, this.rasterLine);
-          this.renderedLineRevision[this.rasterLine] = this.bus.ppuRevision;
-        }
-        this.advanceRasterEvent('render');
-        return 0;
-    }
-    if (type === 'hdma') {
-        const stall = this.rasterLine <= 224 ? this.bus.runHdmaLine(master) : 0;
-        this.advanceRasterEvent('hdma');
-        this.finishRasterLine();
-        return stall;
-    }
-    if (type === 'frame') {
+    while (this.master >= this.nextFrame) {
       this.frame++;
       this.inVblank = false;
-      // libretro polls physical input at the start of retro_run, before the
-      // upcoming auto-joypad read.  Expose the last completed NMI here; the
-      // sampled value is then consumed by the next vblank auto-read.
-      if (this.buttons === null) this.physicalButtons = this.joypad(this.nmiCount, this.frame) ?? 0;
-      this.nextFrame += this.frameLength;
-      this.frameLength = this.frameLength === 357_368 ? 357_364 : 357_368;
-      return 0;
-    }
-    if (type === 'nmi') {
-      this.inVblank = true;
       if (this.onFrame) {
-        this.framebuffer = this.rasterFramebuffer.slice();
+        if (this.renderedPpuRevision !== this.bus.ppuRevision) {
+          this.framebuffer = renderFrame(this.bus);
+          this.renderedPpuRevision = this.bus.ppuRevision;
+        }
         this.onFrame(this.frame, this.framebuffer);
       }
-      this.bus.latchNmi();
-      if (this.bus.io[0x4200 - 0x2000] & 0x80) this.pendingNmi = true;
-      if (this.bus.io[0x4200 - 0x2000] & 1) {
-        this.bus.io[0x4212 - 0x2000] |= 1;
-        this.nextJoypadComplete = master + 4_224;
-      }
+      this.nextFrame += this.frameLength;
+      this.frameLength = this.frameLength === 357_368 ? 357_364 : 357_368;
+    }
+    while (this.master >= this.nextNmi) {
+      this.inVblank = true;
+      this.latchNmi();
       this.nextNmi += this.nmiFrameLength;
       this.nmiFrameLength = this.nmiFrameLength === 357_368 ? 357_364 : 357_368;
-      return 0;
     }
-    if (type === 'joypad') {
-      this.bus.latchControllers();
-      this.bus.io[0x4212 - 0x2000] &= 0xfe;
-      this.nextJoypadComplete = Infinity;
-      return 0;
+    if (this.master >= this.pendingNmiAt) {
+      this.pendingNmiAt = Infinity;
+      this.enterNmi();
     }
-    this.pendingNmiAt = Infinity;
-    this.pendingNmi = true;
-    return 0;
-  }
-
-  scheduleIrq(afterMaster = this.master) {
-    const mode = this.bus.io[0x4200 - 0x2000] & 0x30;
-    if (!mode) { this.nextIrq = Infinity; return; }
-    const h = this.bus.io[0x4207 - 0x2000] | ((this.bus.io[0x4208 - 0x2000] & 1) << 8);
-    const v = this.bus.io[0x4209 - 0x2000] | ((this.bus.io[0x420a - 0x2000] & 1) << 8);
-    let line = this.rasterLine, field = this.rasterField, start = this.nextHdma - 1_106;
-    for (let count = 0; count <= 262; count++) {
-      const lineMatches = !(mode & 0x20) || line === v;
-      const offset = mode & 0x10 ? h * 4 + 14 - (h ? 0 : 4) : 10;
-      const candidate = start + offset;
-      if (lineMatches && candidate >= afterMaster) { this.nextIrq = candidate; return; }
-      const length = this.lineLength(line, field);
-      start += length; line++;
-      if (line === 262) { line = 0; field ^= 1; }
-    }
-    this.nextIrq = Infinity;
+    return { instructionAddress, result };
   }
 
   runToMaster(master) {

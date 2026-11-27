@@ -41,14 +41,11 @@ test('owns frame, NMI and joypad scheduling', () => {
   });
   machine.bus.write8(0x4200, 0x81, machine.master);
   machine.runToMaster(307_000);
-  assert.equal(machine.bus.read8(0x4212) & 1, 1, 'auto-read is busy after vblank starts');
-  assert.equal(machine.bus.read16(0x4218), 0, 'result is not published before auto-read completes');
-  machine.runToMaster(312_000);
 
   assert.equal(machine.frame, 1);
   assert.equal(nmis.length, 1);
   assert.equal(machine.nmiCount, 1);
-  assert.deepEqual(joypads, [[0, 1]], 'physical poll precedes the first NMI');
+  assert.deepEqual(joypads, [[1, 1]]);
   assert.equal(machine.bus.read8(0x4218), 0x34);
   assert.equal(machine.bus.read8(0x4219), 0x12);
 
@@ -56,7 +53,7 @@ test('owns frame, NMI and joypad scheduling', () => {
   assert.equal(frames[0][0], 1);
   assert.ok(frames[0][1] instanceof Uint8ClampedArray);
   assert.equal(frames[0][1].length, 256 * 224 * 4);
-  machine.runToMaster(670_000);
+  machine.runToMaster(665_000);
   assert.equal(machine.bus.read8(0x4218), 0xcd);
   assert.equal(machine.bus.read8(0x4219), 0xab);
 });
@@ -66,7 +63,7 @@ test('delivers an NMI enable edge twelve masters into vblank', () => {
   const machine = new SfcMachine({
     rom: loopingRom(), apu: null, onNmi: () => nmis++,
   });
-  machine.runToMaster(312_000);
+  machine.runToMaster(307_000);
   assert.equal(nmis, 0);
   const enabledAt = machine.master;
   machine.bus.write8(0x4200, 0x80, enabledAt);
