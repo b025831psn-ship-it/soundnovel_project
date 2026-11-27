@@ -217,7 +217,7 @@ const KFONT = 17, kMeasure = new Map();
 document.fonts?.ready.then(() => kMeasure.clear());
 function kAdv(ch) { if (!kMeasure.has(ch)) { g.font = `500 ${KFONT}px 'Noto Sans KR', sans-serif`; kMeasure.set(ch, g.measureText(ch).width); } return kMeasure.get(ch); }
 function advance(ch, scale = 1) {
-  if (ch === '…' || ch === '―') return CELL * scale;
+  if (ch === '…' || ch === '―' || ch === '仝') return CELL * scale; // 仝 = the script's full-width space (indent, gap after ？！)
   if (!fontMeta[ch.codePointAt(0)] && ch !== ' ') return (kAdv(ch) + 1) * scale;
   if (ch === ' ') return CELL * 0.4 * scale;
   const m = fontMeta[ch.codePointAt(0)]; return m ? (m[4] * 0.375 + 0.7) * scale : 10 * scale;
@@ -228,6 +228,7 @@ function drawSpecial(ch, x, y, scale) {
   else g.fillRect(Math.round(x), Math.round(y + 9 * scale), Math.ceil(CELL * scale), Math.max(1, Math.round(1.5 * scale)));
 }
 function drawGlyph(ch, x, y, scale = 1) {
+  if (ch === '仝') return advance(ch, scale);
   if (ch === '…' || ch === '―') { g.fillStyle = g.filter === 'none' ? '#e8e8ee' : '#000'; drawSpecial(ch, x, y, scale); return advance(ch, scale); }
   const m = fontMeta[ch.codePointAt(0)];
   if (!m) { if (ch !== ' ') { g.font = `500 ${KFONT * scale}px 'Noto Sans KR', sans-serif`; g.textBaseline = 'top'; g.fillStyle = g.filter === 'none' ? '#f0f0f0' : '#000'; g.fillText(ch, x, y + 1 * scale); } return advance(ch, scale); }
