@@ -3,7 +3,8 @@
 //   { type: 'buttons', mask }  held keys    { type: 'pause', on }
 //   { type: 'tap', x, y }      screen pixels; pressed as planTap() decides
 //   { type: 'press', name }    one button press (menu icon actions)
-// Messages out: { type: 'status', frame, time, cost } about four times a second,
+// Messages out: { type: 'status', frame, time, cost, keyboard, cursor, title } about four
+//               times a second (keyboard: a name keyboard is up, so the menu button hides),
 //               { type: 'frame', frame, pixels } (256x224 RGBA) when the picture changed,
 //               { type: 'sram', bytes } (8 KiB) a little after the game writes its bookmarks,
 //               { type: 'error', message }.
@@ -11,15 +12,44 @@ import { APU } from './apu.js';
 import { runRealtime } from './realtime.js';
 import { createPcmSink } from './pcm-sink.js';
 import { VmSound, PAD } from './vm-sound.js';
-import { planTap, PressQueue, isKeyboard, keyboardTarget, keyboardStep } from './touch.js';
+import { tapTarget, PressQueue, isKeyboard, keyboardTarget, keyboardStep } from './touch.js';
 import { SfcMachine } from '../../../sfc-vm/machine.js';
 
 let machine = null, run = null, held = 0, seek = null;
+// Taps on lists and keyboards walk the game's own cursor one press at a time, reading it back
+// after each press, because the game drops presses while a screen fades in or text types.
+// List (choice, bookmark shelf, name check): a tap on the item under the cursor presses A;
+// on another item it moves there, and the next tap chooses it.
+// Keyboard: the cursor goes to the tapped cell and A types it at once. When a press does not
+// move the cursor it tries the other axis; if that does not move it either (a message box is
+// up), it presses A once and stops.
 const seekStep = () => {
   if (!seek || queue.busy) return;
-  const b = keyboardStep(machine.bus.wram, seek.target);
-  if (b === 'A' || ++seek.presses > 24) seek = null;
-  if (b === 'A' || seek) queue.push(PAD[b]);
+  const w = machine.bus.wram;
+  if (seek.confirm) {
+    // A on a list item, pressed again every half second while the list is still up (the game
+    // ignores A until the text above the items has finished), at most six times.
+    if (seek.wait > 0) { seek.wait--; return; }
+    if (seek.tries > 0 && seek.read(w, machine.bus.io) == null) { seek = null; return; }
+    if (++seek.tries > 6) { seek = null; return; }
+    seek.wait = 30; queue.push(PAD.A); return;
+  }
+  if (seek.read) {
+    const cur = seek.read(w, machine.bus.io);
+    if (cur == null) { if (++seek.waits > 90) seek = null; return; }
+    if (cur === seek.target || ++seek.presses > 40) { seek = null; return; }
+    queue.push(PAD[seek.target > cur ? 'DOWN' : 'UP']);
+    return;
+  }
+  const pos = w[0x1020];
+  if (seek.moved && seek.last === pos) {
+    if (seek.stuck) { seek = null; queue.push(PAD.A); return; }
+    seek.stuck = true; seek.vertical = !seek.vertical;
+  } else if (seek.moved) seek.stuck = false;
+  const b = keyboardStep(w, seek.target, seek.vertical);
+  if (b === 'A') { const s = seek; seek = null; if (s.press) queue.push(PAD.A); else if (s.scroll) queue.push(PAD[s.scroll > 0 ? 'DOWN' : 'UP']); return; }
+  if (++seek.presses > 30) { seek = null; return; }
+  seek.last = pos; seek.moved = true; queue.push(PAD[b]);
 };
 const queue = new PressQueue();
 onmessage = ({ data }) => {
@@ -28,11 +58,14 @@ onmessage = ({ data }) => {
   else if (data.type === 'pause') run?.setPaused(data.on);
   else if (data.type === 'tap' && machine && !queue.busy && !seek) {
     const w = machine.bus.wram;
-    // On the suspect keyboard a tap types the tapped kana (or runs the tapped command) at once:
-    // the cursor is walked there one press at a time, reading the game's cursor after each.
-    const target = isKeyboard(w) ? keyboardTarget(data.x, data.y) : null;
-    if (target != null) seek = { target, presses: 0 };
-    else if (!isKeyboard(w)) queue.push(...planTap(w, machine.bus.io, data.x, data.y).map((n) => PAD[n]));
+    const hit = isKeyboard(w) ? keyboardTarget(data.x, data.y, w) : null;
+    if (hit) seek = { ...hit, presses: 0 };
+    else if (!isKeyboard(w)) {
+      const t = tapTarget(w, machine.bus.io, data.x, data.y);
+      if (t === 'A') queue.push(PAD.A);
+      else if (t && t.read(w, machine.bus.io) === t.target) seek = { ...t, confirm: true, tries: 0, wait: 0 };
+      else if (t) seek = { ...t, presses: 0, waits: 0 };
+    }
   }
   else if (data.type === 'press' && PAD[data.name]) queue.push(PAD[data.name]);
 };
@@ -78,7 +111,8 @@ function start({ game, gauss, port, sram }) {
       const now = performance.now();
       watchSram(now);
       if (now < reportAt) return; reportAt = now + 250;
-      postMessage({ type: 'status', frame: vm.frame, time: vm.time, cost });
+      const w = machine.bus.wram;
+      postMessage({ type: 'status', frame: vm.frame, time: vm.time, cost, keyboard: isKeyboard(w), cursor: w[0x1020], title: w[0x3c3], item: w[0x2482], typed: w[0x1024] });
     },
   });
 }
