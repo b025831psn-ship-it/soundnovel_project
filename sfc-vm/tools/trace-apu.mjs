@@ -52,7 +52,7 @@ const joypadAtFrame = (frame) => joypadPath ? (joypad.get(frame) ?? 0)
 machine = new SfcMachine({
   rom: fs.readFileSync(romPath),
   apu,
-  joypad: joypadAtFrame,
+  joypad: (nmi, frame) => joypadAtFrame(frame),
   busOptions: {
     eventLimit: 0,
     apuTraceLimit: 0,

@@ -137,3 +137,35 @@ enabled after a JIT warm-up.  On this container, reset through NMI 2108 takes
 CPU/scheduler accounts for 79.03% and rendering for 20.97%.  The speedup keeps
 every scanline: OBJ evaluation now decodes only the active line, and unchanged
 scanlines reuse the prior exact pixels based on the monotonic PPU revision.
+
+## Bundle 7: NMI 719 and first-choice run
+
+`trace-apu.mjs` now passes the physical frame (the second `SfcMachine` joypad
+callback argument) to recorded-input lookup. It had retained the old
+single-argument callback after scheduler extraction and was replaying an NMI
+number as a frame number. With the corrected callback, native and VM APUIO
+semantic streams match for all 213,612 rows through NMI 8,500. In the NMI 719
+window, all 30 APUIO accesses within +/-2,000 master clocks match in master,
+PC, opcode, direction, port, and value. The 65c816 instruction stream from NMI
+718 entry to NMI 719 entry also matches for 13,204 instructions. The reported
+NMI 719 difference is therefore not SPC700/MasterLink phase.
+
+The remaining NMI 719 WRAM difference is one byte at `$7f:4e0b` (native `$00`,
+VM `$ff`). It is in the `$7f:4000` graphics work buffer and remains until NMI
+5,902, after which the hashes converge. It later feeds the VRAM differences
+that begin at NMI 5,924. NMI 543 under generated input is a separate boundary:
+WRAM `$0391` is cleared by `$00:85b5` immediately before native capture and
+immediately after VM capture, and agrees again at the next NMI.
+
+The native auto-read recording was extended through NMI 8,500, where the first
+choice is visible (physical frame 8,545). At that boundary NMI PC, OAM, and
+semantic APUIO agree throughout; WRAM differs on NMI 719--5,902, VRAM first
+differs at NMI 5,924, and the first BGR555 difference remains the known 8x8
+capture boundary at NMI 19. At NMI 8,400 the choice image differs by 6,390
+pixels, downstream of the graphics-buffer/VRAM difference.
+
+Finally, native and VM write identical INIDISP values on the same physical
+frames during the NMI 315--328 fade, after visible rendering (native V=229,
+VM raster line 230 under the corrected line convention). Native `n-1` being
+pixel-identical is a libretro video-callback/NMI association artifact, not an
+INIDISP write-timing error; the VM publication point should not be shifted.
