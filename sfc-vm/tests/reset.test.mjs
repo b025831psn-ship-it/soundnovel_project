@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { SfcBus } from '../bus.js';
 import { Cpu65816 } from '../cpu.js';
-import { decodeTilePixel, renderMode3Bg1 } from '../ppu.js';
+import { decodeTilePixel, renderFrame, renderMode3Bg1, renderScanline } from '../ppu.js';
 import { MasterLink, READ_POINT } from '../../ports/kamaitachi-sfc/sound/master-link.js';
 
 // Real reset sequence bytes from the verified ROM. Keeping only this short
@@ -86,6 +86,20 @@ test('absolute stores use the data bank register', () => {
     assert.equal(bus.read16(0x7ef6e3), value, `opcode $${opcode.toString(16)}`);
     assert.equal(bus.read16(0x00f6e3), 0, 'bank zero is untouched');
   }
+});
+
+test('absolute indexed addressing carries into the next data bank', () => {
+  const rom = fixture();
+  // STA $4e0c,Y with DB=$7e and Y=$fffe targets $7f:4e0a, not $7e:4e0a.
+  rom.set([0x99, 0x0c, 0x4e]);
+  const bus = new SfcBus(rom);
+  bus.wram.fill(0x55);
+  const cpu = new Cpu65816(bus);
+  cpu.e = false; cpu.p &= ~(0x20 | 0x10); cpu.dbr = 0x7e;
+  cpu.a = 0; cpu.y = 0xfffe;
+  cpu.step();
+  assert.equal(bus.read16(0x7f4e0a), 0);
+  assert.equal(bus.read16(0x7e4e0a), 0x5555, 'the pre-carry bank is untouched');
 });
 
 test('implements every opcode in all architected width modes', () => {
@@ -187,6 +201,32 @@ test('places the 16-bit absolute-index penalty before the data bus read', () => 
     direction: 'r', port: 3, value: 0,
   });
   assert.equal(cpu.masterCycle, 198 + 8 + 8 + 8 + 6 + 6);
+});
+
+test('does not apply bank-zero I/O pointer timing to a bank-7E indirect destination', () => {
+  const rom = fixture();
+  rom.set([0x97, 0x02], 0); // STA [$02],Y
+  const bus = new SfcBus(rom);
+  bus.wram.set([0x00, 0x20, 0x7e], 2);
+  const cpu = new Cpu65816(bus);
+  cpu.e = false;
+  cpu.p &= ~0x20; // 16-bit accumulator
+  cpu.a = 0x1234;
+  cpu.step();
+  assert.equal(cpu.masterCycle - 198, 56);
+  assert.equal(bus.wram[0x2000], 0x34);
+  assert.equal(bus.wram[0x2001], 0x12);
+});
+
+test('preempts a CPU bus cycle with a raster event and includes its stall', () => {
+  const cpu = new Cpu65816(new SfcBus(fixture()));
+  let pending = true;
+  cpu.eventScheduler = {
+    nextCpuEvent: () => ({ type: 'test', master: pending ? 202 : Infinity }),
+    runCpuEvent: () => { pending = false; return 4; },
+  };
+  cpu.advanceMaster(8);
+  assert.equal(cpu.masterCycle, 210);
 });
 
 test('8-bit LSR A does not shift the hidden B accumulator into A', () => {
@@ -366,6 +406,33 @@ test('DMA mode 1 writes source bytes through the VRAM data ports', () => {
   assert.equal(bus.takeDmaMasterCycles(), 18 + 8 + 4 * 8);
 });
 
+test('VMAIN modes 1-3 remap VRAM writes and buffered reads', () => {
+  const cases = [
+    { mode: 1, mapped: 0x12a1 },
+    { mode: 2, mapped: 0x13a0 },
+    { mode: 3, mapped: 0x11a4 },
+  ];
+  for (const { mode, mapped } of cases) {
+    const bus = new SfcBus(fixture());
+    bus.write8(0x2115, 0x80 | (mode << 2)); // increment after high port
+    bus.write8(0x2116, 0x34);
+    bus.write8(0x2117, 0x12);
+    bus.write8(0x2118, 0x56);
+    bus.write8(0x2119, 0x78);
+    assert.equal(bus.vram[mapped * 2], 0x56, `mode ${mode} low write`);
+    assert.equal(bus.vram[mapped * 2 + 1], 0x78, `mode ${mode} high write`);
+    assert.equal(bus.vramAddress, 0x1235, `mode ${mode} increments logical VMADD`);
+
+    bus.vram[mapped * 2] = 0xbc;
+    bus.vram[mapped * 2 + 1] = 0x9a;
+    bus.write8(0x2116, 0x34);
+    bus.write8(0x2117, 0x12); // VMADDH prefetches through the same remap.
+    assert.equal(bus.read8(0x2139), 0xbc, `mode ${mode} buffered low read`);
+    assert.equal(bus.read8(0x213a), 0x9a, `mode ${mode} buffered high read`);
+    assert.equal(bus.vramAddress, 0x1235, `mode ${mode} read increments after high port`);
+  }
+});
+
 test('publishes multiplication and division results only after their hardware delay', () => {
   const bus = new SfcBus(fixture());
   bus.write8(0x4202, 7, 100);
@@ -390,16 +457,14 @@ test('reports an NMI-enable rising edge at its bus transaction', () => {
   assert.deepEqual(enables, [200]);
 });
 
-test('NMI latches the standard auto-joypad result', () => {
+test('controller latch publishes the standard auto-joypad result', () => {
   const rom = fixture();
   rom[0x7fea] = 0x00;
   rom[0x7feb] = 0x80;
   const bus = new SfcBus(rom);
-  const cpu = new Cpu65816(bus);
-  cpu.e = false;
   bus.write8(0x4200, 1);
   bus.setController1(0x1080); // Hardware JOY1 bits: Start + A
-  cpu.nmi();
+  bus.latchControllers();
   assert.equal(bus.read16(0x4218), 0x1080);
 });
 
@@ -425,4 +490,96 @@ test('decodes and composites mode 3 BG1 from PPU memory', () => {
   assert.equal(decodeTilePixel(bus.vram, 0x2040, 0, 7, 8), 1);
   const frame = renderMode3Bg1(bus, 8, 8);
   assert.deepEqual([...frame.slice((7 * 8) * 4, (7 * 8) * 4 + 4)], [255, 0, 0, 255]);
+});
+
+test('composites the subscreen through CGWSEL and CGADSUB', () => {
+  const bus = new SfcBus(new Uint8Array(0x8000));
+  bus.io[0x2100 - 0x2000] = 15;
+  bus.io[0x2105 - 0x2000] = 0;
+  bus.io[0x212c - 0x2000] = 0;
+  bus.io[0x212d - 0x2000] = 0;
+  bus.io[0x2130 - 0x2000] = 2;
+  bus.io[0x2131 - 0x2000] = 0x20 | 0x40;
+  // Backdrop participates in math on both screens. Half addition must retain
+  // the backdrop instead of incorrectly using the fixed colour register.
+  bus.cgram[0] = 0x1f;
+  const frame = renderFrame(bus, 1, 1);
+  assert.deepEqual([...frame], [255, 0, 0, 255]);
+});
+
+test('applies both colour-window logic and clip/prevent modes', () => {
+  const bus = new SfcBus(new Uint8Array(0x8000));
+  bus.io[0x2100 - 0x2000] = 15;
+  bus.cgram[0] = 0x1f;
+  bus.io[0x2125 - 0x2000] = 0x20; // colour window 1 enabled, not inverted
+  bus.io[0x2126 - 0x2000] = 0;
+  bus.io[0x2127 - 0x2000] = 0;
+  bus.io[0x2130 - 0x2000] = 0x80; // clip inside the colour window
+  assert.deepEqual([...renderFrame(bus, 1, 1)], [0, 0, 0, 255]);
+});
+
+test('renders mode 7 through the affine matrix and interleaved VRAM', () => {
+  const bus = new SfcBus(new Uint8Array(0x8000));
+  bus.io[0x2100 - 0x2000] = 15;
+  bus.io[0x2105 - 0x2000] = 7;
+  bus.io[0x212c - 0x2000] = 1;
+  bus.mode7[0] = 0x100;
+  bus.mode7[3] = 0x100;
+  bus.vram[0] = 0;
+  bus.vram[17] = 1; // visible line 0 samples mode-7 source row 1
+  bus.cgram[2] = 0xe0;
+  bus.cgram[3] = 0x03;
+  assert.deepEqual([...renderFrame(bus, 1, 1)], [0, 255, 0, 255]);
+});
+
+test('runs an HDMA table at HBlank and charges its bus cycles', () => {
+  const bus = new SfcBus(new Uint8Array(0x8000));
+  bus.io[0x4300 - 0x2000] = 0;
+  bus.io[0x4301 - 0x2000] = 0x22;
+  bus.io[0x4302 - 0x2000] = 0x00;
+  bus.io[0x4303 - 0x2000] = 0x10;
+  bus.io[0x4304 - 0x2000] = 0x7e;
+  bus.io[0x420c - 0x2000] = 1;
+  bus.wram.set([0x81, 0x1f, 0], 0x1000);
+  assert.equal(bus.initHdma(20), 26);
+  assert.equal(bus.runHdmaLine(1106), 34);
+  assert.equal(bus.cgram[0], 0x1f);
+  assert.equal(bus.hdmaActive, 0);
+});
+
+test('renders each scanline from the PPU state visible on that line', () => {
+  const bus = new SfcBus(new Uint8Array(0x8000));
+  bus.io[0x2100 - 0x2000] = 15;
+  const rgba = new Uint8ClampedArray(2 * 4);
+  bus.cgram[0] = 0x1f;
+  renderScanline(bus, rgba, 0, 1, 2);
+  bus.cgram[0] = 0xe0; bus.cgram[1] = 0x03;
+  renderScanline(bus, rgba, 1, 1, 2);
+  assert.deepEqual([...rgba], [255, 0, 0, 255, 0, 255, 0, 255]);
+});
+
+test('mode 1 BG3 2bpp palettes start at CGRAM colour zero', () => {
+  const bus = new SfcBus(new Uint8Array(0x8000));
+  bus.io[0x2100 - 0x2000] = 15;
+  bus.io[0x2105 - 0x2000] = 1;
+  bus.io[0x2109 - 0x2000] = 4; // BG3 map at VRAM byte $0800
+  bus.io[0x212c - 0x2000] = 4;
+  bus.vram[2] = 0x80; // tile 0, visible line 0/source row 1 = colour 1
+  bus.vram[0x800] = 0;
+  bus.vram[0x801] = 0;
+  bus.cgram[2] = 0xff;
+  bus.cgram[3] = 0x7f; // colour 1 = white
+  bus.cgram[130] = 0x1f; // old incorrect BG3 colour 65 = red
+  assert.deepEqual([...renderFrame(bus, 1, 1)], [255, 255, 255, 255]);
+});
+
+test('OBJ name-select uses the OBSEL gap instead of a fixed tile-256 base', () => {
+  const bus = new SfcBus(new Uint8Array(0x8000));
+  bus.io[0x2100 - 0x2000] = 15;
+  bus.io[0x2101 - 0x2000] = 0x08; // name-select gap = two 8-KiB blocks
+  bus.io[0x212c - 0x2000] = 0x10;
+  bus.oam.set([0, 0, 0, 1], 0); // object 0 selects the second name table
+  bus.vram[0x4000] = 0x80;
+  bus.cgram[258] = 0x1f; // OBJ palette 0, colour 1 = red
+  assert.deepEqual([...renderFrame(bus, 1, 1)], [255, 0, 0, 255]);
 });
