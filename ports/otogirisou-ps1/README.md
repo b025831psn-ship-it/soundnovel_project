@@ -43,4 +43,5 @@ python3 -m unittest discover -s tests -v
 ## 문서
 
 - [작업 방식과 검증 게이트](docs/work-plan.md)
+- [카마이타치 PS1 재사용 판정](docs/kamaitachi-reuse.md)
 - [비공개 디스크 매니페스트 형식](docs/disc-manifest.md)
