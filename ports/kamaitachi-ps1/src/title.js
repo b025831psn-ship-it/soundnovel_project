@@ -42,6 +42,7 @@ export const setPalette = (m, k) => m.write(GP + 0x1a0, k + 8, 1); // 0x8003a90c
 
 export function drawString(ctx, x, y, str, step) { // 0x80038658
   const { m } = ctx, sp = ctx.sp - 0x30, sub = { ...ctx, sp }, left = x, STRINGS = 0x8006b030;
+  str = m.ko?.moved.get(str >>> 0) ?? str; // Korean: a string that did not fit its place
   step &= 0xff;
   const advance = () => { x = step ? x + step : x + 1 + m.read(GP + 0x19e, 1); };
   for (;;) {

@@ -35,6 +35,7 @@ export function animStop(m) { // 0x8003cf28
 
 export function textStart(m, p) { // 0x800390ec
   const i = m.read(0x800792a7, 1);
+  p = m.ko?.moved.get(p >>> 0) ?? p; // Korean: a string of the EXE that did not fit its place
   m.write(0x800794c0 + 4 * i, p >>> 0, 4); m.write(0x8007951a + i, 0, 1);
 }
 
