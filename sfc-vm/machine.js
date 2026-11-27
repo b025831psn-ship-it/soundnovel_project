@@ -4,6 +4,29 @@ import { renderFrame, renderScanline } from './ppu.js';
 
 export const NTSC_MASTER_HZ = 21_477_272.7;
 
+const MACHINE_STATE_VERSION = 1;
+const MACHINE_SCALARS = [
+  'frame', 'nmiCount', 'end', 'buttons', 'physicalButtons', 'inVblank',
+  'pendingNmiAt', 'nextFrame', 'nextNmi', 'frameLength', 'nmiFrameLength',
+  'nextRenderLine', 'nextHdma', 'nextHdmaInit', 'rasterLine', 'rasterField',
+  'nextIrq', 'pendingIrq', 'pendingNmi', 'nextJoypadComplete',
+];
+const CPU_SCALARS = [
+  'executed', 'a', 'x', 'y', 'd', 'dbr', 's', 'p', 'e', 'pbr', 'pc',
+  'masterCycle', 'nextWramRefresh', 'refreshPosition', 'refreshScanline',
+  'refreshField', 'busTransactions',
+];
+const BUS_SCALARS = [
+  'apuPhase', 'wramAddress', 'oamAddress', 'cgramAddress', 'vramAddress',
+  'vmain', 'vramReadBuffer', 'ppuScrollLatch', 'ppuMode7Latch', 'fixedColor',
+  'controller1', 'apuAccessCount', 'pendingDmaMasterCycles', 'hdmaActive',
+  'ppuRevision',
+];
+const copyScalars = (source, names) => Object.fromEntries(names.map((name) => [name, source[name]]));
+const restoreScalars = (target, state, names) => {
+  for (const name of names) target[name] = state[name];
+};
+
 export class SfcMachine {
   constructor({
     rom,
@@ -217,6 +240,61 @@ export class SfcMachine {
       if (line === 262) { line = 0; field ^= 1; }
     }
     this.nextIrq = Infinity;
+  }
+
+  saveState({ apu = this.bus.masterLink?.apu } = {}) {
+    const bus = this.bus, link = bus.masterLink;
+    return {
+      version: MACHINE_STATE_VERSION,
+      machine: copyScalars(this, MACHINE_SCALARS),
+      framebuffer: this.framebuffer?.slice() ?? null,
+      rasterFramebuffer: this.rasterFramebuffer.slice(),
+      renderedLineRevision: this.renderedLineRevision.slice(),
+      cpu: copyScalars(this.cpu, CPU_SCALARS),
+      bus: {
+        ...copyScalars(bus, BUS_SCALARS),
+        wram: bus.wram.slice(), sram: bus.sram.slice(), io: bus.io.slice(),
+        apuPorts: bus.apuPorts.slice(), apuInputPorts: bus.apuInputPorts.slice(),
+        vram: bus.vram.slice(), cgram: bus.cgram.slice(), oam: bus.oam.slice(),
+        bgHofs: bus.bgHofs.slice(), bgVofs: bus.bgVofs.slice(), mode7: bus.mode7.slice(),
+        hdma: structuredClone(bus.hdma), pendingMath: structuredClone(bus.pendingMath),
+        dmaStats: structuredClone(bus.dmaStats), readStats: structuredClone(bus.readStats),
+      },
+      masterLink: link ? {
+        master: link.master, rem: link.rem, target: link.target,
+        pending: structuredClone(link.pending),
+      } : null,
+      apu: apu?.saveState ? apu.saveState() : null,
+    };
+  }
+
+  loadState(state, { apu = this.bus.masterLink?.apu } = {}) {
+    if (!state || state.version !== MACHINE_STATE_VERSION)
+      throw new Error(`unsupported SfcMachine state version: ${state?.version}`);
+    if (state.apu != null) {
+      if (!apu?.loadState) throw new Error('state contains APU data but no compatible APU was supplied');
+      apu.loadState(state.apu);
+    }
+    restoreScalars(this, state.machine, MACHINE_SCALARS);
+    this.framebuffer = state.framebuffer?.slice() ?? null;
+    this.rasterFramebuffer.set(state.rasterFramebuffer);
+    this.renderedLineRevision.set(state.renderedLineRevision);
+    restoreScalars(this.cpu, state.cpu, CPU_SCALARS);
+    const bus = this.bus, savedBus = state.bus;
+    restoreScalars(bus, savedBus, BUS_SCALARS);
+    for (const name of ['wram', 'sram', 'io', 'apuPorts', 'apuInputPorts', 'vram',
+      'cgram', 'oam', 'bgHofs', 'bgVofs', 'mode7']) bus[name].set(savedBus[name]);
+    bus.hdma = structuredClone(savedBus.hdma);
+    bus.pendingMath = structuredClone(savedBus.pendingMath);
+    bus.dmaStats = structuredClone(savedBus.dmaStats);
+    bus.readStats = structuredClone(savedBus.readStats);
+    const link = bus.masterLink;
+    if (state.masterLink) {
+      if (!link) throw new Error('state contains MasterLink data but this machine has no MasterLink');
+      link.master = state.masterLink.master; link.rem = state.masterLink.rem;
+      link.target = state.masterLink.target; link.pending = structuredClone(state.masterLink.pending);
+    }
+    return this;
   }
 
   runToMaster(master) {

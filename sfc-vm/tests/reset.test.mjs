@@ -507,6 +507,24 @@ test('composites the subscreen through CGWSEL and CGADSUB', () => {
   assert.deepEqual([...frame], [255, 0, 0, 255]);
 });
 
+test('performs colour math and brightness in five-bit integer space', () => {
+  const bus = new SfcBus(new Uint8Array(0x8000));
+  bus.io[0x2100 - 0x2000] = 15;
+  bus.io[0x2130 - 0x2000] = 0; // fixed colour is the second operand
+  bus.io[0x2131 - 0x2000] = 0x20 | 0x40; // backdrop math + half
+  bus.cgram[0] = 31;
+  bus.write8(0x2132, 0x20 | 31);
+  // Half add averages the operands in five-bit space: (31 + 31) >> 1 = 31.
+  assert.deepEqual([...renderFrame(bus, 1, 1)], [255, 0, 0, 255]);
+  bus.io[0x2131 - 0x2000] = 0x20 | 0x40 | 0x80; // backdrop subtract + half
+  bus.write8(0x2132, 0x20 | 1);
+  assert.deepEqual([...renderFrame(bus, 1, 1)], [123, 0, 0, 255]);
+  bus.io[0x2131 - 0x2000] = 0;
+  bus.io[0x2100 - 0x2000] = 7;
+  // Brightness is quantized in five-bit space: round(31 * 7 / 15) = 14.
+  assert.deepEqual([...renderFrame(bus, 1, 1)], [115, 0, 0, 255]);
+});
+
 test('applies both colour-window logic and clip/prevent modes', () => {
   const bus = new SfcBus(new Uint8Array(0x8000));
   bus.io[0x2100 - 0x2000] = 15;

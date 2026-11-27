@@ -178,6 +178,8 @@ word at master 273,353,912 with `$03:84ca` (`STA $4e0c,Y`), `DB=$7e`,
 `Y=$fffe`, and `A=$0000`. The indexed addition carries into bank `$7f`; the VM
 previously truncated the sum to 16 bits and incorrectly cleared `$7e:4e0a`.
 The corrected VM clears `$7f:4e0a` at master 272,639,186. A regression fixture
+locks the absolute-indexed bank carry behavior.
+
 now covers this exact bank-carry case.
 
 This removes the persistent NMI 719 byte, but does not by itself satisfy the
@@ -201,3 +203,28 @@ libretro conversion reports 4,505/4,505/4,898 low-amplitude pixels at physical
 frames 3,300/3,360/3,600 (and 4,851 at frame 3,700) with maximum BGR555
 channel delta 1; these are colour-math quantization differences rather than
 the removed OBJ tile stripes.
+
+## Bundle 9: state API and five-bit colour pipeline
+
+`SfcMachine.saveState({ apu })` and `loadState(state, { apu })` now preserve the
+CPU, mutable bus memories and PPU latches, DMA/HDMA and pending math state,
+controller state, raster/NMI/IRQ schedule, framebuffer, and MasterLink timing.
+The state is a versioned structured-clone-compatible object. When supplied,
+the APU participates through its own `saveState()`/`loadState()` contract. A
+regression test saves, runs 1,000 frames, loads, and repeats; WRAM, VRAM,
+CGRAM, OAM, I/O, framebuffer, CPU, scheduler, MasterLink, and mock APU state
+are identical.
+
+The renderer now retains CGRAM, direct colour, and fixed colour as BGR555
+components through add/subtract, half, and INIDISP brightness, expanding only
+for the final framebuffer. The no-input NMI 3,255--3,655 comparison (physical
+frames 3,300--3,700) still has 401 non-exact frames: 1,259,928 pixels total,
+2,917 at the first and 3,139 at the last, with maximum channel error 1. The
+earlier full-screen error is gone; the remaining box is x=106--237, y=0--165.
+The requested zero-difference colour gate is therefore not yet claimed.
+
+Current no-input hashes differ only for WRAM NMI 1,904--2,309 and agree again
+at 2,310; VRAM, CGRAM, OAM, NMI PC, and semantic APUIO agree in that interval.
+The prior `$7f:4e0b` bank-carry defect is fixed, so this is a separate cause
+that still needs a capture-point-matched native dump. The manager-PC recording
+ends at NMI 8,500; no local artifact can extend native input to NMI 20,000.

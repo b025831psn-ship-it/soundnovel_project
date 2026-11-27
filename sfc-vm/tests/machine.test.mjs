@@ -87,3 +87,32 @@ test('keeps debug histories disabled for an hour-equivalent 3600-frame run', () 
   assert.equal(machine.bus.apuTrace.length, 0);
   assert.equal(machine.cpu.trace.length, 0);
 });
+
+test('saveState restores a deterministic 1000-frame continuation', () => {
+  const apu = {
+    value: 7,
+    cpu: { clock: 0, step() { this.clock++; } }, coreDelay: 0,
+    cpuRead: () => 0, cpuWrite: () => {},
+    saveState() { return { value: this.value, clock: this.cpu.clock }; },
+    loadState(state) { this.value = state.value; this.cpu.clock = state.clock; },
+  };
+  const machine = new SfcMachine({ rom: loopingRom(), apu, onFrame: () => {} });
+  machine.bus.write8(0x4200, 0x81, machine.master);
+  while (machine.frame < 3) machine.step();
+  const start = machine.saveState();
+  const run = () => {
+    const target = machine.frame + 1000;
+    while (machine.frame < target) machine.step();
+    return machine.saveState();
+  };
+  const first = run();
+  machine.loadState(start);
+  const second = run();
+  for (const name of ['wram', 'vram', 'cgram', 'oam', 'io'])
+    assert.deepEqual(second.bus[name], first.bus[name], name);
+  assert.deepEqual(second.framebuffer, first.framebuffer);
+  assert.deepEqual(second.machine, first.machine);
+  assert.deepEqual(second.cpu, first.cpu);
+  assert.deepEqual(second.masterLink, first.masterLink);
+  assert.deepEqual(second.apu, first.apu);
+});

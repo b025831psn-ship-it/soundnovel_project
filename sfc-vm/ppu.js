@@ -1,11 +1,10 @@
 function color(cgram, index) {
   const value = cgram[(index * 2) & 0x1ff] | (cgram[(index * 2 + 1) & 0x1ff] << 8);
-  return [
-    Math.round((value & 31) * 255 / 31),
-    Math.round(((value >>> 5) & 31) * 255 / 31),
-    Math.round(((value >>> 10) & 31) * 255 / 31),
-  ];
+  return [value & 31, (value >>> 5) & 31, (value >>> 10) & 31];
 }
+
+const expand5 = (value) => Math.round(value * 255 / 31);
+const applyBrightness = (value, brightness) => Math.round(value * brightness / 15);
 
 const MODE_BPP = [[2, 2, 2, 2], [4, 4, 2], [4, 4], [8, 4], [8, 2], [4, 2], [4]];
 
@@ -60,7 +59,7 @@ function renderObjects(bus, width, y) {
 
 function fixedColor(bus) {
   const value = bus.fixedColor;
-  return [(value & 31) * 255 / 31, ((value >>> 5) & 31) * 255 / 31, ((value >>> 10) & 31) * 255 / 31];
+  return [value & 31, (value >>> 5) & 31, (value >>> 10) & 31];
 }
 
 function windowInside(io, layer, x) {
@@ -85,7 +84,7 @@ function directColor(value, palette) {
   const r = ((value & 7) << 2) | ((palette & 1) << 1);
   const g = (((value >>> 3) & 7) << 2) | (((palette >>> 1) & 1) << 1);
   const b = (((value >>> 6) & 3) << 3) | (((palette >>> 2) & 1) << 2);
-  return [r * 255 / 31, g * 255 / 31, b * 255 / 31];
+  return [r, g, b];
 }
 
 function mode7Pixel(bus, bg, x, y) {
@@ -197,14 +196,17 @@ function renderLines(bus, rgba, width, height, firstY, lastY) {
     if (!prevent && (math & (1 << top.layer))) {
       const second = cgwsel & 2 ? below.rgb : fixed;
       rgb = rgb.map((value, channel) => {
-        const mixed = subtract ? value - second[channel] : value + second[channel];
         const useHalf = half && (!(cgwsel & 2) || !below.transparent);
-        return Math.max(0, Math.min(255, useHalf ? mixed / 2 : mixed));
+        const rhs = second[channel];
+        const mixed = subtract ? value - rhs : value + rhs;
+        const quantified = useHalf ? mixed >> 1 : mixed;
+        return Math.max(0, Math.min(31, quantified));
       });
     }
     const out = (y * width + x) * 4;
-    rgba[out] = rgb[0] * brightness / 15; rgba[out + 1] = rgb[1] * brightness / 15;
-    rgba[out + 2] = rgb[2] * brightness / 15; rgba[out + 3] = 255;
+    rgba[out] = expand5(applyBrightness(rgb[0], brightness));
+    rgba[out + 1] = expand5(applyBrightness(rgb[1], brightness));
+    rgba[out + 2] = expand5(applyBrightness(rgb[2], brightness)); rgba[out + 3] = 255;
   }
   }
   return rgba;
@@ -255,7 +257,7 @@ export function renderMode3Bg1(bus, width = 256, height = 224) {
       const paletteIndex = decodeTilePixel(bus.vram, tileBase + (entry & 0x3ff) * 64, localX, localY, 8);
       const rgb = paletteIndex === 0 ? backdrop : color(bus.cgram, paletteIndex);
       const output = (y * width + x) * 4;
-      rgba.set(rgb, output);
+      rgba[output] = expand5(rgb[0]); rgba[output + 1] = expand5(rgb[1]); rgba[output + 2] = expand5(rgb[2]);
       rgba[output + 3] = 255;
     }
   }
