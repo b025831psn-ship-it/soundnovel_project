@@ -73,11 +73,21 @@ export async function startMachine({ canvas, dataRoot, audio = true, onProgress 
     machine.gpu.display(image.data); ctx2d.putImageData(image, 0, 0);
   };
   const keys = new Map(); // button -> frames left
-  const held = () => { let b = 0; for (const [k, n] of keys) { if (n > 0) b |= BUTTON[k]; } return b; };
+  // moveCursor: presses of the direction that moves the original's cursor, 2 frames down, 2 up each
+  let steps = null; // { key, left, phase }
+  const held = () => {
+    let b = 0; for (const [k, n] of keys) { if (n > 0) b |= BUTTON[k]; }
+    if (steps) { if (steps.phase < 2) b |= BUTTON[steps.key]; if (++steps.phase === 4) { steps.phase = 0; if (--steps.left <= 0) steps = null; } }
+    return b;
+  };
+  const menuNow = () => machine.touch.menu;
   const runtime = {
     machine, soundModule: snd.mod,
     input: { pulse(name) { const k = PULSE[name]; if (k) keys.set(k, HOLD); }, press(k) { keys.set(k, Infinity); }, release(k) { keys.delete(k); } },
     menuMode: () => "menu",
+    touchRows: () => menuNow()?.rows ?? [],
+    cursorIndex: () => menuNow()?.index() ?? -1,
+    moveCursor(n) { const t = menuNow(); if (!t || !n) return; steps = { key: t.keys[n < 0 ? 0 : 1], left: Math.abs(n), phase: 0 }; },
     get error() { return machine.error; },
   };
   const STEP = 1000 / 60;

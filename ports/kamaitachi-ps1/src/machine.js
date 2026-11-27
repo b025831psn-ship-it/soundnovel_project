@@ -36,7 +36,8 @@ export class Machine {
     this.gs = new LibGpu(m);
     this.cd = new LibCd({ m, pacs });
     sound = typeof sound === "function" ? sound(m) : sound ?? silentSound(); this.sound = sound; this.callback = null; this.buttons = 0; this.frames = 0; this.card = 1; this.onError = onError;
-    const ctx = { m, sp: 0x801ffff0 - 0x40, gs: this.gs, cd: this.cd, sound, call: (a, args, sp) => this.call(a, args, sp), padState: () => 2 };
+    this.touch = { menu: null };
+    const ctx = { m, sp: 0x801ffff0 - 0x40, gs: this.gs, cd: this.cd, sound, touch: this.touch, call: (a, args, sp) => this.call(a, args, sp), padState: () => 2 };
     this.ctx = ctx;
     this.game = (function* () { yield* init(ctx); yield* mainLoop({ ...ctx, sp: ctx.sp - 0x18 }); })();
     this.started = false; this.error = null;
