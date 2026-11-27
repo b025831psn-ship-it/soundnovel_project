@@ -36,6 +36,8 @@ SIZE = 13
 SPACE = 6         # the width of the byte 0x20 in the Korean build (src/text/text.js KO_SPACE)
 LEFT, RIGHT, TOP, LINE, LINES = 8, 0x120, 0x11, 0x16, 10
 HASH = 0x8006b754
+ENDINGS = 0x80067914
+JOIN = 0x800118e4    # the と between the two names of a bookmark: its particle follows the hero's name (src/text/josa.js)
 SPECIAL = {'デュアルショック': 0x8440, '○': 0x8485, '△': 0x8486, '×': 0x8487, '□': 0x8488, 'メモリーカード': 0x848f, 'オプション': 0x8490, 'R1:スクロール': 0x8491}
 CHART_POOL, CHART_ROOM = 0x80009000, 0x3000   # spare kernel RAM for the flowchart title section (263 big-endian offsets, then the strings)
 # The default names: the pointers the game copies string 1 (the hero, [n1]) and string 2 (the
@@ -308,6 +310,30 @@ def main():
         while i >= 0:                              # pointers to the string in the EXE data
             if i % 4 == 0: patches.append([(0x80010000 + i) if i < 16180 else 0x800677e8 + i - 16180, base64.b64encode(struct.pack('<I', at)).decode()])
             i = exe_bytes.find(want, i + 1)
+    # the ending list: 46 pairs of big-endian offsets (the "第N話：" label, the title) from the table's
+    # own address, then the strings. The game copies table and strings (1898 bytes) to its work
+    # buffer before reading them, so the Korean list is a whole new block written over that copy
+    # (menu/calls.js) and may be longer than the original.
+    table = read(ENDINGS, 8 * 46); offs = struct.unpack('>92I', table)
+    ends = {}
+    for o in offs:
+        e = o
+        while read(ENDINGS + e, 1) != b'\0': e += 1
+        ends[o] = e
+    ko_at = {int(e['addr'], 16): exe_ko[e['id']] for e in exe_list if e['id'].startswith('EXE-') and exe_ko.get(e['id'])}
+    endings_patch = None
+    if any(ENDINGS + o in ko_at for o in offs):
+        body, place = bytearray(), {}
+        for o in sorted(set(offs)):
+            place[o] = len(table) + len(body)
+            t = ko_at.get(ENDINGS + o)
+            body += (encode_exe(t) if t else read(ENDINGS + o, ends[o] - o)) + b'\0'
+        if len(table) + len(body) > 0xffff: raise SystemExit('the ending list is too long')
+        gone = {ENDINGS + o for o in offs}
+        patches[:] = [q for q in patches if q[0] not in gone and q[0] not in {n for a_, n in moved if a_ in gone}]
+        moved[:] = [q for q in moved if q[0] not in gone]
+        endings_patch = {'addr': ENDINGS, 'bytes': base64.b64encode(b''.join(struct.pack('>I', place[o]) for o in offs) + bytes(body)).decode()}
+        report['endingListBytes'] = len(table) + len(body)
     chart_patch = None
     if chart and any(i.startswith('CHART-') for i in exe_ko):
         n = len(chart); body, offs = bytearray(), []
@@ -320,8 +346,8 @@ def main():
     report['exeStrings'] = {'listed': len(exe_list), 'translated': done, 'moved': len(moved), 'widerThanOriginal': wider, 'flowchartBytes': len(base64.b64decode(chart_patch['bytes'])) if chart_patch else None}
     os.makedirs(out, exist_ok=True)
     open(os.path.join(out, 'ko-font.bin'), 'wb').write(blob)
-    json.dump({'schema': 'kamaitachi.ps1.ko-script.v1', 'source': ja.get('source'), 'glyphs': len(new), 'space': SPACE, 'hang': [code[c] for c in HANG if c in code],
-               'patches': patches, 'moved': moved, 'chart': chart_patch,
+    json.dump({'schema': 'kamaitachi.ps1.ko-script.v1', 'source': ja.get('source'), 'glyphs': len(new), 'chars': ''.join(new), 'josaJoin': [JOIN], 'space': SPACE, 'hang': [code[c] for c in HANG if c in code],
+               'patches': patches, 'moved': moved, 'chart': chart_patch, 'endings': endings_patch,
                'resources': {str(r): v for r, v in sorted(res.items())}}, open(os.path.join(out, 'ko-script.json'), 'w'), separators=(',', ':'))
     json.dump(report, open(os.path.join(out, 'ko-report.json'), 'w'), ensure_ascii=False, indent=1)
     print(json.dumps({k: v for k, v in report.items() if k not in ('pageOverflow',)}, ensure_ascii=False))

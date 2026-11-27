@@ -326,3 +326,10 @@ used). The two data files hold the translated script and are port data: not comm
   position inside the script text.
 - Not translated yet: the text of the EXE (menus, card and book screens, chapter titles of the
   flowchart, the name entry board).
+
+Particles after a name: the names can be changed by the player, so the particle that follows an
+inserted name (`[n1]`, `[n2]`) is chosen when the text is typed (`src/text/josa.js`: 은/는, 이/가,
+을/를, 과/와, 이랑/랑, 으로/로, 이라/라, 이야/야, 이었/였, 이에요/예요), in the text routine and
+in `drawString`. The translation is written for the default names. The ending list is written over
+the copy the game makes of its table (`ko-script.json` `endings`), so its titles are not bound to
+the original block.
