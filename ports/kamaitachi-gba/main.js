@@ -275,7 +275,9 @@ function loop(now) {
     if (pressed("UP")) vm.moveChoice(-1);
     if (pressed("DOWN")) vm.moveChoice(1);
     // R at a page wait opens the in-game menu (0800C9xx): 移動, オプション, セーブ.
-    if ((pressed("R") || menuRequested) && vm.waiting === "click" && !page.typing) boot.openMenu();
+    // 0800750C: while 1D 6A has armed SELECT, the page wait takes it instead of opening the menu.
+    if (pressed("SELECT") && vm.waiting === "click" && !page.typing) vm.select();
+    if ((pressed("R") || menuRequested) && vm.waiting === "click" && !page.typing && !vm.ram.selectArmed) boot.openMenu();
     menuRequested = false;
     if (pressed("A") && ((vm.waiting === "click" && !page.typing) || vm.waiting === "choice")) vm.resume();
     // KEYINPUT bits newly pressed this frame, for the native screens (020006E4).

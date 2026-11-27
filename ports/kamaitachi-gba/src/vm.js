@@ -165,6 +165,9 @@ export class VM {
     this.unimplemented = new Set();
     this.ram = {
       flags: new Uint8Array(256),
+      // 0200253C = flags + 0x50: the entry taken at each numbered choice (opcode 13/57 index byte).
+      // Indexes below 0xB0 alias flags 0x50-0xFF (the script reads flags 126/127 this way).
+      choiceResults: new Uint8Array(256),
       node: 0, // 02004608: current flowchart node (opcode 53)
       visited: new Uint8Array(0x12c), // 0200293C: flowchart nodes seen
       edges: new Uint8Array(0x200), // 02002B94: flowchart links taken (jump and choice keys)
@@ -175,6 +178,7 @@ export class VM {
       flowMask: 0, // 02004640: 16-bit route mask tested by opcodes 5D/5E
       endingCount: 0, // 02004604: endings reached this power-on (opcode 44, up to 10)
       inGame: 0, // 0200078D: set by 1D 67, lets R open the in-game menu
+      selectArmed: 0, // 02000797: 1D 6A sets, 1D 6B clears; SELECT at a page wait then sets var 2
       vars: new Uint8Array(256),
       bits: new Uint8Array(256),
       stack: [],
@@ -423,7 +427,10 @@ export class VM {
       case 0x04: {
         const request = this.word();
         args.push(request);
-        if (!this.suppressed(opcode)) this.scene?.request(request, this.ram);
+        if (this.suppressed(opcode)) break;
+        this.scene?.request(request, this.ram);
+        // 080039BA: the request's low byte is kept in var 2 (08003658), held requests too.
+        this.write("vars", 2, request & 0xff);
         break;
       }
       case 0x05: {
@@ -495,7 +502,9 @@ export class VM {
         const index = this.byte();
         args.push(index);
         if (this.suppressed(opcode)) break;
-        this.write("flags", index, opcode === 0x0d ? 1 : 0);
+        // 08003D10/08003D50: set and clear stop at flag 0x4F, so 1A 7F clears 0x4F and the
+        // choice results above it (0200253C) stay; the 0E/0F tests read any index.
+        this.write("flags", Math.min(index, 0x4f), opcode === 0x0d ? 1 : 0);
         break;
       }
       case 0x0e:
@@ -617,6 +626,12 @@ export class VM {
       case 0x1e: {
         const offset = this.word();
         args.push(offset);
+        // 080045F4: in replay (0200078E) the entry recorded for the current choice index becomes
+        // the preset and 0200077F is set, so opcode 16 takes it and the jump is followed.
+        if (this.ram.effectBypass === 1) {
+          this.ram.choicePreset = this.ram.choiceResults[this.choiceState?.index ?? 0];
+          this.ram.choiceSkip = 1;
+        }
         // Also taken while 0200077F (1D 1C) asks opcode 16 to pick the preset entry (mGBA 19:80 -> A6).
         if (this.ram.inputReady || this.ram.choiceSkip) this.offset = offset;
         this.ram.updatePending = 1;
@@ -1136,12 +1151,29 @@ export class VM {
     this.scene?.silhouetteShow?.(blind.step, this.tint());
   }
 
+  // 0800750C: SELECT newly pressed at a page wait while 1D 6A has armed it sets var 2 = 1
+  // (08003658) and counts as the A press. Returns true when taken.
+  select() {
+    if (this.waiting !== "click" || this.ram.selectArmed !== 1) return false;
+    this.ram.vars[2] = 1;
+    this.resume();
+    return true;
+  }
+
+  setChoiceResult(index, value) {
+    this.ram.choiceResults[index] = value;
+    if (0x50 + index < this.ram.flags.length) this.ram.flags[0x50 + index] = value;
+    this.writes.push(`choice:${index}=${value}`);
+  }
+
   resume(rowIndex = null) {
     if (this.waiting === "choice") {
       if (rowIndex === null) rowIndex = this.choiceSelection;
       const { row, key } = this.choiceState.entries[rowIndex] ?? {};
       // 080043F0: the chosen entry's key is the flowchart link taken (02002B94).
       if (key !== undefined) this.ram.edges[key] = 3;
+      // 080043A6: outside replay (0200078E clear) the entry is recorded under the choice's index.
+      if (this.ram.effectBypass !== 1) this.setChoiceResult(this.choiceState.index, rowIndex);
       // 0800D084: the entry is marked taken at the current node, unless the choice's index is 0xBC.
       if (this.choiceState.opcode === 0x57 && this.choiceState.index !== 0xbc)
         this.ram.tried[this.ram.node] |= 3 << (rowIndex * 2);

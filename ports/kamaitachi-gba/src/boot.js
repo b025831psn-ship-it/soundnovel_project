@@ -136,6 +136,29 @@ const MENU_PICTURE = 0xde;
 const LOAD_FRAMES = 128;
 const LOAD_FADE_FRAMES = 31;
 
+// 080126E0's twelve suspects: the cartridge addresses of their accepted spellings and of the name
+// written in their place (strings in ui/system-text.bin).
+const SUSPECT_NAMES = [
+  [[0x1b834, 0x1b840, 0x1b84c, 0x1b85c, 0x1b86c], 0x1b878], // 美樹本
+  [[0x1b884, 0x1b88c, 0x1b898, 0x1b8a4], 0x1b8b4], // 田中
+  [[0x1b8c0, 0x1b8cc, 0x1b8d4, 0x1b8e4, 0x1b8f4, 0x1b900, 0x1b90c, 0x1b918, 0x1b924, 0x1b930, 0x1b93c], 0x1b948], // 小林
+  [[0x1b954, 0x1b960, 0x1b970, 0x1b980, 0x1b990, 0x1b99c], 0x1b9a8], // 今日子
+  [[0x1b9b4, 0x1b9bc, 0x1b9c8, 0x1b9d8, 0x1b9e4, 0x1b9f4, 0x1ba00, 0x1ba10, 0x1ba20, 0x1ba30, 0x1ba40], 0x1ba4c], // 香山
+  [[0x1ba58, 0x1ba60, 0x1ba70, 0x1ba7c, 0x1ba84, 0x1ba8c, 0x1ba9c, 0x1baac], 0x1bab8], // 春子
+  [[0x1bac4, 0x1bacc, 0x1bad4, 0x1bae4, 0x1baf0, 0x1bafc, 0x1bb04], 0x1bb0c], // 俊夫
+  [[0x1bb18, 0x1bb20, 0x1bb2c, 0x1bb3c, 0x1bb48, 0x1bb58, 0x1bb68], 0x1bb3c], // みどり
+  [[0x1bb78, 0x1bb80, 0x1bb8c, 0x1bb98], 0x1bba8], // 亜希
+  [[0x1bbb4, 0x1bbbc, 0x1bbc4, 0x1bbd4], 0x1bbe4], // 可奈子
+  [[0x1bbf4, 0x1bbfc, 0x1bc04, 0x1bc14], 0x1bc24], // 啓子
+  [[0x1bc30, 0x1bc3c, 0x1bc48, 0x1bc54, 0x1bc64, 0x1bc70, 0x1bc7c, 0x1bc88, 0x1bc94, 0x1bca4, 0x1bcb4], 0x1bcc4], // OL
+];
+// 08012CF4(n): the default entry, the (option, suspect) tries in order, and the slot written last.
+const CULPRIT_MATCHES = {
+  0x20: { fallback: 5, calls: [[0, 0], [1, 1], [2, 4], [3, 7], [4, 2], [4, 3], [4, 5], [4, 6], [4, 8], [4, 9], [4, 10], [4, 11]], slot: 3 },
+  0x21: { fallback: 4, calls: [[0, 0], [1, 1], [2, 6], [3, 4], [3, 7], [3, 2], [3, 3], [3, 5], [3, 8], [3, 9], [3, 10], [3, 11]], slot: 4 },
+  0x22: { fallback: 5, calls: [[0, 0], [1, 8], [1, 9], [1, 10], [2, 11], [3, 5], [4, 1], [4, 6], [4, 4], [4, 7], [4, 2], [4, 3]], slot: 5 },
+};
+
 export class Boot {
   constructor({ vm, screen, assets, font, sound, books }) {
     this.vm = vm;
@@ -261,11 +284,51 @@ export class Boot {
       this.loading = null;
       return undefined;
     }
+    // 1D 24 (0800973A): the unlocks the endings recorded so far give (020024EC + n = flag n).
+    // Any of endings 1-4 opens 0x33 (the shorter second reading); endings 1-20 and 43 open 0x34
+    // (the pink bookmark and エンディングリスト); ending 24 opens 0x35; flags 1-43 all set open 0x36.
+    if (command === 0x24) {
+      const flags = ram.flags;
+      const all = (list) => list.every((n) => flags[n]);
+      const range = (a, b) => Array.from({ length: b - a + 1 }, (_, i) => a + i);
+      if (flags[1] || flags[2] || flags[3] || flags[4]) flags[0x33] = 1;
+      if (all([...range(1, 0x14), 0x2b])) flags[0x34] = 1;
+      if (flags[0x18]) flags[0x35] = 1;
+      if (all(range(1, 0x2b))) flags[0x36] = 1;
+      return undefined;
+    }
+    // 1D 6A / 6B (080098C8 / 080098D4): SELECT is armed for page waits (0800750C), or not.
+    if (command === 0x6a || command === 0x6b) { ram.selectArmed = command === 0x6a ? 1 : 0; return undefined; }
+    // 1D 20 / 21 / 22 (08012CF4): the culprit's name (slot 0) is tried against each suspect in
+    // turn; a match writes the suspect's proper name into slot 0 and makes its option the entry
+    // opcode 16 takes (02000780). Slot 0 is then copied to slot 3, 4 or 5 (080081D0).
+    if (command >= 0x20 && command <= 0x22) {
+      const { fallback, calls, slot } = CULPRIT_MATCHES[command];
+      let result = fallback;
+      for (const [option, suspect] of calls) result = this.matchSuspect(result, option, suspect);
+      this.names[slot] = [...(this.names[0] ?? [])];
+      ram.choicePreset = result;
+      return undefined;
+    }
     if (command === 0x03) this.run = this.nameScreens([0, 1]);
     else if (command === 0x04) this.run = this.nameScreens([2]);
     else if (command === 0x00) this.run = this.title();
     else return undefined;
     return { waiting: "boot" };
+  }
+
+  // 080126E0(result, 0, option, suspect): slot 0 equal to one of the suspect's spellings (08009B10,
+  // whole strings) takes the suspect's proper name (08008198) and returns `option`.
+  matchSuspect(result, option, suspect) {
+    const [aliases, proper] = SUSPECT_NAMES[suspect];
+    const name = this.names[0] ?? [];
+    const same = (at) => {
+      const bytes = romString(this.systemText, at);
+      return bytes && bytes.length === name.length && bytes.every((byte, i) => byte === name[i]);
+    };
+    if (!aliases.some(same)) return result;
+    this.names[0] = romString(this.systemText, proper) ?? name;
+    return option;
   }
 
   // 08009670 (1D 03): hero then girlfriend; 0800967E (1D 04): the culprit, then 0200077F = 1.
@@ -776,7 +839,9 @@ export class Boot {
       if (mode === "ending") {
         // 0800EA11: after an ending the shelf leaves once a book is written.
         const before = JSON.stringify(this.books.read(book));
-        yield* this.saveTo(book);
+        // 0800EA10: a used book first asks 08009FA8 with 0801AE34 (この本にはゲームデータがあります。…).
+        if (this.books.read(book) && !(yield* this.question(0x1ae34))) { shown = -1; first = false; continue; }
+        yield* this.saveTo(book, { asked: true });
         if (JSON.stringify(this.books.read(book)) !== before) {
           this.fadeOut(1, 1);
           this.fadeOut(1, 5);
@@ -930,9 +995,9 @@ export class Boot {
   }
 
   // 0800EA10 -> 0800B724 -> 0800A5E4: write the page-start state into the book.
-  *saveTo(book) {
+  *saveTo(book, { asked = false } = {}) {
     const base = this.layer ?? { boxes: [HEADER], glyphs: [] };
-    if (this.books.read(book) && !(yield* this.confirm(base))) return;
+    if (!asked && this.books.read(book) && !(yield* this.confirm(base))) return;
     const old = this.books.read(book);
     this.layer = this.noteLayer(base, SAVE_BOX, SJIS.saving);
     yield;
@@ -957,6 +1022,35 @@ export class Boot {
     }
     this.effect(0);
     this.layer = { boxes: [HEADER], glyphs };
+  }
+
+  // 08009FA8(message): a box over the books (mGBA: x 10-234, y 35-98) with the message at
+  // (7, 0x38) and はい / いいえ one under the other at x 0x69 (y 0x62, 0x74), the pointer 8484 at
+  // x 0x5A, いいえ first. DOWN and UP move (sound 3); A takes it (sound 0 for はい, 1 for いいえ),
+  // B is いいえ. True for はい.
+  *question(message) {
+    const base = this.layer ?? { boxes: [HEADER], glyphs: [] };
+    const box = [10, 35, 225, 64];
+    const kept = base.glyphs.filter((glyph) => glyph.y < box[1] || glyph.y >= box[1] + box[3]);
+    const lines = romString(this.systemText, message) ?? [];
+    const labels = [romString(this.systemText, 0x19824) ?? SJIS.yes, romString(this.systemText, 0x1982c) ?? SJIS.no];
+    let selected = 1;
+    while (true) {
+      const glyphs = [...kept];
+      this.text(glyphs, lines, 7, 0x38, 2, true);
+      labels.forEach((label, i) => this.text(glyphs, label, 0x69, 0x62 + 0x12 * i, i === selected ? 2 : 3, true));
+      glyphs.push({ ...this.point(0x5a, 0x62 + 0x12 * selected), encoded: MENU_POINTER, color: 2 });
+      this.layer = { ...base, boxes: [...base.boxes, box], glyphs };
+      this.hits = labels.map((_, i) => ({
+        x: 0x5a, y: Math.trunc(((0x62 + 0x12 * i) * 14) / 20) - 2, w: 0x40, h: 13, current: i === selected,
+        select: () => { this.effect(3); selected = i; },
+      }));
+      yield;
+      if (this.pressed(KEY.DOWN) && selected <= 0) { this.effect(3); selected++; }
+      if (this.pressed(KEY.UP) && selected > 0) { selected--; this.effect(3); }
+      if (this.pressed(KEY.A) && selected === 0) { this.effect(0); this.layer = { ...base, glyphs: kept }; return true; }
+      if (this.pressed(KEY.A) || this.pressed(KEY.B)) { this.effect(1); this.layer = { ...base, glyphs: kept }; return false; }
+    }
   }
 
   // 08009FA8: a yes/no question over the books; true for はい.
