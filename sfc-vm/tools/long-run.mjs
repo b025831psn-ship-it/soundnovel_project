@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import { pathToFileURL } from 'node:url';
 import { SfcMachine } from '../machine.js';
 
-const [romPath, apuModulePath, outputPath, targetArg = '20000', periodArg = '90', wramArg = '55', joypadPath = '', renderArg = '1', pixelDumpPath = '', registerDumpPath = ''] = process.argv.slice(2);
+const [romPath, apuModulePath, outputPath, targetArg = '20000', periodArg = '90', wramArg = '55', joypadPath = '', renderArg = '1', pixelDumpPath = '', registerDumpPath = '', snapshotDir = '', snapshotNmisArg = ''] = process.argv.slice(2);
 if (!romPath || !apuModulePath || !outputPath) throw new Error(
   'usage: long-run.mjs ROM.sfc APU-MODULE output.tsv [frames=20000] [a-period=90] [wram-fill=55]',
 );
@@ -39,6 +39,8 @@ const target = Number(targetArg), period = Number(periodArg);
 const renderFrames = renderArg !== '0';
 const pixelFd = pixelDumpPath ? fs.openSync(pixelDumpPath, 'w') : null;
 const registerRows = [];
+const snapshotNmis = new Set(snapshotNmisArg.split(',').filter(Boolean).map(Number));
+if (snapshotDir) fs.mkdirSync(snapshotDir, { recursive: true });
 if (registerDumpPath) fs.writeFileSync(registerDumpPath,
   'nmi\t2100\t2105\t212c\t212d\t212e\t212f\t2130\t2131\t2132\t2133\t420c\thdma_43x0_43x4\tbg_hofs_vofs\n');
 const recordedJoypad = new Map();
@@ -69,6 +71,10 @@ machine = new SfcMachine({
   },
   onNmi: () => { lastNmiPc = machine.cpu.address(); },
   onNmiVector: (nmi, frame) => {
+    if (snapshotDir && snapshotNmis.has(nmi)) {
+      fs.writeFileSync(`${snapshotDir}/vm-nmi-${nmi}.wram.bin`, machine.bus.wram);
+      fs.writeFileSync(`${snapshotDir}/vm-nmi-${nmi}.vram.bin`, machine.bus.vram);
+    }
     if (pixelFd !== null) fs.writeSync(pixelFd, machine.framebuffer ?? blankFramebuffer);
     rows.push([nmi, frame, hex(fnv(machine.bus.wram)), hex(fnv(machine.bus.vram)), hex(fnv(machine.bus.cgram)),
       hex(fnv(machine.bus.oam)), lastNmiPc.toString(16).padStart(6, '0'), xorCount(raw, rawCount),

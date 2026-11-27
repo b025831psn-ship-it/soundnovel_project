@@ -169,3 +169,21 @@ frames during the NMI 315--328 fade, after visible rendering (native V=229,
 VM raster line 230 under the corrected line convention). Native `n-1` being
 pixel-identical is a libretro video-callback/NMI association artifact, not an
 INIDISP write-timing error; the VM publication point should not be shifted.
+
+## Bundle 8: absolute-indexed bank carry
+
+Instruction tracing identifies the stale `$7f:4e0b` byte precisely. The VM
+first writes `$ff` there at `$02:8628` (`STA long,X`). Native later clears the
+word at master 273,353,912 with `$03:84ca` (`STA $4e0c,Y`), `DB=$7e`,
+`Y=$fffe`, and `A=$0000`. The indexed addition carries into bank `$7f`; the VM
+previously truncated the sum to 16 bits and incorrectly cleared `$7e:4e0a`.
+The corrected VM clears `$7f:4e0a` at master 272,639,186. A regression fixture
+now covers this exact bank-carry case.
+
+This removes the persistent NMI 719 byte, but does not by itself satisfy the
+bundle's long-run completion condition. The rerun still has a WRAM interval at
+NMI 1,904--2,309 and the previous VRAM intervals beginning at NMI 5,924; the
+choice image at NMI 8,400 still differs by 6,390 BGR555 pixels. The no-input
+frame-3,360 capture also retains alternating background rows. These remaining
+results show that the stripe/VRAM problem is an additional graphics-transfer
+or scanline-rendering defect, not a consequence of `$7f:4e0b` alone.

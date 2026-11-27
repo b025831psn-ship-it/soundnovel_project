@@ -88,6 +88,20 @@ test('absolute stores use the data bank register', () => {
   }
 });
 
+test('absolute indexed addressing carries into the next data bank', () => {
+  const rom = fixture();
+  // STA $4e0c,Y with DB=$7e and Y=$fffe targets $7f:4e0a, not $7e:4e0a.
+  rom.set([0x99, 0x0c, 0x4e]);
+  const bus = new SfcBus(rom);
+  bus.wram.fill(0x55);
+  const cpu = new Cpu65816(bus);
+  cpu.e = false; cpu.p &= ~(0x20 | 0x10); cpu.dbr = 0x7e;
+  cpu.a = 0; cpu.y = 0xfffe;
+  cpu.step();
+  assert.equal(bus.read16(0x7f4e0a), 0);
+  assert.equal(bus.read16(0x7e4e0a), 0x5555, 'the pre-carry bank is untouched');
+});
+
 test('implements every opcode in all architected width modes', () => {
   const modes = [
     { e: true, p: 0x34 },
