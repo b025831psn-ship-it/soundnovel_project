@@ -8,11 +8,11 @@ function normalizeRom(bytes) {
 }
 
 export class ZakuroBus {
-  constructor({ rom = null, program = null, sram = null, masterLink, clock = new MasterClock(), ppu = null, trace = null, wramFill = 0x55, inputFrames = null, inputFrameOffset = 1, onProgramRead = null, onSramWrite = null } = {}) {
+  constructor({ rom = null, program = null, sram = null, masterLink, clock = new MasterClock(), ppu = null, trace = null, wramFill = 0x55, inputFrames = null, inputFrameOffset = 1, onProgramRead = null, onSramWrite = null, onJoypadRead = null } = {}) {
     if (!masterLink) throw new TypeError('masterLink is required');
     if (!rom && !program) throw new TypeError('rom or program is required');
     this.rom = rom ? normalizeRom(rom) : null; this.program = program;
-    this.onProgramRead = onProgramRead; this.masterLink = masterLink; this.clock = clock;
+    this.onProgramRead = onProgramRead; this.onJoypadRead = onJoypadRead; this.masterLink = masterLink; this.clock = clock;
     this.ppu = ppu; this.trace = trace; this.onNmi = null; this.onDma = null; this.wram = new Uint8Array(128 * 1024);
     // The native reference core powers WRAM on with the Snes9x 0x55 pattern.
     // Zakuro reads untouched $01EC during its first enabled NMI, so this is
@@ -71,7 +71,11 @@ export class ZakuroBus {
     }
     if ((bank & 0x40) === 0 && offset === 0x4016) return this.readJoy1();
     if ((bank & 0x40) === 0 && offset === 0x4017) return 0;
-    if ((bank & 0x40) === 0 && offset >= 0x2000 && offset < 0x6000) return this.io[offset];
+    if ((bank & 0x40) === 0 && offset >= 0x2000 && offset < 0x6000) {
+      const value = this.io[offset];
+      if (offset >= 0x4218 && offset <= 0x421b) this.onJoypadRead?.({ address: offset, value, master });
+      return value;
+    }
     if (offset >= 0x8000) return this.readProgram(bank, offset);
     return 0;
   }

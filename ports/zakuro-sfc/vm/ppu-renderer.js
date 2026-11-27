@@ -25,7 +25,9 @@ function bgPixel(bus, bg, x, y, bpp) {
   const tileBase = (nibble & 0x0f) * 0x2000;
   const px = entry & 0x4000 ? 7 - (sx & 7) : sx & 7;
   const py = entry & 0x8000 ? 7 - (sy & 7) : sy & 7;
-  const value = decodeTilePixel(bus.vram, tileBase + (entry & 0x3ff) * (8 * bpp), px, py, bpp);
+  const tileAddress = tileBase + (entry & 0x3ff) * (8 * bpp);
+  const value = bus.getDecodedTile ? bus.getDecodedTile(tileAddress, bpp)[py * 8 + px]
+    : decodeTilePixel(bus.vram, tileAddress, px, py, bpp);
   if (!value) return null;
   const palette = (entry >>> 10) & 7;
   const mode = io[0x2105 - 0x2000] & 7;
@@ -55,7 +57,9 @@ function renderObjects(bus, width, height) {
       for (let px = 0; px < size; px++) { const sx = ox + px; if (sx < 0 || sx >= width) continue;
         const tx = attr & 0x40 ? size - 1 - px : px, ty = attr & 0x80 ? size - 1 - py : py;
         const tile = bus.oam[at + 2] | ((attr & 1) << 8) | ((tx >>> 3) + (ty >>> 3) * 16);
-        const value = decodeTilePixel(bus.vram, tileBase + tile * 32, tx & 7, ty & 7, 4);
+        const address = tileBase + tile * 32;
+        const value = bus.getDecodedTile ? bus.getDecodedTile(address, 4)[(ty & 7) * 8 + (tx & 7)]
+          : decodeTilePixel(bus.vram, address, tx & 7, ty & 7, 4);
         if (!value) continue;
         const objectPriority = (attr >>> 4) & 3;
         const priority = (io[0x2105 - 0x2000] & 7) === 1
@@ -138,7 +142,11 @@ function layerPixel(bus, objects, bg, x, y, bpps, direct) {
     const at = mapBase + (tx >>> 5) * 0x800 + (ty >>> 5) * (mapWidth >>> 5) * 0x800 + (((ty & 31) * 32 + (tx & 31)) << 1);
     const entry = bus.vram[at & 0xffff] | (bus.vram[(at + 1) & 0xffff] << 8);
     const base = (bus.io[0x210b - 0x2000] & 15) * 0x2000;
-    const value = decodeTilePixel(bus.vram, base + (entry & 0x3ff) * 64, entry & 0x4000 ? 7 - (sx & 7) : sx & 7, entry & 0x8000 ? 7 - (sy & 7) : sy & 7, 8);
+    const px = entry & 0x4000 ? 7 - (sx & 7) : sx & 7;
+    const py = entry & 0x8000 ? 7 - (sy & 7) : sy & 7;
+    const address = base + (entry & 0x3ff) * 64;
+    const value = bus.getDecodedTile ? bus.getDecodedTile(address, 8)[py * 8 + px]
+      : decodeTilePixel(bus.vram, address, px, py, 8);
     pixel.rgb = directColor(value, (entry >>> 10) & 7);
   }
   return pixel;
@@ -158,11 +166,125 @@ function composeScreen(bus, objects, x, y, enable, windowRegister, bpps, direct)
   return top;
 }
 
+function mode1Pixel(bus, bg, x, y) {
+  const io = bus.io, bpp = bg === 2 ? 2 : 4;
+  const screen = io[0x107 + bg], mapBase = ((screen >>> 2) * 0x800) & 0xffff;
+  const mapWidth = screen & 1 ? 64 : 32, mapHeight = screen & 2 ? 64 : 32;
+  const sx = (x + bus.bgHofs[bg]) & (mapWidth * 8 - 1);
+  const sy = (y + bus.bgVofs[bg]) & (mapHeight * 8 - 1);
+  const tileX = sx >>> 3, tileY = sy >>> 3;
+  const quadrant = (tileX >>> 5) + (tileY >>> 5) * (mapWidth >>> 5);
+  const at = (mapBase + quadrant * 0x800 + (((tileY & 31) * 32 + (tileX & 31)) << 1)) & 0xffff;
+  const entry = bus.vram[at] | (bus.vram[(at + 1) & 0xffff] << 8);
+  const baseReg = io[bg < 2 ? 0x10b : 0x10c];
+  const tileBase = (((bg & 1 ? baseReg >>> 4 : baseReg) & 15) * 0x2000) & 0xffff;
+  const px = entry & 0x4000 ? 7 - (sx & 7) : sx & 7;
+  const py = entry & 0x8000 ? 7 - (sy & 7) : sy & 7;
+  const value = bus.getTilePixel(tileBase + (entry & 0x3ff) * (8 * bpp), bpp, py * 8 + px);
+  if (!value) return -1;
+  const palette = (entry >>> 10) & 7;
+  const colorIndex = (bg === 2 ? palette * 4 : palette * 16) + value;
+  const high = !!(entry & 0x2000);
+  const priority = bg === 0 ? (high ? 9 : 6) : bg === 1 ? (high ? 8 : 5)
+    : high ? (io[0x105] & 8 ? 11 : 3) : 1;
+  return (priority << 9) | colorIndex;
+}
+
+function mode1Layer(bus, bg, width, height) {
+  const io = bus.io, screen = io[0x107 + bg], base = io[bg < 2 ? 0x10b : 0x10c];
+  const key = `${bus.tileEpoch}:${screen}:${base}:${bus.bgHofs[bg]}:${bus.bgVofs[bg]}:${io[0x105]}:${width}:${height}`;
+  bus.mode1LayerKeys ??= [];
+  bus.mode1Layers ??= [];
+  if (bus.mode1LayerKeys[bg] === key) return bus.mode1Layers[bg];
+  const layer = new Int32Array(width * height);
+  for (let y = 0; y < height; y++) for (let x = 0; x < width; x++)
+    layer[y * width + x] = mode1Pixel(bus, bg, x, y);
+  bus.mode1LayerKeys[bg] = key; bus.mode1Layers[bg] = layer;
+  return layer;
+}
+
+function renderObjectsMode1(bus, width, height) {
+  const io = bus.io, obsel = io[0x101], tileBase = (obsel & 7) * 0x4000;
+  const cacheKey = `${bus.tileEpoch}:${bus.oamRevision}:${obsel}:${width}:${height}`;
+  if (bus.objectLayerKey === cacheKey) return bus.objectLayer;
+  const sizeTable = [[8,16],[8,32],[8,64],[16,32],[16,64],[32,64],[16,32],[16,32]];
+  const layer = new Int32Array(width * height).fill(-1);
+  for (let object = 127; object >= 0; object--) {
+    const at = object * 4, high = bus.oam[512 + (object >>> 2)] >>> ((object & 3) * 2);
+    let ox = bus.oam[at] | ((high & 1) << 8); if (ox >= 256) ox -= 512;
+    const oy = bus.oam[at + 1], size = sizeTable[obsel >>> 5][(high >>> 1) & 1];
+    const attr = bus.oam[at + 3], priority = [2, 4, 7, 10][(attr >>> 4) & 3];
+    for (let py = 0; py < size; py++) {
+      const sy = (oy + py) & 0xff; if (sy >= height) continue;
+      for (let px = 0; px < size; px++) {
+        const sx = ox + px; if (sx < 0 || sx >= width) continue;
+        const tx = attr & 0x40 ? size - 1 - px : px, ty = attr & 0x80 ? size - 1 - py : py;
+        const tile = bus.oam[at + 2] | ((attr & 1) << 8) | ((tx >>> 3) + (ty >>> 3) * 16);
+        const value = bus.getTilePixel(tileBase + tile * 32, 4, (ty & 7) * 8 + (tx & 7));
+        if (value) layer[sy * width + sx] = (priority << 9) | 128 + ((attr >>> 1) & 7) * 16 + value;
+      }
+    }
+  }
+  bus.objectLayerKey = cacheKey; bus.objectLayer = layer;
+  return layer;
+}
+
+function renderMode1Fast(bus, width, height) {
+  const io = bus.io, rgba = new Uint8ClampedArray(width * height * 4), output = new Uint32Array(rgba.buffer);
+  const brightness = io[0x100] & 15;
+  if (io[0x100] & 0x80) { output.fill(0xff000000); return rgba; }
+  const main = io[0x12c], sub = io[0x12d], math = io[0x131], cgwsel = io[0x130];
+  const objects = main & 0x10 ? renderObjectsMode1(bus, width, height) : null;
+  const enabled = main | sub;
+  const bg0 = enabled & 1 ? mode1Layer(bus, 0, width, height) : null;
+  const bg1 = enabled & 2 ? mode1Layer(bus, 1, width, height) : null;
+  const bg2 = enabled & 4 ? mode1Layer(bus, 2, width, height) : null;
+  const red = new Uint16Array(256), green = new Uint16Array(256), blue = new Uint16Array(256);
+  for (let index = 0; index < 256; index++) {
+    const value = bus.cgram[index * 2] | (bus.cgram[index * 2 + 1] << 8);
+    red[index] = Math.round((value & 31) * 255 / 31);
+    green[index] = Math.round(((value >>> 5) & 31) * 255 / 31);
+    blue[index] = Math.round(((value >>> 10) & 31) * 255 / 31);
+  }
+  const useSub = !!(cgwsel & 2), half = !!(math & 0x40), subtract = !!(math & 0x80);
+  for (let y = 0; y < height; y++) for (let x = 0; x < width; x++) {
+    const index = y * width + x;
+    let top = -1, layer = 5;
+    if (main & 1) { const pixel = bg0[index]; if (pixel > top) { top = pixel; layer = 0; } }
+    if (main & 2) { const pixel = bg1[index]; if (pixel > top) { top = pixel; layer = 1; } }
+    if (main & 4) { const pixel = bg2[index]; if (pixel > top) { top = pixel; layer = 2; } }
+    if (objects && objects[index] > top) { top = objects[index]; layer = 4; }
+    const colorIndex = top < 0 ? 0 : top & 0x1ff;
+    let r = red[colorIndex], g = green[colorIndex], b = blue[colorIndex];
+    if (math & (1 << layer)) {
+      let second = 0, transparent = true;
+      if (useSub) {
+        let below = -1;
+        if (sub & 1) below = bg0[index];
+        if (sub & 2) { const pixel = bg1[index]; if (pixel > below) below = pixel; }
+        if (sub & 4) { const pixel = bg2[index]; if (pixel > below) below = pixel; }
+        if (below >= 0) { second = below & 0x1ff; transparent = false; }
+      }
+      const mix = (first, other) => {
+        const value = subtract ? first - other : first + other;
+        return Math.max(0, Math.min(255, half && (!useSub || !transparent) ? value / 2 : value));
+      };
+      r = mix(r, red[second]); g = mix(g, green[second]); b = mix(b, blue[second]);
+    }
+    r = r * brightness / 15; g = g * brightness / 15; b = b * brightness / 15;
+    output[index] = 0xff000000 | (b << 16) | (g << 8) | r;
+  }
+  return rgba;
+}
+
 export function renderFrame(bus, width = 256, height = 224) {
   const io = bus.io, rgba = new Uint8ClampedArray(width * height * 4);
+  if ((io[0x2105 - 0x2000] & 7) === 1 && !(io[0x212e - 0x2000] | io[0x212f - 0x2000]))
+    return renderMode1Fast(bus, width, height);
+  const pixels = new Uint32Array(rgba.buffer);
   const brightness = io[0x2100 - 0x2000] & 15;
   if (io[0x2100 - 0x2000] & 0x80) {
-    for (let index = 3; index < rgba.length; index += 4) rgba[index] = 255;
+    pixels.fill(0xff000000);
     return rgba;
   }
   const mode = io[0x2105 - 0x2000] & 7, bpps = mode === 7 ? [8] : MODE_BPP[mode] ?? [];
@@ -187,9 +309,10 @@ export function renderFrame(bus, width = 256, height = 224) {
         return Math.max(0, Math.min(255, useHalf ? mixed / 2 : mixed));
       });
     }
-    const out = (y * width + x) * 4;
-    rgba[out] = rgb[0] * brightness / 15; rgba[out + 1] = rgb[1] * brightness / 15;
-    rgba[out + 2] = rgb[2] * brightness / 15; rgba[out + 3] = 255;
+    const red = Math.max(0, Math.min(255, rgb[0] * brightness / 15));
+    const green = Math.max(0, Math.min(255, rgb[1] * brightness / 15));
+    const blue = Math.max(0, Math.min(255, rgb[2] * brightness / 15));
+    pixels[y * width + x] = 0xff000000 | (blue << 16) | (green << 8) | red;
   }
   return rgba;
 }

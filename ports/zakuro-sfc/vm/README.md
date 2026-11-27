@@ -17,6 +17,9 @@ of a ROM. Its manifest lists sparse LoROM ranges and SHA-256 hashes, and
 `ProgramImage` rejects every read outside those extracted ranges. Set
 `ZAKURO_PROGRAM_OUT` while running `vm-full-run.mjs` with an owned ROM to
 regenerate that private data from the addresses the VM actually reads.
+`tools/build-full-program-data.mjs` creates the private complete-image variant
+as 64 KiB SHA-checked ranges. The sparse image remains useful for detecting
+unexpected reads, while the complete image is required for arbitrary branches.
 
 The IPL firmware is private data and is never embedded in this repository.
 `check-vm-apu.mjs` injects it into `new APU({ ipl })`, applies `POWER_ON`, and
@@ -119,5 +122,15 @@ branch hashes are `e57338a2387b3f6ffcc93f81c490f5da1280140e7eabc8829db14414f1e88
 and `15419ff10fc4099c378b132c2e8e63047192d59bc6da1467fbc6d2f30e272339`.
 The verifier intentionally exits nonzero until priority/palette timing becomes
 bit-exact; the audio/APUIO result does not imply PPU correctness.
+Mode 1 uses epoch-invalidated decoded-tile, BG-layer, and sprite caches plus
+32-bit RGBA writes. `tools/bench-ppu.mjs` measures a real replay snapshot; on
+the reference development machine field 2000 measured 2.30 ms and the heavier
+first-choice field 3520 measured 1.53 ms after warm-up. Set `vm.skipRender=true`
+while catching up to advance PPU state and field numbering without composing a
+frame that the player will discard.
+
+The native page-wait dispatcher maps A/L to next page and B to the yellow
+previous-page view. X, Y, Start, Select, and R are ignored there; there is no
+save/quit/title menu button or stable menu-active WRAM flag in that loop.
 
 The CPU core provenance and license are in `THIRD_PARTY_NOTICES.md`.

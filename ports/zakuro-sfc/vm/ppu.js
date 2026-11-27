@@ -20,6 +20,11 @@ export class PPU {
     this.field = -1;
     this.onFrame = onFrame;
     this.modesUsed = new Set();
+    this.oamRevision = 0;
+    this.tileEpoch = 1;
+    this.tileValid2 = new Uint32Array(4096); this.tilePixels2 = new Uint8Array(4096 * 64);
+    this.tileValid4 = new Uint32Array(4096); this.tilePixels4 = new Uint8Array(4096 * 64);
+    this.tileValid8 = new Uint32Array(4096); this.tilePixels8 = new Uint8Array(4096 * 64);
   }
 
   write(address, value, master = 0) {
@@ -31,6 +36,7 @@ export class PPU {
       case 0x2103: this.oamAddress = ((v & 1) << 8) | (this.oamAddress & 0xff); break;
       case 0x2104:
         this.oam[this.oamAddress % this.oam.length] = v;
+        this.oamRevision++;
         this.oamAddress = (this.oamAddress + 1) % this.oam.length;
         break;
       case 0x2105: this.modesUsed.add(v & 7); break;
@@ -51,10 +57,12 @@ export class PPU {
       case 0x2117: this.vramAddress = (v << 8) | (this.vramAddress & 0xff); break;
       case 0x2118:
         this.vram[(this.vramAddress << 1) & 0xffff] = v;
+        this.invalidateTiles();
         if (!(this.vmain & 0x80)) this.incrementVram();
         break;
       case 0x2119:
         this.vram[((this.vramAddress << 1) + 1) & 0xffff] = v;
+        this.invalidateTiles();
         if (this.vmain & 0x80) this.incrementVram();
         break;
       case 0x211b: case 0x211c: case 0x211d: case 0x211e: case 0x211f: case 0x2120: {
@@ -96,12 +104,47 @@ export class PPU {
     this.vramAddress = (this.vramAddress + [1, 32, 128, 128][this.vmain & 3]) & 0xffff;
   }
 
-  presentField(field, master) {
+  invalidateTiles() {
+    this.tileEpoch = (this.tileEpoch + 1) >>> 0;
+    if (!this.tileEpoch) {
+      this.tileValid2.fill(0); this.tileValid4.fill(0); this.tileValid8.fill(0);
+      this.tileEpoch = 1;
+    }
+  }
+
+  getTilePixel(tileAddress, bitsPerPixel, index) {
+    const address = tileAddress & 0xffff;
+    const key = address >>> 4;
+    const valid = bitsPerPixel === 2 ? this.tileValid2 : bitsPerPixel === 4 ? this.tileValid4 : this.tileValid8;
+    const pixels = bitsPerPixel === 2 ? this.tilePixels2 : bitsPerPixel === 4 ? this.tilePixels4 : this.tilePixels8;
+    const base = key << 6;
+    if (valid[key] === this.tileEpoch) return pixels[base + index];
+    for (let y = 0; y < 8; y++) for (let x = 0; x < 8; x++) {
+      let pixel = 0;
+      for (let plane = 0; plane < bitsPerPixel; plane++) {
+        const byte = this.vram[(address + (plane >>> 1) * 16 + y * 2 + (plane & 1)) & 0xffff];
+        pixel |= ((byte >>> (7 - x)) & 1) << plane;
+      }
+      pixels[base + y * 8 + x] = pixel;
+    }
+    valid[key] = this.tileEpoch;
+    return pixels[base + index];
+  }
+
+  getDecodedTile(tileAddress, bitsPerPixel) {
+    this.getTilePixel(tileAddress, bitsPerPixel, 0);
+    const key = (tileAddress & 0xffff) >>> 4;
+    const pixels = bitsPerPixel === 2 ? this.tilePixels2 : bitsPerPixel === 4 ? this.tilePixels4 : this.tilePixels8;
+    return pixels.subarray(key << 6, (key + 1) << 6);
+  }
+
+  presentField(field, master, render = true) {
+    this.field = field;
+    if (!render) return null;
     if (this.renderedRevision !== this.revision) {
       this.frame = renderFrame(this);
       this.renderedRevision = this.revision;
     }
-    this.field = field;
     this.onFrame?.({ field, master, width: 256, height: 224, rgba: this.frame });
     return this.frame;
   }

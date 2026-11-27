@@ -156,6 +156,8 @@ test('PPU receives VRAM/CGRAM writes and presents a 256x224 RGBA field', () => {
   assert.equal(vm.ppu.vram[2], 0x12); assert.equal(vm.ppu.vram[3], 0x34);
   assert.equal(vm.ppu.cgram[4], 0x56); assert.equal(vm.ppu.cgram[5], 0x78);
   assert.equal(vm.ppu.presentField(1, 357368).length, 256 * 224 * 4);
+  assert.equal(vm.ppu.presentField(2, 714732, false), null);
+  assert.equal(vm.ppu.field, 2);
 });
 
 test('recorded joypad frames feed auto-joypad registers and serial reads', () => {

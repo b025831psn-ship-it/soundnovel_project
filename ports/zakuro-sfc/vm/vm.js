@@ -12,6 +12,7 @@ export const RESET_MASTER_CYCLES = 176;
 export class ZakuroVM {
   constructor(options) {
     this.ppu = options.ppu ?? new PPU({ onFrame: options.onFrame });
+    this.skipRender = false;
     this.bus = new ZakuroBus({ ...options, ppu: this.ppu });
     this.cpu = new CPU(this.bus);
     this.nmiTriggerMaster = null;
@@ -45,7 +46,7 @@ export class ZakuroVM {
     const beforeVblank = vblankOrdinal(beforeMaster);
     const afterVblank = vblankOrdinal(afterMaster);
     if (afterVblank > beforeVblank) {
-      this.ppu.presentField?.(afterVblank, afterMaster);
+      this.ppu.presentField?.(afterVblank, afterMaster, !this.skipRender);
       this.bus.setInputField(afterVblank);
       this.bus.nmiFlag = true;
       // Snes9x schedules the VBlank NMI at HC=12 and enters it at the first
