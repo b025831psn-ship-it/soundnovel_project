@@ -62,6 +62,7 @@ function routeTouch(runtime, x, y) {
   const gap = (row) => Math.hypot(Math.max(row.left - x, 0, x - row.right + 1), Math.max(row.top - y, 0, y - row.bottom + 1));
   const hit = rows.reduce((best, row) => (gap(row) < gap(best) ? row : best));
   if (gap(hit) > REACH) return;
+  if (runtime.busy?.()) return;
   const current = runtime.cursorIndex();
   if (hit.index === current) runtime.input.pulse("confirm");
   else runtime.moveCursor(hit.index - current);
