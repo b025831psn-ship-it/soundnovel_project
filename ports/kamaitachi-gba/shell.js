@@ -246,20 +246,3 @@ fit();
 // Dialogue editor (main.js, src/text-editor.js) on the page being read; E does the same on a keyboard.
 document.getElementById("dialogue")?.addEventListener("click", () => window.kamaitachi?.openDialogueEditor?.());
 
-// Text language: the button shows the language in use and switches to the other one in place.
-{
-  const button = document.getElementById("language");
-  const stored = () => { try { return new URLSearchParams(location.search).get("lang") ?? localStorage.getItem("kamaitachi-gba.lang"); } catch { return null; } };
-  const current = () => (window.kamaitachi?.language ?? stored()) === "ko" ? "ko" : "ja";
-  const show = () => {
-    const ko = current() === "ko";
-    button.textContent = ko ? "한" : "日";
-    button.setAttribute("aria-label", ko ? "글자 언어: 한국어 (日本語로 바꾸기)" : "글자 언어: 日本語 (한국어로 바꾸기)");
-  };
-  show();
-  addEventListener("kamaitachi:language", show);
-  button.addEventListener("click", async () => {
-    button.disabled = true;
-    try { await window.kamaitachi?.setLanguage?.(current() === "ko" ? "ja" : "ko"); } finally { button.disabled = false; show(); }
-  });
-}

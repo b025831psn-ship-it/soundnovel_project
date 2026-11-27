@@ -4,7 +4,6 @@ import { NativeFont, TextWindow } from "./src/font.js";
 import { GBAInput } from "./src/input.js";
 import { VM, textKey } from "./src/vm.js";
 import { PageText } from "./src/page-text.js";
-import { LargeText, wantsLargeText } from "./src/large-text.js";
 import { Boot, KEY } from "./src/boot.js";
 import { createSound } from "./sound/output.js";
 import { Silhouettes } from "./src/silhouette.js";
@@ -15,11 +14,11 @@ import { openScenePanel, replayTo } from "./src/debug-jump.js";
 
 const base = "../../kamaitachi-gba-kor/port-data";
 const KOREAN = "../../kamaitachi-gba-kor/port-data-ko";
-// Text language. "ko" reads the script, font and menu strings extracted from a Korean fan patch of
-// the cartridge (kgk port-data-ko, same layout) over the Japanese data; everything else is shared.
-// ?lang=ja|ko picks the first one and is remembered; setLanguage() switches on the page being read.
+// Text language. Only the original Japanese for now: the Korean fan-patch data (kgk port-data-ko)
+// was removed on 2026-11-27 (태우) and a new translation will come in its place. The "ko" paths
+// below stay unused until then; setLanguage() refuses anything outside LANGUAGES.
 const LANGUAGE_KEY = "kamaitachi-gba.lang";
-const LANGUAGES = ["ja", "ko"];
+const LANGUAGES = ["ja"];
 function storedLanguage() {
   try { return localStorage.getItem(LANGUAGE_KEY); } catch { return null; }
 }
@@ -89,13 +88,6 @@ const vm = new VM({ banks, scene, text, musicMap: music.request_to_song, audio: 
   audioTables, choiceView, transitionTimings,
   entryRow: Number.isInteger(entryRow) ? entryRow : 31000 });
 const page = new PageText(screen, font, text);
-// Phones: the story text larger, with wider rows, over the game screen (?bigtext=0|1 overrides).
-if (wantsLargeText()) {
-  page.large = new LargeText(screen.canvas);
-  const redraw = () => { page.drawn = -1; };
-  addEventListener("resize", redraw);
-  document.addEventListener("fullscreenchange", redraw);
-}
 // Opcode 1D's native screens (1D 00: logo, copyright, title menu, bookmarks; 1D 03/04: names).
 // Bookmarks live in the shared SaveStore (IndexedDB), opened before the game starts.
 const books = await openBooks();
