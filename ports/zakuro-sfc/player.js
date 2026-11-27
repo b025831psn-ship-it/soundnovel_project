@@ -1,6 +1,8 @@
 // 석류의 맛 (SFC) player: runs the original program in the 65c816 VM with its own PPU and APU,
 // from private port-data (no ROM). Everything is played by touch, like the Kamaitachi Advance
-// player: tap the screen = A, tap a choice = pick it, the corner button = B. Keyboards work too.
+// player (issue #41): on the logo and title a tap is START; on a choice, the slot disks, the file
+// menu and the name board the tapped item is chosen; a tap away from every item does nothing;
+// elsewhere a tap goes on (A). The corner button is B. Keys: Z/Enter confirm, X cancel.
 //
 // Data: ?data=URL (default ../../zakuro-sfc-kor/port-data/) with
 //   sound/ipl.bin, sound/boot-dsp.bin, sound/dsp-gauss.bin, program/manifest.json + ranges.
@@ -8,6 +10,7 @@ import { createAudioOut } from './sound/output.js';
 import { startGate } from '../../shared/player/start-gate.js';
 import { ProgramImage, ZakuroVM, createApuLink } from './vm/browser.js';
 import { InputQueue, PAD } from './input-queue.js';
+import { itemAt, planFor, planForLateTap, screenOf } from './screens.js';
 
 const $ = (id) => document.getElementById(id);
 const shell = $('shell'), stage = $('stage'), canvas = $('screen');
@@ -141,28 +144,52 @@ function gamePoint(event) {
 }
 
 function wireControls({ vm, input }, out) {
-  // Tap the screen: on a choice, pick the choice under the finger; anywhere else, A.
+  const wram = vm.bus.wram;
+  const screen = () => screenOf(wram, vm.getTouchState());
   canvas.addEventListener('pointerdown', (event) => {
     event.preventDefault();
     out.resume();
     const { x, y } = gamePoint(event);
-    const choice = vm.getTouchState().choice;
-    const hit = choice?.ready ? choice.rectangles.find((r) => x >= r.x && x < r.x + r.width && y >= r.y && y < r.y + r.height) : null;
-    if (hit) { input.clear(); input.choose(hit.index); } else input.tap(PAD.A);
+    const touch = vm.getTouchState();
+    const now = screenOf(wram, touch);
+    if (now === 'choice') {
+      const choice = touch.choice;
+      const hit = choice.ready ? choice.rectangles.find((r) => x >= r.x && x < r.x + r.width && y >= r.y && y < r.y + r.height) : null;
+      if (hit) { input.clear(); input.choose(hit.index); } // away from every choice: nothing
+      return;
+    }
+    if (now === 'start') { input.tap(PAD.START, 4); return; }
+    if (now === 'story') { input.tap(PAD.A); return; }
+    if (now === 'prompt') { input.clear(); input.tap(PAD.A, 6); return; } // shows the default name
+    if (now === 'busy') { input.clear(); input.seek(planForLateTap(x, y, () => wram, () => vm.getTouchState())); return; }
+    const item = itemAt(now, x, y, wram);
+    if (!item) return; // away from every item: decides nothing
+    input.clear();
+    input.seek(planFor(item, now, () => wram, () => vm.getTouchState()));
   });
   const menu = $('menu');
   for (const type of ['pointerdown', 'pointerup', 'click']) menu.addEventListener(type, (event) => event.stopPropagation());
-  menu.addEventListener('click', () => { navigator.vibrate?.(8); out.resume(); input.tap(PAD.B); });
+  menu.addEventListener('click', () => { navigator.vibrate?.(8); out.resume(); input.tap(PAD.B, 6); });
+  // The button sits over 決定 on the name board; it steps aside there, as in the Kamaitachi player.
+  // The board blinks through other values for a field now and then, so only settled screens count.
+  setInterval(() => { const now = screen(); if (now !== 'busy') menu.classList.toggle('unavailable', now === 'names' || now === 'prompt'); }, 200);
 
-  const keys = { KeyZ: PAD.A, KeyX: PAD.B, KeyA: PAD.Y, KeyS: PAD.X, Enter: PAD.START, ShiftRight: PAD.SELECT, KeyQ: PAD.L, KeyW: PAD.R,
+  // Z/Enter confirm (START on the logo and title, where A does nothing), X cancels.
+  const confirm = () => (screen() === 'start' ? PAD.START : PAD.A);
+  const keys = { KeyZ: confirm, Enter: confirm, KeyX: PAD.B, KeyA: PAD.Y, KeyS: PAD.X, Space: PAD.START, ShiftRight: PAD.SELECT, KeyQ: PAD.L, KeyW: PAD.R,
     ArrowUp: PAD.UP, ArrowDown: PAD.DOWN, ArrowLeft: PAD.LEFT, ArrowRight: PAD.RIGHT };
+  const down = new Map();
   addEventListener('keydown', (event) => {
-    const bit = keys[event.code];
-    if (!bit || event.ctrlKey || event.metaKey || event.altKey) return;
-    event.preventDefault(); out.resume(); input.held |= bit;
+    const key = keys[event.code];
+    if (!key || event.ctrlKey || event.metaKey || event.altKey) return;
+    event.preventDefault(); out.resume();
+    if (down.has(event.code)) return;
+    const bit = typeof key === 'function' ? key() : key;
+    down.set(event.code, bit); input.held |= bit;
   });
-  addEventListener('keyup', (event) => { const bit = keys[event.code]; if (bit) input.held &= ~bit; });
-  addEventListener('blur', () => { input.held = 0; });
+  const release = (code) => { const bit = down.get(code); down.delete(code); if (bit) input.held &= ~[...down.values()].reduce((m, b) => m & ~b, bit); };
+  addEventListener('keyup', (event) => release(event.code));
+  addEventListener('blur', () => { down.clear(); input.held = 0; });
 
   const mute = $('mute'), volume = $('volume');
   const gain = out.context.createGain();
