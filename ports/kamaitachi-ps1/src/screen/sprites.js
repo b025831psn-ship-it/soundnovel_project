@@ -11,6 +11,8 @@
 //   0x8003ce2c  sortOverlays()         8 overlay sprites (0x801d5628), re-added through 0x8001c838
 const GP = 0x8007913c;
 import { waveReset } from "./wave.js";
+import { x8004c768 } from "../gpu/gs-translated.js";
+const runToEnd = (g) => { if (!g.next().done) throw new Error("sprites: GsSortSprite waited for a frame"); };
 const SPRITES = 0x801eef68, SPRITE_SIZE = 0x48, SPRITE_COUNT = 160, INDEX = 0x800794c8, CURRENT = 0x80079470;
 const OT = 0x80079468, BRIGHT = 0x801f7500, SHAKE = 0x8009da48;
 const BOXES2 = 0x801f5b80, BOX2_Z = 0x80079570, BOXES = 0x801d5910, BOX_Z = 0x801d66c8, BOX_COUNT = GP + 0x1ba, BOX2_COUNT = GP + 0x1bc, OVERLAYS = 0x801d5628;
@@ -31,7 +33,7 @@ export function sortSprite(ctx, src, ot, z) {
   const cur = r32(CURRENT), strips = r32(cur + 0x34), x = r16(src + 4);
   if (!strips) {
     if (s16(r16(cur + 0x1e)) === 0x1000 && s16(r16(cur + 0x20)) === 0x1000) gs.GsSortFastSprite(src, ot, z & 0xffff);
-    else unported(0x8003c12c); // GsSortSprite (scaled)
+    else runToEnd(x8004c768({ ...ctx, sp: (ctx.sp - 0x50) | 0 }, src, ot, z & 0xffff)); // 0x8003c12c: GsSortSprite (scaled or rotated)
     return;
   }
   const L = ((ctx.sp - 0x50) >>> 0) + 0x10;

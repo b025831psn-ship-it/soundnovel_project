@@ -24,7 +24,10 @@ HANDLERS[0x29] = function* (ctx) {
   const { m } = ctx, { r8, r16, r32, w8, w16 } = io(m), o = operand(m), hi = o.u8(), lo = o.u16(), sp = ctx.sp - 0x18;
   if (quiet(m)) { endFrame(m); return; }
   const id = (lo + hi * 256) & 0xffff;
-  if (m.read(0x8007913c + 1, 1)) unported(0x8001fc60); // a clear is pending
+  if (m.read(0x8007913c + 1, 1)) { // 0x8001fc60: a clear is pending: the picture buffer cleared first
+    const pic = r32(PICTURE); for (let i = 0; i < 0x12c00; i++) w8(pic + i, 0);
+    m.write(0x8007913c + 1, 0, 1);
+  }
   const k = r8(RING_AT);
   w8(RING_AT, (k + 1) & 3); w16(RING + 2 * k, id);
   yield* cdLoad({ ...ctx, sp }, 4, r32(SDW_BUF), id);

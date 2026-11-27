@@ -302,7 +302,7 @@ export function* specialSwitch(ctx, a0 = 0, a1 = 0, a2 = 0, a3 = 0) {
     s1 = m.read(((sp) + 28) >>> 0, 4) | 0;
     s0 = m.read(((sp) + 24) >>> 0, 4) | 0;
     sp = (sp + 40) | 0;
-     return v0;
+     return [v0, v1];
   default: throw new Error(`specialSwitch: no block at 0x${(pc >>> 0).toString(16)}`);
   }
 }
@@ -328,7 +328,7 @@ export function x80025600(ctx, a0 = 0, a1 = 0, a2 = 0, a3 = 0) {
     m.write(((v0) + 4) >>> 0, 0 >>> 0, 4);
     { const c = (v1 | 0) <= 0; m.write(((v0) + 0) >>> 0, 0 >>> 0, 4); if (c) { pc = 0x8002560c; continue; } }
   case 0x80025638:
-     return v0;
+     return [v0, v1];
   default: throw new Error(`x80025600: no block at 0x${(pc >>> 0).toString(16)}`);
   }
 }
@@ -371,7 +371,7 @@ export function* x80037a7c(ctx, a0 = 0, a1 = 0, a2 = 0, a3 = 0) {
   case 0x80037af4:
     s0 = m.read(((sp) + 16) >>> 0, 4) | 0;
     sp = (sp + 24) | 0;
-     return v0;
+     return [v0, v1];
   default: throw new Error(`x80037a7c: no block at 0x${(pc >>> 0).toString(16)}`);
   }
 }
@@ -396,7 +396,7 @@ export function* x800390ac(ctx, a0 = 0, a1 = 0, a2 = 0, a3 = 0) {
   case 0x800390d8:
     s0 = m.read(((sp) + 16) >>> 0, 4) | 0;
     sp = (sp + 24) | 0;
-     return v0;
+     return [v0, v1];
   default: throw new Error(`x800390ac: no block at 0x${(pc >>> 0).toString(16)}`);
   }
 }
@@ -1198,7 +1198,7 @@ export function* x800426b0(ctx, a0 = 0, a1 = 0, a2 = 0, a3 = 0) {
     s1 = m.read(((sp) + 116) >>> 0, 4) | 0;
     s0 = m.read(((sp) + 112) >>> 0, 4) | 0;
     sp = (sp + 152) | 0;
-     return v0;
+     return [v0, v1];
   default: throw new Error(`x800426b0: no block at 0x${(pc >>> 0).toString(16)}`);
   }
 }
@@ -1420,7 +1420,7 @@ export function* x80043b90(ctx, a0 = 0, a1 = 0, a2 = 0, a3 = 0) {
     s1 = m.read(((sp) + 20) >>> 0, 4) | 0;
     s0 = m.read(((sp) + 16) >>> 0, 4) | 0;
     sp = (sp + 32) | 0;
-     return v0;
+     return [v0, v1];
   default: throw new Error(`x80043b90: no block at 0x${(pc >>> 0).toString(16)}`);
   }
 }
@@ -1541,7 +1541,7 @@ export function* x8004419c(ctx, a0 = 0, a1 = 0, a2 = 0, a3 = 0) {
     s1 = m.read(((sp) + 28) >>> 0, 4) | 0;
     s0 = m.read(((sp) + 24) >>> 0, 4) | 0;
     sp = (sp + 40) | 0;
-     return v0;
+     return [v0, v1];
   default: throw new Error(`x8004419c: no block at 0x${(pc >>> 0).toString(16)}`);
   }
 }
@@ -1581,7 +1581,7 @@ export function x8003a820(ctx, a0 = 0, a1 = 0, a2 = 0, a3 = 0) {
     a0 = (a0 + 1) | 0;
     a1 = (a1 + 1) | 0; pc = 0x8003a848; continue;
   case 0x8003a894:
-    m.write(((a1) + 0) >>> 0, 0 & 0xff, 1); return v0;
+    m.write(((a1) + 0) >>> 0, 0 & 0xff, 1); return [v0, v1];
   default: throw new Error(`x8003a820: no block at 0x${(pc >>> 0).toString(16)}`);
   }
 }
@@ -1603,7 +1603,7 @@ export function x8003a89c(ctx, a0 = 0, a1 = 0, a2 = 0, a3 = 0) {
     a0 = (a0 + 2) | 0;
     v1 = (v1 + 1) | 0; pc = 0x8003a8a0; continue;
   case 0x8003a8c8:
-    v0 = v1 & 255; return v0;
+    v0 = v1 & 255; return [v0, v1];
   default: throw new Error(`x8003a89c: no block at 0x${(pc >>> 0).toString(16)}`);
   }
 }
@@ -2165,7 +2165,7 @@ export function* x800432ec(ctx, a0 = 0, a1 = 0, a2 = 0, a3 = 0) {
     s1 = m.read(((sp) + 20) >>> 0, 4) | 0;
     s0 = m.read(((sp) + 16) >>> 0, 4) | 0;
     sp = (sp + 48) | 0;
-     return v0;
+     return [v0, v1];
   default: throw new Error(`x800432ec: no block at 0x${(pc >>> 0).toString(16)}`);
   }
 }
@@ -2180,7 +2180,7 @@ export function x80044dd0(ctx, a0 = 0, a1 = 0, a2 = 0, a3 = 0) {
     v0 = (v0 >>> 8) | 0;
     a0 = a0 << 8;
     v0 = v0 | a0;
-    v0 = v0 & 65535; return v0;
+    v0 = v0 & 65535; return [v0, v1];
   default: throw new Error(`x80044dd0: no block at 0x${(pc >>> 0).toString(16)}`);
   }
 }
@@ -2203,7 +2203,7 @@ export function* x8003a8d0(ctx, a0 = 0, a1 = 0, a2 = 0, a3 = 0) {
      [v0, v1] = yield* call(ctx, sp, 0x80044d88, a0, a1, a2, a3);
   case 0x8003a8fc:
     sp = (sp + 24) | 0;
-     return v0;
+     return [v0, v1];
   default: throw new Error(`x8003a8d0: no block at 0x${(pc >>> 0).toString(16)}`);
   }
 }
@@ -2231,7 +2231,7 @@ export function x80044d88(ctx, a0 = 0, a1 = 0, a2 = 0, a3 = 0) {
   case 0x80044dc4:
     v0 = 0 | 0;
   case 0x80044dc8:
-     return v0;
+     return [v0, v1];
   default: throw new Error(`x80044d88: no block at 0x${(pc >>> 0).toString(16)}`);
   }
 }

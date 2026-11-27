@@ -4,6 +4,7 @@
 //   0x8003276c checkpoint()   snapshot of the display state for the jump targets
 //   0x8003cf28 animStop()     0x800390ec textStart(p)
 import { cdLoad } from "../cd-load.js";
+import { memcpy } from "../screen/weather.js";
 export const GP = 0x8007913c, CURSOR = 0x80079578, BASE = 0x8007948c, RESOURCE = 0x8007929c;
 export const unported = (addr) => { throw new Error(`scenario: path at 0x${addr.toString(16)} is not ported`); };
 export const s8 = (v) => (v << 24) >> 24, s16 = (v) => (v << 16) >> 16;
@@ -54,12 +55,14 @@ export function* resolveLabel(ctx, table, label) { // 0x8001bfb8
   const res = g8(0x330);
   if (r16(RESOURCE) !== res) {
     const base = r32(BASE);
-    if (g8(2) === 1 && s8(g8(0x45c)) === res) unported(0x8001c034);
-    else if (res === 0x1f) unported(0x8001c068);
-    p8(4, 1);
-    animStop(m);
-    yield* cdLoad({ ...ctx, sp }, 2, base, res);
-    p8(4, 0);
+    if (g8(2) === 1 && s8(g8(0x45c)) === res) memcpy(m, r32(0x80079544) + 0x28000, base, 0xb000); // 0x8001c034: the kept copy
+    else if (res === 0x1f) memcpy(m, 0x800677e8, base, 0x12a); // 0x8001c068: resource 31 from the EXE
+    else {
+      p8(4, 1);
+      animStop(m);
+      yield* cdLoad({ ...ctx, sp }, 2, base, res);
+      p8(4, 0);
+    }
     w16(RESOURCE, res);
   }
   return r16(table + 2 * (label % 1000));

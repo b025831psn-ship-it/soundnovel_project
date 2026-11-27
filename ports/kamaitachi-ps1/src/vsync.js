@@ -8,6 +8,8 @@
 import { fadeStep } from "./screen/fader.js";
 import { spriteFree } from "./helpers.js";
 import { sound } from "./sound-bridge.js";
+import { x8003186c } from "./screen/overlay-translated.js";
+const runToEnd = (g) => { if (!g.next().done) throw new Error("vsync: the overlay step waited for a frame"); };
 
 const GP = 0x8007913c, CLUTS = 0x800c4820, TMP = 0x801fd070, IDS = 0x801f6698;
 const unported = (addr) => { throw new Error(`vsync: path at 0x${addr.toString(16)} is not ported`); };
@@ -47,6 +49,9 @@ export function overlayTick(ctx) {
   const LEVEL = 0x80079584, STEP = 0x800795fc, r32 = (a) => m.read(a, 4) | 0, w32 = (a, v) => m.write(a, v >>> 0, 4);
   const k = m.read(GP + 0x38e, 1);
   if (!k || k - 1 >= 0x22) return;
+  // the cases not ported by hand, and the flash reaching full (0x80031b6c): the translated step whole
+  const full = (k === 12 || k === 21 || k === 30) && g32(0x320) >= 0 && !(0x10000 < r32(LEVEL)) && 0x10000 < ((r32(LEVEL) + r32(STEP)) | 0);
+  if ([1, 11, 13, 22, 34].includes(k) || full) { runToEnd(x8003186c(ctx)); return; }
   const end = () => { const id = m.read(IDS + 0x10, 2); if (id) { spriteFree(m, s16(id)); m.write(IDS + 0x10, 0, 2); } m.write(GP + 0x38e, 0, 1); };
   const stepDown = () => p32(0x320, g32(0x320) - div256(r32(STEP)));
   if (k === 31) {
@@ -66,7 +71,6 @@ export function overlayTick(ctx) {
     if (!(0x10000 < a)) {
       clutFill(sub, 0x8000, 0, div256(a) & 0xffff, 0x15);
       const v = r32(LEVEL) + r32(STEP); w32(LEVEL, v);
-      if (0x10000 < v) unported(0x80031b6c);
     }
     return stepDown();
   }
@@ -79,7 +83,6 @@ export function overlayTick(ctx) {
     p32(0x320, g32(0x320) - 1);
     return;
   }
-  if ([1, 11, 13, 22, 34].includes(k)) unported(0x8003186c);
 }
 
 export function vsyncCallback(ctx) { // 0x8002d46c

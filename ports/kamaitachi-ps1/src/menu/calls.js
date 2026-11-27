@@ -6,6 +6,9 @@ import { TRANSLATED } from "./translated.js";
 import { EFFECTS_TRANSLATED } from "../screen/effects-translated.js";
 import { SPECIAL_TRANSLATED } from "../scenario/special-translated.js";
 import { WEATHER_TRANSLATED } from "../screen/weather-translated.js";
+import { GS_TRANSLATED } from "../gpu/gs-translated.js";
+import { OVERLAY_TRANSLATED } from "../screen/overlay-translated.js";
+import { LIBGPU_ENTRY } from "../gpu/libgpu.js";
 import { tick, tickQuiet, ticks, tickText } from "../tick.js";
 import { newGame, titlePicture, animInit, textInit, storyMovie, systemReset, routeReset, textStrings, firstScenario, bufferAliases, bufferInit, bzero, textSlotReset } from "../init.js";
 import { setVar, savePoint, textSpeedReset, dropLayer, dropPicture, waitFade, waitText, choiceColoursReset, textWindowReset, snapshot } from "../helpers.js";
@@ -76,6 +79,10 @@ export const PORTED = {
   0x80049620: (c, a0, a1, a2) => c.gs.MoveImage(a0 >>> 0, a1, a2),
   0x8004931c: (c, a0) => c.gs.checkRect(a0 >>> 0),
   0x8004dd58: (c, a0, a1) => c.gs.GsGetTimInfo(a0 >>> 0, a1 >>> 0),
+  0x8004e1b8: (c, a0) => c.gs.gte.setRot([0, 4, 8, 12, 16].map((o) => c.m.read(a0 + o, 4) | 0)), // SetRotMatrix
+  0x8004e218: (c, a0) => c.gs.gte.setTrans([0x14, 0x18, 0x1c].map((o) => c.m.read(a0 + o, 4) | 0)), // SetTransMatrix
+  0x8004e238: (c) => c.gs.gte.readH(), // ReadGeomScreen
+  0x8004e288: (c, a0, a1, a2, a3) => c.gs.gte.rotTransPers4(c.m, [a0, a1, a2, a3], [0x10, 0x14, 0x18, 0x1c, 0x20, 0x24].map((o) => c.m.read(c.sp + o, 4) >>> 0)), // RotTransPers4
   0x8001c478: (c) => newGame(c),
   0x8001d080: (c, a0, a1) => titlePicture(c, a0, a1),
   0x8001db2c: (c, a0) => dropLayer(c.m, a0),
@@ -129,8 +136,11 @@ function scenarioOp(m, addr) {
   return opOf.get(addr >>> 0);
 }
 
+// libgpu / libgs entry points the translated code calls: the ported LibGpu (ctx.gs) method of that name
+const LIBGPU_BY_ADDR = Object.fromEntries(Object.entries(LIBGPU_ENTRY).map(([name, a]) => [a, (c, a0, a1, a2, a3) => c.gs[name](a0, a1, a2, a3)]));
+
 export function* call(ctx, sp, addr, a0, a1, a2, a3) {
-  const f = TRANSLATED[addr] ?? PORTED[addr] ?? EFFECTS_TRANSLATED[addr] ?? SPECIAL_TRANSLATED[addr] ?? WEATHER_TRANSLATED[addr];
+  const f = TRANSLATED[addr] ?? PORTED[addr] ?? EFFECTS_TRANSLATED[addr] ?? SPECIAL_TRANSLATED[addr] ?? WEATHER_TRANSLATED[addr] ?? GS_TRANSLATED[addr] ?? OVERLAY_TRANSLATED[addr] ?? LIBGPU_BY_ADDR[addr];
   if (!f) {
     const op = scenarioOp(ctx.m, addr);
     if (op === undefined) unported(addr);

@@ -458,7 +458,7 @@ export function* menu(ctx, a0 = 0, a1 = 0, a2 = 0, a3 = 0) {
     s0 = m.read(((sp) + 40) >>> 0, 4) | 0;
     sp = (sp + 80) | 0;
     if (ctx.touch) ctx.touch.menu = prevTouch;
-     return v0;
+     return [v0, v1];
   default: throw new Error(`menu: no block at 0x${(pc >>> 0).toString(16)}`);
   }
 }
@@ -1974,7 +1974,7 @@ export function* flowChart(ctx, a0 = 0, a1 = 0, a2 = 0, a3 = 0) {
     s0 = m.read(((sp) + 144) >>> 0, 4) | 0;
     sp = (sp + 184) | 0;
     if (ctx.touch) ctx.touch.menu = prevTouch;
-     return v0;
+     return [v0, v1];
   default: throw new Error(`flowChart: no block at 0x${(pc >>> 0).toString(16)}`);
   }
 }
@@ -2364,7 +2364,7 @@ export function* f8001575c(ctx, a0 = 0, a1 = 0, a2 = 0, a3 = 0) {
     s1 = m.read(((sp) + 92) >>> 0, 4) | 0;
     s0 = m.read(((sp) + 88) >>> 0, 4) | 0;
     sp = (sp + 128) | 0;
-     return v0;
+     return [v0, v1];
   default: throw new Error(`f8001575c: no block at 0x${(pc >>> 0).toString(16)}`);
   }
 }
@@ -2459,7 +2459,7 @@ export function f80019544(ctx, a0 = 0, a1 = 0, a2 = 0, a3 = 0) {
     v0 = (v0 >>> 0) < 300 ? 1 : 0;
     { const c = (v0 | 0) !== 0;  if (c) { pc = 0x80019654; continue; } }
   case 0x8001967c:
-     return v0;
+     return [v0, v1];
   default: throw new Error(`f80019544: no block at 0x${(pc >>> 0).toString(16)}`);
   }
 }
@@ -2715,7 +2715,7 @@ export function* f80019738(ctx, a0 = 0, a1 = 0, a2 = 0, a3 = 0) {
     s1 = m.read(((sp) + 44) >>> 0, 4) | 0;
     s0 = m.read(((sp) + 40) >>> 0, 4) | 0;
     sp = (sp + 80) | 0;
-     return v0;
+     return [v0, v1];
   default: throw new Error(`f80019738: no block at 0x${(pc >>> 0).toString(16)}`);
   }
 }
@@ -2746,7 +2746,7 @@ export function* f80035568(ctx, a0 = 0, a1 = 0, a2 = 0, a3 = 0) {
   case 0x800355b0:
     s0 = m.read(((sp) + 16) >>> 0, 4) | 0;
     sp = (sp + 24) | 0;
-     return v0;
+     return [v0, v1];
   default: throw new Error(`f80035568: no block at 0x${(pc >>> 0).toString(16)}`);
   }
 }
@@ -2924,7 +2924,7 @@ export function* f80037344(ctx, a0 = 0, a1 = 0, a2 = 0, a3 = 0) {
     s1 = m.read(((sp) + 28) >>> 0, 4) | 0;
     s0 = m.read(((sp) + 24) >>> 0, 4) | 0;
     sp = (sp + 40) | 0;
-     return v0;
+     return [v0, v1];
   default: throw new Error(`f80037344: no block at 0x${(pc >>> 0).toString(16)}`);
   }
 }
@@ -3046,7 +3046,7 @@ export function* f80044f7c(ctx, a0 = 0, a1 = 0, a2 = 0, a3 = 0) {
     s1 = m.read(((sp) + 28) >>> 0, 4) | 0;
     s0 = m.read(((sp) + 24) >>> 0, 4) | 0;
     sp = (sp + 56) | 0;
-     return v0;
+     return [v0, v1];
   default: throw new Error(`f80044f7c: no block at 0x${(pc >>> 0).toString(16)}`);
   }
 }
@@ -3127,7 +3127,7 @@ export function* f8001c6a0(ctx, a0 = 0, a1 = 0, a2 = 0, a3 = 0) {
     s1 = m.read(((sp) + 20) >>> 0, 4) | 0;
     s0 = m.read(((sp) + 16) >>> 0, 4) | 0;
     sp = (sp + 32) | 0;
-     return v0;
+     return [v0, v1];
   default: throw new Error(`f8001c6a0: no block at 0x${(pc >>> 0).toString(16)}`);
   }
 }
@@ -3172,7 +3172,7 @@ export function* f8001c8f8(ctx, a0 = 0, a1 = 0, a2 = 0, a3 = 0) {
     a0 = 0 | 0; [v0, v1] = yield* call(ctx, sp, 0x800418d0, a0, a1, a2, a3);
   case 0x8001c97c:
     sp = (sp + 24) | 0;
-     return v0;
+     return [v0, v1];
   default: throw new Error(`f8001c8f8: no block at 0x${(pc >>> 0).toString(16)}`);
   }
 }
@@ -3246,7 +3246,7 @@ export function lzss(ctx, a0 = 0, a1 = 0, a2 = 0, a3 = 0) {
     a2 = (a2 + -1) | 0;
     { const c = (a2 | 0) >= 0; a0 = (a0 + 1) | 0; if (c) { pc = 0x800355f8; continue; } }
   case 0x800356c0:
-     return v0;
+     return [v0, v1];
   default: throw new Error(`lzss: no block at 0x${(pc >>> 0).toString(16)}`);
   }
 }
@@ -3339,7 +3339,7 @@ export function* f800378c4(ctx, a0 = 0, a1 = 0, a2 = 0, a3 = 0) {
     s1 = m.read(((sp) + 28) >>> 0, 4) | 0;
     s0 = m.read(((sp) + 24) >>> 0, 4) | 0;
     sp = (sp + 64) | 0;
-     return v0;
+     return [v0, v1];
   default: throw new Error(`f800378c4: no block at 0x${(pc >>> 0).toString(16)}`);
   }
 }
@@ -3362,7 +3362,7 @@ export function f80044e90(ctx, a0 = 0, a1 = 0, a2 = 0, a3 = 0) {
     v1 = v1 & 65280;
     a0 = a0 | v1;
     v0 = (v0 >>> 24) | 0;
-    v0 = a0 | v0; return v0;
+    v0 = a0 | v0; return [v0, v1];
   default: throw new Error(`f80044e90: no block at 0x${(pc >>> 0).toString(16)}`);
   }
 }
@@ -3436,7 +3436,7 @@ export function f8001c374(ctx, a0 = 0, a1 = 0, a2 = 0, a3 = 0) {
     v1 = (v1 + v0) | 0;
     m.write(((v1) + 58) >>> 0, t0 & 0xff, 1);
   case 0x8001c470:
-     return v0;
+     return [v0, v1];
   default: throw new Error(`f8001c374: no block at 0x${(pc >>> 0).toString(16)}`);
   }
 }
@@ -3510,7 +3510,7 @@ export function* f80037d48(ctx, a0 = 0, a1 = 0, a2 = 0, a3 = 0) {
   case 0x80037e3c:
     s0 = m.read(((sp) + 24) >>> 0, 4) | 0;
     sp = (sp + 32) | 0;
-     return v0;
+     return [v0, v1];
   default: throw new Error(`f80037d48: no block at 0x${(pc >>> 0).toString(16)}`);
   }
 }
@@ -3554,7 +3554,7 @@ export function addBox2(ctx, a0 = 0, a1 = 0, a2 = 0, a3 = 0) {
     v1 = (v1 + 1) | 0;
     m.write(((v0) + 0) >>> 0, t4 & 0xffff, 2);
     m.write(((0x8007913c) + 444) >>> 0, v1 & 0xffff, 2);
-     return v0;
+     return [v0, v1];
   default: throw new Error(`addBox2: no block at 0x${(pc >>> 0).toString(16)}`);
   }
 }
@@ -3996,7 +3996,7 @@ export function* options(ctx, a0 = 0, a1 = 0, a2 = 0, a3 = 0) {
     s0 = m.read(((sp) + 40) >>> 0, 4) | 0;
     sp = (sp + 80) | 0;
     if (ctx.touch) ctx.touch.menu = prevTouch;
-     return v0;
+     return [v0, v1];
   default: throw new Error(`options: no block at 0x${(pc >>> 0).toString(16)}`);
   }
 }
@@ -4507,7 +4507,7 @@ export function* f800145b0(ctx, a0 = 0, a1 = 0, a2 = 0, a3 = 0) {
     s0 = m.read(((sp) + 56) >>> 0, 4) | 0;
     sp = (sp + 96) | 0;
     if (ctx.touch) ctx.touch.menu = prevTouch;
-     return v0;
+     return [v0, v1];
   default: throw new Error(`f800145b0: no block at 0x${(pc >>> 0).toString(16)}`);
   }
 }
@@ -4542,7 +4542,7 @@ export function* f80025710(ctx, a0 = 0, a1 = 0, a2 = 0, a3 = 0) {
     s0 = m.read(((sp) + 16) >>> 0, 4) | 0;
     sp = (sp + 24) | 0;
     if (ctx.touch) ctx.touch.menu = prevTouch;
-     return v0;
+     return [v0, v1];
   default: throw new Error(`f80025710: no block at 0x${(pc >>> 0).toString(16)}`);
   }
 }
@@ -4793,7 +4793,7 @@ export function* f80014d68(ctx, a0 = 0, a1 = 0, a2 = 0, a3 = 0) {
     s0 = m.read(((sp) + 40) >>> 0, 4) | 0;
     sp = (sp + 72) | 0;
     if (ctx.touch) ctx.touch.menu = prevTouch;
-     return v0;
+     return [v0, v1];
   default: throw new Error(`f80014d68: no block at 0x${(pc >>> 0).toString(16)}`);
   }
 }
@@ -5009,7 +5009,7 @@ export function* f8001511c(ctx, a0 = 0, a1 = 0, a2 = 0, a3 = 0) {
     s0 = m.read(((sp) + 40) >>> 0, 4) | 0;
     sp = (sp + 80) | 0;
     if (ctx.touch) ctx.touch.menu = prevTouch;
-     return v0;
+     return [v0, v1];
   default: throw new Error(`f8001511c: no block at 0x${(pc >>> 0).toString(16)}`);
   }
 }
@@ -5111,7 +5111,7 @@ export function* f8001b51c(ctx, a0 = 0, a1 = 0, a2 = 0, a3 = 0) {
     s1 = m.read(((sp) + 20) >>> 0, 4) | 0;
     s0 = m.read(((sp) + 16) >>> 0, 4) | 0;
     sp = (sp + 40) | 0;
-     return v0;
+     return [v0, v1];
   default: throw new Error(`f8001b51c: no block at 0x${(pc >>> 0).toString(16)}`);
   }
 }
@@ -5135,7 +5135,7 @@ export function* f800289ec(ctx, a0 = 0, a1 = 0, a2 = 0, a3 = 0) {
      [v0, v1] = yield* call(ctx, sp, 0x8005e098, a0, a1, a2, a3);
   case 0x80028a1c:
     sp = (sp + 24) | 0;
-     return v0;
+     return [v0, v1];
   default: throw new Error(`f800289ec: no block at 0x${(pc >>> 0).toString(16)}`);
   }
 }
@@ -5165,7 +5165,7 @@ export function f8002cc48(ctx, a0 = 0, a1 = 0, a2 = 0, a3 = 0) {
     v0 = (v0 >>> 0) < 9 ? 1 : 0;
     { const c = (v0 | 0) !== 0;  if (c) { pc = 0x8002cc5c; continue; } }
   case 0x8002cc90:
-     return v0;
+     return [v0, v1];
   default: throw new Error(`f8002cc48: no block at 0x${(pc >>> 0).toString(16)}`);
   }
 }
@@ -5270,7 +5270,7 @@ export function* f8002cc98(ctx, a0 = 0, a1 = 0, a2 = 0, a3 = 0) {
     s1 = m.read(((sp) + 20) >>> 0, 4) | 0;
     s0 = m.read(((sp) + 16) >>> 0, 4) | 0;
     sp = (sp + 56) | 0;
-     return v0;
+     return [v0, v1];
   default: throw new Error(`f8002cc98: no block at 0x${(pc >>> 0).toString(16)}`);
   }
 }
@@ -5326,7 +5326,7 @@ export function* f8003d820(ctx, a0 = 0, a1 = 0, a2 = 0, a3 = 0) {
     s1 = m.read(((sp) + 20) >>> 0, 4) | 0;
     s0 = m.read(((sp) + 16) >>> 0, 4) | 0;
     sp = (sp + 32) | 0;
-     return v0;
+     return [v0, v1];
   default: throw new Error(`f8003d820: no block at 0x${(pc >>> 0).toString(16)}`);
   }
 }
@@ -5352,7 +5352,7 @@ export function f80044868(ctx, a0 = 0, a1 = 0, a2 = 0, a3 = 0) {
   case 0x800448a0:
     a0 = 0 | 0;
   case 0x800448a4:
-    v0 = a0 & 255; return v0;
+    v0 = a0 & 255; return [v0, v1];
   default: throw new Error(`f80044868: no block at 0x${(pc >>> 0).toString(16)}`);
   }
 }
@@ -5379,7 +5379,7 @@ export function f80026088(ctx, a0 = 0, a1 = 0, a2 = 0, a3 = 0) {
     m.write(((0x8007913c) + 1228) >>> 0, v0 & 0xffff, 2);
     m.write(((0x8007913c) + 104) >>> 0, a2 & 0xffff, 2);
   case 0x800260c8:
-     return v0;
+     return [v0, v1];
   default: throw new Error(`f80026088: no block at 0x${(pc >>> 0).toString(16)}`);
   }
 }
@@ -5403,7 +5403,7 @@ export function pacMemberBE(ctx, a0 = 0, a1 = 0, a2 = 0, a3 = 0) {
     v0 = v0 | v1;
     a1 = (a1 >>> 24) | 0;
     v0 = v0 | a1;
-    v0 = (v0 + a0) | 0; return v0;
+    v0 = (v0 + a0) | 0; return [v0, v1];
   default: throw new Error(`pacMemberBE: no block at 0x${(pc >>> 0).toString(16)}`);
   }
 }
@@ -5427,7 +5427,7 @@ export function f80044e50(ctx, a0 = 0, a1 = 0, a2 = 0, a3 = 0) {
     v0 = v0 | v1;
     a1 = (a1 >>> 24) | 0;
     v0 = v0 | a1;
-    v0 = (v0 + a0) | 0; return v0;
+    v0 = (v0 + a0) | 0; return [v0, v1];
   default: throw new Error(`f80044e50: no block at 0x${(pc >>> 0).toString(16)}`);
   }
 }
@@ -5444,7 +5444,7 @@ export function fmul8(ctx, a0 = 0, a1 = 0, a2 = 0, a3 = 0) {
   case 0x80044edc:
     v0 = (v0 + 255) | 0;
   case 0x80044ee0:
-    v0 = v0 >> 8; return v0;
+    v0 = v0 >> 8; return [v0, v1];
   default: throw new Error(`fmul8: no block at 0x${(pc >>> 0).toString(16)}`);
   }
 }
@@ -5469,7 +5469,7 @@ export function* f80037e50(ctx, a0 = 0, a1 = 0, a2 = 0, a3 = 0) {
   case 0x80037e80:
     s0 = m.read(((sp) + 16) >>> 0, 4) | 0;
     sp = (sp + 24) | 0;
-     return v0;
+     return [v0, v1];
   default: throw new Error(`f80037e50: no block at 0x${(pc >>> 0).toString(16)}`);
   }
 }
@@ -5494,7 +5494,7 @@ export function* f80037e94(ctx, a0 = 0, a1 = 0, a2 = 0, a3 = 0) {
   case 0x80037ec4:
     s0 = m.read(((sp) + 16) >>> 0, 4) | 0;
     sp = (sp + 24) | 0;
-     return v0;
+     return [v0, v1];
   default: throw new Error(`f80037e94: no block at 0x${(pc >>> 0).toString(16)}`);
   }
 }
@@ -5514,7 +5514,7 @@ export function spriteFree(ctx, a0 = 0, a1 = 0, a2 = 0, a3 = 0) {
     v0 = v0 << 3;
     v0 = (v0 + v1) | 0;
     v1 = 0x80000000 | 0;
-    m.write(((v0) + 0) >>> 0, v1 >>> 0, 4); return v0;
+    m.write(((v0) + 0) >>> 0, v1 >>> 0, 4); return [v0, v1];
   default: throw new Error(`spriteFree: no block at 0x${(pc >>> 0).toString(16)}`);
   }
 }
@@ -5544,7 +5544,7 @@ export function spriteLayer(ctx, a0 = 0, a1 = 0, a2 = 0, a3 = 0) {
   case 0x8003be04:
     m.write(((a0) + 51) >>> 0, a1 & 0xff, 1);
   case 0x8003be08:
-     return v0;
+     return [v0, v1];
   default: throw new Error(`spriteLayer: no block at 0x${(pc >>> 0).toString(16)}`);
   }
 }
@@ -5557,7 +5557,7 @@ export function setPalette(ctx, a0 = 0, a1 = 0, a2 = 0, a3 = 0) {
   case 0x8003a90c:
     a0 = (a0 + 8) | 0;
     m.write(((0x8007913c) + 416) >>> 0, a0 & 0xff, 1);
-     return v0;
+     return [v0, v1];
   default: throw new Error(`setPalette: no block at 0x${(pc >>> 0).toString(16)}`);
   }
 }
@@ -5573,7 +5573,7 @@ export function repeatOn(ctx, a0 = 0, a1 = 0, a2 = 0, a3 = 0) {
     v0 = (0 + 30) | 0;
     m.write(((0x8007913c) + 98) >>> 0, v0 & 0xffff, 2);
     m.write(((0x8007913c) + 100) >>> 0, 0 >>> 0, 4);
-     return v0;
+     return [v0, v1];
   default: throw new Error(`repeatOn: no block at 0x${(pc >>> 0).toString(16)}`);
   }
 }
@@ -5585,7 +5585,7 @@ export function repeatOff(ctx, a0 = 0, a1 = 0, a2 = 0, a3 = 0) {
   for (;;) switch (pc) {
   case 0x80026220:
     m.write(((0x8007913c) + 96) >>> 0, 0 & 0xff, 1);
-     return v0;
+     return [v0, v1];
   default: throw new Error(`repeatOff: no block at 0x${(pc >>> 0).toString(16)}`);
   }
 }
@@ -5697,7 +5697,7 @@ export function memcpy(ctx, a0 = 0, a1 = 0, a2 = 0, a3 = 0) {
     m.write(((a0) + 0) >>> 0, v0 & 0xff, 1);
     { const c = (v1 | 0) !== (a2 | 0); a0 = (a0 + 1) | 0; if (c) { pc = 0x80044ae0; continue; } }
   case 0x80044af8:
-     return v0;
+     return [v0, v1];
   default: throw new Error(`memcpy: no block at 0x${(pc >>> 0).toString(16)}`);
   }
 }
@@ -5821,7 +5821,7 @@ export function* save(ctx, a0 = 0, a1 = 0, a2 = 0, a3 = 0) {
     s1 = m.read(((sp) + 20) >>> 0, 4) | 0;
     s0 = m.read(((sp) + 16) >>> 0, 4) | 0;
     sp = (sp + 40) | 0;
-     return v0;
+     return [v0, v1];
   default: throw new Error(`save: no block at 0x${(pc >>> 0).toString(16)}`);
   }
 }
@@ -6106,7 +6106,7 @@ export function* f80017e14(ctx, a0 = 0, a1 = 0, a2 = 0, a3 = 0) {
     s0 = m.read(((sp) + 40) >>> 0, 4) | 0;
     sp = (sp + 64) | 0;
     if (ctx.touch) ctx.touch.menu = prevTouch;
-     return v0;
+     return [v0, v1];
   default: throw new Error(`f80017e14: no block at 0x${(pc >>> 0).toString(16)}`);
   }
 }
@@ -6485,7 +6485,7 @@ export function* f80017854(ctx, a0 = 0, a1 = 0, a2 = 0, a3 = 0) {
     s1 = m.read(((sp) + 44) >>> 0, 4) | 0;
     s0 = m.read(((sp) + 40) >>> 0, 4) | 0;
     sp = (sp + 80) | 0;
-     return v0;
+     return [v0, v1];
   default: throw new Error(`f80017854: no block at 0x${(pc >>> 0).toString(16)}`);
   }
 }
@@ -6508,7 +6508,7 @@ export function* f8001c7c0(ctx, a0 = 0, a1 = 0, a2 = 0, a3 = 0) {
     a0 = (0 + 14) | 0; [v0, v1] = yield* call(ctx, sp, 0x8003afc8, a0, a1, a2, a3);
   case 0x8001c7ec:
     sp = (sp + 24) | 0;
-     return v0;
+     return [v0, v1];
   default: throw new Error(`f8001c7c0: no block at 0x${(pc >>> 0).toString(16)}`);
   }
 }
@@ -6597,7 +6597,7 @@ export function* f80025a08(ctx, a0 = 0, a1 = 0, a2 = 0, a3 = 0) {
     s1 = m.read(((sp) + 44) >>> 0, 4) | 0;
     s0 = m.read(((sp) + 40) >>> 0, 4) | 0;
     sp = (sp + 64) | 0;
-     return v0;
+     return [v0, v1];
   default: throw new Error(`f80025a08: no block at 0x${(pc >>> 0).toString(16)}`);
   }
 }
@@ -6767,7 +6767,7 @@ export function* f80025c74(ctx, a0 = 0, a1 = 0, a2 = 0, a3 = 0) {
     s0 = m.read(((sp) + 40) >>> 0, 4) | 0;
     sp = (sp + 64) | 0;
     if (ctx.touch) ctx.touch.menu = prevTouch;
-     return v0;
+     return [v0, v1];
   default: throw new Error(`f80025c74: no block at 0x${(pc >>> 0).toString(16)}`);
   }
 }
@@ -6834,7 +6834,7 @@ export function* f8002a89c(ctx, a0 = 0, a1 = 0, a2 = 0, a3 = 0) {
     s0 = m.read(((sp) + 40) >>> 0, 4) | 0;
     sp = (sp + 48) | 0;
     if (ctx.touch) ctx.touch.menu = prevTouch;
-     return v0;
+     return [v0, v1];
   default: throw new Error(`f8002a89c: no block at 0x${(pc >>> 0).toString(16)}`);
   }
 }
@@ -6910,7 +6910,7 @@ export function* f8003aa8c(ctx, a0 = 0, a1 = 0, a2 = 0, a3 = 0) {
     s1 = m.read(((sp) + 28) >>> 0, 4) | 0;
     s0 = m.read(((sp) + 24) >>> 0, 4) | 0;
     sp = (sp + 56) | 0;
-     return v0;
+     return [v0, v1];
   default: throw new Error(`f8003aa8c: no block at 0x${(pc >>> 0).toString(16)}`);
   }
 }
@@ -6940,7 +6940,7 @@ export function f8002bf98(ctx, a0 = 0, a1 = 0, a2 = 0, a3 = 0) {
     v0 = (v0 >>> 0) < 7936 ? 1 : 0;
     { const c = (v0 | 0) !== 0; v0 = a2 & 255; if (c) { pc = 0x8002bfbc; continue; } }
   case 0x8002bfe0:
-    v0 = (0 >>> 0) < (v0 >>> 0) ? 1 : 0; return v0;
+    v0 = (0 >>> 0) < (v0 >>> 0) ? 1 : 0; return [v0, v1];
   default: throw new Error(`f8002bf98: no block at 0x${(pc >>> 0).toString(16)}`);
   }
 }
@@ -7078,7 +7078,7 @@ export function* f80033648(ctx, a0 = 0, a1 = 0, a2 = 0, a3 = 0) {
     s1 = m.read(((sp) + 44) >>> 0, 4) | 0;
     s0 = m.read(((sp) + 40) >>> 0, 4) | 0;
     sp = (sp + 64) | 0;
-     return v0;
+     return [v0, v1];
   default: throw new Error(`f80033648: no block at 0x${(pc >>> 0).toString(16)}`);
   }
 }
@@ -7229,7 +7229,7 @@ export function* f80015d74(ctx, a0 = 0, a1 = 0, a2 = 0, a3 = 0) {
     s1 = m.read(((sp) + 44) >>> 0, 4) | 0;
     s0 = m.read(((sp) + 40) >>> 0, 4) | 0;
     sp = (sp + 72) | 0;
-     return v0;
+     return [v0, v1];
   default: throw new Error(`f80015d74: no block at 0x${(pc >>> 0).toString(16)}`);
   }
 }
@@ -7548,7 +7548,7 @@ export function f80033be8(ctx, a0 = 0, a1 = 0, a2 = 0, a3 = 0) {
     v0 = a1 & 65535;
   case 0x800340c8:
     sp = (sp + 80) | 0;
-     return v0;
+     return [v0, v1];
   default: throw new Error(`f80033be8: no block at 0x${(pc >>> 0).toString(16)}`);
   }
 }
@@ -7602,7 +7602,7 @@ export function f8003cd78(ctx, a0 = 0, a1 = 0, a2 = 0, a3 = 0) {
     m.write(((0x8007913c) + 440) >>> 0, v0 & 0xff, 1);
   case 0x8003ce20:
     v0 = a1 << 16;
-    v0 = v0 >> 16; return v0;
+    v0 = v0 >> 16; return [v0, v1];
   default: throw new Error(`f8003cd78: no block at 0x${(pc >>> 0).toString(16)}`);
   }
 }
@@ -7940,7 +7940,7 @@ export function* f8002afb8(ctx, a0 = 0, a1 = 0, a2 = 0, a3 = 0) {
     s1 = m.read(((sp) + 60) >>> 0, 4) | 0;
     s0 = m.read(((sp) + 56) >>> 0, 4) | 0;
     sp = (sp + 96) | 0;
-     return v0;
+     return [v0, v1];
   default: throw new Error(`f8002afb8: no block at 0x${(pc >>> 0).toString(16)}`);
   }
 }
@@ -8071,7 +8071,7 @@ export function* f8002bfe8(ctx, a0 = 0, a1 = 0, a2 = 0, a3 = 0) {
     m.write(((at) + -28027) >>> 0, v0 & 0xff, 1);
   case 0x8002c1c8:
     sp = (sp + 32) | 0;
-     return v0;
+     return [v0, v1];
   default: throw new Error(`f8002bfe8: no block at 0x${(pc >>> 0).toString(16)}`);
   }
 }
@@ -8094,7 +8094,7 @@ export function f8002c4c0(ctx, a0 = 0, a1 = 0, a2 = 0, a3 = 0) {
     v1 = (0 + 84) | 0;
     m.write(((v0) + 93) >>> 0, a0 & 0xff, 1);
     m.write(((v0) + 95) >>> 0, a0 & 0xff, 1);
-    m.write(((v0) + 97) >>> 0, v1 & 0xff, 1); return v0;
+    m.write(((v0) + 97) >>> 0, v1 & 0xff, 1); return [v0, v1];
   default: throw new Error(`f8002c4c0: no block at 0x${(pc >>> 0).toString(16)}`);
   }
 }
@@ -8267,7 +8267,7 @@ export function* f8002baa0(ctx, a0 = 0, a1 = 0, a2 = 0, a3 = 0) {
     s1 = m.read(((sp) + 44) >>> 0, 4) | 0;
     s0 = m.read(((sp) + 40) >>> 0, 4) | 0;
     sp = (sp + 80) | 0;
-     return v0;
+     return [v0, v1];
   default: throw new Error(`f8002baa0: no block at 0x${(pc >>> 0).toString(16)}`);
   }
 }
@@ -8484,7 +8484,7 @@ export function* f800338ac(ctx, a0 = 0, a1 = 0, a2 = 0, a3 = 0) {
     s1 = m.read(((sp) + 28) >>> 0, 4) | 0;
     s0 = m.read(((sp) + 24) >>> 0, 4) | 0;
     sp = (sp + 64) | 0;
-     return v0;
+     return [v0, v1];
   default: throw new Error(`f800338ac: no block at 0x${(pc >>> 0).toString(16)}`);
   }
 }
@@ -8581,7 +8581,7 @@ export function* f80038b8c(ctx, a0 = 0, a1 = 0, a2 = 0, a3 = 0) {
     s1 = m.read(((sp) + 36) >>> 0, 4) | 0;
     s0 = m.read(((sp) + 32) >>> 0, 4) | 0;
     sp = (sp + 64) | 0;
-     return v0;
+     return [v0, v1];
   default: throw new Error(`f80038b8c: no block at 0x${(pc >>> 0).toString(16)}`);
   }
 }
@@ -8746,7 +8746,7 @@ export function* f80038ce8(ctx, a0 = 0, a1 = 0, a2 = 0, a3 = 0) {
     s1 = m.read(((sp) + 52) >>> 0, 4) | 0;
     s0 = m.read(((sp) + 48) >>> 0, 4) | 0;
     sp = (sp + 88) | 0;
-     return v0;
+     return [v0, v1];
   default: throw new Error(`f80038ce8: no block at 0x${(pc >>> 0).toString(16)}`);
   }
 }
@@ -8764,7 +8764,7 @@ export function* f80038f58(ctx, a0 = 0, a1 = 0, a2 = 0, a3 = 0) {
     a2 = a2 & 65535; [v0, v1] = yield* call(ctx, sp, 0x80038ce8, a0, a1, a2, a3);
   case 0x80038f70:
     sp = (sp + 24) | 0;
-     return v0;
+     return [v0, v1];
   default: throw new Error(`f80038f58: no block at 0x${(pc >>> 0).toString(16)}`);
   }
 }
@@ -8799,7 +8799,7 @@ export function* f80029a6c(ctx, a0 = 0, a1 = 0, a2 = 0, a3 = 0) {
     m.write(((at) + -28027) >>> 0, v0 & 0xff, 1);
   case 0x80029ac0:
     sp = (sp + 32) | 0;
-     return v0;
+     return [v0, v1];
   default: throw new Error(`f80029a6c: no block at 0x${(pc >>> 0).toString(16)}`);
   }
 }
@@ -8834,7 +8834,7 @@ export function* f80029ad0(ctx, a0 = 0, a1 = 0, a2 = 0, a3 = 0) {
     m.write(((at) + -28027) >>> 0, v0 & 0xff, 1);
   case 0x80029b24:
     sp = (sp + 32) | 0;
-     return v0;
+     return [v0, v1];
   default: throw new Error(`f80029ad0: no block at 0x${(pc >>> 0).toString(16)}`);
   }
 }
@@ -8897,7 +8897,7 @@ export function* cardMessage(ctx, a0 = 0, a1 = 0, a2 = 0, a3 = 0) {
   case 0x80016064:
     s0 = m.read(((sp) + 16) >>> 0, 4) | 0;
     sp = (sp + 24) | 0;
-     return v0;
+     return [v0, v1];
   default: throw new Error(`cardMessage: no block at 0x${(pc >>> 0).toString(16)}`);
   }
 }
@@ -8935,7 +8935,7 @@ export function* f8002a980(ctx, a0 = 0, a1 = 0, a2 = 0, a3 = 0) {
     v0 = m.read(((v0) + -27368) >>> 0, 1);
     s0 = m.read(((sp) + 16) >>> 0, 4) | 0;
     sp = (sp + 24) | 0;
-     return v0;
+     return [v0, v1];
   default: throw new Error(`f8002a980: no block at 0x${(pc >>> 0).toString(16)}`);
   }
 }
@@ -9035,7 +9035,7 @@ export function* f80025898(ctx, a0 = 0, a1 = 0, a2 = 0, a3 = 0) {
     s1 = m.read(((sp) + 44) >>> 0, 4) | 0;
     s0 = m.read(((sp) + 40) >>> 0, 4) | 0;
     sp = (sp + 64) | 0;
-     return v0;
+     return [v0, v1];
   default: throw new Error(`f80025898: no block at 0x${(pc >>> 0).toString(16)}`);
   }
 }
@@ -9071,7 +9071,7 @@ export function* f8002c530(ctx, a0 = 0, a1 = 0, a2 = 0, a3 = 0) {
     v0 = 0x80080000 | 0;
     v0 = m.read(((v0) + -27368) >>> 0, 1);
     sp = (sp + 24) | 0;
-     return v0;
+     return [v0, v1];
   default: throw new Error(`f8002c530: no block at 0x${(pc >>> 0).toString(16)}`);
   }
 }
@@ -9109,7 +9109,7 @@ export function* noCardBox(ctx, a0 = 0, a1 = 0, a2 = 0, a3 = 0) {
     v0 = m.read(((v0) + -27368) >>> 0, 1);
     s0 = m.read(((sp) + 16) >>> 0, 4) | 0;
     sp = (sp + 24) | 0;
-     return v0;
+     return [v0, v1];
   default: throw new Error(`noCardBox: no block at 0x${(pc >>> 0).toString(16)}`);
   }
 }
@@ -9414,7 +9414,7 @@ export function* yesNo(ctx, a0 = 0, a1 = 0, a2 = 0, a3 = 0) {
     s0 = m.read(((sp) + 40) >>> 0, 4) | 0;
     sp = (sp + 80) | 0;
     if (ctx.touch) ctx.touch.menu = prevTouch;
-     return v0;
+     return [v0, v1];
   default: throw new Error(`yesNo: no block at 0x${(pc >>> 0).toString(16)}`);
   }
 }
@@ -9587,7 +9587,7 @@ export function* cardCheck(ctx, a0 = 0, a1 = 0, a2 = 0, a3 = 0) {
     s1 = m.read(((sp) + 44) >>> 0, 4) | 0;
     s0 = m.read(((sp) + 40) >>> 0, 4) | 0;
     sp = (sp + 80) | 0;
-     return v0;
+     return [v0, v1];
   default: throw new Error(`cardCheck: no block at 0x${(pc >>> 0).toString(16)}`);
   }
 }
@@ -9649,7 +9649,7 @@ export function* cardLoad(ctx, a0 = 0, a1 = 0, a2 = 0, a3 = 0) {
   case 0x800299a8:
     v0 = m.read(((sp) + 16) >>> 0, 4) | 0;
     sp = (sp + 32) | 0;
-     return v0;
+     return [v0, v1];
   default: throw new Error(`cardLoad: no block at 0x${(pc >>> 0).toString(16)}`);
   }
 }
@@ -9943,7 +9943,7 @@ export function* title(ctx, a0 = 0, a1 = 0, a2 = 0, a3 = 0) {
     s0 = m.read(((sp) + 40) >>> 0, 4) | 0;
     sp = (sp + 64) | 0;
     if (ctx.touch) ctx.touch.menu = prevTouch;
-     return v0;
+     return [v0, v1];
   default: throw new Error(`title: no block at 0x${(pc >>> 0).toString(16)}`);
   }
 }
@@ -11500,7 +11500,7 @@ export function* startMenu(ctx, a0 = 0, a1 = 0, a2 = 0, a3 = 0) {
     s0 = m.read(((sp) + 56) >>> 0, 4) | 0;
     sp = (sp + 96) | 0;
     if (ctx.touch) ctx.touch.menu = prevTouch;
-     return v0;
+     return [v0, v1];
   default: throw new Error(`startMenu: no block at 0x${(pc >>> 0).toString(16)}`);
   }
 }
@@ -11600,7 +11600,7 @@ export function* f8002a1ac(ctx, a0 = 0, a1 = 0, a2 = 0, a3 = 0) {
   case 0x8002a30c:
     s0 = m.read(((sp) + 24) >>> 0, 4) | 0;
     sp = (sp + 32) | 0;
-     return v0;
+     return [v0, v1];
   default: throw new Error(`f8002a1ac: no block at 0x${(pc >>> 0).toString(16)}`);
   }
 }
@@ -11944,7 +11944,7 @@ export function* f8002aa70(ctx, a0 = 0, a1 = 0, a2 = 0, a3 = 0) {
     s1 = m.read(((sp) + 60) >>> 0, 4) | 0;
     s0 = m.read(((sp) + 56) >>> 0, 4) | 0;
     sp = (sp + 96) | 0;
-     return v0;
+     return [v0, v1];
   default: throw new Error(`f8002aa70: no block at 0x${(pc >>> 0).toString(16)}`);
   }
 }
@@ -12152,7 +12152,7 @@ export function* f8002b4e0(ctx, a0 = 0, a1 = 0, a2 = 0, a3 = 0) {
     s1 = m.read(((sp) + 28) >>> 0, 4) | 0;
     s0 = m.read(((sp) + 24) >>> 0, 4) | 0;
     sp = (sp + 56) | 0;
-     return v0;
+     return [v0, v1];
   default: throw new Error(`f8002b4e0: no block at 0x${(pc >>> 0).toString(16)}`);
   }
 }
@@ -12168,7 +12168,7 @@ export function* f80033848(ctx, a0 = 0, a1 = 0, a2 = 0, a3 = 0) {
     a0 = a0 & 255; [v0, v1] = yield* call(ctx, sp, 0x8002b7f4, a0, a1, a2, a3);
   case 0x80033858:
     sp = (sp + 24) | 0;
-     return v0;
+     return [v0, v1];
   default: throw new Error(`f80033848: no block at 0x${(pc >>> 0).toString(16)}`);
   }
 }
@@ -12348,7 +12348,7 @@ export function* f8002b7f4(ctx, a0 = 0, a1 = 0, a2 = 0, a3 = 0) {
     s1 = m.read(((sp) + 44) >>> 0, 4) | 0;
     s0 = m.read(((sp) + 40) >>> 0, 4) | 0;
     sp = (sp + 64) | 0;
-     return v0;
+     return [v0, v1];
   default: throw new Error(`f8002b7f4: no block at 0x${(pc >>> 0).toString(16)}`);
   }
 }
@@ -12372,7 +12372,7 @@ export function* f8003360c(ctx, a0 = 0, a1 = 0, a2 = 0, a3 = 0) {
   case 0x80033634:
     s0 = m.read(((sp) + 16) >>> 0, 4) | 0;
     sp = (sp + 24) | 0;
-     return v0;
+     return [v0, v1];
   default: throw new Error(`f8003360c: no block at 0x${(pc >>> 0).toString(16)}`);
   }
 }
@@ -12396,7 +12396,7 @@ export function f8002c4f8(ctx, a0 = 0, a1 = 0, a2 = 0, a3 = 0) {
   case 0x8002c524:
     v0 = 0 | 0;
   case 0x8002c528:
-     return v0;
+     return [v0, v1];
   default: throw new Error(`f8002c4f8: no block at 0x${(pc >>> 0).toString(16)}`);
   }
 }
@@ -12434,7 +12434,7 @@ export function* f80032974(ctx, a0 = 0, a1 = 0, a2 = 0, a3 = 0) {
     s1 = m.read(((sp) + 20) >>> 0, 4) | 0;
     s0 = m.read(((sp) + 16) >>> 0, 4) | 0;
     sp = (sp + 32) | 0;
-     return v0;
+     return [v0, v1];
   default: throw new Error(`f80032974: no block at 0x${(pc >>> 0).toString(16)}`);
   }
 }
@@ -12454,7 +12454,7 @@ export function* op3d(ctx, a0 = 0, a1 = 0, a2 = 0, a3 = 0) {
     at = 0x80080000 | 0;
     m.write(((at) + -27992) >>> 0, 0 & 0xff, 1);
     sp = (sp + 24) | 0;
-     return v0;
+     return [v0, v1];
   default: throw new Error(`op3d: no block at 0x${(pc >>> 0).toString(16)}`);
   }
 }
@@ -13031,7 +13031,7 @@ export function* restoreBookmark(ctx, a0 = 0, a1 = 0, a2 = 0, a3 = 0) {
     s1 = m.read(((sp) + 44) >>> 0, 4) | 0;
     s0 = m.read(((sp) + 40) >>> 0, 4) | 0;
     sp = (sp + 80) | 0;
-     return v0;
+     return [v0, v1];
   default: throw new Error(`restoreBookmark: no block at 0x${(pc >>> 0).toString(16)}`);
   }
 }
@@ -13061,7 +13061,7 @@ export function* op1f(ctx, a0 = 0, a1 = 0, a2 = 0, a3 = 0) {
     a0 = 0 | 0; [v0, v1] = yield* call(ctx, sp, 0x80033848, a0, a1, a2, a3);
   case 0x8001f374:
     sp = (sp + 24) | 0;
-     return v0;
+     return [v0, v1];
   default: throw new Error(`op1f: no block at 0x${(pc >>> 0).toString(16)}`);
   }
 }
@@ -13502,7 +13502,7 @@ export function* op44(ctx, a0 = 0, a1 = 0, a2 = 0, a3 = 0) {
     s1 = m.read(((sp) + 20) >>> 0, 4) | 0;
     s0 = m.read(((sp) + 16) >>> 0, 4) | 0;
     sp = (sp + 40) | 0;
-     return v0;
+     return [v0, v1];
   default: throw new Error(`op44: no block at 0x${(pc >>> 0).toString(16)}`);
   }
 }
@@ -13569,7 +13569,7 @@ export function* f8001bda4(ctx, a0 = 0, a1 = 0, a2 = 0, a3 = 0) {
     s1 = m.read(((sp) + 20) >>> 0, 4) | 0;
     s0 = m.read(((sp) + 16) >>> 0, 4) | 0;
     sp = (sp + 32) | 0;
-     return v0;
+     return [v0, v1];
   default: throw new Error(`f8001bda4: no block at 0x${(pc >>> 0).toString(16)}`);
   }
 }
@@ -13626,7 +13626,7 @@ export function* f8001c21c(ctx, a0 = 0, a1 = 0, a2 = 0, a3 = 0) {
   case 0x8001c2cc:
     s0 = m.read(((sp) + 24) >>> 0, 4) | 0;
     sp = (sp + 32) | 0;
-     return v0;
+     return [v0, v1];
   default: throw new Error(`f8001c21c: no block at 0x${(pc >>> 0).toString(16)}`);
   }
 }
@@ -13668,7 +13668,7 @@ export function* f8001fb38(ctx, a0 = 0, a1 = 0, a2 = 0, a3 = 0) {
      [v0, v1] = yield* call(ctx, sp, 0x8001f690, a0, a1, a2, a3);
   case 0x8001fbb0:
     sp = (sp + 24) | 0;
-     return v0;
+     return [v0, v1];
   default: throw new Error(`f8001fb38: no block at 0x${(pc >>> 0).toString(16)}`);
   }
 }
@@ -13798,7 +13798,7 @@ export function* f800216a8(ctx, a0 = 0, a1 = 0, a2 = 0, a3 = 0) {
     s1 = m.read(((sp) + 44) >>> 0, 4) | 0;
     s0 = m.read(((sp) + 40) >>> 0, 4) | 0;
     sp = (sp + 72) | 0;
-     return v0;
+     return [v0, v1];
   default: throw new Error(`f800216a8: no block at 0x${(pc >>> 0).toString(16)}`);
   }
 }
@@ -13879,7 +13879,7 @@ export function* f8003d8dc(ctx, a0 = 0, a1 = 0, a2 = 0, a3 = 0) {
     s1 = m.read(((sp) + 20) >>> 0, 4) | 0;
     s0 = m.read(((sp) + 16) >>> 0, 4) | 0;
     sp = (sp + 32) | 0;
-     return v0;
+     return [v0, v1];
   default: throw new Error(`f8003d8dc: no block at 0x${(pc >>> 0).toString(16)}`);
   }
 }
@@ -13912,7 +13912,7 @@ export function f80044b60(ctx, a0 = 0, a1 = 0, a2 = 0, a3 = 0) {
     m.write(((a1) + 0) >>> 0, a0 & 0xff, 1);
     { const c = (a2 | 0) !== 0; a1 = (a1 + 1) | 0; if (c) { pc = 0x80044b6c; continue; } }
   case 0x80044bb8:
-     return v0;
+     return [v0, v1];
   default: throw new Error(`f80044b60: no block at 0x${(pc >>> 0).toString(16)}`);
   }
 }
@@ -14204,7 +14204,7 @@ export function* backlog(ctx, a0 = 0, a1 = 0, a2 = 0, a3 = 0) {
     s0 = m.read(((sp) + 40) >>> 0, 4) | 0;
     sp = (sp + 80) | 0;
     if (ctx.touch) ctx.touch.menu = prevTouch;
-     return v0;
+     return [v0, v1];
   default: throw new Error(`backlog: no block at 0x${(pc >>> 0).toString(16)}`);
   }
 }
@@ -14387,7 +14387,7 @@ export function* f80024d08(ctx, a0 = 0, a1 = 0, a2 = 0, a3 = 0) {
     s1 = m.read(((sp) + 20) >>> 0, 4) | 0;
     s0 = m.read(((sp) + 16) >>> 0, 4) | 0;
     sp = (sp + 40) | 0;
-     return v0;
+     return [v0, v1];
   default: throw new Error(`f80024d08: no block at 0x${(pc >>> 0).toString(16)}`);
   }
 }
@@ -14421,7 +14421,7 @@ export function* f80025640(ctx, a0 = 0, a1 = 0, a2 = 0, a3 = 0) {
   case 0x80025694:
     s0 = m.read(((sp) + 16) >>> 0, 4) | 0;
     sp = (sp + 24) | 0;
-     return v0;
+     return [v0, v1];
   default: throw new Error(`f80025640: no block at 0x${(pc >>> 0).toString(16)}`);
   }
 }
@@ -14456,7 +14456,7 @@ export function f8003911c(ctx, a0 = 0, a1 = 0, a2 = 0, a3 = 0) {
     v1 = (v1 + 1) | 0;
     at = 0x80080000 | 0;
     m.write(((at) + -27272) >>> 0, v1 >>> 0, 4);
-     return v0;
+     return [v0, v1];
   default: throw new Error(`f8003911c: no block at 0x${(pc >>> 0).toString(16)}`);
   }
 }
@@ -14471,7 +14471,7 @@ export function f80039184(ctx, a0 = 0, a1 = 0, a2 = 0, a3 = 0) {
     v0 = 0x80080000 | 0;
     v0 = (v0 + -27392) | 0;
     a0 = (a0 + v0) | 0;
-    m.write(((a0) + 0) >>> 0, 0 & 0xff, 1); return v0;
+    m.write(((a0) + 0) >>> 0, 0 & 0xff, 1); return [v0, v1];
   default: throw new Error(`f80039184: no block at 0x${(pc >>> 0).toString(16)}`);
   }
 }
@@ -14490,7 +14490,7 @@ export function* f8002374c(ctx, a0 = 0, a1 = 0, a2 = 0, a3 = 0) {
     a0 = 0 | 0; [v0, v1] = yield* call(ctx, sp, 0x80023600, a0, a1, a2, a3);
   case 0x80023768:
     sp = (sp + 24) | 0;
-     return v0;
+     return [v0, v1];
   default: throw new Error(`f8002374c: no block at 0x${(pc >>> 0).toString(16)}`);
   }
 }
@@ -14512,7 +14512,7 @@ export function f8003a6b0(ctx, a0 = 0, a1 = 0, a2 = 0, a3 = 0) {
     v0 = 0x80080000 | 0;
     v0 = (v0 + -27460) | 0;
     v1 = (v1 + v0) | 0;
-    m.write(((v1) + 0) >>> 0, a0 & 0xffff, 2); return v0;
+    m.write(((v1) + 0) >>> 0, a0 & 0xffff, 2); return [v0, v1];
   default: throw new Error(`f8003a6b0: no block at 0x${(pc >>> 0).toString(16)}`);
   }
 }
