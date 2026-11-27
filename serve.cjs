@@ -84,12 +84,10 @@ const sfcRom = (() => { try { return fs.readFileSync(path.join(__dirname, 'serve
 if (sfcRom) routes.set(SFC_GAME, [path.resolve(__dirname, sfcRom), 'application/octet-stream']);
 const cartridges = new Set(['/AGB-AHZJ.gba', '/AGB-AKZJ.gba', SFC_GAME]);
 // Open beta: while a local, uncommitted serve.open file exists (or SOUNDNOVEL_OPEN=1), tunnel visitors
-// need no password for the hub, the GBA and PS1 players (and their data and saves). Everything else (PS2 build,
-// SFC pages) keeps the password, cartridges stay blocked, and pages ask search engines not to index them.
+// need no password for anything they can read (태우 2026-11-28: "비밀번호 하지마"). Writes (/edit/) keep
+// the password, cartridges stay blocked, and pages ask search engines not to index them.
 const openBeta = () => process.env.SOUNDNOVEL_OPEN === '1' || fs.existsSync(path.join(__dirname, 'serve.open'));
-const OPEN_PREFIXES = ['/ports/kamaitachi-gba/', '/kamaitachi-gba-kor/', '/ports/kamaitachi-ps1/', '/kamaitachi-ps1-kor/port-data/',
-  '/shared/', '/art/', '/play/'];
-const openPath = (url) => ['/', '/style.css', '/games.js', '/index.html'].includes(url) || OPEN_PREFIXES.some(prefix => url.startsWith(prefix));
+const openPath = (url) => !url.startsWith('/edit/');
 function allowedFromOutside(request, response, url) {
   if (!['cf-connecting-ip', 'x-forwarded-for', 'x-forwarded-host'].some(name => name in request.headers)) return true;
   if (openBeta() && openPath(url)) {
