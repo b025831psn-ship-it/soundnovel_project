@@ -3,6 +3,7 @@
 import { SPC700 } from './spc700.js';
 import { SDSP } from './sdsp.js';
 import { IplHle } from './ipl-hle.js';
+import { captureState, restoreState } from './state.js';
 
 export const SPC_CLOCK_HZ = 1024000;
 export const SAMPLE_RATE = 32000;
@@ -42,6 +43,10 @@ export class APU {
     this.coreDelay = APU.CORE_DELAY;
   }
   static CORE_DELAY = 3;
+
+  // Save state of the SPC700, S-DSP, timers and ARAM (callbacks stay as they are).
+  saveState() { return captureState(this); }
+  loadState(state) { restoreState(this, state); }
 
   cpuWrite(port, value) { this.cpu.portIn[port & 3] = value & 0xff; }
   cpuRead(port) { return this.cpu.portOut[port & 3]; }

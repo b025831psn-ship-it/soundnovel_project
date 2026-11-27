@@ -1,0 +1,8 @@
+{
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test:sfc": "node --test sfc-vm/tests/*.test.mjs",
+    "serve": "node serve.cjs"
+  }
+}

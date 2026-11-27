@@ -40,6 +40,16 @@ trace runner는 `time`, `runTo(sec)`, `runToMaster(master)`, `setButtons(mask)`�
 다음 명령 경계에서 멈춥니다. `$4200` NMI-enable rising edge의 12-master 지연과
 joypad latch도 이 클래스에서 한 번만 구현합니다.
 
+### 상태 저장 계약
+
+`machine.saveState({ apu })`는 structured-clone 가능한 versioned 객체를 반환하고,
+`machine.loadState(state, { apu })`는 같은 `SfcMachine` 인스턴스에 복원합니다. CPU,
+WRAM/SRAM/VRAM/CGRAM/OAM/I/O, DMA·HDMA와 pending math, controller latch, raster/NMI/IRQ
+scheduler, PPU latch와 framebuffer, MasterLink 시각·대기 port write가 포함됩니다.
+`apu`를 생략하면 현재 MasterLink의 APU를 사용합니다. APU가 `saveState()`를 제공하면
+그 결과를 `state.apu`에 넣고, 복원할 때 `apu.loadState(state.apu)`를 먼저 호출합니다.
+APU 상태가 들어 있는데 호환 APU가 없으면 조용히 불완전 복원하지 않고 예외를 냅니다.
+
 ## Master-clock/APU 연결
 
 `Cpu65816.masterCycle`은 Snes9x와 같은 master-clock 단위로 opcode fetch,

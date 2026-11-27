@@ -45,9 +45,10 @@ function portRoute(url) {
     ['/ports/kamaitachi-gba/', path.join(__dirname, 'ports', 'kamaitachi-gba'), ['.html', '.js', '.css']],
     ['/kamaitachi-gba-kor/port-data/', path.join(__dirname, 'kamaitachi-gba-kor', 'port-data'), ['.json', '.bin']],
     ['/kamaitachi-gba-kor/port-data-ko/', path.join(__dirname, 'kamaitachi-gba-kor', 'port-data-ko'), ['.json', '.bin']],
-    // SFC port (sound only so far): its page and the cartridge sound data and trace it plays back.
-    ['/ports/kamaitachi-sfc/', path.join(__dirname, 'ports', 'kamaitachi-sfc'), ['.html', '.js']],
-    ['/kamaitachi-sfc-kor/port-data/', path.join(__dirname, 'kamaitachi-sfc-kor', 'port-data'), ['.bin', '.tsv']],
+    // SFC port: its ROM-less player (index.html: the program ranges in port-data/program, no cartridge),
+    // the sound test pages, and the private data.
+    ['/ports/kamaitachi-sfc/', path.join(__dirname, 'ports', 'kamaitachi-sfc'), ['.html', '.js', '.css']],
+    ['/kamaitachi-sfc-kor/port-data/', path.join(__dirname, 'kamaitachi-sfc-kor', 'port-data'), ['.json', '.bin', '.tsv']],
     // The SFC screen VM (Codex, feat/20): the machine the SFC port's VM page imports; its tests stay out.
     ['/sfc-vm/', path.join(__dirname, 'sfc-vm'), ['.js']],
     // Code shared by every port (save store and sync client); its tests and the reference server stay out.

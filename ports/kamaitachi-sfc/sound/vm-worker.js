@@ -1,10 +1,11 @@
 // Runs the 65c816 VM and the APU off the main thread. Messages in:
-//   { type: 'start', game, gauss, port }   game/gauss: ArrayBuffer, port: out.connectPort()
+//   { type: 'start', game, gauss, port, sram? }   game/gauss/sram: ArrayBuffer, port: out.connectPort()
 //   { type: 'buttons', mask }  held keys    { type: 'pause', on }
 //   { type: 'tap', x, y }      screen pixels; pressed as planTap() decides
 //   { type: 'press', name }    one button press (menu icon actions)
 // Messages out: { type: 'status', frame, time, cost } about four times a second,
 //               { type: 'frame', frame, pixels } (256x224 RGBA) when the picture changed,
+//               { type: 'sram', bytes } (8 KiB) a little after the game writes its bookmarks,
 //               { type: 'error', message }.
 import { APU } from './apu.js';
 import { runRealtime } from './realtime.js';
@@ -24,7 +25,7 @@ onmessage = ({ data }) => {
   else if (data.type === 'press' && PAD[data.name]) queue.push(PAD[data.name]);
 };
 
-function start({ game, gauss, port }) {
+function start({ game, gauss, port, sram }) {
   const sink = createPcmSink(port);
   const apu = new APU({ gauss: new Int16Array(gauss) }); apu.powerOn(); apu.dsp.onSample = sink.sample;
   let shown = null, latest = null, latestFrame = 0;
@@ -34,6 +35,17 @@ function start({ game, gauss, port }) {
     busOptions: { eventLimit: 0, apuTraceLimit: 0 }, cpuOptions: { traceLimit: 0 },
     onFrame: (frame, fb) => { latest = fb; latestFrame = frame; machine.setButtons(held | queue.frame()); } });
   machine.setButtons(0);
+  // Battery save: load the stored bookmarks, and hand them back when the game changes them
+  // (checked twice a second; sent once the bytes have stayed the same for one check).
+  const live = machine.bus.sram;
+  if (sram && sram.byteLength === live.length) live.set(new Uint8Array(sram));
+  let kept = live.slice(), dirty = false, sramAt = 0;
+  const watchSram = (now) => {
+    if (now < sramAt) return; sramAt = now + 500;
+    let same = true; for (let i = 0; i < live.length; i++) if (live[i] !== kept[i]) { same = false; break; }
+    if (!same) { kept = live.slice(); dirty = true; return; }
+    if (dirty) { dirty = false; const bytes = kept.slice(); postMessage({ type: 'sram', bytes }, [bytes.buffer]); }
+  };
   const vm = new VmSound(machine);
   let cost = 0, reportAt = 0;
   run = runRealtime({
@@ -52,6 +64,7 @@ function start({ game, gauss, port }) {
         postMessage({ type: 'frame', frame: latestFrame, pixels }, [pixels.buffer]);
       }
       const now = performance.now();
+      watchSram(now);
       if (now < reportAt) return; reportAt = now + 250;
       postMessage({ type: 'status', frame: vm.frame, time: vm.time, cost });
     },

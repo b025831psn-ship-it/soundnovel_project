@@ -11,6 +11,7 @@
 // - an SPC port read at s sees a CPU write iff s + READ_POINT[opcode] >= T. The driver
 //   polls with MOV A,!$F4 (E5: miss at s - T = -0.159, hit at +0.003) and
 //   CMP A,!$F4 (65: miss at +2.975, hit at +3.095). Other opcodes use 0.
+import { captureState, restoreState } from './state.js';
 export const SPC_NUM = 15664, SPC_DEN = 328125;
 export const READ_LAG = 1;
 export const READ_POINT = new Int8Array(256);
@@ -29,6 +30,9 @@ export class MasterLink {
     this.readLag = readLag; this.readPoint = readPoint; this.pending = [];
     apu.cpu.onPortRead = (s, op) => this.deliver(s + this.readPoint[op]);
   }
+  // Link state plus the APU (the APU's callbacks and readPoint table are kept).
+  saveState() { return { link: captureState(this, { skip: [this.apu, this.readPoint] }), apu: this.apu.saveState() }; }
+  loadState(state) { restoreState(this, state.link, { skip: [this.apu, this.readPoint] }); this.apu.loadState(state.apu); }
   get time() { return this.target + this.rem / SPC_DEN; }
   advanceTo(master) {
     if (master < this.master) throw new Error(`master clock went backwards: ${master} < ${this.master}`);
