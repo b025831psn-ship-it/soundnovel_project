@@ -8,9 +8,10 @@ export class SePlayer {
     await context.audioWorklet.addModule(new URL('./se-worklet.js', import.meta.url));
     const node = new AudioWorkletNode(context, 'kamaitachi2-se', {numberOfInputs:0, outputChannelCount:[2]});
     node.connect(context.destination);
-    const sep = await (await fetch(url('sep.pac'))).arrayBuffer();
+    const [sep, gauss] = await Promise.all([fetch(url('sep.pac')).then(r => r.arrayBuffer()),
+      fetch(url('gauss.bin')).then(r => (r.ok ? r.arrayBuffer() : null)).catch(() => null)]);
     const player = new SePlayer(node, url, sep);
-    node.port.postMessage({type:'init', sep}, [sep]);
+    node.port.postMessage({type:'init', sep, gauss}, gauss ? [sep, gauss] : [sep]);
     return player;
   }
   constructor(node, url, sep) {

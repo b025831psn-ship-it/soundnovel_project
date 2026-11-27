@@ -3,13 +3,16 @@
 //   node test-se.mjs <se-dir> <scenepack.json> [--wav id out.wav] [--seconds 8]
 import fs from 'node:fs';
 import path from 'node:path';
-import { SepPack, WdBank, SeEngine, parseTrack, SPU_RATE } from '../se.js';
+import { SepPack, WdBank, SeEngine, parseTrack, SPU_RATE, setGaussTable } from '../se.js';
 
 const [dir, packPath, ...rest] = process.argv.slice(2);
 const opt = (name, fallback) => { const i = rest.indexOf(name); return i < 0 ? fallback : rest[i + 1]; };
 const seconds = +opt('--seconds', 8);
 const buf = f => { const b = fs.readFileSync(f); return b.buffer.slice(b.byteOffset, b.byteOffset + b.length); };
 const sep = new SepPack(buf(path.join(dir, 'sep.pac')));
+const gaussFile = path.join(dir, 'gauss.bin');
+if (fs.existsSync(gaussFile)) setGaussTable(new Int16Array(buf(gaussFile)));
+console.log(`interpolation: ${fs.existsSync(gaussFile) ? 'SPU2 gaussian (gauss.bin)' : 'cubic stand-in'}`);
 const banks = new Map();
 const bank = id => {
   if (!banks.has(id)) {
