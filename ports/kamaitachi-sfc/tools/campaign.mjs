@@ -11,7 +11,7 @@ import path from 'node:path';
 import { APU } from '../sound/apu.js';
 import { MasterLink } from '../sound/master-link.js';
 
-const BTN = { B: 0x8000, Y: 0x4000, SELECT: 0x2000, START: 0x1000, UP: 0x0800, DOWN: 0x0400,
+export const BTN = { B: 0x8000, Y: 0x4000, SELECT: 0x2000, START: 0x1000, UP: 0x0800, DOWN: 0x0400,
   LEFT: 0x0200, RIGHT: 0x0100, A: 0x0080, X: 0x0040, L: 0x0020, R: 0x0010 };
 const SCRIPT_BASE = 0x2fce1 * 8;
 const SAVE_SIZE = 8192, SLOT_ONE = 0x800;
@@ -138,7 +138,7 @@ export class Session {
 const KANA_ROWS = ['あいうえおぁぃぅぇぉ', 'かきくけこがぎぐげご', 'さしすせそざじずぜぞ', 'たちつてとだぢづでど', 'なにぬねの     ',
   'はひふへほばびぶべぼ', 'まみむめもぱぴぷぺぽ', 'や ゆ よゃゅょっー', 'らりるれろわ を ん'];
 const POS = new Map(); KANA_ROWS.forEach((line, r) => [...line].forEach((c, i) => { if (c !== ' ') POS.set(c, (r + 1) * 16 + i + 2); }));
-function enterCulprit(s, name) {
+export function enterCulprit(s, name) {
   const w = s.m.bus.wram;
   if (!s.cultpritReady()) throw new Error('The suspect keyboard is not ready');
   if (w[0x1024] !== 0) throw new Error('Expected an empty suspect-name buffer');
@@ -186,16 +186,16 @@ class Route {
   }
 }
 
-const endingFlags = (sram) => { let f = 0n; for (let i = 7; i >= 0; i--) f = (f << 8n) | BigInt(sram[SLOT_ONE + 0x18 + i]); const out = new Set(); for (let i = 1; i <= 43; i++) if (f & (1n << BigInt(i))) out.add(i); return out; };
+export const endingFlags = (sram) => { let f = 0n; for (let i = 7; i >= 0; i--) f = (f << 8n) | BigInt(sram[SLOT_ONE + 0x18 + i]); const out = new Set(); for (let i = 1; i <= 43; i++) if (f & (1n << BigInt(i))) out.add(i); return out; };
 
-function bootSlot(s, seed) {
+export function bootSlot(s, seed) {
   if (!seed) { s.boot(); return; }
   s.m.bus.sram.set(seed);
   s.step(600); s.press('START', 160); s.press('A', 160); s.press('A', 160); s.press('DOWN', 30); s.press('A', 180);
   s.pending = s.accepted = s.terminal = null;
 }
 
-export function runRoute(s, guide, seed) {
+export function runRoute(s, guide, seed, { repeat = false } = {}) {
   const ending = +guide.id.slice(3), route = new Route(guide);
   bootSlot(s, seed);
   const before = seed ? endingFlags(seed) : new Set();
@@ -212,7 +212,16 @@ export function runRoute(s, guide, seed) {
   if (route.next !== 'END') throw new Error(`The ending arrived before guide step ${route.next}`);
   if (event.flag !== ending) throw new Error(`Expected ending opcode flag ${ending}, observed ${JSON.stringify(event)}`);
   let fresh = new Set();
-  for (let i = 0; i < 1500; i++) { fresh = new Set([...endingFlags(s.m.bus.sram)].filter((x) => !before.has(x))); if (fresh.size) break; s.press('A', 12); }
+  if (repeat && before.has(ending)) {
+    // Checkpoint run from a save that already holds this ending: the bookmark is committed
+    // when the play counter (0x87A) moves; the ending flag must still be set.
+    const sram = s.m.bus.sram, c0 = seed[0x87a] | (seed[0x87b] << 8);
+    let i = 0; for (; i < 1500 && (sram[0x87a] | (sram[0x87b] << 8)) === c0; i++) s.press('A', 12);
+    if (i === 1500) throw new Error('Ending did not update the slot-one counter');
+    if (!endingFlags(sram).has(ending)) throw new Error(`Ending ${ending} missing after commit`);
+    fresh = new Set([ending]); before.delete(ending);
+  }
+  for (let i = 0; i < 1500 && !fresh.size; i++) { fresh = new Set([...endingFlags(s.m.bus.sram)].filter((x) => !before.has(x))); if (fresh.size) break; s.press('A', 12); }
   const now = endingFlags(s.m.bus.sram);
   if (![...before].every((x) => now.has(x))) throw new Error('Previously earned endings disappeared from the bookmark');
   if (fresh.size !== 1 || !fresh.has(ending)) throw new Error(`Expected slot-one ending ${ending}, obtained ${[...fresh]}`);
@@ -233,15 +242,16 @@ async function main() {
   const rom = new Uint8Array(fs.readFileSync(romPath));
   const { SfcMachine } = await import(`${vm}/machine.js`);
   const statePath = path.join(work, 'campaign.srm');
-  let seed = fs.existsSync(statePath) ? new Uint8Array(fs.readFileSync(statePath)) : null;
+  const seedArg = opt('--seed');
+  let seed = fs.existsSync(statePath) ? new Uint8Array(fs.readFileSync(statePath)) : seedArg ? new Uint8Array(fs.readFileSync(seedArg)) : null;
   for (const n of endings) {
-    if (seed && endingFlags(seed).has(n)) continue;
+    if (seed && endingFlags(seed).has(n) && !args.includes('--repeat')) continue;
     const guide = guides.find((g) => g.id === `end${String(n).padStart(2, '0')}`);
     const apu = new APU(); apu.powerOn();
     const m = new SfcMachine({ rom, apu, busOptions: { masterLink: new MasterLink(apu) } });
     const s = new Session(m, rom, catalog); const t0 = Date.now();
     try {
-      const { save, report } = runRoute(s, guide, seed);
+      const { save, report } = runRoute(s, guide, seed, { repeat: args.includes('--repeat') });
       seed = save; report.seconds = (Date.now() - t0) / 1000; report.slot_one_endings = [...endingFlags(seed)].sort((a, b) => a - b);
       fs.writeFileSync(path.join(work, `${guide.id}.json`), JSON.stringify(report));
       fs.writeFileSync(statePath, seed);
