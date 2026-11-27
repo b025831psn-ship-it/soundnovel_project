@@ -203,6 +203,22 @@ separate native entry evidence before either resource is added as a sweep root.
 Raw byte-pattern hits are not counted because most occur inside text or
 operands rather than at opcode boundaries.
 
+## Memory card (machine)
+
+The browser machine (`?engine=machine`) has a virtual memory card in slot 1
+(`src/memory-card.js`): the raw 128 KB image laid out as a real card holds it
+(directory frames, 8 KB blocks), so the same image works in emulators as an
+`.mcr` file. `machine.js` serves the game's card library calls (libmcrd:
+exist / accept / read / write / create / delete / format / sync) on that image,
+with the library's own result codes and its "new card" rule; slot 2 stays empty.
+The game's own screens (card choice, the three books, save, bookmark restore)
+run as translated original code. `machine-browser.js` keeps the image in
+localStorage after every write and exposes `runtime.exportCard()` (a copy of the
+image) and `runtime.importCard(bytes)` (swaps the card, as if another one were
+inserted); `runtime.onCardChange` is called after the game writes. Without a
+card (`new Machine({ ... })` with no `card`), the machine behaves as the oracle
+does with both slots empty.
+
 ## Touch shell
 
 `src/touch-shell.js` is the input shell for the ported VM/VRAM runtime. It maps

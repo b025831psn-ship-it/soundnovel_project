@@ -14,6 +14,7 @@ import "./scenario/sound.js";
 import "./scenario/state.js";
 import "./scenario/prefetch.js";
 import "./scenario/choice.js";
+import "./scenario/card-ops.js";
 
 const AUTO = 0x800792c6, PAD_HELD = 0x801eef40, BLOCK = 0x800792a4, FRAME_STEP = 0x80079278;
 

@@ -9,7 +9,7 @@ SLPS=/path/to/SLPS_017.94 python3 gen-menu.py > /tmp/body.js   # needs python3-c
 
 Then replace everything after the header (the comment block and imports) of
 `src/menu/translated.js` with the output. `gen-menu.py` lists the routines and their names, and
-the tap rows (`HOOKS`) inserted before each selection loop's frame wait. Routines the
+the tap rows (`HOOKS`) inserted before each selection loop's frame wait (offered again every frame, so they lapse by themselves when the loop is left). Routines the
 translated code calls but that are ported by hand elsewhere are wired in `src/menu/calls.js`.
 
 Each routine becomes one generator with a `switch` case per basic block: registers are
