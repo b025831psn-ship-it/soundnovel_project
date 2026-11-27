@@ -53,8 +53,8 @@ function portRoute(url) {
     // Code shared by every port (save store and sync client); its tests and the reference server stay out.
     ['/shared/', path.join(__dirname, 'shared'), ['.js']],
     // PS1 port: its page, and the private data made on this PC from the user's disc (PACs, exe data, the
-    // XA voice channel and converted movies; folder in serve.ps1data, default ../../_claude-work/ps1-web). Not an open-beta
-    // path: through the tunnel it asks for the test password.
+    // XA voice channel and converted movies; folder in serve.ps1data, default ../../_claude-work/ps1-web). Open-beta paths
+    // since 2026-11-28 (태우: "아이디랑 비밀번호 없이 오픈").
     ['/ports/kamaitachi-ps1/', path.join(__dirname, 'ports', 'kamaitachi-ps1'), ['.html', '.js', '.css']],
     ['/kamaitachi-ps1-kor/port-data/', ps1Data, ['.json', '.bin', '.PAC', '.pac', '.ch0', '.mp4']],
     ['/kamaitachi2-ps2/', ps2Web, ['.html', '.js', '.mjs', '.css', '.json', '.bin', '.png', '.jpg', '.webp', '.svg', '.wasm', '.ogg', '.mp3', '.wav', '.mp4', '.woff2', '.txt']],
@@ -81,10 +81,11 @@ const sfcRom = (() => { try { return fs.readFileSync(path.join(__dirname, 'serve
 if (sfcRom) routes.set(SFC_GAME, [path.resolve(__dirname, sfcRom), 'application/octet-stream']);
 const cartridges = new Set(['/AGB-AHZJ.gba', '/AGB-AKZJ.gba', SFC_GAME]);
 // Open beta: while a local, uncommitted serve.open file exists (or SOUNDNOVEL_OPEN=1), tunnel visitors
-// need no password for the hub and the GBA player (and its data and saves). Everything else (PS2 build,
+// need no password for the hub, the GBA and PS1 players (and their data and saves). Everything else (PS2 build,
 // SFC pages) keeps the password, cartridges stay blocked, and pages ask search engines not to index them.
 const openBeta = () => process.env.SOUNDNOVEL_OPEN === '1' || fs.existsSync(path.join(__dirname, 'serve.open'));
-const OPEN_PREFIXES = ['/ports/kamaitachi-gba/', '/kamaitachi-gba-kor/', '/shared/', '/art/', '/play/'];
+const OPEN_PREFIXES = ['/ports/kamaitachi-gba/', '/kamaitachi-gba-kor/', '/ports/kamaitachi-ps1/', '/kamaitachi-ps1-kor/port-data/',
+  '/shared/', '/art/', '/play/'];
 const openPath = (url) => ['/', '/style.css', '/games.js', '/index.html'].includes(url) || OPEN_PREFIXES.some(prefix => url.startsWith(prefix));
 function allowedFromOutside(request, response, url) {
   if (!['cf-connecting-ip', 'x-forwarded-for', 'x-forwarded-host'].some(name => name in request.headers)) return true;
