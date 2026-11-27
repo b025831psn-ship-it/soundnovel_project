@@ -68,7 +68,6 @@ export const PORTED = {
   0x8003a67c: (c) => textSpeedReset(c.m),
   0x80014198: (c, a0) => ticks(c, a0),
   0x8001544c: (c, a0, a1, a2, a3) => cursorBox(c, a0, a1, a2, a3, arg(c, 0), arg(c, 1), arg(c, 2)),
-  0x80029b34: () => unported(0x80029b34), // memory-card errors (the machine's card never reports one)
   0x80032120: (c, a0) => snapshot(c.m, a0),
   0x8003afc8: (c, a0, a1) => loadPicture(c, a0, a1),
   0x8003b19c: (c, a0, a1, a2, a3) => loadPicture(c, a0, a1 >>> 0, a2, a3),

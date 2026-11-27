@@ -8839,6 +8839,428 @@ export function* f80029ad0(ctx, a0 = 0, a1 = 0, a2 = 0, a3 = 0) {
   }
 }
 
+// 0x80029b34, translated instruction by instruction (414 instructions).
+export function* cardError(ctx, a0 = 0, a1 = 0, a2 = 0, a3 = 0) {
+  const { m } = ctx; let sp = ctx.sp | 0, at = 0, v0 = 0, v1 = 0, t0 = 0, t1 = 0, t2 = 0, t3 = 0, t4 = 0, t5 = 0, t6 = 0, t7 = 0, t8 = 0, t9 = 0;
+  let s0 = 0, s1 = 0, s2 = 0, s3 = 0, s4 = 0, s5 = 0, s6 = 0, s7 = 0, fp = 0, hi = 0, lo = 0, pc = 0x80029b34;
+  for (;;) switch (pc) {
+  case 0x80029b34:
+    sp = (sp + -80) | 0;
+    a0 = a0 & 255;
+    v0 = (0 + 2) | 0;
+    m.write(((sp) + 72) >>> 0, 0, 4);
+    m.write(((sp) + 68) >>> 0, s5 >>> 0, 4);
+    m.write(((sp) + 64) >>> 0, s4 >>> 0, 4);
+    m.write(((sp) + 60) >>> 0, s3 >>> 0, 4);
+    m.write(((sp) + 56) >>> 0, s2 >>> 0, 4);
+    m.write(((sp) + 52) >>> 0, s1 >>> 0, 4);
+    { const c = (a0 | 0) !== (v0 | 0); m.write(((sp) + 48) >>> 0, s0 >>> 0, 4); if (c) { pc = 0x80029bb0; continue; } }
+  case 0x80029b60:
+    v0 = 0x80080000 | 0;
+    v0 = m.read(((v0) + -27362) >>> 0, 1);
+    { const c = (v0 | 0) !== 0; a0 = 0x80010000 | 0; if (c) { pc = 0x80029b88; continue; } }
+  case 0x80029b74:
+    v0 = (0 + 1) | 0;
+    at = 0x80080000 | 0;
+    m.write(((at) + -28027) >>> 0, v0 & 0xff, 1);
+    v0 = (0 + -1) | 0; pc = 0x8002a184; continue;
+  case 0x80029b88:
+    a0 = (a0 + 5504) | 0; [v0, v1] = yield* call(ctx, sp, 0x80025c74, a0, a1, a2, a3);
+  case 0x80029b90:
+    v1 = v0 | 0;
+    { const c = (v1 | 0) !== 0; v0 = (0 + 1) | 0; if (c) { pc = 0x80029c08; continue; } }
+  case 0x80029b9c:
+    v0 = (0 + 1) | 0;
+    at = 0x80080000 | 0;
+    m.write(((at) + -28027) >>> 0, v0 & 0xff, 1);
+    v0 = (0 + 1) | 0; pc = 0x80029c08; continue;
+  case 0x80029bb0:
+    v0 = 0x80080000 | 0;
+    v0 = m.read(((v0) + -27362) >>> 0, 1);
+    { const c = (v0 | 0) !== 0; v0 = (0 + 1) | 0; if (c) { pc = 0x80029bd4; continue; } }
+  case 0x80029bc4:
+    at = 0x80080000 | 0;
+    m.write(((at) + -28027) >>> 0, v0 & 0xff, 1);
+    v0 = (0 + -1) | 0; pc = 0x8002a184; continue;
+  case 0x80029bd4:
+    v0 = 0x80080000 | 0;
+    v0 = m.read(((v0) + -27965) >>> 0, 1);
+    { const c = (v0 | 0) !== 0; a0 = 0x80010000 | 0; if (c) { pc = 0x80029bf0; continue; } }
+  case 0x80029be8:
+    a0 = (a0 + 5580) | 0; pc = 0x80029bf8; continue;
+  case 0x80029bf0:
+    a0 = 0x80010000 | 0;
+    a0 = (a0 + 5664) | 0;
+  case 0x80029bf8:
+     [v0, v1] = yield* call(ctx, sp, 0x80025c74, a0, a1, a2, a3);
+  case 0x80029c00:
+    v1 = v0 | 0;
+    v0 = (0 + 1) | 0;
+  case 0x80029c08:
+    { const c = (v1 | 0) !== (v0 | 0); a0 = 0 | 0; if (c) { pc = 0x8002a088; continue; } }
+  case 0x80029c10:
+    s0 = 0 | 0;
+    s5 = (0 + 100) | 0;
+    s4 = (0 + 160) | 0;
+    s3 = (0 + 40) | 0;
+    s2 = 0x40000000 | 0;
+    s1 = (0 + 3) | 0;
+  case 0x80029c28:
+    a1 = (0 + 64) | 0;
+    a2 = (0 + 320) | 0;
+    a3 = (0 + 28) | 0;
+    m.write(((sp) + 16) >>> 0, 0 >>> 0, 4); [v0, v1] = yield* call(ctx, sp, 0x80037784, a0, a1, a2, a3);
+  case 0x80029c3c:
+    a0 = (0 + 106) | 0;
+    a1 = (0 + 70) | 0;
+    a2 = 0x80010000 | 0;
+    a2 = (a2 + 5748) | 0;
+    a3 = 0 | 0; [v0, v1] = yield* call(ctx, sp, 0x80038658, a0, a1, a2, a3);
+  case 0x80029c54:
+    a0 = (0 + 100) | 0;
+    a1 = (0 + 64) | 0;
+    a2 = (0 + 120) | 0;
+    a3 = (0 + 28) | 0;
+    m.write(((sp) + 16) >>> 0, s4 >>> 0, 4);
+    m.write(((sp) + 20) >>> 0, s5 >>> 0, 4);
+    m.write(((sp) + 24) >>> 0, s3 >>> 0, 4);
+    m.write(((sp) + 28) >>> 0, s2 >>> 0, 4);
+    m.write(((sp) + 32) >>> 0, s1 >>> 0, 4); [v0, v1] = yield* call(ctx, sp, 0x8003c86c, a0, a1, a2, a3);
+  case 0x80029c7c:
+     [v0, v1] = yield* call(ctx, sp, 0x80039288, a0, a1, a2, a3);
+  case 0x80029c84:
+     [v0, v1] = yield* call(ctx, sp, 0x80013f34, a0, a1, a2, a3);
+  case 0x80029c8c:
+    a0 = (0 + 100) | 0;
+    a1 = (0 + 64) | 0;
+    a2 = (0 + 120) | 0;
+    a3 = (0 + 28) | 0;
+    m.write(((sp) + 16) >>> 0, s4 >>> 0, 4);
+    m.write(((sp) + 20) >>> 0, s5 >>> 0, 4);
+    m.write(((sp) + 24) >>> 0, s3 >>> 0, 4);
+    m.write(((sp) + 28) >>> 0, s2 >>> 0, 4);
+    m.write(((sp) + 32) >>> 0, s1 >>> 0, 4); [v0, v1] = yield* call(ctx, sp, 0x8003c86c, a0, a1, a2, a3);
+  case 0x80029cb4:
+     [v0, v1] = yield* call(ctx, sp, 0x80039288, a0, a1, a2, a3);
+  case 0x80029cbc:
+     [v0, v1] = yield* call(ctx, sp, 0x80013f34, a0, a1, a2, a3);
+  case 0x80029cc4:
+    v0 = (s0 + 1) | 0;
+    s0 = v0 | 0;
+    v0 = v0 << 24;
+    v0 = v0 >> 24;
+    v0 = (v0 | 0) < 30 ? 1 : 0;
+    { const c = (v0 | 0) !== 0; a0 = 0 | 0; if (c) { pc = 0x80029c28; continue; } }
+  case 0x80029ce0:
+    v0 = 0x80080000 | 0;
+    v0 = m.read(((v0) + -27965) >>> 0, 1);
+    { const c = (v0 | 0) !== 0; a0 = (0 + 16) | 0; if (c) { pc = 0x80029cf8; continue; } }
+  case 0x80029cf4:
+    a0 = 0 | 0;
+  case 0x80029cf8:
+     [v0, v1] = yield* call(ctx, sp, 0x80062544, a0, a1, a2, a3);
+  case 0x80029d00:
+    a0 = 0 | 0;
+    a1 = 0x80080000 | 0;
+    a1 = (a1 + -27356) | 0;
+    a2 = (sp + 40) | 0; [v0, v1] = yield* call(ctx, sp, 0x80063748, a0, a1, a2, a3);
+  case 0x80029d14:
+    v0 = m.read(((sp) + 40) >>> 0, 4) | 0;
+    v1 = (0 + 3) | 0;
+    v0 = v0 & 15;
+    { const c = (v0 | 0) !== (v1 | 0); v0 = (0 + 1) | 0; if (c) { pc = 0x80029d30; continue; } }
+  case 0x80029d28:
+    at = 0x80080000 | 0;
+    m.write(((at) + -28027) >>> 0, v0 & 0xff, 1);
+  case 0x80029d30:
+    v1 = 0x80080000 | 0;
+    v1 = m.read(((v1) + -28027) >>> 0, 1);
+    v0 = (0 + 1) | 0;
+    { const c = (v1 | 0) !== (v0 | 0); a1 = (0 + 64) | 0; if (c) { pc = 0x80029e38; continue; } }
+  case 0x80029d44:
+    m.write(((sp) + 16) >>> 0, 0 >>> 0, 4);
+    a0 = 0 | 0;
+    a2 = (0 + 320) | 0;
+    a3 = (0 + 44) | 0;
+    s0 = 0x80010000 | 0;
+    s0 = (s0 + 5764) | 0; [v0, v1] = yield* call(ctx, sp, 0x80037784, a0, a1, a2, a3);
+  case 0x80029d60:
+    a0 = (0 + 39) | 0;
+    a1 = (0 + 70) | 0;
+    a2 = s0 | 0;
+    a3 = 0 | 0; [v0, v1] = yield* call(ctx, sp, 0x80038658, a0, a1, a2, a3);
+  case 0x80029d74:
+    s1 = 0x801f0000 | 0; [v0, v1] = yield* call(ctx, sp, 0x80039288, a0, a1, a2, a3);
+  case 0x80029d7c:
+    s0 = (0 + 44) | 0; [v0, v1] = yield* call(ctx, sp, 0x80013f34, a0, a1, a2, a3);
+  case 0x80029d84:
+    v0 = m.read(((s1) + -4288) >>> 0, 4) | 0;
+    v0 = v0 & 2293;
+    { const c = (v0 | 0) !== 0; a0 = (0 + 33) | 0; if (c) { pc = 0x80029df0; continue; } }
+  case 0x80029d98:
+    a1 = (0 + 64) | 0;
+    a2 = (0 + 254) | 0;
+    a3 = s0 & 65535;
+    v0 = (0 + 160) | 0;
+    m.write(((sp) + 16) >>> 0, v0 >>> 0, 4);
+    v0 = (0 + 100) | 0;
+    m.write(((sp) + 20) >>> 0, v0 >>> 0, 4);
+    v0 = (0 + 40) | 0;
+    m.write(((sp) + 24) >>> 0, v0 >>> 0, 4);
+    v0 = 0x40000000 | 0;
+    m.write(((sp) + 28) >>> 0, v0 >>> 0, 4);
+    v0 = (0 + 3) | 0;
+    m.write(((sp) + 32) >>> 0, v0 >>> 0, 4); [v0, v1] = yield* call(ctx, sp, 0x8003c86c, a0, a1, a2, a3);
+  case 0x80029dd0:
+     [v0, v1] = yield* call(ctx, sp, 0x8003aa8c, a0, a1, a2, a3);
+  case 0x80029dd8:
+     [v0, v1] = yield* call(ctx, sp, 0x80039288, a0, a1, a2, a3);
+  case 0x80029de0:
+     [v0, v1] = yield* call(ctx, sp, 0x80013f34, a0, a1, a2, a3);
+  case 0x80029de8:
+     pc = 0x80029d84; continue;
+  case 0x80029df0:
+    a0 = 0 | 0; [v0, v1] = yield* call(ctx, sp, 0x80028c74, a0, a1, a2, a3);
+  case 0x80029df8:
+     [v0, v1] = yield* call(ctx, sp, 0x80013f34, a0, a1, a2, a3);
+  case 0x80029e00:
+    m.write(((sp) + 16) >>> 0, 0 >>> 0, 4);
+    a0 = 0 | 0;
+    a1 = (0 + 64) | 0;
+    a2 = (0 + 320) | 0;
+    a3 = (0 + 60) | 0; [v0, v1] = yield* call(ctx, sp, 0x80037784, a0, a1, a2, a3);
+  case 0x80029e18:
+     [v0, v1] = yield* call(ctx, sp, 0x80039288, a0, a1, a2, a3);
+  case 0x80029e20:
+     [v0, v1] = yield* call(ctx, sp, 0x80013f34, a0, a1, a2, a3);
+  case 0x80029e28:
+    a0 = (0 + 2) | 0; [v0, v1] = yield* call(ctx, sp, 0x800140a8, a0, a1, a2, a3);
+  case 0x80029e30:
+    v0 = (0 + 1) | 0; pc = 0x8002a184; continue;
+  case 0x80029e38:
+    a0 = 0x80080000 | 0;
+    a0 = m.read(((a0) + -27965) >>> 0, 1);
+    a0 = a0 << 4; [v0, v1] = yield* call(ctx, sp, 0x80063c28, a0, a1, a2, a3);
+  case 0x80029e48:
+    { const c = (v0 | 0) !== 0; a0 = 0 | 0; if (c) { pc = 0x80029fdc; continue; } }
+  case 0x80029e50:
+    s0 = 0 | 0;
+    s5 = (0 + 160) | 0;
+    s4 = (0 + 100) | 0;
+    s3 = (0 + 40) | 0;
+    s2 = 0x40000000 | 0;
+    s1 = (0 + 3) | 0;
+  case 0x80029e68:
+    a1 = (0 + 64) | 0;
+    a2 = (0 + 320) | 0;
+    a3 = (0 + 28) | 0;
+    m.write(((sp) + 16) >>> 0, 0 >>> 0, 4); [v0, v1] = yield* call(ctx, sp, 0x80037784, a0, a1, a2, a3);
+  case 0x80029e7c:
+    a0 = (0 + 70) | 0;
+    a1 = a0 | 0;
+    a2 = 0x80010000 | 0;
+    a2 = (a2 + 5820) | 0;
+    a3 = 0 | 0; [v0, v1] = yield* call(ctx, sp, 0x80038658, a0, a1, a2, a3);
+  case 0x80029e94:
+    a0 = (0 + 64) | 0;
+    a1 = a0 | 0;
+    a2 = (0 + 192) | 0;
+    a3 = (0 + 28) | 0;
+    m.write(((sp) + 16) >>> 0, s5 >>> 0, 4);
+    m.write(((sp) + 20) >>> 0, s4 >>> 0, 4);
+    m.write(((sp) + 24) >>> 0, s3 >>> 0, 4);
+    m.write(((sp) + 28) >>> 0, s2 >>> 0, 4);
+    m.write(((sp) + 32) >>> 0, s1 >>> 0, 4); [v0, v1] = yield* call(ctx, sp, 0x8003c86c, a0, a1, a2, a3);
+  case 0x80029ebc:
+     [v0, v1] = yield* call(ctx, sp, 0x80039288, a0, a1, a2, a3);
+  case 0x80029ec4:
+     [v0, v1] = yield* call(ctx, sp, 0x80013f34, a0, a1, a2, a3);
+  case 0x80029ecc:
+    a0 = (0 + 64) | 0;
+    a1 = a0 | 0;
+    a2 = (0 + 192) | 0;
+    a3 = (0 + 28) | 0;
+    m.write(((sp) + 16) >>> 0, s5 >>> 0, 4);
+    m.write(((sp) + 20) >>> 0, s4 >>> 0, 4);
+    m.write(((sp) + 24) >>> 0, s3 >>> 0, 4);
+    m.write(((sp) + 28) >>> 0, s2 >>> 0, 4);
+    m.write(((sp) + 32) >>> 0, s1 >>> 0, 4); [v0, v1] = yield* call(ctx, sp, 0x8003c86c, a0, a1, a2, a3);
+  case 0x80029ef4:
+     [v0, v1] = yield* call(ctx, sp, 0x80039288, a0, a1, a2, a3);
+  case 0x80029efc:
+     [v0, v1] = yield* call(ctx, sp, 0x80013f34, a0, a1, a2, a3);
+  case 0x80029f04:
+    v0 = (s0 + 1) | 0;
+    s0 = v0 | 0;
+    v0 = v0 << 24;
+    v0 = v0 >> 24;
+    v0 = (v0 | 0) < 60 ? 1 : 0;
+    { const c = (v0 | 0) !== 0; a0 = 0 | 0; if (c) { pc = 0x80029e68; continue; } }
+  case 0x80029f20:
+    a1 = (0 + 64) | 0;
+    a2 = (0 + 320) | 0;
+    a3 = (0 + 28) | 0;
+    s0 = 0x80010000 | 0;
+    s0 = (s0 + 5844) | 0;
+    m.write(((sp) + 16) >>> 0, 0 >>> 0, 4); [v0, v1] = yield* call(ctx, sp, 0x80037784, a0, a1, a2, a3);
+  case 0x80029f3c:
+    a0 = (0 + 106) | 0;
+    a1 = (0 + 70) | 0;
+    a2 = s0 | 0;
+    a3 = 0 | 0; [v0, v1] = yield* call(ctx, sp, 0x80038658, a0, a1, a2, a3);
+  case 0x80029f50:
+    a0 = (0 + 100) | 0;
+    a1 = (0 + 64) | 0;
+    a2 = (0 + 120) | 0;
+    a3 = (0 + 28) | 0;
+    s4 = (0 + 160) | 0;
+    s3 = a0 | 0;
+    s2 = (0 + 40) | 0;
+    s1 = 0x40000000 | 0;
+    s0 = (0 + 3) | 0;
+    m.write(((sp) + 16) >>> 0, s4 >>> 0, 4);
+    m.write(((sp) + 20) >>> 0, s3 >>> 0, 4);
+    m.write(((sp) + 24) >>> 0, s2 >>> 0, 4);
+    m.write(((sp) + 28) >>> 0, s1 >>> 0, 4);
+    m.write(((sp) + 32) >>> 0, s0 >>> 0, 4); [v0, v1] = yield* call(ctx, sp, 0x8003c86c, a0, a1, a2, a3);
+  case 0x80029f8c:
+     [v0, v1] = yield* call(ctx, sp, 0x80039288, a0, a1, a2, a3);
+  case 0x80029f94:
+     [v0, v1] = yield* call(ctx, sp, 0x80013f34, a0, a1, a2, a3);
+  case 0x80029f9c:
+    a0 = s3 | 0;
+    a1 = (0 + 64) | 0;
+    a2 = (0 + 120) | 0;
+    a3 = (0 + 28) | 0;
+    m.write(((sp) + 16) >>> 0, s4 >>> 0, 4);
+    m.write(((sp) + 20) >>> 0, s3 >>> 0, 4);
+    m.write(((sp) + 24) >>> 0, s2 >>> 0, 4);
+    m.write(((sp) + 28) >>> 0, s1 >>> 0, 4);
+    m.write(((sp) + 32) >>> 0, s0 >>> 0, 4); [v0, v1] = yield* call(ctx, sp, 0x8003c86c, a0, a1, a2, a3);
+  case 0x80029fc4:
+     [v0, v1] = yield* call(ctx, sp, 0x80039288, a0, a1, a2, a3);
+  case 0x80029fcc:
+     [v0, v1] = yield* call(ctx, sp, 0x80013f34, a0, a1, a2, a3);
+  case 0x80029fd4:
+    v0 = (0 + 1) | 0; pc = 0x8002a184; continue;
+  case 0x80029fdc:
+    m.write(((sp) + 16) >>> 0, 0 >>> 0, 4);
+    a1 = (0 + 64) | 0;
+    a2 = (0 + 320) | 0;
+    a3 = (0 + 44) | 0;
+    s0 = 0x80010000 | 0;
+    s0 = (s0 + 5764) | 0; [v0, v1] = yield* call(ctx, sp, 0x80037784, a0, a1, a2, a3);
+  case 0x80029ff8:
+    a0 = (0 + 31) | 0;
+    a1 = (0 + 70) | 0;
+    a2 = s0 | 0;
+    a3 = 0 | 0; [v0, v1] = yield* call(ctx, sp, 0x80038658, a0, a1, a2, a3);
+  case 0x8002a00c:
+    s1 = 0x801f0000 | 0; [v0, v1] = yield* call(ctx, sp, 0x80039288, a0, a1, a2, a3);
+  case 0x8002a014:
+    s0 = (0 + 44) | 0; [v0, v1] = yield* call(ctx, sp, 0x80013f34, a0, a1, a2, a3);
+  case 0x8002a01c:
+    v0 = m.read(((s1) + -4288) >>> 0, 4) | 0;
+    v0 = v0 & 2293;
+    { const c = (v0 | 0) !== 0; a1 = (0 + 64) | 0; if (c) { pc = 0x8002a134; continue; } }
+  case 0x8002a030:
+    a0 = (0 + 25) | 0;
+    a2 = (0 + 270) | 0;
+    a3 = s0 & 65535;
+    v0 = (0 + 160) | 0;
+    m.write(((sp) + 16) >>> 0, v0 >>> 0, 4);
+    v0 = (0 + 100) | 0;
+    m.write(((sp) + 20) >>> 0, v0 >>> 0, 4);
+    v0 = (0 + 40) | 0;
+    m.write(((sp) + 24) >>> 0, v0 >>> 0, 4);
+    v0 = 0x40000000 | 0;
+    m.write(((sp) + 28) >>> 0, v0 >>> 0, 4);
+    v0 = (0 + 3) | 0;
+    m.write(((sp) + 32) >>> 0, v0 >>> 0, 4); [v0, v1] = yield* call(ctx, sp, 0x8003c86c, a0, a1, a2, a3);
+  case 0x8002a068:
+     [v0, v1] = yield* call(ctx, sp, 0x8003aa8c, a0, a1, a2, a3);
+  case 0x8002a070:
+     [v0, v1] = yield* call(ctx, sp, 0x80039288, a0, a1, a2, a3);
+  case 0x8002a078:
+     [v0, v1] = yield* call(ctx, sp, 0x80013f34, a0, a1, a2, a3);
+  case 0x8002a080:
+     pc = 0x8002a01c; continue;
+  case 0x8002a088:
+    m.write(((sp) + 16) >>> 0, 0 >>> 0, 4);
+    a1 = (0 + 64) | 0;
+    a2 = (0 + 320) | 0;
+    a3 = (0 + 44) | 0;
+    s0 = 0x80010000 | 0;
+    s0 = (s0 + 5860) | 0; [v0, v1] = yield* call(ctx, sp, 0x80037784, a0, a1, a2, a3);
+  case 0x8002a0a4:
+    a0 = (0 + 36) | 0;
+    a1 = (0 + 70) | 0;
+    a2 = s0 | 0;
+    a3 = 0 | 0; [v0, v1] = yield* call(ctx, sp, 0x80038658, a0, a1, a2, a3);
+  case 0x8002a0b8:
+    s1 = 0x801f0000 | 0; [v0, v1] = yield* call(ctx, sp, 0x80039288, a0, a1, a2, a3);
+  case 0x8002a0c0:
+    s0 = (0 + 44) | 0; [v0, v1] = yield* call(ctx, sp, 0x80013f34, a0, a1, a2, a3);
+  case 0x8002a0c8:
+    v0 = m.read(((s1) + -4288) >>> 0, 4) | 0;
+    v0 = v0 & 2293;
+    { const c = (v0 | 0) !== 0; a1 = (0 + 64) | 0; if (c) { pc = 0x8002a134; continue; } }
+  case 0x8002a0dc:
+    a0 = (0 + 30) | 0;
+    a2 = (0 + 260) | 0;
+    a3 = s0 & 65535;
+    v0 = (0 + 160) | 0;
+    m.write(((sp) + 16) >>> 0, v0 >>> 0, 4);
+    v0 = (0 + 100) | 0;
+    m.write(((sp) + 20) >>> 0, v0 >>> 0, 4);
+    v0 = (0 + 40) | 0;
+    m.write(((sp) + 24) >>> 0, v0 >>> 0, 4);
+    v0 = 0x40000000 | 0;
+    m.write(((sp) + 28) >>> 0, v0 >>> 0, 4);
+    v0 = (0 + 3) | 0;
+    m.write(((sp) + 32) >>> 0, v0 >>> 0, 4); [v0, v1] = yield* call(ctx, sp, 0x8003c86c, a0, a1, a2, a3);
+  case 0x8002a114:
+     [v0, v1] = yield* call(ctx, sp, 0x8003aa8c, a0, a1, a2, a3);
+  case 0x8002a11c:
+     [v0, v1] = yield* call(ctx, sp, 0x80039288, a0, a1, a2, a3);
+  case 0x8002a124:
+     [v0, v1] = yield* call(ctx, sp, 0x80013f34, a0, a1, a2, a3);
+  case 0x8002a12c:
+     pc = 0x8002a0c8; continue;
+  case 0x8002a134:
+    a0 = 0 | 0; [v0, v1] = yield* call(ctx, sp, 0x80028c74, a0, a1, a2, a3);
+  case 0x8002a13c:
+     [v0, v1] = yield* call(ctx, sp, 0x80013f34, a0, a1, a2, a3);
+  case 0x8002a144:
+    a0 = 0 | 0;
+    a1 = (0 + 64) | 0;
+    a2 = (0 + 320) | 0;
+    a3 = (0 + 60) | 0;
+    m.write(((sp) + 16) >>> 0, 0 >>> 0, 4); [v0, v1] = yield* call(ctx, sp, 0x80037784, a0, a1, a2, a3);
+  case 0x8002a15c:
+     [v0, v1] = yield* call(ctx, sp, 0x80039288, a0, a1, a2, a3);
+  case 0x8002a164:
+     [v0, v1] = yield* call(ctx, sp, 0x80013f34, a0, a1, a2, a3);
+  case 0x8002a16c:
+    v0 = (0 + 1) | 0;
+    at = 0x80080000 | 0;
+    m.write(((at) + -28027) >>> 0, v0 & 0xff, 1);
+    a0 = (0 + 2) | 0; [v0, v1] = yield* call(ctx, sp, 0x800140a8, a0, a1, a2, a3);
+  case 0x8002a180:
+    v0 = (0 + -1) | 0;
+  case 0x8002a184:
+    s5 = m.read(((sp) + 68) >>> 0, 4) | 0;
+    s4 = m.read(((sp) + 64) >>> 0, 4) | 0;
+    s3 = m.read(((sp) + 60) >>> 0, 4) | 0;
+    s2 = m.read(((sp) + 56) >>> 0, 4) | 0;
+    s1 = m.read(((sp) + 52) >>> 0, 4) | 0;
+    s0 = m.read(((sp) + 48) >>> 0, 4) | 0;
+    sp = (sp + 80) | 0;
+     return [v0, v1];
+  default: throw new Error(`cardError: no block at 0x${(pc >>> 0).toString(16)}`);
+  }
+}
+
 // 0x80015fa8, translated instruction by instruction (52 instructions).
 export function* cardMessage(ctx, a0 = 0, a1 = 0, a2 = 0, a3 = 0) {
   const { m } = ctx; let sp = ctx.sp | 0, at = 0, v0 = 0, v1 = 0, t0 = 0, t1 = 0, t2 = 0, t3 = 0, t4 = 0, t5 = 0, t6 = 0, t7 = 0, t8 = 0, t9 = 0;
@@ -14517,4 +14939,4 @@ export function f8003a6b0(ctx, a0 = 0, a1 = 0, a2 = 0, a3 = 0) {
   }
 }
 
-export const TRANSLATED = {0x80018cdc: menu, 0x80019c30: flowChart, 0x8001575c: f8001575c, 0x80019544: f80019544, 0x80019738: f80019738, 0x80035568: f80035568, 0x80037344: f80037344, 0x80044f7c: f80044f7c, 0x8001c6a0: f8001c6a0, 0x8001c8f8: f8001c8f8, 0x800355cc: lzss, 0x800378c4: f800378c4, 0x80044e90: f80044e90, 0x8001c374: f8001c374, 0x80037d48: f80037d48, 0x8003c8f8: addBox2, 0x8001866c: options, 0x800145b0: f800145b0, 0x80025710: f80025710, 0x80014d68: f80014d68, 0x8001511c: f8001511c, 0x8001b51c: f8001b51c, 0x800289ec: f800289ec, 0x8002cc48: f8002cc48, 0x8002cc98: f8002cc98, 0x8003d820: f8003d820, 0x80044868: f80044868, 0x80026088: f80026088, 0x80044e10: pacMemberBE, 0x80044e50: f80044e50, 0x80044ecc: fmul8, 0x80037e50: f80037e50, 0x80037e94: f80037e94, 0x8003bc3c: spriteFree, 0x8003bdc0: spriteLayer, 0x8003a90c: setPalette, 0x80026204: repeatOn, 0x80026220: repeatOff, 0x80044904: memcpy, 0x8001824c: save, 0x80017e14: f80017e14, 0x80017854: f80017854, 0x8001c7c0: f8001c7c0, 0x80025a08: f80025a08, 0x80025c74: f80025c74, 0x8002a89c: f8002a89c, 0x8003aa8c: f8003aa8c, 0x8002bf98: f8002bf98, 0x80033648: f80033648, 0x80015d74: f80015d74, 0x80033be8: f80033be8, 0x8003cd78: f8003cd78, 0x8002afb8: f8002afb8, 0x8002bfe8: f8002bfe8, 0x8002c4c0: f8002c4c0, 0x8002baa0: f8002baa0, 0x800338ac: f800338ac, 0x80038b8c: f80038b8c, 0x80038ce8: f80038ce8, 0x80038f58: f80038f58, 0x80029a6c: f80029a6c, 0x80029ad0: f80029ad0, 0x80015fa8: cardMessage, 0x8002a980: f8002a980, 0x80025898: f80025898, 0x8002c530: f8002c530, 0x8002a9f8: noCardBox, 0x8002a320: yesNo, 0x8002bd1c: cardCheck, 0x800298e4: cardLoad, 0x8001b694: title, 0x80016078: startMenu, 0x8002a1ac: f8002a1ac, 0x8002aa70: f8002aa70, 0x8002b4e0: f8002b4e0, 0x80033848: f80033848, 0x8002b7f4: f8002b7f4, 0x8003360c: f8003360c, 0x8002c4f8: f8002c4f8, 0x80032974: f80032974, 0x80021320: op3d, 0x800329ec: restoreBookmark, 0x8001f328: op1f, 0x8002188c: op44, 0x8001bda4: f8001bda4, 0x8001c21c: f8001c21c, 0x8001fb38: f8001fb38, 0x800216a8: f800216a8, 0x8003d8dc: f8003d8dc, 0x80044b60: f80044b60, 0x80024fd0: backlog, 0x80024d08: f80024d08, 0x80025640: f80025640, 0x8003911c: f8003911c, 0x80039184: f80039184, 0x8002374c: f8002374c, 0x8003a6b0: f8003a6b0 };
+export const TRANSLATED = {0x80018cdc: menu, 0x80019c30: flowChart, 0x8001575c: f8001575c, 0x80019544: f80019544, 0x80019738: f80019738, 0x80035568: f80035568, 0x80037344: f80037344, 0x80044f7c: f80044f7c, 0x8001c6a0: f8001c6a0, 0x8001c8f8: f8001c8f8, 0x800355cc: lzss, 0x800378c4: f800378c4, 0x80044e90: f80044e90, 0x8001c374: f8001c374, 0x80037d48: f80037d48, 0x8003c8f8: addBox2, 0x8001866c: options, 0x800145b0: f800145b0, 0x80025710: f80025710, 0x80014d68: f80014d68, 0x8001511c: f8001511c, 0x8001b51c: f8001b51c, 0x800289ec: f800289ec, 0x8002cc48: f8002cc48, 0x8002cc98: f8002cc98, 0x8003d820: f8003d820, 0x80044868: f80044868, 0x80026088: f80026088, 0x80044e10: pacMemberBE, 0x80044e50: f80044e50, 0x80044ecc: fmul8, 0x80037e50: f80037e50, 0x80037e94: f80037e94, 0x8003bc3c: spriteFree, 0x8003bdc0: spriteLayer, 0x8003a90c: setPalette, 0x80026204: repeatOn, 0x80026220: repeatOff, 0x80044904: memcpy, 0x8001824c: save, 0x80017e14: f80017e14, 0x80017854: f80017854, 0x8001c7c0: f8001c7c0, 0x80025a08: f80025a08, 0x80025c74: f80025c74, 0x8002a89c: f8002a89c, 0x8003aa8c: f8003aa8c, 0x8002bf98: f8002bf98, 0x80033648: f80033648, 0x80015d74: f80015d74, 0x80033be8: f80033be8, 0x8003cd78: f8003cd78, 0x8002afb8: f8002afb8, 0x8002bfe8: f8002bfe8, 0x8002c4c0: f8002c4c0, 0x8002baa0: f8002baa0, 0x800338ac: f800338ac, 0x80038b8c: f80038b8c, 0x80038ce8: f80038ce8, 0x80038f58: f80038f58, 0x80029a6c: f80029a6c, 0x80029ad0: f80029ad0, 0x80029b34: cardError, 0x80015fa8: cardMessage, 0x8002a980: f8002a980, 0x80025898: f80025898, 0x8002c530: f8002c530, 0x8002a9f8: noCardBox, 0x8002a320: yesNo, 0x8002bd1c: cardCheck, 0x800298e4: cardLoad, 0x8001b694: title, 0x80016078: startMenu, 0x8002a1ac: f8002a1ac, 0x8002aa70: f8002aa70, 0x8002b4e0: f8002b4e0, 0x80033848: f80033848, 0x8002b7f4: f8002b7f4, 0x8003360c: f8003360c, 0x8002c4f8: f8002c4f8, 0x80032974: f80032974, 0x80021320: op3d, 0x800329ec: restoreBookmark, 0x8001f328: op1f, 0x8002188c: op44, 0x8001bda4: f8001bda4, 0x8001c21c: f8001c21c, 0x8001fb38: f8001fb38, 0x800216a8: f800216a8, 0x8003d8dc: f8003d8dc, 0x80044b60: f80044b60, 0x80024fd0: backlog, 0x80024d08: f80024d08, 0x80025640: f80025640, 0x8003911c: f8003911c, 0x80039184: f80039184, 0x8002374c: f8002374c, 0x8003a6b0: f8003a6b0 };
