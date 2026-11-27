@@ -68,7 +68,7 @@ async function audioOut() {
   } catch (e) { console.warn("[kamaitachi-ps1 machine] no audio output", e); return null; }
 }
 
-export async function startMachine({ canvas, dataRoot, audio = true, onProgress = null, requestFrame = requestAnimationFrame, now = () => performance.now(), timer = requestFrame === requestAnimationFrame }) {
+export async function startMachine({ canvas, dataRoot, audio = true, onProgress = null, requestFrame = requestAnimationFrame, now = () => performance.now(), timer = requestFrame === requestAnimationFrame, gate = null }) {
   const base = new URL(dataRoot, location.href);
   let loaded = 0;
   const progress = (n) => { loaded += n; onProgress?.(loaded); };
@@ -79,6 +79,8 @@ export async function startMachine({ canvas, dataRoot, audio = true, onProgress 
   const xaSources = new Map(), xaSource = (c) => { if (!xaSources.has(c)) xaSources.set(c, rangeSource(new URL(xaFileName(c), base).href)); return xaSources.get(c); };
   const snd = machineSound({ exeData, pacs, xaSource, onRumble: (r) => { if (r.on) navigator.vibrate?.(50); } });
   const out = audio ? await audioOut() : null;
+  // the shared start screen: the console is switched on by that press, so the boot sound and the opening movie play with sound
+  if (gate) await gate(() => { if (out && out.ctx.state !== "running") out.ctx.resume(); });
   const card = new MemoryCard(loadCard());
   // The STR movies, converted to <NAME>.mp4 next to the PACs (tools/convert-str.sh), shown over the
   // screen while the game waits for them. Before the first tap or key the browser only lets a

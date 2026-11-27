@@ -5,6 +5,7 @@ import { GBAInput } from "./src/input.js";
 import { VM, textKey } from "./src/vm.js";
 import { PageText } from "./src/page-text.js";
 import { Boot, KEY } from "./src/boot.js";
+import { startGate } from "../../shared/player/start-gate.js";
 import { createSound } from "./sound/output.js";
 import { Silhouettes } from "./src/silhouette.js";
 import { openBooks } from "./src/books-store.js";
@@ -299,4 +300,7 @@ function loop(now) {
   }
   requestAnimationFrame(loop);
 }
+// The shared start screen (every port): the cartridge is switched on by the press, so its first sound plays.
+await startGate(document.querySelector("#stage"), { onPress: () => sound.resume() });
+tapA = false;
 requestAnimationFrame(loop);

@@ -7,6 +7,7 @@
 // Data: ?data=URL (default ../../kamaitachi-sfc-kor/port-data/) with
 //   program/manifest.json + program/NN.bin, sound/dsp-gauss.bin.
 import { createAudioOut } from './sound/output.js';
+import { startGate } from '../../shared/player/start-gate.js';
 import { PAD, DEFAULT_KEYS } from './sound/vm-sound.js';
 
 const $ = (id) => document.getElementById(id);
@@ -39,7 +40,7 @@ const toBase64 = (bytes) => { let s = ''; for (const b of bytes) s += String.fro
 const fromBase64 = (text) => Uint8Array.from(atob(text), (c) => c.charCodeAt(0));
 
 function fail(error) {
-  $('loading').hidden = true; $('start').hidden = true;
+  $('loading').hidden = true; $('start')?.remove();
   $('error').hidden = false; $('error').textContent = `원작 데이터를 불러오지 못했습니다.\n${error.message ?? error}`;
 }
 
@@ -174,21 +175,12 @@ addEventListener('pointermove', wake); addEventListener('pointerdown', wake); wa
 
 // Audio may only start inside a user gesture, so the game starts on the first tap or key.
 load().then((data) => {
-  $('loading').hidden = true;
-  const start = $('start');
-  start.hidden = false;
-  let begun = false;
-  const begin = async (event) => {
-    if (begun || event?.code === 'KeyF') return; begun = true;
-    start.hidden = true;
-    removeEventListener('keydown', begin);
+  startGate(stage).then(async () => {
     const out = await createAudioOut();
     await out.resume();
     const worker = startGame(data, out);
     wireControls(worker, out);
     stage.classList.add('ready');
     window.kamaitachi = { worker, out };
-  };
-  start.addEventListener('click', begin);
-  addEventListener('keydown', begin);
+  });
 }, fail);

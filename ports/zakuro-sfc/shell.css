@@ -201,11 +201,5 @@ html.filled, html.filled body { overflow: hidden; }
 /* Tap feedback on a choice: a brief outline where the finger landed (outside the game's pixels). */
 .tap-mark { position: absolute; border: 1px solid var(--accent); border-radius: 4px; pointer-events: none; opacity: 0; transition: opacity .35s ease; }
 .tap-mark.on { opacity: .8; transition: none; }
-.start {
-  position: absolute; display: grid; justify-items: center; gap: 10px;
-  padding: 14px 28px; border: 1px solid var(--accent); border-radius: 999px;
-  background: rgba(8, 9, 11, .7); color: var(--text); font-size: 15px; letter-spacing: .04em;
-}
-.start[hidden] { display: none; }
 .error { position: absolute; max-width: 80%; color: var(--muted); font-size: 13px; text-align: center; white-space: pre-wrap; }
 @media (pointer: coarse) { .keys { display: none; } }
