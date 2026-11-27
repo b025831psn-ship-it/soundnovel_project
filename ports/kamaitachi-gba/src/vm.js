@@ -175,6 +175,7 @@ export class VM {
       flowMask: 0, // 02004640: 16-bit route mask tested by opcodes 5D/5E
       endingCount: 0, // 02004604: endings reached this power-on (opcode 44, up to 10)
       inGame: 0, // 0200078D: set by 1D 67, lets R open the in-game menu
+      selectArmed: 0, // 02000797: 1D 6A sets, 1D 6B clears; SELECT at a page wait then sets var 2
       vars: new Uint8Array(256),
       bits: new Uint8Array(256),
       stack: [],
@@ -1134,6 +1135,15 @@ export class VM {
     blind.frames = 0;
     if (++blind.step > 8) { this.silhouetteBlind = null; return; }
     this.scene?.silhouetteShow?.(blind.step, this.tint());
+  }
+
+  // 0800750C: SELECT newly pressed at a page wait while 1D 6A has armed it sets var 2 = 1
+  // (08003658) and counts as the A press. Returns true when taken.
+  select() {
+    if (this.waiting !== "click" || this.ram.selectArmed !== 1) return false;
+    this.ram.vars[2] = 1;
+    this.resume();
+    return true;
   }
 
   resume(rowIndex = null) {

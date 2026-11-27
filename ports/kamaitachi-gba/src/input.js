@@ -11,6 +11,7 @@ export class GBAInput {
       ArrowRight: "RIGHT",
       KeyA: "L",
       KeyS: "R",
+      Backspace: "SELECT",
     };
     target.addEventListener(
       "keydown",
