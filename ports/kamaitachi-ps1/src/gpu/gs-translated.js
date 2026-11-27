@@ -322,7 +322,7 @@ export function* x8004c768(ctx, a0 = 0, a1 = 0, a2 = 0, a3 = 0) {
     s2 = m.read(((sp) + 160) >>> 0, 4) | 0;
     s1 = m.read(((sp) + 156) >>> 0, 4) | 0;
     s0 = m.read(((sp) + 152) >>> 0, 4) | 0;
-    sp = (sp + 176) | 0; return v0;
+    sp = (sp + 176) | 0; return [v0, v1];
   default: throw new Error(`x8004c768: no block at 0x${(pc >>> 0).toString(16)}`);
   }
 }
@@ -368,7 +368,7 @@ export function* x8004c6c8(ctx, a0 = 0, a1 = 0, a2 = 0, a3 = 0) {
     s2 = m.read(((sp) + 24) >>> 0, 4) | 0;
     s1 = m.read(((sp) + 20) >>> 0, 4) | 0;
     s0 = m.read(((sp) + 16) >>> 0, 4) | 0;
-    sp = (sp + 40) | 0; return v0;
+    sp = (sp + 40) | 0; return [v0, v1];
   default: throw new Error(`x8004c6c8: no block at 0x${(pc >>> 0).toString(16)}`);
   }
 }
@@ -386,7 +386,7 @@ export function x8004e048(ctx, a0 = 0, a1 = 0, a2 = 0, a3 = 0) {
     m.write(((a0) + 24) >>> 0, t1 >>> 0, 4);
     m.write(((a0) + 28) >>> 0, t2 >>> 0, 4);
     v0 = a0 | 0;
-     return v0;
+     return [v0, v1];
   default: throw new Error(`x8004e048: no block at 0x${(pc >>> 0).toString(16)}`);
   }
 }
@@ -468,7 +468,7 @@ export function x8004e078(ctx, a0 = 0, a1 = 0, a2 = 0, a3 = 0) {
     t1 = lo;
     t1 = t1 >> 12;
     m.write(((a0) + 16) >>> 0, t1 >>> 0, 4);
-    v0 = a0 | 0; return v0;
+    v0 = a0 | 0; return [v0, v1];
   default: throw new Error(`x8004e078: no block at 0x${(pc >>> 0).toString(16)}`);
   }
 }
@@ -610,7 +610,7 @@ export function x8004e308(ctx, a0 = 0, a1 = 0, a2 = 0, a3 = 0) {
     t9 = t6 >> 12;
     t6 = (t9 - t7) | 0;
     m.write(((a1) + 14) >>> 0, t6 & 0xffff, 2);
-     return v0;
+     return [v0, v1];
   default: throw new Error(`x8004e308: no block at 0x${(pc >>> 0).toString(16)}`);
   }
 }

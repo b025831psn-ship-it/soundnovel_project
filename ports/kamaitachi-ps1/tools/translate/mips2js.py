@@ -138,7 +138,7 @@ def translate(a,name,extra=(),hooks=None,touch=False):
         r=R(i.op_str.split(',')[-1])
         P(f"    {{ const f = {r}; {dl} [v0, v1] = yield* call(ctx, sp, f >>> 0, a0, a1, a2, a3); }}")
       elif op=='jr':
-        if i.op_str=='$ra': P(f"    {dl} return v0;")
+        if i.op_str=='$ra': P(f"    {dl} return [v0, v1]; // v0, and v1 for 64-bit results (the soft-float doubles)")
         else:
           r=R(i.op_str); P(f"    {{ const t = {r}; {dl} pc = t >>> 0; continue; }}")
       k+=2

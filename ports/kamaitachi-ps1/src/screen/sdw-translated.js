@@ -231,7 +231,7 @@ export function* x8003b398(ctx, a0 = 0, a1 = 0, a2 = 0, a3 = 0) {
     s1 = m.read(((sp) + 52) >>> 0, 4) | 0;
     s0 = m.read(((sp) + 48) >>> 0, 4) | 0;
     sp = (sp + 88) | 0;
-     return v0;
+     return [v0, v1];
   default: throw new Error(`x8003b398: no block at 0x${(pc >>> 0).toString(16)}`);
   }
 }

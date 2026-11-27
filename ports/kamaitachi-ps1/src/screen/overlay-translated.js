@@ -364,7 +364,7 @@ export function* x8003186c(ctx, a0 = 0, a1 = 0, a2 = 0, a3 = 0) {
   case 0x80031e0c:
     s0 = m.read(((sp) + 24) >>> 0, 4) | 0;
     sp = (sp + 32) | 0;
-     return v0;
+     return [v0, v1];
   default: throw new Error(`x8003186c: no block at 0x${(pc >>> 0).toString(16)}`);
   }
 }
