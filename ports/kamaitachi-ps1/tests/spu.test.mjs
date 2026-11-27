@@ -47,3 +47,12 @@ test("SPU: one-shot end (flags 1) mutes the voice; reverb with zero volumes stay
   assert.equal(spu.voices[0].level, 0);
   assert.ok(out.every((x) => Number.isInteger(x) && Math.abs(x) <= 32767));
 });
+
+test("SPU: an exponential release reaches zero and frees the voice", () => {
+  const spu = setup();
+  spu.write16(0x08, 0x000f); spu.write16(0x0a, 0x0020 | 0x0c); // exponential release, rate 12
+  spu.write16(0x188, 1); spu.render(28 * 8);
+  spu.write16(0x18c, 1); spu.render(44100);
+  assert.equal(spu.voices[0].level, 0); // truncating the step left it at 511 for ever
+  assert.equal(spu.read16(0x0c), 0);
+});
