@@ -1,53 +1,202 @@
 <!doctype html>
 <html lang="ko">
+<head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<title>사운드노벨 · GBA 작품 선택</title>
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<!-- Added to the home screen, the hub opens without the browser's bars (iPhone Safari has no full-screen API for pages). -->
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="펜션 슈프르">
+<meta name="theme-color" content="#08090b">
+<title>펜션 슈프르</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+KR:wght@400;500;600&family=Noto+Serif+KR:wght@500;700&family=Noto+Serif+JP:wght@500;700&family=Yusei+Magic&family=Potta+One&family=Anton&display=swap">
 <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<header class="top">
+  <a class="brand" href="/" aria-label="펜션 슈프르 처음으로">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 18V7l8-3 8 3v11"/><path d="M9 18v-5a3 3 0 0 1 6 0v5"/></svg>
+    <span>펜션 슈프르</span>
+  </a>
+  <p class="now" id="now" hidden><span class="dot" aria-hidden="true"></span><span id="now-title"></span></p>
+  <span class="platform">원작 엔진 이식 · 브라우저에서 바로</span>
+</header>
+
 <main class="hub">
-<header><h1>사운드노벨</h1><span>GAME BOY ADVANCE</span></header>
-<div class="workspace"><nav aria-label="작품 선택">
-<article>
-  <a class="logo" href="#kamaitachi" aria-label="카마이타치의 밤 어드밴스 실행"><img src="/art/kamaitachi.png?logo" alt="かまいたちの夜 ADVANCE"></a>
-  <div><h2>카마이타치의 밤 어드밴스 <small>(2002)</small></h2>
-  <div class="meta"><span>GBA · 한글 패치 적용</span>
-  <a target="_blank" rel="noopener" href="https://www.spike-chunsoft.co.jp/pages/games/kamagba/">소개</a>
-  <a target="_blank" rel="noopener" href="https://78514.com/games/kama/kama_endlist.html">공략</a></div></div>
-</article>
-<article>
-  <a class="logo" href="#higanbana" aria-label="피안화 실행"><img src="/art/higanbana.png?logo" alt="彼岸花"></a>
-  <div><h2>피안화 <small>(2002)</small></h2>
-  <div class="meta"><span>GBA · 한글 패치 미적용</span>
-  <a target="_blank" rel="noopener" href="https://geo-online.co.jp/store_info/item/5032708/">소개</a>
-  <a target="_blank" rel="noopener" href="https://www.chinaavg.com/forum.php?mod=viewthread&amp;tid=8789">공략</a></div></div>
-</article>
-</nav>
-<section class="player" aria-label="게임 실행기">
-  <p id="prompt">목록에서 작품 로고를 선택해 주세요.</p>
-  <iframe hidden title="GBA 실행기" allow="autoplay; fullscreen; gamepad" allowfullscreen></iframe>
-</section></div>
+  <section class="theatre" aria-label="게임 실행기">
+    <!-- Before a game starts: the selected work's title card over a still from the game. -->
+    <div class="marquee" id="marquee">
+      <div class="still" aria-hidden="true"><img src="/art/kamaitachi-still.png" alt="" onerror="this.remove()"></div>
+      <canvas class="snow" id="snow" aria-hidden="true"></canvas>
+      <div class="card">
+        <p class="kicker"><span>GAME BOY ADVANCE</span><span>2002</span><span>춘소프트</span></p>
+        <h1 class="logo" lang="ja">
+          <img src="/art/kamaitachi-logo.svg" alt="かまいたちの夜 ADVANCE" onerror="this.closest('h1').classList.add('text')">
+          <span class="jp">かまいたちの夜</span><span class="adv" lang="en">ADVANCE</span>
+        </h1>
+        <p class="ko">카마이타치의 밤 어드밴스</p>
+        <p class="lede"><span class="warning">『오늘 밤, 12시, 누군가가 죽는다』</span><br>누군가의 짓궂은 장난이겠지. 모두 그렇게 웃어넘기려 했다.<br>그러나 밤이 깊어질수록 눈은 길을 지우고, 열세 사람은 이 집에 갇힌다.<br>장난이라면, 아침이 오기 전에 끝나야 한다.</p>
+        <div class="actions">
+          <a class="start" href="#kamaitachi">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5l11 7-11 7z"/></svg>
+            플레이
+          </a>
+          <span class="hint">일본어 원문 · 헤드폰 권장</span>
+        </div>
+        <ul class="facts" aria-label="이식 방식">
+          <li><b>240×160</b>원본 해상도, 정수 배율</li>
+          <li><b>MP2K</b>원작 사운드 드라이버</li>
+          <li><b>VM</b>원작 스크립트 그대로 실행</li>
+        </ul>
+      </div>
+    </div>
+    <iframe hidden title="게임 실행기" allow="autoplay; fullscreen; gamepad" allowfullscreen></iframe>
+  </section>
+
+  <aside class="side">
+    <nav class="library" aria-label="작품 선택">
+      <h2 class="label">작품 <span>9</span></h2>
+      <details class="series" name="series" data-has="kamaitachi">
+        <summary class="entry"><span class="cover" style="--tint:#1c2538"><img src="/art/kamaitachi-still.png" alt="" onerror="this.remove()"><span class="cover-text" lang="ja">かまいたちの夜</span></span><span class="info"><span class="title">카마이타치의 밤</span><span class="sub">판본 6 · 1994–2006</span><span class="status ready">GBA판 플레이 가능</span></span><svg class="chev" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg></summary>
+        <ul class="editions">
+            <li><span class="edition"><span class="title">카마이타치의 밤</span><span class="sub">SFC · 1994 · 춘소프트</span><span class="status">준비 중</span></span></li>
+            <li><a class="work edition" href="#kamaitachi-ps1" data-src="/ports/kamaitachi-ps1/index.html" aria-label="카마이타치의 밤 특별편 실행 (시험판)" data-title="카마이타치의 밤 특별편"><span class="title">카마이타치의 밤 특별편</span><span class="sub">PS · 1998 · 춘소프트</span><span class="status">시험판</span></a></li>
+            <li><a class="work edition" href="#kamaitachi" aria-label="카마이타치의 밤 어드밴스 실행" data-title="카마이타치의 밤 어드밴스"><span class="title">카마이타치의 밤 어드밴스</span><span class="sub">GBA · 2002 · 춘소프트</span><span class="status ready">플레이 가능</span></a></li>
+            <li><span class="edition"><span class="title">카마이타치의 밤 2</span><span class="sub">PS2 · 2002 · 춘소프트</span><span class="status">준비 중</span></span></li>
+            <li><span class="edition"><span class="title">카마이타치의 밤 2 특별편</span><span class="sub">PSP · 2006 · 춘소프트</span><span class="status">준비 중</span></span></li>
+            <li><span class="edition"><span class="title">카마이타치의 밤 ×3</span><span class="sub">PS2 · 2006 · 세가</span><span class="status">준비 중</span></span></li>
+        </ul>
+      </details>
+      <div class="entry"><span class="cover" style="--tint:#4a1218"><img src="/art/covers/higanbana.jpg" alt="" onerror="this.remove()"><span class="cover-text" lang="ja">彼岸花</span></span><span class="info"><span class="title">피안화</span><span class="sub">GBA · 2002</span><span class="status">준비 중</span></span></div>
+      <div class="entry"><span class="cover" style="--tint:#3a2412"><img src="/art/covers/otogirisou.jpg" alt="" onerror="this.remove()"><span class="cover-text" lang="ja">弟切草</span></span><span class="info"><span class="title">제절초</span><span class="sub">SFC · PS · 판본 2</span><span class="status">준비 중</span></span></div>
+      <div class="entry"><span class="cover" style="--tint:#2a2a2a"><img src="/art/covers/machi.jpg" alt="" onerror="this.remove()"><span class="cover-text" lang="ja">街</span></span><span class="info"><span class="title">거리 ~운명의 교차로~</span><span class="sub">SS · PS · PSP · 판본 3</span><span class="status">준비 중</span></span></div>
+      <div class="entry"><span class="cover" style="--tint:#2e1840"><img src="/art/covers/majo.jpg" alt="" onerror="this.remove()"><span class="cover-text" lang="ja">魔女たちの眠り</span></span><span class="info"><span class="title">마녀들의 잠</span><span class="sub">SFC · PS · 판본 2</span><span class="status">준비 중</span></span></div>
+      <div class="entry"><span class="cover" style="--tint:#0f2a38"><img src="/art/covers/yakouchuu.jpg" alt="" onerror="this.remove()"><span class="cover-text" lang="ja">夜光虫</span></span><span class="info"><span class="title">야광충</span><span class="sub">SFC · 1995 · 아테나</span><span class="status">준비 중</span></span></div>
+      <div class="entry"><span class="cover" style="--tint:#0f3030"><img src="/art/covers/yakouchuu2.jpg" alt="" onerror="this.remove()"><span class="cover-text" lang="ja">夜光虫Ⅱ</span></span><span class="info"><span class="title">야광충 Ⅱ 살인항로</span><span class="sub">N64 · 1999 · 아테나</span><span class="status">준비 중</span></span></div>
+      <div class="entry"><span class="cover" style="--tint:#3d1220"><img src="/art/covers/zakuro.jpg" alt="" onerror="this.remove()"><span class="cover-text" lang="ja">ざくろの味</span></span><span class="info"><span class="title">석류의 맛</span><span class="sub">SFC · 1995 · 이매지니어</span><span class="status">준비 중</span></span></div>
+      <div class="entry"><span class="cover" style="--tint:#1a2636"><img src="/art/covers/anubis.jpg" alt="" onerror="this.remove()"><span class="cover-text" lang="ja">月面のアヌビス</span></span><span class="info"><span class="title">월면의 아누비스</span><span class="sub">SFC · 1995 · 이매지니어</span><span class="status">준비 중</span></span></div>
+    </nav>
+
+
+    <p class="links">
+      <a target="_blank" rel="noopener" href="https://www.spike-chunsoft.co.jp/pages/games/kamagba/">공식 소개</a>
+      <a target="_blank" rel="noopener" href="https://78514.com/games/kama/kama_endlist.html">공략</a>
+    </p>
+  </aside>
+</main>
+
 <script>
-  const links = Array.from(document.querySelectorAll('.logo'));
+  const links = Array.from(document.querySelectorAll('.work'));
   const frame = document.querySelector('iframe');
+  const marquee = document.querySelector('#marquee');
+  const now = document.querySelector('#now');
   function showSelection() {
     const selected = links.find(link => link.hash === location.hash);
     for (const link of links) {
       if (link === selected) link.setAttribute('aria-current', 'true');
       else link.removeAttribute('aria-current');
     }
-    document.querySelector('#prompt').hidden = Boolean(selected);
+    marquee.hidden = Boolean(selected);
     frame.hidden = !selected;
+    now.hidden = !selected;
+    document.body.classList.toggle('playing', Boolean(selected));
+    if (!selected) setTheatre(false);
     if (selected) {
+      const series = selected.closest('.series');
+      if (series) series.open = true;
+      document.querySelector('#now-title').textContent = selected.dataset.title;
       frame.title = selected.getAttribute('aria-label');
-      frame.src = selected.hash === '#kamaitachi'
-        ? '/web-player/index.html?embed=1&start=1&data=/kamaitachi-gba-kor/data/first-choice.ko.json'
-        : '/play/' + selected.hash.slice(1) + '/';
+      const src = selected.dataset.src ?? (selected.hash === '#kamaitachi'
+        ? '/ports/kamaitachi-gba/index.html'
+        : '/play/' + selected.hash.slice(1) + '/');
+      if (frame.getAttribute('src') !== src) frame.src = src;
+      frame.focus();
     } else {
       frame.removeAttribute('src');
     }
   }
+
+  // Theatre mode: the header and the side column step away and the stage takes the window,
+  // so the screen can grow to the next whole-number scale. The port page asks for it (T key or its button).
+  function setTheatre(on) {
+    document.body.classList.toggle('theatre-mode', on);
+    frame.contentWindow?.postMessage({ type: 'theatre', on }, location.origin);
+  }
+  addEventListener('message', (event) => {
+    if (event.origin !== location.origin || event.source !== frame.contentWindow) return;
+    if (event.data?.type === 'theatre') setTheatre(event.data.on ?? !document.body.classList.contains('theatre-mode'));
+    // Where the browser has no element full screen (iPhone Safari), the port page fills the window instead.
+    // Touch buttons shown in the player (its pad button): the frame grows to hold them.
+    if (event.data?.type === 'pad') document.body.classList.toggle('pad-on', Boolean(event.data.on));
+    if (event.data?.type === 'fill') document.body.classList.toggle('filled', Boolean(event.data.on));
+    if (event.data?.type === 'hello') setTheatre(document.body.classList.contains('theatre-mode'));
+  });
+  addEventListener('keydown', (event) => {
+    if (!document.body.classList.contains('playing')) return;
+    if (event.key === 't' || event.key === 'T') setTheatre(!document.body.classList.contains('theatre-mode'));
+    if (event.key === 'Escape') setTheatre(false);
+  });
+  // Snowfall on the title card: three depths of flakes that sway as they fall.
+  // Far flakes are small and slow, near ones large, soft and quick. Stops while a game is shown.
+  (function snowfall() {
+    const canvas = document.querySelector('#snow');
+    const ctx = canvas.getContext('2d');
+    const still = matchMedia('(prefers-reduced-motion: reduce)');
+    const layers = [
+      { share: .55, size: [1, 2.2], speed: [22, 40], alpha: [.45, .8], blur: 0 },
+      { share: .33, size: [2.2, 3.6], speed: [45, 75], alpha: [.7, .95], blur: 0 },
+      { share: .12, size: [4, 7], speed: [85, 130], alpha: [.5, .8], blur: 3 },
+    ];
+    const rand = (a, b) => a + Math.random() * (b - a);
+    let flakes = [], w = 0, h = 0, ratio = 1, last = 0, frame = 0;
+    function make(layer, y) {
+      return { layer, x: Math.random() * w, y: y ?? rand(-h, h), r: rand(...layer.size), v: rand(...layer.speed),
+        a: rand(...layer.alpha), phase: Math.random() * 6.28, sway: rand(.4, 1.4), drift: rand(8, 26) };
+    }
+    function resize() {
+      ratio = Math.min(devicePixelRatio || 1, 2);
+      w = canvas.clientWidth; h = canvas.clientHeight;
+      canvas.width = Math.round(w * ratio); canvas.height = Math.round(h * ratio);
+      const count = Math.round(Math.min(420, w * h / 2600));
+      flakes = layers.flatMap(layer => Array.from({ length: Math.round(count * layer.share) }, () => make(layer)));
+      if (still.matches) draw(0);
+    }
+    function draw(dt) {
+      ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
+      ctx.clearRect(0, 0, w, h);
+      const wind = 14;
+      for (const f of flakes) {
+        f.phase += dt * f.sway;
+        f.y += f.v * dt;
+        f.x += (wind + Math.sin(f.phase) * f.drift) * dt;
+        if (f.y - f.r > h) Object.assign(f, make(f.layer, -f.r * 2));
+        if (f.x > w + 10) f.x -= w + 20;
+        ctx.globalAlpha = f.a;
+        ctx.fillStyle = '#f4f6fb';
+        ctx.shadowColor = 'rgba(255,255,255,.9)';
+        ctx.shadowBlur = f.layer.blur;
+        ctx.beginPath(); ctx.arc(f.x, f.y, f.r, 0, 6.2832); ctx.fill();
+      }
+      ctx.globalAlpha = 1; ctx.shadowBlur = 0;
+    }
+    function tick(now) {
+      const dt = Math.min((now - (last || now)) / 1000, .05);
+      last = now;
+      if (!canvas.closest('[hidden]') && !still.matches) draw(dt);
+      frame = requestAnimationFrame(tick);
+    }
+    new ResizeObserver(resize).observe(canvas);
+    frame = requestAnimationFrame(tick);
+  })();
+  // Only one series open at a time (also for browsers without <details name>).
+  for (const d of document.querySelectorAll('.series')) d.addEventListener('toggle', () => {
+    if (d.open) for (const other of document.querySelectorAll('.series[open]')) if (other !== d) other.open = false;
+  });
   window.addEventListener('hashchange', showSelection);
   showSelection();
 </script>
-</main>
+</body>
 </html>

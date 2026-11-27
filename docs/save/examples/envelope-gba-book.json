@@ -1,0 +1,21 @@
+{
+  "format": 1,
+  "gameId": "kamaitachi-gba",
+  "slot": "manual-0",
+  "schema": 1,
+  "dataVersion": 1,
+  "edition": "ko",
+  "revision": 7,
+  "savedAt": "2026-11-25T10:30:00Z",
+  "deviceId": "dev-3f9a1c",
+  "label": "ゲレンデにて",
+  "payload": {
+    "_note": "예시 값. 실제 payload는 페이지 시작 시점의 VM 상태이며 서버에는 암호화되어 올라간다.",
+    "bank": 19,
+    "offset": 1018,
+    "ram": { "scalars": {}, "flags": { "$bytes": [0, 0, 0, 0] } },
+    "picture": 12,
+    "song": 3,
+    "endings": { "clear": 0, "seen": 0 }
+  }
+}
