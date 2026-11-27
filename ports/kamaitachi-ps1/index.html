@@ -35,6 +35,11 @@
       <span class="scale" id="scale" title="원본 320×240 화면을 정수 배율로 확대합니다">×1</span>
     </div>
     <div class="controls">
+      <!-- The original's earlier-pages view (PlayStation START at a page marker), shown only while it can open. -->
+      <button type="button" class="icon" id="backlog" aria-label="앞 페이지 다시 읽기 (B)" title="앞 페이지 다시 읽기 (B) · 화면을 아래로 쓸어내려도 열립니다" hidden>
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h9M4 12h9M4 17h7M18 19V6M14.5 9.5L18 6l3.5 3.5"/></svg>
+      </button>
+      <span class="sep" aria-hidden="true" id="backlog-sep" hidden></span>
       <button type="button" class="icon" id="mute" aria-pressed="false" aria-label="소리 끄기">
         <svg viewBox="0 0 24 24" aria-hidden="true" class="on"><path d="M4 9v6h4l5 4V5L8 9z"/><path d="M16.5 8.5a5 5 0 0 1 0 7M19 6a8.5 8.5 0 0 1 0 12"/></svg>
         <svg viewBox="0 0 24 24" aria-hidden="true" class="off"><path d="M4 9v6h4l5 4V5L8 9z"/><path d="M17 9l5 6M22 9l-5 6"/></svg>

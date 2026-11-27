@@ -63,15 +63,28 @@ whenReady(({ runtime }) => {
   // iPhone Safari starts audio only at the end of a touch: wake it on those too.
   for (const type of ["touchend", "click", "keydown"]) addEventListener(type, resume, { capture: true, passive: true });
 
+  // A tap goes to the game when the finger lifts; a downward swipe opens the earlier pages instead
+  // (phones have no START), where the game allows it.
+  const canBacklog = () => Boolean(runtime.canBacklog?.());
+  const openBacklog = () => { if (!canBacklog()) return false; resume(); runtime.input.pulse("backlog"); return true; };
+  let press = null;
   canvas.addEventListener("pointerdown", (event) => {
     if (!event.isPrimary) return;
     event.preventDefault();
     resume();
-    const { x, y } = nativePoint(event);
-    routeTouch(runtime, x, y);
+    press = { ...nativePoint(event), id: event.pointerId };
+  });
+  canvas.addEventListener("pointercancel", () => { press = null; });
+  canvas.addEventListener("pointerup", (event) => {
+    if (!press || event.pointerId !== press.id) return;
+    const start = press; press = null;
+    const end = nativePoint(event);
+    if (end.y - start.y > 40 && Math.abs(end.x - start.x) < end.y - start.y && openBacklog()) return;
+    routeTouch(runtime, start.x, start.y);
   });
   addEventListener("keydown", (event) => {
     if (event.repeat || event.altKey || event.ctrlKey || event.metaKey) return;
+    if ((event.key === "b" || event.key === "PageUp") && openBacklog()) { event.preventDefault(); return; }
     const input = { Enter: "confirm", " ": "confirm", z: "confirm", Escape: "cancel", x: "cancel", s: "menu",
       ArrowUp: "up", ArrowDown: "down", ArrowLeft: "left", ArrowRight: "right" }[event.key];
     if (!input || (input === "cancel" && event.key === "Escape" && filled)) return;
@@ -110,6 +123,15 @@ whenReady(({ runtime }) => {
     runtime.input.pulse(menuMode === "back" ? "cancel" : "menu");
   });
   if (embedded) parent.postMessage({ type: "pad", on: false }, location.origin);
+
+  const backlog = $("backlog"), backlogSep = $("backlog-sep");
+  let backlogShown = false;
+  (function watchBacklog() {
+    const can = canBacklog();
+    if (can !== backlogShown) { backlogShown = can; backlog.hidden = backlogSep.hidden = !can; }
+    requestAnimationFrame(watchBacklog);
+  })();
+  backlog.addEventListener("click", () => { navigator.vibrate?.(8); openBacklog(); });
 
   const mute = $("mute");
   const volume = $("volume");
