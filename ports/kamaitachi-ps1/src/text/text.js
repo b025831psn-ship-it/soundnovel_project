@@ -16,7 +16,7 @@
 import { setVar, savePoint } from "../helpers.js";
 import { backlog } from "../menu.js";
 import { checkpoint } from "../scenario/lib.js";
-import { drawGlyph } from "./glyph.js";
+import { drawGlyph, glyphWidth } from "./glyph.js";
 import { sound } from "../sound-bridge.js";
 
 const GP = 0x8007913c;
@@ -97,6 +97,17 @@ function textStep(ctx) { // the body of 0x80039288; returns the frame's sp when 
     if (win() >= 2) return;
   }
 
+  // Korean build only (m.ko): the byte 0x20 is a space with a width, and the line breaks at it
+  // when the word that follows would pass the right edge (the original skips the byte: Japanese
+  // has no spaces and breaks anywhere).
+  function koSpace(w, q) {
+    const x = r16(T.x + 2 * w), left = r16(T.left + 2 * w);
+    if (x <= left) return;
+    let n = 0, last = 0;
+    for (; r8(q) >= 0x78; q += 2) { last = glyphWidth(m, r8(q) << 8 | r8(q + 1)) + 1; n += last; }
+    if (n && x + m.ko.space + n - last >= 0x120) { w16(T.x + 2 * w, left); down(w); }
+    else w16(T.x + 2 * w, x + m.ko.space);
+  }
   function typeOne(w, p) { // one text code; returns s0 (1 = take the next code this frame too)
     const c = r8(p);
     switch (c < 0x78 ? c : -1) {
@@ -105,7 +116,10 @@ function textStep(ctx) { // the body of 0x80039288; returns the frame's sp when 
         if (r8(T.insert + w)) { w8(T.insert + w, 0); w8(T.ended, 1); w32(T.ptr + 4 * win(), r32(T.insertReturn + 4 * win())); }
         else { w32(T.ptr + 4 * w, 0); w8(T.ended, 1); w32(T.endPtr, p + 1); }
         return 0;
-      case 0x20: next(w); return 1;
+      case 0x20:
+        next(w);
+        if (m.ko) koSpace(w, p + 1);
+        return 1;
       case 0x52: w8(T.returnLeft, 1); next(w); return 1; // 'R'
       case 0x72: // 'r'
         if (!r8(T.quote2 + w) && !r8(T.quote + w) && !r8(T.skipWait + w)) {
@@ -184,7 +198,7 @@ function textStep(ctx) { // the body of 0x80039288; returns the frame's sp when 
         if (code === 0x8175) w8(T.quote + win(), 1);
         if (code === 0x8176) w8(T.quote + win(), 0);
         let u = win();
-        if (KINSOKU.has(code)) { // punctuation may hang past the right edge once
+        if (KINSOKU.has(code) || m.ko?.hang.has(code)) { // punctuation may hang past the right edge once
           if (r16(T.x + 2 * u) >= 0x120) {
             if (r8(T.kinsoku) === 1) { w16(T.x + 2 * u, r16(T.left + 2 * u)); w8(T.kinsoku, 0); down(u); }
             else w8(T.kinsoku, 1);

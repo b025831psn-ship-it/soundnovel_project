@@ -49,19 +49,36 @@ export function packGlyph(m, w, h) {
 
 // 0x800380ec: ctx = { m, sp, call(addr, args, sp) } (sp: the caller's; LoadImage is called
 // through ctx.call from this routine's frame, sp - 0x28, where the RECT lives at +0x10).
+// Korean build (m.ko = { font, space }, see src/ko.js): the codes 0xa080-0xdfff are glyphs of a
+// second font in the same format, kept outside the PS1 RAM; glyph i has the code
+// (0xa0 + (i >> 7)) << 8 | 0x80 + (i & 0x7f).
+const koGlyph = (m, code) => {
+  const f = m.ko?.font; if (!f || code < 0xa000 || code >= 0xe000) return -1;
+  const i = ((code >> 8) - 0xa0) << 7 | (code & 0x7f);
+  return i * 2 + 1 < f.length && i < m.ko.glyphs ? (f[i * 2] << 8 | f[i * 2 + 1]) * 4 : -1;
+};
+// The width of a glyph, as drawGlyph leaves it in gp[0x19e] (for the Korean line breaks).
+export function glyphWidth(m, code) {
+  if (code === 0x8140) return 2;
+  const k = koGlyph(m, code);
+  return k >= 0 ? m.ko.font[k] & 0x3f : m.read(lookup(m, code), 1) & 0x3f;
+}
+
 export function drawGlyph(ctx, x, y, sjis) {
   const { m } = ctx;
   m.write(G_X, x & 0xff, 1);
   bzero(m, EXPAND, 0x300);
   const code = sjis & 0xffff;
   let p, w, h;
-  if (code !== 0x8140) {
+  const k = koGlyph(m, code), rd = k >= 0 ? (a) => m.ko.font[a] : (a) => m.read(a, 1);
+  if (k >= 0) { p = k; w = rd(p) & 0x3f; h = rd(p + 1) & 0x3f; p += 2; }
+  else if (code !== 0x8140) {
     p = lookup(m, code); w = m.read(p, 1) & 0x3f; h = m.read(p + 1, 1) & 0x3f; p += 2;
   } else { // full-width space: fixed 2 x 14, pixel data from the 0x8140 glyph
     p = lookup(m, 0x8140) + 2; w = 2; h = 14;
   }
   const total = h * w, pal = m.read(G_PALETTE, 1) << 4;
-  const nib = (i) => { const b = m.read(p + ((i & 0xffff) >>> 1), 1); return i & 1 ? b & 0xf : b >> 4; };
+  const nib = (i) => { const b = rd(p + ((i & 0xffff) >>> 1)); return i & 1 ? b & 0xf : b >> 4; };
   let out = 0, n = 0;
   while ((out & 0xffff) < total) {
     const v = nib(n++);

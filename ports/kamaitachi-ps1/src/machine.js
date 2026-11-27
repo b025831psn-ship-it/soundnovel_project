@@ -14,6 +14,7 @@ import { mainLoop } from "./main-loop.js";
 import { vsyncCallback } from "./vsync.js";
 import { silentSound } from "./sound-bridge.js";
 import { MemoryCard } from "./memory-card.js";
+import { koBuild } from "./ko.js";
 import { playMovie } from "./movie.js";
 
 const CARD_STATE = 0x8008ca38, CARD_SEEN = 0x8008ca34;
@@ -38,14 +39,16 @@ export class Machine {
   // on the oracle (whose card requests never finish).
   // xa: an XaStream (xa.js) for CD-XA (the voice drama); none plays it silent.
   // movie: the host's player for the STR movies (movie.js: name -> { ended, stop() }); none skips them.
-  constructor({ exeData, pacs, sound = null, onError = null, card = null, xa = null, movie = null, cardTiming = true }) {
+  constructor({ exeData, pacs, sound = null, onError = null, card = null, xa = null, movie = null, cardTiming = true, ko = null }) {
+    // ko: { font, script } (src/ko.js): the Korean script and font in place of the Japanese text
+    const korean = ko ? koBuild(pacs, ko) : null; if (korean) pacs = korean.pacs;
     this.cardTiming = cardTiming; this.cardPending = null; this.stall = 0;
     this.ram = new Uint8Array(RAM); this.dv = new DataView(this.ram.buffer);
     this.scratch = new Uint8Array(0x400);
     for (const { addr, bytes } of exeData) this.ram.set(bytes, addr & (RAM - 1));
     this.gpu = new Gpu(); this.dma = new Uint32Array(0x80 / 4); this.io = new Map();
     const m = { read: (a, w) => this.read(a, w), write: (a, v, w) => this.write(a, v, w), setBytes: (a, b) => this.ram.set(b, a & (RAM - 1)), vsync: () => this.read(VSYNC_COUNT, 4) };
-    this.m = m;
+    this.m = m; if (korean) { m.ko = korean.text; for (const [addr, bytes] of korean.patches) this.ram.set(bytes, addr & (RAM - 1)); }
     this.gs = new LibGpu(m);
     this.cd = new LibCd({ m, pacs, xa });
     sound = typeof sound === "function" ? sound(m) : sound ?? silentSound(); this.sound = sound; this.callback = null; this.buttons = 0; this.frames = 0; this.card = 1; this.onError = onError;
