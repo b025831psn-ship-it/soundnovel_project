@@ -156,7 +156,7 @@
         if (refW[wi] && refW[wi][2] === port && refW[wi][3] === value) { wi++; wOk++; }
       }
     };
-    const vm = new ZakuroVM({ ...(program ? { program } : { rom }), masterLink: link, trace, inputFrames: data.input });
+    const vm = new ZakuroVM({ ...(program ? { program, sram: program.sram } : { rom }), masterLink: link, trace, inputFrames: data.input });
     vm.reset();
     const end = rows.at(-1)[0] + MASTER_HZ;
     const startTime = out.context.currentTime;
