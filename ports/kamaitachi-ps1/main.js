@@ -7,7 +7,7 @@ const soundRoot = query.get("sound") || new URL("sound/", privateRoot).href;
 const loading = () => document.querySelector("#loading span:last-child");
 
 try {
-  if (query.get("engine") === "machine") {
+  if (query.get("engine") !== "vm") { // the ported original is the default; ?engine=vm keeps the older bytecode VM
     // The ported original (src/machine.js): the user's EXE data and PAC files from ?machineData=
     const { startMachine } = await import("./src/machine-browser.js");
     const machineRoot = query.get("machineData") || new URL("machine/", privateRoot).href;
