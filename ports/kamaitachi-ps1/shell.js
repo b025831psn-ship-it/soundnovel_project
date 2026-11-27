@@ -52,9 +52,16 @@ function nativePoint(event) {
     y: Math.max(0, Math.min(H - 1, Math.floor(v * H))),
   };
 }
+// While the screen offers rows, a tap goes to the nearest row within REACH native pixels (rows are
+// small on a phone) and a tap further away does nothing: it used to be ○, which chose the row the
+// cursor was on instead of the one aimed at (태우 2026-11-28). With no rows, any tap is ○.
+const REACH = 14;
 function routeTouch(runtime, x, y) {
-  const hit = (runtime.touchRows?.() || []).find((row) => x >= row.left && x < row.right && y >= row.top && y < row.bottom);
-  if (!hit) return runtime.input.pulse("confirm");
+  const rows = runtime.touchRows?.() || [];
+  if (!rows.length) return runtime.input.pulse("confirm");
+  const gap = (row) => Math.hypot(Math.max(row.left - x, 0, x - row.right + 1), Math.max(row.top - y, 0, y - row.bottom + 1));
+  const hit = rows.reduce((best, row) => (gap(row) < gap(best) ? row : best));
+  if (gap(hit) > REACH) return;
   const current = runtime.cursorIndex();
   if (hit.index === current) runtime.input.pulse("confirm");
   else runtime.moveCursor(hit.index - current);
