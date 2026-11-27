@@ -1946,7 +1946,7 @@ export function* flowChart(ctx, a0 = 0, a1 = 0, a2 = 0, a3 = 0) {
   case 0x8001b308:
      [v0, v1] = yield* call(ctx, sp, 0x80039288, a0, a1, a2, a3);
   case 0x8001b310:
-    offer(ctx, [box(100000, 0, 0, 320, 240)], () => 0, ["up", "down"], { 100000: "select" });
+    offer(ctx, [...Array.from({ length: 36 }, (_, k) => box(k, 9 + 36 * (k % 6), 43 + 28 * Math.floor(k / 6), 36, 28)), box(100001, 9, 28, 216, 15), box(100002, 9, 211, 216, 20), box(100003, 0, 43, 9, 168), box(100004, 225, 43, 20, 168)], () => (m.read((sp + 0x38) >>> 0, 2) % 6) * 6 + (m.read((sp + 0x30) >>> 0, 2) % 6), ["up", "down"], { 100001: "up", 100002: "down", 100003: "left", 100004: "right" }, { cols: 6, across: ["left", "right"] });
      [v0, v1] = yield* call(ctx, sp, 0x80013f34, a0, a1, a2, a3);
   case 0x8001b318:
     v0 = m.read(((sp) + 40) >>> 0, 1);
