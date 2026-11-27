@@ -7,13 +7,13 @@
 //   0x8003bf64  sortSprite(sp, ot, z)  one GsSPRITE, cut into 1-line strips when the sprite has
 //                                      a strip table (wavy pictures)
 //   0x8003c86c  addBox(...)            queue a filled box (0x801d5910, up to gp[0x1ba])
-//   0x8003c988  sortBoxes()            queued boxes into the OT
+//   0x8003c988  sortBoxes()            queued boxes into the OT, then the kept list (0x8003c8f8)
 //   0x8003ce2c  sortOverlays()         8 overlay sprites (0x801d5628), re-added through 0x8001c838
 const GP = 0x8007913c;
 import { waveReset } from "./wave.js";
 const SPRITES = 0x801eef68, SPRITE_SIZE = 0x48, SPRITE_COUNT = 160, INDEX = 0x800794c8, CURRENT = 0x80079470;
 const OT = 0x80079468, BRIGHT = 0x801f7500, SHAKE = 0x8009da48;
-const BOXES = 0x801d5910, BOX_Z = 0x801d66c8, BOX_COUNT = GP + 0x1ba, BOX2_COUNT = GP + 0x1bc, OVERLAYS = 0x801d5628;
+const BOXES2 = 0x801f5b80, BOX2_Z = 0x80079570, BOXES = 0x801d5910, BOX_Z = 0x801d66c8, BOX_COUNT = GP + 0x1ba, BOX2_COUNT = GP + 0x1bc, OVERLAYS = 0x801d5628;
 const unported = (addr) => { throw new Error(`sprites: path at 0x${addr.toString(16)} is not ported`); };
 const s16 = (v) => (v << 16) >> 16;
 const div256 = (v) => (v < 0 ? v + 0xff : v) >> 8; // signed divide by 256 as compiled (sra after bias)
@@ -135,7 +135,8 @@ export function sortBoxes(ctx) {
   const { m, gs } = ctx, { r16, r32, w16 } = io(m);
   gs.DrawSync(0);
   for (let i = 0; i < r16(BOX_COUNT); i++) gs.GsSortBoxFill(BOXES + 16 * i, r32(OT), r16(BOX_Z + 2 * i));
-  if (r16(BOX2_COUNT)) unported(0x8003ca10);
+  // the second list (0x8003c8f8: the menu's boxes) stays until animInit (0x8003cee0) empties it
+  for (let i = 0; i < r16(BOX2_COUNT); i++) gs.GsSortBoxFill(BOXES2 + 16 * i, r32(OT), r16(BOX2_Z + 2 * i));
   w16(BOX_COUNT, 0);
 }
 
