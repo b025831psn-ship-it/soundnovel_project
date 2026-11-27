@@ -56,3 +56,9 @@
 - 출력 버퍼(`sound/resampler.js`)는 목표량(기본 80 ms)이 찰 때까지, 그리고 버퍼가 비었다가 다시 찰 때까지 재생을 미룬다. 재생 시작 때 짧은 끊김이 반복되던 문제를 없앴다(헤드리스 Chromium 12초 재생에서 부족 0).
 - `tools/extract-sound.mjs <rom> <kamaitachi-sfc-kor/port-data/sound>`: 드라이버 부팅 레코드(file `$003A3F`, 10,011 bytes)를 `ipl-records.bin`으로 추출한다.
 - `sound/state.js`: 상태 저장/복원. `APU.saveState()/loadState()`, `MasterLink.saveState()/loadState()`(대기 중인 포트 쓰기와 APU 포함). 콜백은 저장하지 않고 살아 있는 것을 유지하며, 타입 배열은 `.set`으로 되돌려 S-DSP와 SPC700이 ARAM을 계속 공유한다. VM 쪽 `SfcMachine.saveState`와 합쳐 웹 중단 저장과 분기 탐색에 쓴다.
+
+## 플레이어 (`index.html`, `player.js`, `shell.css`)
+
+- 허브에서 여는 실제 플레이어다. ROM을 요구하지 않는다. 비공개 `kamaitachi-sfc-kor/port-data/program/`(`tools/extract-program.mjs`로 소유 ROM에서 만든 64 KiB 범위 48개와 `manifest.json`)을 받아 범위별·전체 SHA-256을 확인하고, `sound/vm-worker.js`에서 `sfc-vm/machine.js`와 APU를 실행한다. 기본 자료 경로는 저장소 루트의 `kamaitachi-sfc-kor/port-data/`이고 `?data=URL`로 바꿀 수 있다. `sfc-vm/`은 저장소 루트에 있어야 한다.
+- 조작은 GBA판과 같은 터치 방식이다(`sound/touch.js`). 화면 오른쪽 아래 메뉴 아이콘에 앞 문장(X)·글자 숨기기(SELECT)·START·취소(B)가 있다. 키보드는 `DEFAULT_KEYS`.
+- 책갈피(배터리 SRAM 8 KiB)는 게임이 쓴 뒤 바뀌지 않으면 `localStorage`의 `kamaitachi-sfc.sram`에 저장된다. 서버 동기화(PR #33 설계)는 아직이다.
