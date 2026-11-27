@@ -4,6 +4,7 @@ function captureValue(value, omit) {
   if (value == null || typeof value === 'number' || typeof value === 'string' || typeof value === 'boolean') return value;
   if (typeof value === 'function') return undefined;
   if (isTypedArray(value)) return value.slice();
+  if (value instanceof Set) return new Set([...value].map(item => captureValue(item, omit)));
   if (Array.isArray(value)) return value.map(item => captureValue(item, omit));
   const state = {};
   for (const [key, item] of Object.entries(value)) {
@@ -27,6 +28,12 @@ function restoreValue(target, state) {
       target.length = 0;
       for (const item of state) target.push(captureValue(item, new Set()));
     }
+    return target;
+  }
+  if (target instanceof Set) {
+    if (!(state instanceof Set)) throw new Error('state set mismatch');
+    target.clear();
+    for (const item of state) target.add(captureValue(item, new Set()));
     return target;
   }
   if (target && typeof target === 'object' && state && typeof state === 'object') {
@@ -75,8 +82,9 @@ export function loadVmState(vm, state) {
   }
   vm.nmiTriggerMaster = state.vm.nmiTriggerMaster;
   vm.skipRender = state.vm.skipRender;
-  vm.ppu.tileValid2.fill(0); vm.ppu.tileValid4.fill(0); vm.ppu.tileValid8.fill(0);
-  vm.ppu.tileEpoch = 1; vm.ppu.mode1LayerKeys = []; vm.ppu.mode1Layers = [];
+  vm.ppu.tileValid2?.fill(0); vm.ppu.tileValid4?.fill(0); vm.ppu.tileValid8?.fill(0);
+  if ('tileEpoch' in vm.ppu) vm.ppu.tileEpoch = 1;
+  vm.ppu.mode1LayerKeys = []; vm.ppu.mode1Layers = [];
   vm.ppu.objectLayerKey = null; vm.ppu.objectLayer = null; vm.ppu.renderedRevision = -1;
   return vm;
 }

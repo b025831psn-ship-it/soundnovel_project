@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { ApuTraceComparator, MasterClock, ProgramImage, ZakuroBus, ZakuroVM, accessCycles, createApuLink, inAutoJoypadRead, inVblank, scanlineTiming, vblankBoundary } from '../vm/index.js';
+import { ApuTraceComparator, MasterClock, ProgramImage, RESET_MASTER_CYCLES, ZakuroBus, ZakuroVM, accessCycles, createApuLink, inAutoJoypadRead, inVblank, scanlineTiming, vblankBoundary } from '../vm/index.js';
 import { LINK_TIMING, POWER_ON } from '../tools/rom.mjs';
 
 function fixtureRom(program) {
@@ -308,4 +308,40 @@ test('VM state round-trips CPU, bus, PPU, link, SPC and DSP state', () => {
   assert.equal(vm.nmiTriggerMaster, 4567); assert.equal(vm.skipRender, true);
   assert.equal(apu.dsp.ram, apu.cpu.ram);
   assert.deepEqual(vm.saveState(), state);
+});
+
+test('reset restarts all hardware while retaining WRAM and SRAM', () => {
+  const ipl = new Uint8Array(64); ipl[62] = 0xc0; ipl[63] = 0xff;
+  const powerOnDsp = new Uint8Array(128); powerOnDsp[0x7d] = 5;
+  const { apu, link } = createApuLink({ ipl, powerOnDsp });
+  const vm = new ZakuroVM({ rom: fixtureRom([0xea, 0xea]), masterLink: link });
+  vm.reset();
+  vm.bus.wram[0x2345] = 0x67; vm.bus.wramWritten[0x2345] = 1;
+  vm.bus.sram[0] = 0x89; vm.bus.sramDirty = true; vm.bus.sramRevision = 7;
+  vm.bus.io[0x4200] = 0x81; vm.bus.fastRom = true; vm.bus.pendingJoypad = 0x1234;
+  vm.bus.nmiFlag = true; vm.bus.wramAddress = 0x12345; vm.bus.hdmaMask = 0xff;
+  vm.bus.dmaBytes = 10; vm.bus.hdmaEvents.push([123, 0xff]);
+  vm.ppu.vram[2] = 0xab; vm.ppu.cgram[3] = 0xcd; vm.ppu.oam[4] = 0xef;
+  vm.ppu.io[0x100] = 0x8f; vm.ppu.modesUsed.add(7); vm.ppu.field = 99;
+  apu.cpu.ram[0x2222] = 0x5a; apu.cpu.portOut[0] = 0xaa; apu.cpu.clock = 999;
+  apu.dsp.regs[0x0c] = 0x33; apu.dsp.v[0].env = 0x456;
+  link.pending.push([12.5, 2, 0x99]); vm.nmiTriggerMaster = 4567; vm.skipRender = true;
+
+  vm.reset();
+
+  assert.equal(vm.bus.wram[0x2345], 0x67); assert.equal(vm.bus.wramWritten[0x2345], 0);
+  assert.equal(vm.bus.sram[0], 0x89); assert.equal(vm.bus.sramDirty, true);
+  assert.equal(vm.bus.sramRevision, 7); assert.equal(vm.skipRender, true);
+  assert.equal(vm.bus.clock.master, RESET_MASTER_CYCLES + 16);
+  assert.equal(vm.bus.io[0x4200], 0); assert.equal(vm.bus.fastRom, false);
+  assert.equal(vm.bus.pendingJoypad, null); assert.equal(vm.bus.nmiFlag, false);
+  assert.equal(vm.bus.wramAddress, 0); assert.equal(vm.bus.hdmaMask, 0);
+  assert.equal(vm.bus.dmaBytes, 0); assert.deepEqual(vm.bus.hdmaEvents, []);
+  assert.equal(vm.ppu.vram[2], 0); assert.equal(vm.ppu.cgram[3], 0); assert.equal(vm.ppu.oam[4], 0);
+  assert.equal(vm.ppu.io[0x100], 0); assert.deepEqual(vm.ppu.modesUsed, new Set());
+  assert.equal(vm.ppu.field, -1); assert.equal(apu.cpu.ram[0x2222], 0);
+  assert.equal(apu.cpu.portOut[0], 0); assert.equal(apu.cpu.clock, 0);
+  assert.equal(apu.dsp.regs[0x0c], 0); assert.equal(apu.dsp.regs[0x7d], 5);
+  assert.equal(apu.dsp.v[0].env, 0); assert.deepEqual(link.pending, []);
+  assert.equal(vm.nmiTriggerMaster, null); assert.equal(vm.cpu.PC, 0x8000);
 });

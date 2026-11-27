@@ -95,6 +95,12 @@ Renderer caches are intentionally rebuilt after load. A real first-choice fork
 test replays 123 fields twice and requires all frame hashes and APUIO rows to be
 identical. This full snapshot is the web suspend-save; SRAM export remains the
 game's native three-slot battery save.
+`vm.reset()` starts a new console run: S-CPU I/O, DMA/HDMA, PPU state and
+memories, master clock, pending input/NMI, and the SPC700/S-DSP/APU link return
+to their injected power-on state before the reset vector is fetched. WRAM and
+battery-backed SRAM are retained, matching the completion campaign's reset and
+slot-reload flow. Touch-state write tracking is cleared so stale choice UI is
+not exposed during reboot. The frontend-only `skipRender` setting is retained.
 With that input, `tools/vm-full-run.mjs` reaches the end without a stop or CPU
 error and finds all 252,918 reference CPU writes. The former extra idle-clear
 triplets at reference frames 422, 760, and 1798 are gone, and the write sequence

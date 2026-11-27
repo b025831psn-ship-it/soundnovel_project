@@ -20,8 +20,23 @@ export class ZakuroVM {
     // A low-to-high NMITIMEN edge during VBlank is recognized after the
     // currently executing instruction and taken before the next opcode fetch.
     this.bus.onNmi = () => { this.nmiTriggerMaster = this.bus.clock.master + 6; };
+    // Reset is a new console run, not only a new S-CPU vector fetch. Keep a
+    // pristine hardware state so PPU, CPU I/O, DMA/HDMA and the APU return to
+    // power-on while battery-backed SRAM and retained WRAM survive.
+    this.powerOnState = saveVmState(this);
   }
-  reset() { this.nmiTriggerMaster = null; this.bus.clock.idle(RESET_MASTER_CYCLES); this.cpu.reset(); }
+  reset() {
+    const wram = this.bus.wram.slice();
+    const sram = this.bus.sram.slice();
+    const { sramDirty, sramRevision } = this.bus;
+    const skipRender = this.skipRender;
+    loadVmState(this, this.powerOnState);
+    this.bus.wram.set(wram);
+    this.bus.sram.set(sram); this.bus.sramDirty = sramDirty; this.bus.sramRevision = sramRevision;
+    this.skipRender = skipRender;
+    this.bus.clock.idle(RESET_MASTER_CYCLES);
+    this.cpu.reset();
+  }
   setJoypad(mask) { this.bus.setJoypad(mask); }
   getTouchState() { return readTouchState(this.bus.wram, this.bus.wramWritten); }
   getFrame() { return this.ppu.getFrame?.() ?? null; }

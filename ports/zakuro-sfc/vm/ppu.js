@@ -14,6 +14,7 @@ export class PPU {
     this.ppuMode7Latch = 0;
     this.mode7 = new Int16Array(6);
     this.fixedColor = 0;
+    this.lastWriteMaster = 0;
     this.revision = 0;
     this.renderedRevision = -1;
     this.frame = new Uint8ClampedArray(256 * 224 * 4);
