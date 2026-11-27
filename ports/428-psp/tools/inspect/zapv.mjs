@@ -1,0 +1,10 @@
+import { readFileSync } from 'node:fs';
+import { decryptSns, parseSns, iterate } from '../../engine/sns.js';
+import { decodeControl } from '../../engine/vm.js';
+import { parseFlo } from '../../engine/flo.js';
+const raw = readFileSync(process.argv[2]); const sns = parseSns(raw[0x10] === 0x43 ? decryptSns(raw) : raw);
+const flo = parseFlo(readFileSync(process.argv[3]));
+const firstCond = L => { for (const s of sns.scripts) if (s.labels.has(L)) { for (const x of iterate(s.bytes, s.labels.get(L))) { if (x.op === 0x57 || x.op === 0x58) return decodeControl(x.op, x.arg).terms.map(t => t.a).join('+'); if (x.op === 1 || x.op === 0xac) return '-'; } } return '?'; };
+const zap80 = L => { for (const s of sns.scripts) if (s.labels.has(L)) { for (const x of iterate(s.bytes, s.labels.get(L))) { if (x.op === 0x80) return Buffer.from(x.arg).toString('hex').slice(-8); if (x.op === 1) return '-'; } } return '?'; };
+let i = 0;
+for (const n of flo.nodes) if (n.kind === 3) console.log(i++, n.index, n.hour + ':' + n.minute, n.a, n.link, n.labels.map(l => l + '(' + firstCond(l) + ')').join(' '), zap80(n.labels[0]));
