@@ -468,6 +468,18 @@ export class Boot {
     return [...String(value)].flatMap((d) => [0x82, 0x4f + Number(d)]);
   }
 
+  // 080070DC: a number below 10 starts 7 pixels right, 10-19 two pixels right, the rest at x.
+  // Digits advance their own width. Returns the x after the last digit.
+  number(glyphs, value, x, y) {
+    const tens = Math.trunc(value / 10) % 10;
+    const start = value >= 100 ? x : tens === 0 ? x + 7 : tens === 1 ? x + 2 : x;
+    const bytes = this.digits(value);
+    this.text(glyphs, bytes, start, y, 2, true);
+    let end = start;
+    for (let i = 0; i < bytes.length; i += 2) end += this.font.glyph(this.font.find((bytes[i] << 8) | bytes[i + 1])).width;
+    return end;
+  }
+
   get active() {
     return this.run !== null;
   }
@@ -831,13 +843,13 @@ export class Boot {
       const at = (n) => Math.trunc(((five * 16 + n) * 3 * 64) / 256);
       this.text(glyphs, data.title ?? [], 7, 0x0c, 2, true);
       const record = this.bookRecord(book);
-      const turns = this.digits(data.turns ?? 1);
-      this.text(glyphs, turns, at(0x33), five * 2 + 0x96, 2, true);
-      this.text(glyphs, SJIS.turns, at(0x33) + 8 * turns.length / 2, five * 2 + 0x96, 2, true);
+      // 080070DC prints the count, then 回目 (x = -1) carries on from where the digits ended.
+      const end = this.number(glyphs, data.turns ?? 1, at(0x33), five * 2 + 0x96);
+      this.text(glyphs, SJIS.turns, end, five * 2 + 0x96, 2, true);
       // 0800B980: a count up to 9 is one digit (08007070, a 1 moves 2 pixels right) at 0x3B / 0x6B,
       // more is printed by 080070DC from 0x33 / 0x63.
       const count = (value, x) => {
-        if (value > 9) return this.text(glyphs, this.digits(value), at(x - 8), five * 2 + 0xa9, 2, true);
+        if (value > 9) return this.number(glyphs, value, at(x - 8), five * 2 + 0xa9);
         return this.text(glyphs, this.digits(value), at(x) + (value === 1 ? 2 : 0), five * 2 + 0xa9, 2, true);
       };
       this.text(glyphs, SJIS.good, at(0x23), five * 2 + 0xa9, 2, true);
