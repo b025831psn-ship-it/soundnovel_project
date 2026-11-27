@@ -88,9 +88,22 @@
 
 The touch player runs the original program in the 65c816 VM (Codex, `vm/`) with its PPU and the
 sound path above, from private port-data only (`?data=` overrides `../../zakuro-sfc-kor/port-data/`).
-It follows the Kamaitachi Advance shell: tap the screen = A; tap a choice = move the game's own
-cursor to it (reading `$0081` back each press) and press A, once `choice.ready`; the corner button = B
-(previous page while reading). Keyboard: Z A, X B, arrows, Enter START, A Y, S X, Q L, W R; F full screen.
+It follows the Kamaitachi Advance shell and issue #41. `screens.js` names the screen from the game's
+own WRAM (`$1FFD`/`$1FFA`, the return address of the routine waiting for input) and decides a tap:
+
+| Screen | Tap |
+|---|---|
+| logo, opening, title | START |
+| story | A (next page) |
+| choice | move the game's cursor (`$0081`) to the tapped choice, then A |
+| slot disks | move `$006E` to the tapped disk, then A |
+| file menu / erase prompt | move `$0337` / `$03A3` to the tapped item, then A |
+| name prompt | A (shows the default name) |
+| name board | cell: move `$0342`/`$0341`, then A; ひらがな·カタカナ·漢字: `$0344`; スペース·一字戻す: `$0343`, then A; 決定: START |
+
+A tap away from every item does nothing. Menu presses are held 6 fields (these screens ignore
+presses under 4) and the cursor is read back after each press. The corner button = B.
+Keyboard: Z/Enter confirm (START on the logo and title), X B, arrows, Space START, A Y, S X, Q L, W R; F full screen.
 SRAM is kept in localStorage (`zakuro-sfc.sram`) through the VM's SRAM hooks.
 `?replay` (verification only) plays the recorded native input first, then hands over to the player.
 
