@@ -136,7 +136,7 @@ HANDLERS[0x0d] = function* (ctx) {
 
 HANDLERS[0x21] = function* (ctx) {
   const { m } = ctx, k = operand(m).u8();
-  if (skipping(m)) unported(0x8001de5c);
+  if (skipping(m)) { endFrame(m); return; } // 0x8001de5c
   m.write(0x80079414, m.read(0x80079414, 2) | 1 << ((k - 1) & 31), 2);
   endFrame(m);
 };
