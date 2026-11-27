@@ -79,7 +79,7 @@ export function* waitMusic(ctx, id) {
   const { m } = ctx, sp = ctx.sp - 0x28, sub = { ...ctx, sp }, end = 0x8006a7c4 + 4 * (id & 0xffff);
   for (let n = 0; ;) {
     if (sound(ctx).song() === -1) return;
-    textTask(sub); n++;
+    yield* textTask(sub); n++;
     yield* tick(sub);
     if ((n & 0xffff) >= 0x259) throw new Error("waitMusic: timeout path at 0x80028944 is not ported");
     if (s16(m.read(end, 2)) === -1) return;
@@ -93,7 +93,7 @@ export function* waitEffect(ctx, n) {
   n &= 0xffff;
   if (!snd.effectPlaying(n)) return;
   for (let k = 6; !snd.done(n);) {
-    textTask(sub); k++;
+    yield* textTask(sub); k++;
     yield* tick(sub);
     if ((k & 0xffff) >= 0x259) break;
   }

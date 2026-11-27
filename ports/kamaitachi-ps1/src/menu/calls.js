@@ -4,8 +4,8 @@
 // (sp + 0x10 onwards). call() returns [v0, v1]; generators (frame waits) are run with yield*.
 import { TRANSLATED } from "./translated.js";
 import { tick, tickQuiet, ticks, tickText } from "../tick.js";
-import { newGame, titlePicture, animInit, textInit, storyMovie, systemReset, routeReset, textStrings, firstScenario, bufferAliases, bufferInit, bzero } from "../init.js";
-import { setVar, savePoint, dropLayer, dropPicture, waitFade, waitText, choiceColoursReset, textWindowReset, snapshot } from "../helpers.js";
+import { newGame, titlePicture, animInit, textInit, storyMovie, systemReset, routeReset, textStrings, firstScenario, bufferAliases, bufferInit, bzero, textSlotReset } from "../init.js";
+import { setVar, savePoint, textSpeedReset, dropLayer, dropPicture, waitFade, waitText, choiceColoursReset, textWindowReset, snapshot } from "../helpers.js";
 import { inputTick } from "../input.js";
 import { sound } from "../sound-bridge.js";
 import { soundReset } from "../sound-reset.js";
@@ -21,6 +21,7 @@ import { animStop, checkpoint } from "../scenario/lib.js";
 import { showPicture } from "../scenario/basic.js";
 import { effect, loadClutSlot } from "../screen/weather.js";
 import { setName } from "../name-entry.js";
+import { HANDLERS, lookahead, textIdle, runOp } from "../scenario/interp.js";
 
 const arg = (ctx, k) => ctx.m.read((ctx.sp + 0x10 + 4 * k) >>> 0, 4) | 0; // stack argument k (5th = 0)
 const unported = (addr) => { throw new Error(`menu: path at 0x${addr.toString(16)} is not ported`); };
@@ -52,6 +53,12 @@ const PORTED = {
   0x800292b0: (c, a0, a1) => sound(c).play(a0, a1, c.sp),
   0x8003b398: (c, a0, a1, a2, a3) => drawSdw(c, a0, a1 >>> 0, a2 >>> 0, a3),
   0x8003cfa4: (c, a0) => animLoad(c, a0),
+  0x80038f80: (c, a0) => textSlotReset(c.m, a0),
+  0x8001cbe0: (c) => HANDLERS[0x03](c), // scenario command 0x03 (return)
+  0x8001e830: (c) => HANDLERS[0x15](c), // scenario command 0x15 (return while skipping)
+  0x80023600: (c, a0) => lookahead(c, a0),
+  0x8003a560: (c) => textIdle(c.m),
+  0x8003a67c: (c) => textSpeedReset(c.m),
   0x80014198: (c, a0) => ticks(c, a0),
   0x8001544c: (c, a0, a1, a2, a3) => cursorBox(c, a0, a1, a2, a3, arg(c, 0), arg(c, 1), arg(c, 2)),
   0x80029b34: () => unported(0x80029b34), // memory-card errors (the machine's card never reports one)
@@ -98,9 +105,22 @@ const PORTED = {
   0x8005e098: (c) => sound(c).lib(0x8005e098, [], c.sp),
 };
 
+// A scenario command handler reached through the interpreter's table (0x8006a3ec, e.g. the
+// backlog replaying pages): run as the interpreter runs that command.
+const OP_TABLE = 0x8006a3ec;
+let opOf = null;
+function scenarioOp(m, addr) {
+  if (!opOf) { opOf = new Map(); for (let op = 255; op >= 0; op--) opOf.set(m.read(OP_TABLE + 4 * op, 4) >>> 0, op); }
+  return opOf.get(addr >>> 0);
+}
+
 export function* call(ctx, sp, addr, a0, a1, a2, a3) {
   const f = TRANSLATED[addr] ?? PORTED[addr];
-  if (!f) unported(addr);
+  if (!f) {
+    const op = scenarioOp(ctx.m, addr);
+    if (op === undefined) unported(addr);
+    yield* runOp({ ...ctx, sp }, op); return [0, 0];
+  }
   let r = f({ ...ctx, sp }, a0 | 0, a1 | 0, a2 | 0, a3 | 0);
   if (r && typeof r.next === "function") r = yield* r;
   return Array.isArray(r) ? r : [typeof r === "number" ? r | 0 : 0, 0];

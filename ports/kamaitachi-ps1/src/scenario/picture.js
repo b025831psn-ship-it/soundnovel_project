@@ -57,7 +57,7 @@ HANDLERS[0x2d] = function* (ctx) {
 HANDLERS[0x2e] = function* (ctx) {
   const { m } = ctx, o = operand(m), a = o.u8(), b = o.u8(), sp = ctx.sp - 0x30;
   if (m.read(SKIP, 1) === 1) { endFrame(m); return; }
-  if (m.read(NO_EFFECTS, 1) === 1) unported(0x80020448);
+  if (m.read(NO_EFFECTS, 1) === 1) { endFrame(m); return; } // the backlog
   windowPalette({ ...ctx, sp });
   if (!m.read(0x800792b2, 1)) return;
   const pic = m.read(PICTURE, 4) >>> 0;

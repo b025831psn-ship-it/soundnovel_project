@@ -26,7 +26,7 @@ function storeCard(bytes) { try { localStorage.setItem(CARD_KEY, toBase64(bytes)
 const PACS = ["SCE", "VCE", "BGD", "SDW", "BIN", "MUS", "ANM", "VCP"];
 // libpad bits (active high here; the machine inverts them into the pad report)
 const BUTTON = { select: 1, start: 8, up: 16, right: 32, down: 64, left: 128, triangle: 4096, circle: 8192, cross: 16384, square: 32768 };
-const PULSE = { confirm: "circle", cancel: "cross", menu: "triangle", up: "up", down: "down", left: "left", right: "right", start: "start" };
+const PULSE = { confirm: "circle", cancel: "cross", menu: "triangle", up: "up", down: "down", left: "left", right: "right", start: "start", backlog: "start" };
 const HOLD = 4; // frames a pulse is held, as a quick press
 
 async function fetchBytes(url, onProgress) {
@@ -101,9 +101,13 @@ export async function startMachine({ canvas, dataRoot, audio = true, onProgress 
   const runtime = {
     machine, soundModule: snd.mod,
     input: { pulse(name) { const k = PULSE[name]; if (k) keys.set(k, HOLD); }, press(k) { keys.set(k, Infinity); }, release(k) { keys.delete(k); } },
-    // the corner button: × inside the in-game menu (0x800795e2 is set while it is open), the
-    // menu (triangle) while the game allows it (0x8007929f), otherwise nothing
-    menuMode: () => (machine.read(0x800795e2, 1) ? "back" : machine.read(0x8007929f, 1) ? "menu" : "none"),
+    // the corner button: × inside the in-game menu (0x800795e2 is set while it is open) and in the
+    // backlog (0x800792a0), the menu (triangle) while the game allows it (0x8007929f), otherwise nothing
+    menuMode: () => (machine.read(0x800795e2, 1) || machine.read(0x800792a0, 1) ? "back" : machine.read(0x8007929f, 1) ? "menu" : "none"),
+    // the backlog (START at a page marker, 0x80024fd0) can open: the text waits for a key, outside
+    // the menu and the backlog, with at least two history points, not in resources 0x19 / 0x1f
+    canBacklog: () => !!machine.read(0x8007929e, 1) && !machine.read(0x800792a0, 1) && !machine.read(0x800795e2, 1)
+      && ((machine.read(0x800792b4, 2) - 2) << 16) >= 0 && ![0x19, 0x1f].includes(machine.read(0x8007929c, 2)),
     touchRows: () => menuNow()?.rows ?? [],
     cursorIndex: () => menuNow()?.index() ?? -1,
     moveCursor(n) {

@@ -145,7 +145,7 @@ export function* cardMessage(ctx, k) { // 0x80015fa8
 }
 function* noCardBox(ctx, k) { // 0x8002a9f8
   const { m } = ctx, sp = ctx.sp - 0x18, sub = { ...ctx, sp };
-  animInit(m); dropLayer(m, 2); clearTextPage(sub); textTask(sub); yield* tick(sub);
+  animInit(m); dropLayer(m, 2); clearTextPage(sub); yield* textTask(sub); yield* tick(sub);
   drawString(sub, 0x2c, 0x42, 0x800117f8, 0);
   m.write(0x80079518, yield* yesNo(sub, k), 1);
   return m.read(0x80079518, 1);
@@ -178,10 +178,10 @@ export function* yesNo(ctx, k) { // 0x8002a320: cursor s (0 / 1), O / X
     setPalette(m, c === 1 ? 0 : 1); drawString(sub, 0x5f, 0x9f, 0x8001172c, 0);
     setPalette(m, 0);
     plainBox(sub, 0x3c, 0x7c, 0xc8, 0x3e, 0x40000000);
-    textTask(sub); yield* tick(sub);
+    yield* textTask(sub); yield* tick(sub);
   }
   withdraw(ctx);
-  clearTextPage(sub); textTask(sub); yield* tick(sub); textTask(sub); yield* tick(sub);
+  clearTextPage(sub); yield* textTask(sub); yield* tick(sub); yield* textTask(sub); yield* tick(sub);
   m.write(0x80079282, s + 1, 1);
   return s & 0xff;
 }
@@ -213,7 +213,7 @@ export function* startMenu(ctx) { // 0x80016078 (the path without a memory card)
       }
       setPalette(m, (s & 0xff) ? 1 : 0); drawString(sub, 0x28, 0x5a, 0x80010df4, 0);
       setPalette(m, (s & 0xff) === 1 ? 0 : 1); drawString(sub, 0xaf, 0x5a, 0x80010e08, 0);
-      setPalette(m, 0); textTask(sub); yield* tick(sub);
+      setPalette(m, 0); yield* textTask(sub); yield* tick(sub);
       const pad = r32(PAD);
       if (pad & 0x2000) { if ((s & 0xff) !== 1) { ui(3); s++; } continue; }
       if (pad & 0x8000) { if (s & 0xff) { s--; ui(3); } continue; }
@@ -223,13 +223,13 @@ export function* startMenu(ctx) { // 0x80016078 (the path without a memory card)
       const c = s & 0xff;
       if (s8(r8(GP + 0x18)) !== c) w8(0x80079285, 1);
       w8(CARD_SLOT, s); withdraw(ctx);
-      clearTextPage(sub); textTask(sub); ui(0); yield* ticks(sub, 2);
+      clearTextPage(sub); yield* textTask(sub); ui(0); yield* ticks(sub, 2);
       cardInfo(sub, c ? 0x10 : 0);
-      fadeOut(m, 1, 2); animInit(m); clearTextPage(sub); textTask(sub);
+      fadeOut(m, 1, 2); animInit(m); clearTextPage(sub); yield* textTask(sub);
       w8(0x80079285, 1);
       drawString(sub, 0x21, 0x46, 0x80010e1c, 0); drawString(sub, 0x64, 0x64, 0x80010e44, 0); drawString(sub, 0x4c, 0x78, 0x80010e58, 0);
       m.write(GP + 0x18, r8(CARD_SLOT), 1);
-      textTask(sub); yield* tick(sub); yield* ticks(sub, 2);
+      yield* textTask(sub); yield* tick(sub); yield* ticks(sub, 2);
       systemReset(m); routeReset(m, 0); // 0x8003360c (its loop ends after record 0)
       if (r8(0x80079285) !== 1) unported(0x80016480);
       w8(0x80079285, 0); w8(0x80079518, 1);
@@ -289,10 +289,10 @@ export function* title(ctx) { // 0x8001b694
     setPalette(m, (s & 0xff) ? 1 : 0); drawString(sub, 0x21, 0xb5, 0x800110c8, 0);
     setPalette(m, (s & 0xff) === 1 ? 0 : 1); drawString(sub, 0x86, 0xb5, 0x800110d4, 0);
     setPalette(m, (s & 0xff) === 2 ? 0 : 1); t++; drawString(sub, 0xdc, 0xb5, 0x800110e4, 0);
-    setPalette(m, 0); textTask(sub); yield* tick(sub);
+    setPalette(m, 0); yield* textTask(sub); yield* tick(sub);
   }
   withdraw(ctx);
-  textTask(sub); yield* tick(sub); clearTextPage(sub);
+  yield* textTask(sub); yield* tick(sub); clearTextPage(sub);
   yield* fadeAway(sub, 1);
 }
 
