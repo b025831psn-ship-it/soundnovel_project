@@ -1,6 +1,8 @@
 # Zakuro SFC: screen checkpoints and replay tools
 
 `boot-screens.mjs` drives the VM with a token list. The native side uses the same tokens with Snes9x 2005 libretro, where one token step is one `retro_run`.
+Pass `--program <port-data/program>` in place of the ROM path to exercise the
+same ROM-free `ProgramImage` construction used by the browser player.
 
 | token | meaning |
 |---|---|
@@ -40,7 +42,7 @@ Story checkpoints (choice box, portrait scene, numbered ending, bonus quiz) come
 `vm-completion.mjs` usage:
 
 ```sh
-node vm-completion.mjs <ports/zakuro-sfc> <rom> <ipl.bin> <boot-dsp.bin> <autoplay-layout.json> <completion.json> <out.json> [sramDir]
+node vm-completion.mjs <ports/zakuro-sfc> [--program] <rom-or-program-dir> <ipl.bin> <boot-dsp.bin> <autoplay-layout.json> <completion.json> <out.json> [sramDir]
 # Parallel ranges from a saved slot: FROM=<play> TO=<play> SRAM=<sramDir>/after-play-<FROM-1>.srm
 # RESET=power rebuilds the VM between plays (the old workaround). The default is now vm.reset() after e06333e.
 ```

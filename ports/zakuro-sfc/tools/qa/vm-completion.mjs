@@ -3,14 +3,19 @@
 // each recorded menu, pick the recorded option, reach the recorded ending, real reset + reload of the
 // same SRAM, then compare score, flags and new IDs. Every mismatch goes into one list; it never stops
 // early unless the game state makes the next play impossible.
-// Usage: node vm-completion.mjs <vm ports/zakuro-sfc> <rom> <ipl.bin> <boot-dsp.bin> <layout.json> <completion.json> <out.json> [statesDir]
+// Usage: node vm-completion.mjs <vm ports/zakuro-sfc> [--program] <rom-or-program-dir> <ipl.bin> <boot-dsp.bin> <layout.json> <completion.json> <out.json> [statesDir]
 import { readFile, writeFile, mkdir } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
 import { pathToFileURL } from 'node:url';
 import { resolve } from 'node:path';
 import { gzipSync } from 'node:zlib';
 
-const [vmDir, romPath, iplPath, dspPath, layoutPath, routePath, outPath, statesDirArg, screenDirArg, stopAfterScreen] = process.argv.slice(2);
+const args = process.argv.slice(2);
+const vmDir = args.shift();
+const programMode = args[0] === '--program';
+if (programMode) args.shift();
+const [imagePath, iplPath, dspPath, layoutPath, routePath, outPath, statesDirArg, screenDirArg, stopAfterScreen] = args;
+if (!outPath) throw new Error('usage: vm-completion.mjs <vm-dir> [--program] <rom-or-program-dir> <ipl> <dsp> <layout> <routes> <out> [states-dir]');
 const statesDir = statesDirArg && statesDirArg !== '-' ? statesDirArg : null;
 const SCENE_COUNT = 1342;
 const BTN = { 3: 0x1000, 5: 0x0400, 8: 0x0080 };
@@ -19,13 +24,18 @@ const ENDINGS = Object.fromEntries(Object.entries(LAYOUT.endings).map(([k, v]) =
 const record = JSON.parse(await readFile(routePath, 'utf8'));
 
 const { createApuLink, rgbaToRgb565, ZakuroVM } = await import(pathToFileURL(resolve(vmDir, 'vm/index.js')));
-const [rom, ipl, powerOnDsp] = await Promise.all([readFile(romPath), readFile(iplPath), readFile(dspPath)]);
+const program = programMode
+  ? await import(pathToFileURL(resolve(vmDir, 'tools/program-data.mjs'))).then(({ readProgramData }) => readProgramData(imagePath))
+  : null;
+const [rom, ipl, powerOnDsp] = await Promise.all([
+  programMode ? null : readFile(imagePath), readFile(iplPath), readFile(dspPath),
+]);
 // RESET=cpu uses vm.reset() (CPU only); RESET=power rebuilds the console and keeps the cartridge SRAM.
 const RESET = process.env.RESET ?? 'cpu';
 let vm, w;
 const powerOn = (sram) => {
   const { link } = createApuLink({ ipl, powerOnDsp });
-  vm = new ZakuroVM({ rom, masterLink: link });
+  vm = new ZakuroVM({ rom, program, sram: program?.sram, masterLink: link });
   vm.skipRender = true;
   if (sram) vm.importSram(sram);
   vm.reset();
@@ -126,6 +136,10 @@ for (const [n, want] of record.plays.entries()) {
     }
     if (play === 1 && scene === 5) await captureScreen('choice-box', play, scene);
     if (play === 32 && scene === 1311) await captureScreen('bonus-quiz', play, scene);
+    if (stopAfterScreen && screens.some((item) => item.checkpoint === stopAfterScreen)) {
+      await writeFile(resolve(screenDir, 'screens.json'), JSON.stringify(screens, null, 2));
+      console.log(JSON.stringify(screens, null, 2)); process.exit(0);
+    }
     if (process.env.BRANCH) {
       // Fork every option the record never takes from here, check it lands on its target and runs to the next stop.
       for (const [i, t] of targets.entries()) {

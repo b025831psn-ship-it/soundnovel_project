@@ -2,13 +2,23 @@ import { createHash } from 'node:crypto';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { pathToFileURL } from 'node:url';
 import { resolve } from 'node:path';
-const [vmDir, romPath, iplPath, dspPath, outDir, seq] = process.argv.slice(2);
+const args = process.argv.slice(2);
+const vmDir = args.shift();
+const programMode = args[0] === '--program';
+if (programMode) args.shift();
+const [imagePath, iplPath, dspPath, outDir, seq] = args;
+if (!seq) throw new Error('usage: boot-screens.mjs <vm-dir> [--program] <rom-or-program-dir> <ipl> <dsp> <out-dir> <sequence>');
 const { createApuLink, rgbaToRgb565, ZakuroVM } = await import(pathToFileURL(resolve(vmDir, 'vm/index.js')));
-const [rom, ipl, powerOnDsp] = await Promise.all([readFile(romPath), readFile(iplPath), readFile(dspPath)]);
+const program = programMode
+  ? await import(pathToFileURL(resolve(vmDir, 'tools/program-data.mjs'))).then(({ readProgramData }) => readProgramData(imagePath))
+  : null;
+const [rom, ipl, powerOnDsp] = await Promise.all([
+  programMode ? null : readFile(imagePath), readFile(iplPath), readFile(dspPath),
+]);
 const { link } = createApuLink({ ipl, powerOnDsp });
 let last = null;
 await mkdir(outDir, { recursive: true });
-const vm = new ZakuroVM({ rom, masterLink: link, onFrame({ rgba }) { last = rgba; } });
+const vm = new ZakuroVM({ rom, program, sram: program?.sram, masterLink: link, onFrame({ rgba }) { last = rgba; } });
 const B = { S: 0x1000, A: 0x0080, D: 0x0400, U: 0x0800, R: 0x0100, L: 0x0200, B: 0x8000, N: 0, Y: 0x4000, E: 0x2000, X: 0x0040, l: 0x0020, r: 0x0010 };
 const step = (b) => { vm.setJoypad(b); const f = vm.ppu.field; while (vm.ppu.field === f) vm.step(); };
 const checkpoints = [];
