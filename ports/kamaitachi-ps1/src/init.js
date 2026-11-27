@@ -262,15 +262,24 @@ export function routeReset(m, k) { // 0x80033420(k): route record k (100 bytes a
   m.write(0x80079414, 0, 2);
 }
 
-// 0x8001d080(id, layer): like showPicture (scenario/basic.js) without the skip check; only
-// layer 0 (the title) is ported.
+// 0x8001d080(id, layer): like showPicture (scenario/basic.js) without the skip check.
 export function* titlePicture(ctx, id, layer) {
   const { m } = ctx, sp = ctx.sp - 0x28, sub = { ...ctx, sp }, { r16, r32, w8, w16 } = io(m);
   dropLayer(m, (layer + 1) & 0xff);
   layer &= 0xff;
   w16(0x801fec68 + 2 * layer, id);
   yield* cdLoad(sub, 1, r32(0x80079484), id & 0xffff);
-  if (layer !== 0) unported(0x8001d0d8);
+  if (layer > 2) return;
+  if (layer !== 0) { // layers 1 / 2: pages 0xb / 0x15, sprite slots 0x801f669c / 0x801f669e
+    w8(0x80079294, 0);
+    const page = layer === 1 ? 0xb : 0x15;
+    loadPicture(sub, page, r32(0x80079484));
+    m.write(sp + 0x10, 0xf0, 4); spritePage(sub, page, 0, -4, 0x140, 0xf0);
+    w16(0x801f669a + 2 * layer, r16(0x80079528));
+    const s = r32(0x800794f4);
+    w8(s + 0x31, layer + 1); w8(s + 0x33, layer === 1 ? 0xc : 0xd); w16(s + 0x1e, 0x1000); w8(s + 0x38, layer + 1);
+    return;
+  }
   w8(0x80079294, 1);
   for (let i = 0; i < 16; i++) { m.write(0x8009da48 + 8 * i + 4, 0, 4); m.write(0x8009da48 + 8 * i, 0, 4); }
   w8(0x800795e4, 5); w8(0x800795e6, 0xf); w8(0x800795e5, 0);
