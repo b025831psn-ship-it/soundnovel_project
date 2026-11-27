@@ -1024,14 +1024,14 @@ export class Boot {
     this.layer = { boxes: [HEADER], glyphs };
   }
 
-  // 08009FA8(message): the message at (7, 0x38) and はい / いいえ one under the other at x 0x69
-  // (y 0x62, 0x74), the pointer 8484 at x 0x5A, いいえ first. DOWN and UP move (sound 3); A takes
-  // it (sound 0 for はい, 1 for いいえ), B is いいえ. The text area (0, 0x1E, 0xF0 x 0x78) is
-  // cleared before and after. True for はい.
+  // 08009FA8(message): a box over the books (mGBA: x 10-234, y 35-98) with the message at
+  // (7, 0x38) and はい / いいえ one under the other at x 0x69 (y 0x62, 0x74), the pointer 8484 at
+  // x 0x5A, いいえ first. DOWN and UP move (sound 3); A takes it (sound 0 for はい, 1 for いいえ),
+  // B is いいえ. True for はい.
   *question(message) {
     const base = this.layer ?? { boxes: [HEADER], glyphs: [] };
-    const top = Math.trunc((0x1e * 14) / 20), bottom = Math.trunc(((0x1e + 0x78) * 14) / 20);
-    const kept = base.glyphs.filter((glyph) => glyph.y < top || glyph.y >= bottom);
+    const box = [10, 35, 225, 64];
+    const kept = base.glyphs.filter((glyph) => glyph.y < box[1] || glyph.y >= box[1] + box[3]);
     const lines = romString(this.systemText, message) ?? [];
     const labels = [romString(this.systemText, 0x19824) ?? SJIS.yes, romString(this.systemText, 0x1982c) ?? SJIS.no];
     let selected = 1;
@@ -1040,7 +1040,7 @@ export class Boot {
       this.text(glyphs, lines, 7, 0x38, 2, true);
       labels.forEach((label, i) => this.text(glyphs, label, 0x69, 0x62 + 0x12 * i, i === selected ? 2 : 3, true));
       glyphs.push({ ...this.point(0x5a, 0x62 + 0x12 * selected), encoded: MENU_POINTER, color: 2 });
-      this.layer = { ...base, glyphs };
+      this.layer = { ...base, boxes: [...base.boxes, box], glyphs };
       this.hits = labels.map((_, i) => ({
         x: 0x5a, y: Math.trunc(((0x62 + 0x12 * i) * 14) / 20) - 2, w: 0x40, h: 13, current: i === selected,
         select: () => { this.effect(3); selected = i; },
