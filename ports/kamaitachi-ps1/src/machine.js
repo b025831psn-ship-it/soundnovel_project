@@ -14,6 +14,7 @@ import { mainLoop } from "./main-loop.js";
 import { vsyncCallback } from "./vsync.js";
 import { silentSound } from "./sound-bridge.js";
 import { MemoryCard } from "./memory-card.js";
+import { playMovie } from "./movie.js";
 
 const CARD_STATE = 0x8008ca38, CARD_SEEN = 0x8008ca34;
 const CARD_LIB = { 0x80062544: "cardExist", 0x80062798: "cardAccept", 0x80062fa0: "cardRead", 0x80063240: "cardWrite", 0x80063748: "cardSync",
@@ -33,7 +34,8 @@ export class Machine {
   // card: a MemoryCard (or a raw 128 KB image) in slot 1; none leaves both slots empty, as
   // on the oracle (whose card requests never finish).
   // xa: an XaStream (xa.js) for CD-XA (the voice drama); none plays it silent.
-  constructor({ exeData, pacs, sound = null, onError = null, card = null, xa = null }) {
+  // movie: the host's player for the STR movies (movie.js: name -> { ended, stop() }); none skips them.
+  constructor({ exeData, pacs, sound = null, onError = null, card = null, xa = null, movie = null }) {
     this.ram = new Uint8Array(RAM); this.dv = new DataView(this.ram.buffer);
     this.scratch = new Uint8Array(0x400);
     for (const { addr, bytes } of exeData) this.ram.set(bytes, addr & (RAM - 1));
@@ -46,6 +48,7 @@ export class Machine {
     this.memoryCard = card ? (card instanceof MemoryCard ? card : new MemoryCard(card)) : null; this.onCardWrite = null;
     this.touch = { menu: null, frame: 0 };
     const ctx = { m, sp: 0x801ffff0 - 0x40, gs: this.gs, cd: this.cd, sound, touch: this.touch, call: (a, args, sp) => this.call(a, args, sp), padState: () => 2 };
+    if (movie) ctx.movie = (entry) => playMovie({ ...ctx, sp: ctx.sp - 0x100 }, entry, movie);
     this.ctx = ctx;
     this.game = (function* () { yield* init(ctx); yield* mainLoop({ ...ctx, sp: ctx.sp - 0x18 }); })();
     this.started = false; this.error = null;

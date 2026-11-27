@@ -80,7 +80,20 @@ export async function startMachine({ canvas, dataRoot, audio = true, onProgress 
   const snd = machineSound({ exeData, pacs, xaSource, onRumble: (r) => { if (r.on) navigator.vibrate?.(50); } });
   const out = audio ? await audioOut() : null;
   const card = new MemoryCard(loadCard());
-  const machine = new Machine({ exeData, pacs, sound: snd.bridge, card, xa: snd.xa, onError: (e) => console.error("[kamaitachi-ps1 machine]", e) });
+  // The STR movies, converted to <NAME>.mp4 next to the PACs (tools/convert-str.sh), shown over the
+  // screen while the game waits for them. Before the first tap or key the browser only lets a
+  // muted video start; the sound comes on with the next tap or key.
+  let volume = 1;
+  const movie = (name) => {
+    const v = document.createElement("video"), h = { ended: false, video: v, stop() { if (h.ended) return; h.ended = true; v.pause(); v.remove(); } };
+    v.className = "movie"; v.playsInline = true; v.preload = "auto"; v.volume = volume; v.src = new URL(`${name}.mp4`, base).href;
+    v.onended = () => h.stop(); v.onerror = () => { console.warn("[kamaitachi-ps1 movie]", name, "not available"); h.stop(); };
+    canvas.parentElement.appendChild(v);
+    const unmute = () => { v.muted = false; };
+    v.play().catch(() => { v.muted = true; v.play().catch(() => h.stop()); addEventListener("pointerdown", unmute, { once: true }); addEventListener("keydown", unmute, { once: true }); });
+    return h;
+  };
+  const machine = new Machine({ exeData, pacs, sound: snd.bridge, card, xa: snd.xa, movie, onError: (e) => console.error("[kamaitachi-ps1 machine]", e) });
   machine.onCardWrite = (c) => { storeCard(c.bytes); runtime.onCardChange?.(); };
 
   const ctx2d = canvas.getContext("2d", { alpha: false });
@@ -160,7 +173,7 @@ export async function startMachine({ canvas, dataRoot, audio = true, onProgress 
     get framesPlayed() { return played; },
     resume: () => (out && out.ctx.state !== "running" ? out.ctx.resume() : Promise.resolve()),
     suspend: () => out?.ctx.suspend(),
-    setVolume: (v) => { if (out) out.gain.gain.value = Math.max(0, Math.min(1, +v || 0)); },
+    setVolume: (v) => { volume = Math.max(0, Math.min(1, +v || 0)); if (out) out.gain.gain.value = volume; for (const el of canvas.parentElement.querySelectorAll("video.movie")) el.volume = volume; },
   };
   return { runtime, sound, stop() { stopped = true; out?.ctx.close(); } };
 }

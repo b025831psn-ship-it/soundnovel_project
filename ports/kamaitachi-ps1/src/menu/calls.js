@@ -5,6 +5,7 @@
 import { TRANSLATED } from "./translated.js";
 import { EFFECTS_TRANSLATED } from "../screen/effects-translated.js";
 import { SPECIAL_TRANSLATED } from "../scenario/special-translated.js";
+import { WEATHER_TRANSLATED } from "../screen/weather-translated.js";
 import { tick, tickQuiet, ticks, tickText } from "../tick.js";
 import { newGame, titlePicture, animInit, textInit, storyMovie, systemReset, routeReset, textStrings, firstScenario, bufferAliases, bufferInit, bzero, textSlotReset } from "../init.js";
 import { setVar, savePoint, textSpeedReset, dropLayer, dropPicture, waitFade, waitText, choiceColoursReset, textWindowReset, snapshot } from "../helpers.js";
@@ -21,7 +22,8 @@ import { uploadPicture, loadPicture, drawSdw } from "../screen/picture.js";
 import { animStart, animLoad } from "../screen/anim.js";
 import { animStop, checkpoint } from "../scenario/lib.js";
 import { showPicture } from "../scenario/basic.js";
-import { effect, loadClutSlot } from "../screen/weather.js";
+import { effect, loadClutSlot, snowTick, rainTick } from "../screen/weather.js";
+import { ike } from "../screen/ike.js";
 import { setName } from "../name-entry.js";
 import { HANDLERS, lookahead, textIdle, runOp } from "../scenario/interp.js";
 
@@ -66,6 +68,14 @@ export const PORTED = {
   0x80029b34: () => unported(0x80029b34), // memory-card errors (the machine's card never reports one)
   0x80032120: (c, a0) => snapshot(c.m, a0),
   0x8003afc8: (c, a0, a1) => loadPicture(c, a0, a1),
+  0x8003b19c: (c, a0, a1, a2, a3) => loadPicture(c, a0, a1 >>> 0, a2, a3),
+  0x800356c8: (c, a0, a1) => ike(c.m, a0 >>> 0, a1 >>> 0),
+  0x800360b8: (c, a0, a1) => ike(c.m, a0 >>> 0, a1 >>> 0),
+  0x80040410: (c) => snowTick(c),
+  0x8004109c: (c) => rainTick(c),
+  0x80049620: (c, a0, a1, a2) => c.gs.MoveImage(a0 >>> 0, a1, a2),
+  0x8004931c: (c, a0) => c.gs.checkRect(a0 >>> 0),
+  0x8004dd58: (c, a0, a1) => c.gs.GsGetTimInfo(a0 >>> 0, a1 >>> 0),
   0x8001c478: (c) => newGame(c),
   0x8001d080: (c, a0, a1) => titlePicture(c, a0, a1),
   0x8001db2c: (c, a0) => dropLayer(c.m, a0),
@@ -120,7 +130,7 @@ function scenarioOp(m, addr) {
 }
 
 export function* call(ctx, sp, addr, a0, a1, a2, a3) {
-  const f = TRANSLATED[addr] ?? PORTED[addr] ?? EFFECTS_TRANSLATED[addr] ?? SPECIAL_TRANSLATED[addr];
+  const f = TRANSLATED[addr] ?? PORTED[addr] ?? EFFECTS_TRANSLATED[addr] ?? SPECIAL_TRANSLATED[addr] ?? WEATHER_TRANSLATED[addr];
   if (!f) {
     const op = scenarioOp(ctx.m, addr);
     if (op === undefined) unported(addr);

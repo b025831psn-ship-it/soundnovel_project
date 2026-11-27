@@ -260,3 +260,16 @@ per-frame code, and the soft-float helpers. That gives 62 routines in
 Cases 1, 18, 32–36 and 39–41 are the scenario's selection screens. They run the translated
 switch in `src/scenario/special-translated.js`, which `tools/translate/gen-special.py`
 generates with the 12 routines it reaches.
+
+## Movies (machine)
+
+The STR player 0x800343b0 shows the opening (SN2_OP) and the title's 「特報！」 trailers
+(SN3_PRO, SN1_PRO, SN2_PRO). The web port does not decode MDEC. `tools/convert-str.sh` turns
+each STR file of the user's disc into `<NAME>.mp4` next to the PACs, and the browser shows that
+video over the screen (`src/movie.js`). The game waits frame by frame until the video ends, or
+until START, ○ or L2 when the movie's entry allows skipping, as the original player does.
+Before the first tap or key the browser starts the video muted. Without a player (headless,
+tests) the movies are skipped as before.
+
+The per-frame effects 0x800416a4 that `weatherTick` does not port by hand run translated in
+`src/screen/weather-translated.js` (`tools/translate/gen-weather.py`).
