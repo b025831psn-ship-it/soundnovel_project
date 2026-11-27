@@ -67,6 +67,13 @@ export function patchScePac(pac, koScript) {
   return out;
 }
 
+const koCode = (i) => ((0xa0 + (i >> 7)) << 8) | (0x80 + (i & 0x7f));
+function koJosa(script) {
+  const char = new Map(), code = new Map();
+  [...script.chars].forEach((ch, i) => { char.set(koCode(i), ch); code.set(ch, koCode(i)); });
+  return { char, code, join: new Set(script.josaJoin ?? []) };
+}
+
 // What the Machine takes as `ko`: { font: Uint8Array (ko-font.bin), script: object (ko-script.json) }
 export function koBuild(pacs, ko) {
   return { pacs: { ...pacs, SCE: patchScePac(pacs.SCE, ko.script) }, text: { font: ko.font, glyphs: ko.script.glyphs, space: ko.script.space ?? 6, hang: new Set(ko.script.hang ?? []),
@@ -74,6 +81,8 @@ export function koBuild(pacs, ko) {
       moved: new Map(ko.script.moved ?? []),
       // the title section of the flowchart table: kept in spare RAM; the header of the table the game has just unpacked is pointed to it (menu/calls.js)
       chart: ko.script.chart ? { addr: ko.script.chart.addr, header: ko.script.chart.header, bytes: fromBase64(ko.script.chart.bytes) } : null,
+      // the particle after a name (text/josa.js)
+      josa: ko.script.chars ? koJosa(ko.script) : null,
       // the ending list: written over the copy the game makes of it (menu/calls.js)
       endings: ko.script.endings ? { addr: ko.script.endings.addr, bytes: fromBase64(ko.script.endings.bytes) } : null },
     patches: (ko.script.patches ?? []).map(([addr, t]) => [addr, fromBase64(t)]) }; // bytes of the EXE data: the default names

@@ -19,6 +19,7 @@ import { addBox } from "./screen/sprites.js";
 import { tick, ticks } from "./tick.js";
 import { textTask, fillText } from "./text/text.js";
 import { drawGlyph } from "./text/glyph.js";
+import { josa, lastGlyph } from "./text/josa.js";
 import { cdLoadAsync } from "./cd-load.js";
 import { titlePicture, animInit, textSlotsReset, systemReset, routeReset } from "./init.js";
 import { inputClear, inputTick } from "./input.js";
@@ -42,6 +43,8 @@ export const setPalette = (m, k) => m.write(GP + 0x1a0, k + 8, 1); // 0x8003a90c
 
 export function drawString(ctx, x, y, str, step) { // 0x80038658
   const { m } = ctx, sp = ctx.sp - 0x30, sub = { ...ctx, sp }, left = x, STRINGS = 0x8006b030;
+  // Korean: the particle after a name follows the name (text/josa.js); `name` is the last glyph of a name just drawn
+  let name = m.ko?.josa?.join.has(str >>> 0) ? lastGlyph(m, m.read(STRINGS + 4, 4) >>> 0) : 0;
   str = m.ko?.moved.get(str >>> 0) ?? str; // Korean: a string that did not fit its place
   step &= 0xff;
   const advance = () => { x = step ? x + step : x + 1 + m.read(GP + 0x19e, 1); };
@@ -55,7 +58,12 @@ export function drawString(ctx, x, y, str, step) { // 0x80038658
       ctx.gs.DrawSync(0);
       m.write(0x80079610, x, 2); x = m.read(0x80079610, 2);
       m.write(0x80079612, y, 2); y = m.read(0x80079612, 2);
-      str += 2; continue;
+      str += 2; if (m.ko?.josa) name = lastGlyph(m, m.read(STRINGS + 4 * (c - 0x6e30), 4) >>> 0);
+      continue;
+    }
+    if (name && c !== 0x8140) { // Korean: the first glyph after the name
+      const fix = josa(m, name, c, be16(m, str + 2)); name = 0;
+      if (fix) { str += 2 * fix.skip; for (const g of fix.emit) { ctx.gs.DrawSync(0); drawGlyph(sub, x, y, g); advance(); } continue; }
     }
     if (c === 0x7338) { x += 8; str += 2; continue; }
     if (c === 0x7373) { x += 0x10; str += 2; continue; }

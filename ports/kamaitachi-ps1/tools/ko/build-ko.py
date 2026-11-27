@@ -37,6 +37,7 @@ SPACE = 6         # the width of the byte 0x20 in the Korean build (src/text/tex
 LEFT, RIGHT, TOP, LINE, LINES = 8, 0x120, 0x11, 0x16, 10
 HASH = 0x8006b754
 ENDINGS = 0x80067914
+JOIN = 0x800118e4    # the と between the two names of a bookmark: its particle follows the hero's name (src/text/josa.js)
 SPECIAL = {'デュアルショック': 0x8440, '○': 0x8485, '△': 0x8486, '×': 0x8487, '□': 0x8488, 'メモリーカード': 0x848f, 'オプション': 0x8490, 'R1:スクロール': 0x8491}
 CHART_POOL, CHART_ROOM = 0x80009000, 0x3000   # spare kernel RAM for the flowchart title section (263 big-endian offsets, then the strings)
 # The default names: the pointers the game copies string 1 (the hero, [n1]) and string 2 (the
@@ -345,7 +346,7 @@ def main():
     report['exeStrings'] = {'listed': len(exe_list), 'translated': done, 'moved': len(moved), 'widerThanOriginal': wider, 'flowchartBytes': len(base64.b64decode(chart_patch['bytes'])) if chart_patch else None}
     os.makedirs(out, exist_ok=True)
     open(os.path.join(out, 'ko-font.bin'), 'wb').write(blob)
-    json.dump({'schema': 'kamaitachi.ps1.ko-script.v1', 'source': ja.get('source'), 'glyphs': len(new), 'space': SPACE, 'hang': [code[c] for c in HANG if c in code],
+    json.dump({'schema': 'kamaitachi.ps1.ko-script.v1', 'source': ja.get('source'), 'glyphs': len(new), 'chars': ''.join(new), 'josaJoin': [JOIN], 'space': SPACE, 'hang': [code[c] for c in HANG if c in code],
                'patches': patches, 'moved': moved, 'chart': chart_patch, 'endings': endings_patch,
                'resources': {str(r): v for r, v in sorted(res.items())}}, open(os.path.join(out, 'ko-script.json'), 'w'), separators=(',', ':'))
     json.dump(report, open(os.path.join(out, 'ko-report.json'), 'w'), ensure_ascii=False, indent=1)

@@ -15,6 +15,7 @@
 // Calls into code that is not ported yet go through ctx.call(addr, args, sp).
 import { setVar, savePoint } from "../helpers.js";
 import { backlog } from "../menu.js";
+import { josa, lastGlyph } from "./josa.js";
 import { checkpoint } from "../scenario/lib.js";
 import { drawGlyph, glyphWidth } from "./glyph.js";
 import { sound } from "../sound-bridge.js";
@@ -108,12 +109,25 @@ function textStep(ctx) { // the body of 0x80039288; returns the frame's sp when 
     if (n && x + m.ko.space + n - last >= 0x120) { w16(T.x + 2 * w, left); down(w); }
     else w16(T.x + 2 * w, x + m.ko.space);
   }
+  // Korean build only: an inserted name has ended; the particle after it follows the name's last
+  // syllable (text/josa.js). Glyphs to type in place of the text's own wait in m.ko.pending.
+  function koJosa(w, name) {
+    const q = r32(T.insertReturn + 4 * w), code = (a) => (r8(a) >= 0x78 ? r8(a) << 8 | r8(a + 1) : 0);
+    const g1 = code(q), fix = josa(m, lastGlyph(m, name), g1, g1 ? code(q + 2) : 0);
+    if (!fix) return;
+    w32(T.insertReturn + 4 * w, q + 2 * fix.skip);
+    (m.ko.pending ??= [[], []])[w] = [...fix.emit];
+  }
   function typeOne(w, p) { // one text code; returns s0 (1 = take the next code this frame too)
+    if (m.ko?.pending?.[w]?.length && !r8(T.insert + w)) return typeGlyph(m.ko.pending[w].shift());
     const c = r8(p);
     switch (c < 0x78 ? c : -1) {
       case 0x00:
         if (r8(T.auto) === 1) w8(T.autoV, 1);
-        if (r8(T.insert + w)) { w8(T.insert + w, 0); w8(T.ended, 1); w32(T.ptr + 4 * win(), r32(T.insertReturn + 4 * win())); }
+        if (r8(T.insert + w)) {
+          if (m.ko?.josa) koJosa(w, r32(T.strings + r8(T.insert + w) * 4));
+          w8(T.insert + w, 0); w8(T.ended, 1); w32(T.ptr + 4 * win(), r32(T.insertReturn + 4 * win()));
+        }
         else { w32(T.ptr + 4 * w, 0); w8(T.ended, 1); w32(T.endPtr, p + 1); }
         return 0;
       case 0x20:
@@ -190,31 +204,34 @@ function textStep(ctx) { // the body of 0x80039288; returns the frame's sp when 
         if (r16(T.x + 2 * w) >= 0x100) { newLine(w); down(win()); }
         next(win()); return 1;
       default: { // SJIS glyph
-        w8(T.pWait + w, 0);
         const v = win(), q = r32(T.ptr + 4 * v), code = r8(q) << 8 | r8(q + 1);
         w32(T.ptr + 4 * v, q + 2);
-        if (code === 0x8177) w8(T.quote2 + v, 1);
-        if (code === 0x8178) w8(T.quote2 + win(), 0);
-        if (code === 0x8175) w8(T.quote + win(), 1);
-        if (code === 0x8176) w8(T.quote + win(), 0);
-        let u = win();
-        if (KINSOKU.has(code) || m.ko?.hang.has(code)) { // punctuation may hang past the right edge once
-          if (r16(T.x + 2 * u) >= 0x120) {
-            if (r8(T.kinsoku) === 1) { w16(T.x + 2 * u, r16(T.left + 2 * u)); w8(T.kinsoku, 0); down(u); }
-            else w8(T.kinsoku, 1);
-          }
-        } else {
-          if (r16(T.x + 2 * u) >= 0x120) { w16(T.x + 2 * u, r16(T.left + 2 * u)); down(u); }
-          w8(T.kinsoku, 0);
-        }
-        u = win();
-        w16(T.delay + 2 * u, r16(T.speed + 2 * u));
-        glyph(r16(T.x + 2 * u), r16(T.y + 2 * u), code);
-        u = win();
-        w16(T.x + 2 * u, r8(T.glyphW) + r16(T.x + 2 * u) + 1);
-        return 0;
+        return typeGlyph(code);
       }
     }
+  }
+  function typeGlyph(code) {
+    w8(T.pWait + win(), 0);
+    if (code === 0x8177) w8(T.quote2 + win(), 1);
+    if (code === 0x8178) w8(T.quote2 + win(), 0);
+    if (code === 0x8175) w8(T.quote + win(), 1);
+    if (code === 0x8176) w8(T.quote + win(), 0);
+    let u = win();
+    if (KINSOKU.has(code) || m.ko?.hang.has(code)) { // punctuation may hang past the right edge once
+      if (r16(T.x + 2 * u) >= 0x120) {
+        if (r8(T.kinsoku) === 1) { w16(T.x + 2 * u, r16(T.left + 2 * u)); w8(T.kinsoku, 0); down(u); }
+        else w8(T.kinsoku, 1);
+      }
+    } else {
+      if (r16(T.x + 2 * u) >= 0x120) { w16(T.x + 2 * u, r16(T.left + 2 * u)); down(u); }
+      w8(T.kinsoku, 0);
+    }
+    u = win();
+    w16(T.delay + 2 * u, r16(T.speed + 2 * u));
+    glyph(r16(T.x + 2 * u), r16(T.y + 2 * u), code);
+    u = win();
+    w16(T.x + 2 * u, r8(T.glyphW) + r16(T.x + 2 * u) + 1);
+    return 0;
   }
 
   function waitForKey(w) { // window w shows the blinking page marker until a key
