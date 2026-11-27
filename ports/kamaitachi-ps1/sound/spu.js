@@ -32,7 +32,9 @@ class Envelope {
       else if (shift >= 11) inc >>= 2;
       else { step >>= 1; inc >>= 1; }
     } else if (this.exponential && this.decreasing) {
-      step = Math.trunc((step * level) / 0x8000);
+      // Arithmetic shift as on the SPU: it rounds down, so a decrease never stalls short of
+      // zero (truncating left released voices at level 511 and starved the next song).
+      step = (step * level) >> 15;
     }
     if (this.rate !== this.max) inc = Math.max(inc, 1);
     this.counter += inc;
