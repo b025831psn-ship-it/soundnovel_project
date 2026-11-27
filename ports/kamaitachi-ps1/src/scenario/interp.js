@@ -10,6 +10,7 @@
 // The trivial handlers (skip operands / set a gp flag) were classified from the code by
 // pattern and are listed in TRIVIAL as [kind, ...]: skip n | set gpOffset value |
 // skipset n gpOffset value | nop.
+import { call } from "../menu/calls.js";
 const GP = 0x8007913c, CURSOR = 0x80079578, START = 0x800795c4, TABLE = 0x8006a3ec, BLOCK = 0x800792a4;
 const unported = (addr) => { throw new Error(`scenario: path at 0x${addr.toString(16)} is not ported`); };
 
@@ -76,7 +77,12 @@ export function* step(ctx) { // 0x8001c110
   const { m } = ctx, sub = { ...ctx, sp: ctx.sp - 0x20 };
   do {
     m.write(GP + 0x15c, 0, 1);
-    if (m.read(BLOCK, 1) === 1) unported(0x8001c140); // auto mode cancelled by a button
+    if (m.read(BLOCK, 1) === 1) { // 0x8001c140: auto mode cancelled by a button: commands 0x15 and 0x03, then 0x8001c8f8
+      yield* HANDLERS[0x15]({ ...sub, sp: sub.sp - 0x18 }); m.write(0x8007940c, m.read(CURSOR, 4), 4);
+      yield* HANDLERS[0x03]({ ...sub, sp: sub.sp - 0x18 }); m.write(0x8007940c, m.read(CURSOR, 4), 4);
+      yield* call(sub, sub.sp, 0x8001c8f8, 0, 0, 0, 0);
+      m.write(BLOCK, 0, 1);
+    }
     if (textIdle(m) !== 1) continue;
     if (!m.read(GP + 4, 1) && !m.read(0x800792a0, 1) && !m.read(0x80079295, 1)) yield* lookahead({ ...sub, sp: sub.sp - 0x18 }, 0); // 0x8002374c
     const cur = m.read(CURSOR, 4) >>> 0;

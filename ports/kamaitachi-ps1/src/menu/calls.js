@@ -7,6 +7,8 @@ import { EFFECTS_TRANSLATED } from "../screen/effects-translated.js";
 import { SPECIAL_TRANSLATED } from "../scenario/special-translated.js";
 import { WEATHER_TRANSLATED } from "../screen/weather-translated.js";
 import { GS_TRANSLATED } from "../gpu/gs-translated.js";
+import { OVERLAY_TRANSLATED } from "../screen/overlay-translated.js";
+import { LIBGPU_ENTRY } from "../gpu/libgpu.js";
 import { tick, tickQuiet, ticks, tickText } from "../tick.js";
 import { newGame, titlePicture, animInit, textInit, storyMovie, systemReset, routeReset, textStrings, firstScenario, bufferAliases, bufferInit, bzero, textSlotReset } from "../init.js";
 import { setVar, savePoint, textSpeedReset, dropLayer, dropPicture, waitFade, waitText, choiceColoursReset, textWindowReset, snapshot } from "../helpers.js";
@@ -134,8 +136,11 @@ function scenarioOp(m, addr) {
   return opOf.get(addr >>> 0);
 }
 
+// libgpu / libgs entry points the translated code calls: the ported LibGpu (ctx.gs) method of that name
+const LIBGPU_BY_ADDR = Object.fromEntries(Object.entries(LIBGPU_ENTRY).map(([name, a]) => [a, (c, a0, a1, a2, a3) => c.gs[name](a0, a1, a2, a3)]));
+
 export function* call(ctx, sp, addr, a0, a1, a2, a3) {
-  const f = TRANSLATED[addr] ?? PORTED[addr] ?? EFFECTS_TRANSLATED[addr] ?? SPECIAL_TRANSLATED[addr] ?? WEATHER_TRANSLATED[addr] ?? GS_TRANSLATED[addr];
+  const f = TRANSLATED[addr] ?? PORTED[addr] ?? EFFECTS_TRANSLATED[addr] ?? SPECIAL_TRANSLATED[addr] ?? WEATHER_TRANSLATED[addr] ?? GS_TRANSLATED[addr] ?? OVERLAY_TRANSLATED[addr] ?? LIBGPU_BY_ADDR[addr];
   if (!f) {
     const op = scenarioOp(ctx.m, addr);
     if (op === undefined) unported(addr);
