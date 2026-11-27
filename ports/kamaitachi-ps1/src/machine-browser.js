@@ -74,10 +74,11 @@ export async function startMachine({ canvas, dataRoot, audio = true, onProgress 
   };
   const keys = new Map(); // button -> frames left
   // moveCursor: presses of the direction that moves the original's cursor, 1 frame down, 1 up each
-  let steps = null; // { key, left, phase }
+  let steps = []; // [{ key, left, phase }], run in order
   const held = () => {
     let b = 0; for (const [k, n] of keys) { if (n > 0) b |= BUTTON[k]; }
-    if (steps) { if (steps.phase < 1) b |= BUTTON[steps.key]; if (++steps.phase === 2) { steps.phase = 0; if (--steps.left <= 0) steps = null; } }
+    const s = steps[0];
+    if (s) { if (s.phase < 1) b |= BUTTON[s.key]; if (++s.phase === 2) { s.phase = 0; if (--s.left <= 0) steps.shift(); } }
     return b;
   };
   const menuNow = () => machine.touch.menu;
@@ -93,7 +94,11 @@ export async function startMachine({ canvas, dataRoot, audio = true, onProgress 
       const t = menuNow(); if (!t || !n) return;
       const button = t.press?.[t.index() + n];
       if (button) { keys.set(button, HOLD); return; }
-      steps = { key: t.keys[n < 0 ? 0 : 1], left: Math.abs(n), phase: 0 };
+      const move = (k, d) => (d ? [{ key: k[d < 0 ? 0 : 1], left: Math.abs(d), phase: 0 }] : []);
+      if (!t.grid) { steps = move(t.keys, n); return; }
+      // a grid (index = row · cols + column): the rows first, then the columns
+      const { cols, across } = t.grid, from = t.index(), to = from + n;
+      steps = [...move(t.keys, Math.floor(to / cols) - Math.floor(from / cols)), ...move(across, (to % cols) - (from % cols))];
     },
     get error() { return machine.error; },
   };
