@@ -47,6 +47,11 @@ const ADDRESS = {
   castItems: [0x0801a2ac, 0x0801a2b0, 0x0801a2b4, 0x0801a2c8], // n1, n2, シュプールの従業員, その他の宿泊客
   castPictures: 0x088252ec,
   castText: 0x08825308,
+  listTitle: 0x0801aab4, // エンディングリスト
+  listBack: 0x0801aac8, // もどるⒷ
+  listUnseen: 0x0801aad4, // ＊ ＊ ＊
+  listStrings: 0x08825368,
+  listRows: 0x08825ad2,
   brightness: 0x0801ab8c, // 明度
   saturation: 0x0801aba0, // 彩度
 };
@@ -102,8 +107,7 @@ export class Options {
     let count = 4;
     const box = [...OPTION_BOX];
     // 0800C56A: エンディングリスト joins once 020024EC+0x34 is set (in the game only).
-    // エンディングリスト (0800C14C) is not ported yet, so it stays out of the menu for now.
-    if (!title && boot.vm.ram.flags?.[0x34] && boot.endingList) { count = 5; box[3] += ROW; }
+    if (!title && boot.vm.ram.flags?.[0x34]) { count = 5; box[3] += ROW; }
     if (title) { count = 3; box[3] -= 10; }
     let selected = 0;
     let boxShown = true;
@@ -131,7 +135,7 @@ export class Options {
       else if (selected === 1) yield* this.help(0);
       else if (selected === 2) { yield* this.controls(mode); yield* this.backdrop(mode, DECODE.back); }
       else if (selected === 3) { yield* this.tone(mode); yield* this.backdrop(mode, DECODE.back); }
-      else if (selected === 4) yield* this.boot.endingList();
+      else if (selected === 4) yield* this.endingList();
       boxShown = true;
     }
     // 0800C93E
@@ -177,6 +181,71 @@ export class Options {
     boot.effect(1);
     boot.repeat = false; // 0800A134
     boot.layer = { boxes: [HEADER], glyphs: [] };
+  }
+
+  // 0800C14C: エンディングリスト. Seven rows a page, seven pages (UP and DOWN turn them, B leaves).
+  // Row n (08825AD2: title index, flag) prints its label 第n話： with the last character made a
+  // space at x 6, then the title at x 0x34 when the flag (020024EC + flag) is set, or the row of
+  // ＊ (0801AAD4) when not; a row with flag 0 stays empty. Titles copy with ＄ made ＃ and the
+  // character after … dropped (08825368 holds label 2n and title 2t + 1).
+  *endingList() {
+    const boot = this.boot;
+    const flags = boot.vm.ram.flags;
+    let page = 0;
+    boot.repeat = true; // 0800A114
+    const draw = () => {
+      const glyphs = [];
+      this.print(glyphs, ADDRESS.listTitle, 0x28, 0x0c, 2);
+      this.print(glyphs, ADDRESS.listBack, 0xb4, 0x0c, 2);
+      for (let r = 0; r < 7; r++) {
+        const row = 7 * page + r;
+        const at = ADDRESS.listRows - OPTION_TABLE_BASE + 2 * row;
+        const titleIndex = this.tables[at];
+        const flag = this.tables[at + 1];
+        if (!flag) continue;
+        const y = 20 * r + 0x40;
+        const label = this.relative(ADDRESS.listStrings, 2 * row);
+        if (label.length >= 2) label[label.length - 1] = 0x40;
+        boot.text(glyphs, label, 6, y, 2, true);
+        if (!flags?.[flag]) { this.print(glyphs, ADDRESS.listUnseen, 0x34, y, 2); continue; }
+        const source = this.relative(ADDRESS.listStrings, 2 * titleIndex + 1);
+        const title = [];
+        for (let i = 0; i + 1 < source.length; ) {
+          title.push(source[i], source[i + 1]);
+          if (source[i] === 0x81 && source[i + 1] === 0x90) title[title.length - 1] = 0x94;
+          i += source[i] === 0x81 && source[i + 1] === 0x63 ? 4 : 2;
+        }
+        boot.text(glyphs, title, 0x34, y, 2, true);
+      }
+      if (page > 0) this.print(glyphs, ADDRESS.up, 0x6c, 0x28, 2, 0x10);
+      if (page <= 5) this.print(glyphs, ADDRESS.down, 0x6c, 0xce, 2, 0x10);
+      boot.layer = { boxes: [HEADER, HELP_BOX], glyphs };
+      boot.hits = [
+        { x: 0xa8, y: 0x05, w: 0x48, h: 0x13, key: KEY.B },
+        { x: HELP_BOX[0], y: HELP_BOX[1], w: HELP_BOX[2], h: HELP_BOX[3] >> 1, key: KEY.UP },
+        { x: HELP_BOX[0], y: HELP_BOX[1] + (HELP_BOX[3] >> 1), w: HELP_BOX[2], h: HELP_BOX[3] - (HELP_BOX[3] >> 1), key: KEY.DOWN },
+      ];
+    };
+    while (true) {
+      if (boot.pressed(KEY.DOWN) && page <= 5) { boot.effect(3); page++; }
+      if (boot.pressed(KEY.UP) && page > 0) { page--; boot.effect(3); }
+      if (boot.pressed(KEY.B)) break;
+      draw();
+      yield;
+    }
+    boot.effect(1);
+    boot.repeat = false; // 0800A134
+    boot.layer = { boxes: [HEADER], glyphs: [] };
+  }
+
+  // 08009B68: a string at table + the big-endian offset in entry `index`.
+  relative(table, index) {
+    const at = table - OPTION_TABLE_BASE + 4 * index;
+    const t = this.tables;
+    const start = at - 4 * index + ((t[at] << 24) | (t[at + 1] << 16) | (t[at + 2] << 8) | t[at + 3]);
+    const bytes = [];
+    for (let i = start; i < t.length && t[i]; i++) bytes.push(t[i]);
+    return bytes;
   }
 
   // 0800CEA8: the controls picture at full brightness until A or B.

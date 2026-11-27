@@ -179,6 +179,7 @@ export class VM {
       endingCount: 0, // 02004604: endings reached this power-on (opcode 44, up to 10)
       inGame: 0, // 0200078D: set by 1D 67, lets R open the in-game menu
       selectArmed: 0, // 02000797: 1D 6A sets, 1D 6B clears; SELECT at a page wait then sets var 2
+      flowBranches: 0, // 020007A9: 1D 6E / 6F set bits 1 / 2 (the 移動 map's scenes 5 and 0x16)
       vars: new Uint8Array(256),
       bits: new Uint8Array(256),
       stack: [],
@@ -617,6 +618,21 @@ export class VM {
         // 08009478's 00-6F system-command table. UI-specific commands are
         // supplied by the host; a missing host is a deliberate no-op so the
         // bytecode remains aligned while the corresponding UI is being ported.
+        // 1D 23 (08012F68): the ▶ swings between the lines written in c6 (y 0x39) and c7 (y 0x4D),
+        // each lit by 08006B9C: 40 frames each, then 27, 24, .. 3, then ten more rounds of 3;
+        // 08006BD0 ends it. 1D 27 (0801308C) is 08006BD0 and 08006B9C(2).
+        if (command === 0x23) {
+          const steps = [[6, 0x39, 40], [7, 0x4d, 40]];
+          for (let wait = 27; wait >= 3; wait -= 3) steps.push([6, 0x39, wait], [7, 0x4d, wait]);
+          for (let n = 0; n < 10; n++) steps.push([6, 0x39, 3], [7, 0x4d, 3]);
+          this.rouletteSteps = steps;
+          this.nextRoulette();
+          break;
+        }
+        if (command === 0x27) {
+          if (this.text) this.text.roulette = null;
+          break;
+        }
         const result = this.system?.command?.(command, this.ram);
         if (result?.inputReady !== undefined)
           this.ram.inputReady = result.inputReady ? 1 : 0;
@@ -1151,6 +1167,20 @@ export class VM {
     this.scene?.silhouetteShow?.(blind.step, this.tint());
   }
 
+  nextRoulette() {
+    const step = this.rouletteSteps?.shift();
+    if (!step) {
+      this.rouletteSteps = null;
+      if (this.text) this.text.roulette = null;
+      this.waiting = "none";
+      return;
+    }
+    const [highlight, y, frames] = step;
+    if (this.text) this.text.roulette = { highlight, y };
+    this.waitFrames = frames;
+    this.waiting = "roulette";
+  }
+
   // 0800750C: SELECT newly pressed at a page wait while 1D 6A has armed it sets var 2 = 1
   // (08003658) and counts as the A press. Returns true when taken.
   select() {
@@ -1217,6 +1247,7 @@ export class VM {
     if (this.waiting === "audio" && !this.audioWaitFrame()) this.waiting = "none";
     if (this.waiting === "delay" && --this.waitFrames <= 0)
       this.waiting = "none";
+    if (this.waiting === "roulette" && --this.waitFrames <= 0) this.nextRoulette();
     if (this.waiting === "clock" && ++this.ram.clockTarget >= this.clockWaitTarget)
       this.waiting = "none";
     if (this.waiting === "audio-start" && --this.waitFrames <= 0) {

@@ -3,6 +3,7 @@
 // the next glyph would start at x >= 220 or after a sentence's click wait ('r' then 'p'), and one
 // glyph added per frame. A press while the glyphs are still appearing is ignored.
 import { ObjTextSurface } from "./obj-text.js";
+import { toneColor } from "./screen.js";
 
 // Shift-JIS for the default names {name:1} and {name:2}.
 const NAMES = { 1: [0x93, 0xa7], 2: [0x90, 0x5e, 0x97, 0x9d] };
@@ -15,7 +16,24 @@ const MENU_CURSOR = 0x848b;
 const MENU_CURSOR_OFFSET = 11;
 const MENU_BLINK = 30;
 const MENU_BLINK_ON = 16;
-const TEXT_COLOR = { 0: 2, 4: 4 };
+// Story text colors (08007CC2 / 08007D44): 'c' n picks foreground n and 'C' n foreground n + 8;
+// 08006910 maps a foreground to an entry of OBJ palette 15 (080197EF), whose colors start as
+// 080193E0 (white, gray, pink, ..., C4's light blue at 6) and go through the 明度・彩度 tone at
+// its power-on 5 / 5. Drawn here as colors 16 + entry.
+const FOREGROUND = [2, 8, 9, 10, 11, 12, 10, 11, 2, 3, 4, 5, 6, 7, 4, 2];
+const TEXT_PALETTE = [0x0000, 0x0000, 0x7fff, 0x4210, 0x61ff, 0x03e0, 0x7e94, 0x3fff,
+  0x7fff, 0x7fff, 0x7fff, 0x7fff, 0x001f, 0x2f7b, 0x0360, 0x7c00];
+const rgb8 = (c) => [c & 31, (c >> 5) & 31, (c >> 10) & 31].map((v) => (v << 3) | (v >> 2));
+// 08006B9C(n): entry FOREGROUND[n] takes 080193E0's color 4 (the pink) until 08006BD0 restores
+// the palette. 1D 23 uses it on the two lines written in c6 / c7.
+function textColors(highlight) {
+  const colors = { ...COLORS };
+  TEXT_PALETTE.forEach((raw, entry) => {
+    const color = highlight != null && entry === FOREGROUND[highlight] ? TEXT_PALETTE[4] : raw;
+    colors[16 + entry] = rgb8(toneColor(color, 5, 5));
+  });
+  return colors;
+}
 
 // 。！？、・」』）…―～ (08007F04)
 // The Korean patch's EUC-KR punctuation (．，」』…！？) and spaces, for the large text only.
@@ -100,7 +118,8 @@ export class PageText {
     for (const fragment of fragments) {
       if (fragment === "\n") items.push("\n");
       else if (fragment.breakPast !== undefined) items.push(fragment);
-      else if (fragment.color !== undefined) color = TEXT_COLOR[fragment.color] ?? 2;
+      else if (fragment.color !== undefined) color = 16 + FOREGROUND[(fragment.color + 8) & 15];
+      else if (fragment.objColor !== undefined) color = 16 + FOREGROUND[fragment.objColor & 7];
       else if (typeof fragment === "string") {
         // TextWindow gives the name, or {name:n} with n the raw argument byte ('1' = 0x31).
         let id = Number(fragment.match(/^\{name:(\d+)\}$/)?.[1] ?? Object.keys(this.text.names).find((k) => this.text.names[k] === fragment));
@@ -168,6 +187,11 @@ export class PageText {
     this.waitFrames = marking ? (this.waitFrames ?? -1) + 1 : -1;
     const markerOn = marking && ((this.waitFrames >> 4) & 1) === 1;
     if (markerOn !== Boolean(this.markerShown)) { this.markerShown = markerOn; this.drawn = -1; }
+    // 1D 23: the highlighted foreground and the ▶ beside it (text.roulette).
+    const roulette = this.text.roulette ?? null;
+    const rouletteKey = roulette ? `${roulette.highlight}:${roulette.y}` : "";
+    if (rouletteKey !== this.rouletteKey) { this.rouletteKey = rouletteKey; this.drawn = -1; this.colors = textColors(roulette?.highlight); }
+    const colors = this.colors ?? (this.colors = textColors(null));
     if (hidden) { this.drawn = -1; this.large?.clear(); return; }
     const screen = this.screen;
     if (this.menu) { this.menu.blink++; this.drawn = -1; }
@@ -180,19 +204,21 @@ export class PageText {
     const surface = new ObjTextSurface();
     if (large) {
       if (this.largeSource !== this.layout) { this.largeSource = this.layout; this.largeLayout = this.place(fragments, large.geometry); }
-      large.draw(this.font, this.largeLayout, this.shown, this.markerShown ? this.waitMarker : 0, COLORS);
+      large.draw(this.font, this.largeLayout, this.shown, this.markerShown ? this.waitMarker : 0, colors);
     } else {
       for (const glyph of this.layout.slice(0, this.shown)) surface.glyph(this.font, glyph.encoded, glyph.x, glyph.y, glyph.color);
       if (this.markerShown) {
         const { x, y } = this.layout.end ?? { x: 8, y: 11 };
         surface.glyph(this.font, this.waitMarker, x, y, 2);
       }
+      // 08006C64(0, y, 848B): y in the 0-228 range (* 14 / 20).
+      if (roulette?.y != null) surface.glyph(this.font, 0x848b, 0, Math.trunc((roulette.y * 14) / 20), 2);
     }
     if (this.menu) for (const glyph of this.menuGlyphs()) surface.glyph(this.font, glyph.encoded, glyph.x, glyph.y, glyph.color);
     const data = screen.image.data;
     data.set(screen.base);
     for (let pixel = 0; pixel < surface.pixels.length; pixel++) {
-      const color = COLORS[surface.pixels[pixel]];
+      const color = colors[surface.pixels[pixel]];
       if (!color) continue;
       data.set(color, pixel * 4);
     }
