@@ -4,10 +4,13 @@
 // (to.sns, to.flo, ids.json, png/<cpk>/*.png, snd/<cpk>/*.ogg, font/font_0_50.*).
 import { decryptSns, parseSns } from '../engine/sns.js';
 import { VM } from '../engine/vm.js';
+import { parseFlo } from '../engine/flo.js';
+import { Game, CHARACTERS } from '../engine/game.js';
+import { createSelect } from './select.js';
 
 const q = new URLSearchParams(location.search);
 const BASE = (q.get('assets') || '../assets/').replace(/\/?$/, '/');
-const START = q.get('label') || 'K01A_0010_01_RESTART';
+const START = q.get('label'); // debug: run from a label; without it a new game starts at the character select
 const FAST = q.has('fast'); // tests: skip waits and auto-advance
 const cv = document.getElementById('screen'); const g = cv.getContext('2d');
 const status = document.getElementById('status');
@@ -21,12 +24,30 @@ const bytes = async p => new Uint8Array(await (await fetch(BASE + p)).arrayBuffe
 const json = async p => (await fetch(BASE + p)).json();
 const img = src => new Promise((ok, no) => { const i = new Image(); i.onload = () => ok(i); i.onerror = () => no(new Error(src)); i.src = src; });
 
-const [rawSns, ids, fontMeta, fontImg] = await Promise.all([bytes('to.sns'), json('ids.json'), json('font/font_0_50.json'), img(BASE + 'font/font_0_50.png')]);
+const [rawSns, rawFlo, ids, fontMeta, fontImg] = await Promise.all([bytes('to.sns'), bytes('to.flo'), json('ids.json'), json('font/font_0_50.json'), img(BASE + 'font/font_0_50.png')]);
 const sns = parseSns(rawSns[0x10] === 0x43 ? decryptSns(rawSns) : rawSns);
 const vm = new VM(sns);
 { const init = sns.scripts[0]; vm.script = init; vm.pc = init.codeStart; while (!vm.halted) vm.step(); vm.halted = false; }
-const slot = sns.scripts.findIndex(s => s.labels.has(START));
-vm.goto(slot, START);
+const slotOf = l => sns.scripts.findIndex(s => s.labels.has(l));
+// ---- game progress (engine/game.js): character select, zapping, hour blocks
+const game = new Game(parseFlo(rawFlo), vm);
+{ const goto0 = vm.goto.bind(vm); vm.goto = (sl, l) => { goto0(sl, l); game.passLabel(l); }; }
+const KO_UI = q.get('lang') === 'ko';
+const select = createSelect({ g: cv.getContext('2d'), W: 480, H: 272, BASE, img: src => new Promise((ok, no) => { const i = new Image(); i.onload = () => ok(i); i.onerror = no; i.src = src; }), ko: KO_UI });
+game.newGame();
+if (START) vm.goto(slotOf(START), START); else openSelect();
+function openSelect() {
+  status.textContent = '';
+  const list = game.selectable(); if (!list.length) return;
+  select.open(list, 10 + game.block, game.current);
+}
+function resetScreen() {
+  S.lines = [[]]; S.click = null; S.choice = null; S.wait = 0; S.propWait = null; S.zap = null; S.pic = null; S.next = null; S.layers.clear();
+  S.trans = { type: 0, frames: 0, t: 0, run: false }; S.fade = { a: 0, step: 0 }; koSkip = false;
+  bgm?.pause(); bgm = null; for (const a of audio.values()) a?.pause?.(); for (const m of movies.values()) m.img.pause?.();
+}
+function startChar(id) { select.close(); resetScreen(); game.play(id, slotOf); }
+function doZap() { if (!S.zap?.open) return; resetScreen(); game.zap(); }
 
 // ---- Korean (?lang=ko): lines come from the private 428-psp-kor data (?kodata=<folder with script-ja/ and script-ko/>).
 // Each exported entry starts at the pc of its first text op; the Korean line replaces every text op of that entry.
@@ -43,7 +64,7 @@ async function loadKo(name) {
   } catch { koScripts.set(name, new Map()); }
 }
 async function json2(u) { const r = await fetch(u); if (!r.ok) throw new Error(u); return r.json(); }
-if (KO) await loadKo(vm.script.name.replace(/\.xml$/, ''));
+if (KO && vm.script) await loadKo(vm.script.name.replace(/\.xml$/, ''));
 let koSkip = false; // inside a replaced entry: drop the original's text-building ops until the entry ends
 function koEntry(pc) { const m = koScripts.get(vm.script.name.replace(/\.xml$/, '')); return m instanceof Map ? m.get(pc) : null; }
 function putKo(t) { // {base|reading} ruby, \n forced line, … and ― as cells, 仝 kept as the original's indent glyph
@@ -103,6 +124,8 @@ function advanceOps() {
     }
     if (KO && koSkip && e.type !== 'op' && e.type !== 'text') koSkip = false;
     if (e.type === 'text') { putText(e.text); continue; }
+    if (e.type === 'label') { game.passLabel(e.label); continue; }
+    if (e.type === 'zap') { S.zap = e.open ? e : null; continue; }
     if (e.type === 'choice') { S.choice = e; return; }
     if (e.type === 'sceneEnd' || e.type === 'end') { status.textContent = '장면 끝'; S.click = 'end'; return; }
     if (e.type !== 'op') continue;
@@ -217,6 +240,7 @@ function finishTrans() { if (S.next) S.pic = S.next; S.next = null; S.trans.run 
 
 function click() {
   if (S.choice) return;
+  if (S.click === 'end') { game.sceneEnd(); resetScreen(); openSelect(); return; }
   if (S.click === 'page') clearPage();
   if (S.click !== 'end') S.click = null;
 }
@@ -235,6 +259,9 @@ menu.addEventListener('click', ev => {
 });
 cv.addEventListener('pointerdown', ev => {
   if (!menu.hidden) { setMenu(false); return; }
+  { const r = cv.getBoundingClientRect(), x = (ev.clientX - r.left) * W / r.width, y = (ev.clientY - r.top) * H / r.height;
+    if (select.st.on) { if (select.tap(x, y)) select.pick(FAST ? null : startChar); if (FAST && select.st.picked != null) { const c = select.st.picked; select.close(); startChar(c); } return; }
+    if (S.zap?.open && x < 76 && y > 196 && y < 228) { doZap(); return; } }
   if (S.choice) {
     const r = cv.getBoundingClientRect(); const y = (ev.clientY - r.top) * H / r.height;
     const i = Math.floor((y - 90) / 32); if (i >= 0 && i < S.choice.options.length) { vm.choose(i); S.choice = null; }
@@ -242,7 +269,10 @@ cv.addEventListener('pointerdown', ev => {
   }
   click();
 });
-addEventListener('keydown', ev => { if (ev.key === 'Enter' || ev.key === ' ') click(); if (ev.key === 'Escape') setMenu(menu.hidden); });
+addEventListener('keydown', ev => {
+  if (select.st.on) { if (ev.key === 'ArrowLeft') select.move(-1); if (ev.key === 'ArrowRight') select.move(1); if (ev.key === 'Enter' || ev.key === ' ') select.pick(startChar); return; }
+  if ((ev.key === 'j' || ev.key === 'J') && S.zap?.open) doZap();
+  if (ev.key === 'Enter' || ev.key === ' ') click(); if (ev.key === 'Escape') setMenu(menu.hidden); });
 addEventListener('fullscreenchange', fit);
 
 // ---- drawing
@@ -343,6 +373,7 @@ function drawWaitIcon(cur) {
   }
 }
 function frame() {
+  if (select.st.on) { select.draw(); requestAnimationFrame(frame); return; }
   // timers
   if (S.wait > 0) S.wait--;
   if (S.fade.step) { S.fade.a = Math.min(1, Math.max(0, S.fade.a + S.fade.step)); if (S.fade.a === 0 || S.fade.a === 1) S.fade.step = 0; }
@@ -364,9 +395,14 @@ function frame() {
 
   tick++;
   drawWaitIcon(drawText());
+  if (S.zap?.open) { // JUMP keyword on screen (provisional badge until the zap_mat sprites are placed)
+    g.fillStyle = 'rgba(0,0,0,.6)'; g.fillRect(6, 200, 66, 24); g.strokeStyle = '#e33'; g.lineWidth = 2; g.strokeRect(7, 201, 64, 22);
+    g.fillStyle = '#f44'; g.font = 'bold 13px sans-serif'; g.fillText('JUMP', 18, 217);
+    const n = game.nodeOf.get(S.zap.label); g.fillStyle = '#ddd'; g.font = '9px sans-serif'; if (n) g.fillText((KO_UI ? CHARACTERS[n.character].ko : CHARACTERS[n.character].ja), 76, 217);
+  }
   if (S.choice) S.choice.options.forEach((o, i) => { g.fillStyle = 'rgba(20,20,24,.85)'; g.fillRect(60, 90 + i * 32, 360, 28); g.fillStyle = '#b3262d'; g.fillRect(60, 90 + i * 32, 3, 28); g.fillStyle = '#ddd'; g.font = '13px serif'; g.fillText(o.label, 72, 108 + i * 32); });
   if (q.has('debug')) status.textContent = `${vm.script.name} ${vm.flow.at(-1) || ''}`;
   requestAnimationFrame(frame);
 }
-window.__428 = { vm, S }; // for automated tests
+window.__428 = { vm, S, game, select, startChar, doZap }; // for automated tests
 requestAnimationFrame(frame);
