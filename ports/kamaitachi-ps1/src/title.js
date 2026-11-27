@@ -11,6 +11,7 @@
 // Memory-card library calls (0x80062544 _card_info, 0x80062798 _card_load, 0x80063748
 // _card_wait) go through ctx.call: native on the oracle, served by the machine in the browser.
 // Paths the original takes that are not ported throw with their address.
+import { offer, withdraw, box } from "./touch.js";
 import { setVar, waitText, waitFade, dropLayer, dropPicture } from "./helpers.js";
 import { fadeOut, fadeIn, fadeLevel } from "./screen/fader.js";
 import { addBox } from "./screen/sprites.js";
@@ -156,6 +157,7 @@ function keyOn(ctx, sp, se) { // SsUtKeyOn(vab, 0, 0, 0x30, 0, 0x32, 0x32) when 
 export function* yesNo(ctx, k) { // 0x8002a320: cursor s (0 / 1), O / X
   const { m } = ctx, sp = ctx.sp - 0x50, sub = { ...ctx, sp }, r32 = (a) => m.read(a, 4) >>> 0;
   let s = 0;
+  offer(ctx, [box(0, 0x3c, 0x7e, 0xc8, 0x1a), box(1, 0x3c, 0x98, 0xc8, 0x1a)], () => s & 0xff, ["up", "down"]);
   for (;;) {
     if (!(k & 0xff)) unported(0x8002a378);
     if ((r32(PAD) & 0x4000) && (s & 0xff) !== 1) { keyOn(ctx, sp, SE + 6); s++; }
@@ -176,6 +178,7 @@ export function* yesNo(ctx, k) { // 0x8002a320: cursor s (0 / 1), O / X
     plainBox(sub, 0x3c, 0x7c, 0xc8, 0x3e, 0x40000000);
     textTask(sub); yield* tick(sub);
   }
+  withdraw(ctx);
   clearTextPage(sub); textTask(sub); yield* tick(sub); textTask(sub); yield* tick(sub);
   m.write(0x80079282, s + 1, 1);
   return s & 0xff;
@@ -200,6 +203,7 @@ export function* startMenu(ctx) { // 0x80016078 (the path without a memory card)
     if (v === 2) w8(CARD_SLOT, 1);
     let s = r8(CARD_SLOT);
     m.write(sp + 0x30, 0, 1);
+    offer(ctx, [box(0, 0x23, 0x59, 0x75, 0x12), box(1, 0xaa, 0x59, 0x75, 0x12)], () => s & 0xff, ["left", "right"]);
     for (;;) {
       for (const [i, x] of [[0, 0x23], [1, 0xaa]]) {
         if ((s & 0xff) === i) { m.write(sp + 0x10, 0x7f, 4); m.write(sp + 0x14, 0x7f, 4); m.write(sp + 0x18, 0x7f, 4); cursorBox(sub, x, 0x5a, 0x75, 0x10, 0x7f, 0x7f, 0x7f); }
@@ -216,7 +220,7 @@ export function* startMenu(ctx) { // 0x80016078 (the path without a memory card)
       if (!(pad & 0x21)) continue;
       const c = s & 0xff;
       if (s8(r8(GP + 0x18)) !== c) w8(0x80079285, 1);
-      w8(CARD_SLOT, s);
+      w8(CARD_SLOT, s); withdraw(ctx);
       clearTextPage(sub); textTask(sub); ui(0); yield* ticks(sub, 2);
       cardInfo(sub, c ? 0x10 : 0);
       fadeOut(m, 1, 2); animInit(m); clearTextPage(sub); textTask(sub);
@@ -262,17 +266,19 @@ export function* title(ctx) { // 0x8001b694
   fadeLevel(m, 1, 0x100);
   let s = 0, t = 1;
   const X = [0x1e, 0x7b, 0xd9];
+  const rows = () => offer(ctx, X.map((x, i) => box(i, x, 0xb4, 0x40, 0x12)), () => s & 0xff, ["left", "right"]);
+  rows();
   while ((t & 0xffff) < 0x4b0) {
     if ((r32(PAD) & 0x2000) && (s & 0xff) !== 2) { ui(3); s++; t = 0; }
     if ((r32(PAD) & 0x8000) && (s & 0xff)) { s--; ui(3); t = 0; }
     if (r32(PAD) & 0x821) {
-      ui(2); clearTextPage(sub);
+      ui(2); clearTextPage(sub); withdraw(ctx);
       if ((s & 0xff) === 1) unported(0x8001b7c8); // continue: the load menu
       if (s & 0xff) unported(0x8001b838); // the movies
       yield* fadeAway(sub, 1); fadeIn(m, 1, 1);
       if (yield* startMenu(sub)) { setVar(m, 0, 1); break; }
       dropLayer(m, 1); yield* titlePicture(sub, 0x23f3, 0); fadeIn(m, 0x19, 1); yield* waitFade(sub, 1);
-      t = 1; continue;
+      t = 1; rows(); continue;
     }
     for (let i = 0; i < 3; i++) {
       if ((s & 0xff) === i) { m.write(sp + 0x10, 0x7f, 4); m.write(sp + 0x14, 0x7f, 4); m.write(sp + 0x18, 0x7f, 4); cursorBox(sub, X[i], 0xb4, 0x40, 0x12, 0x7f, 0x7f, 0x7f); }
@@ -283,6 +289,7 @@ export function* title(ctx) { // 0x8001b694
     setPalette(m, (s & 0xff) === 2 ? 0 : 1); t++; drawString(sub, 0xdc, 0xb5, 0x800110e4, 0);
     setPalette(m, 0); textTask(sub); yield* tick(sub);
   }
+  withdraw(ctx);
   textTask(sub); yield* tick(sub); clearTextPage(sub);
   yield* fadeAway(sub, 1);
 }

@@ -12,6 +12,7 @@ import { textTask } from "../text/text.js";
 import { tick } from "../tick.js";
 import { menu, backlog } from "../menu.js";
 import { sound } from "../sound-bridge.js";
+import { offer, withdraw } from "../touch.js";
 
 const PAD = 0x801eef40, SPR = 0x801eef68, IDS = 0x801f6698, POS = 0x801fec90, COUNT = 0x800794cb;
 const AUTO = 0x800792c6, AUTO_T = 0x800792c8, SE_ON = 0x800792a5, ABORT = 0x800792a3, NO_EFFECTS = 0x800792a0;
@@ -28,6 +29,11 @@ HANDLERS[0x16] = function* (ctx) {
     choiceColoursReset({ ...ctx, sp });
     choiceColour({ ...ctx, sp }, 1);
     cursor(0);
+    { // the rows: from each cursor position to the right edge, down to the next row (or one line)
+      const n = r8(COUNT) + 1, at = (i) => [s16(r16(POS + 2 * i)), s16(r16(POS + 0x10 + 2 * i))];
+      offer(ctx, Array.from({ length: n }, (_, i) => { const [x, y] = at(i), next = i + 1 < n ? at(i + 1)[1] : y + 22;
+        return { index: i, left: Math.max(0, x - 4), right: 316, top: y - 3, bottom: Math.max(next, y + 16) - 3 }; }), () => sel & 0xff, ["up", "down"]);
+    }
     for (;;) {
       if (r8(AUTO) === 1) {
         w16(AUTO_T, r16(AUTO_T) + 1);
@@ -56,6 +62,7 @@ HANDLERS[0x16] = function* (ctx) {
       t = (t + r32(0x80079278)) >>> 0;
     }
   }
+  withdraw(ctx);
   if (!aborted) w8(0x800792a8, 0);
   if (!r8(NO_EFFECTS)) { w8(0x8007929e, 0); w8(0x8008dab8 + r8(0x80079430), sel); }
   const abort = r8(ABORT);
