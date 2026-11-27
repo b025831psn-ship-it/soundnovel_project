@@ -84,7 +84,7 @@ try {
     }
     throw new Error(`click-only flow did not reach ${target}`);
   };
-  await page.getByRole('button', {name:'게임 시작'}).click();
+  await page.getByRole('button', {name:'눌러서 시작'}).click();
   await at('logo');
   console.log('click flow: logo');
   await tap();

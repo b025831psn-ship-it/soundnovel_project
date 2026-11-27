@@ -14,7 +14,7 @@ python -B ports/kamaitachi2-ps2/prepare.py "$iso" --output outputs/kamaitachi2-p
 python -m http.server 8772 --bind 127.0.0.1 --directory outputs/kamaitachi2-ps2-kor/web
 ```
 
-[로컬 플레이 화면](http://127.0.0.1:8772/)에서 **게임 시작**을 누른다. 일본어 원판의 글꼴과 이름 문자표를 사용한다. 방향키로 이동하고 Enter 또는 X로 ○, Esc 또는 Z로 ×, S로 △를 누른다. Q와 W가 L1과 R1, Space가 START다. 화면 아래의 버튼과 표준 매핑 게임패드도 같은 입력 처리기를 사용한다.
+[로컬 플레이 화면](http://127.0.0.1:8772/)에서 **눌러서 시작**을 누른다(공통 shared/player/start-gate.js). 일본어 원판의 글꼴과 이름 문자표를 사용한다. 방향키로 이동하고 Enter 또는 Z로 ○, Esc 또는 X로 ×, S로 △를 누른다. Q와 W가 L1과 R1, Space가 START다. 화면 아래의 버튼과 표준 매핑 게임패드도 같은 입력 처리기를 사용한다.
 
 ## 판본과 디스크
 

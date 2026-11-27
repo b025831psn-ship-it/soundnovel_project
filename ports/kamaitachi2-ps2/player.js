@@ -3,11 +3,12 @@ import { Screen } from './render.js';
 import { Sn4Vm } from './sn4.js';
 import { LoopingMusic } from './music.js';
 import { SePlayer } from './se-player.js';
+import { startGate } from '/shared/player/start-gate.js';
 
 const canvas = document.querySelector('canvas');
 const movie = document.querySelector('#movie');
-const cover = document.querySelector('#cover');
-const start = document.querySelector('#start');
+const loading = document.querySelector('#loading');
+const stage = document.querySelector('#screen');
 const status = document.querySelector('#status');
 const shell = document.querySelector('main');
 const menuButton = document.querySelector('#menu-button');
@@ -267,7 +268,6 @@ function playMovie(file, next, loop = false) {
 }
 
 function intro() {
-  cover.hidden = true;
   canvas.focus();
   enter('logo');
   playMovie('chunlogo', () => { stopMovie(); enter('copyright'); });
@@ -571,7 +571,7 @@ function makePages(s) {
 }
 
 function step(key) {
-  if (scene === 'ready') { if (['circle','start'].includes(key)) intro(); return; }
+  if (scene === 'ready') return; // start-gate.js owns the first press
   if (['logo','copyright','opening','attract','title-entry'].includes(scene)) {
     if (['circle','start','l2'].includes(key)) title(false);
     return;
@@ -867,13 +867,16 @@ function frame(now) {
 }
 
 function fail(message) {
-  stopMovie(); stopMusic(); enter('error'); cover.hidden = false;
-  start.textContent = message + ' 다시 시도';
-  start.disabled = false;
+  stopMovie(); stopMusic(); enter('error');
+  loading.hidden = false; loading.textContent = '';
+  const retry = document.createElement('button');
+  retry.type = 'button'; retry.textContent = message + ' 다시 시도';
+  retry.addEventListener('click', () => location.reload());
+  loading.append(retry);
 }
 
 const keys = {ArrowLeft:'left',ArrowRight:'right',ArrowUp:'up',ArrowDown:'down',Enter:'circle',
-  Space:'start',KeyX:'circle',KeyZ:'cross',Escape:'cross',KeyA:'square',KeyS:'triangle',KeyQ:'l1',KeyW:'r1',Digit2:'l2'};
+  Space:'start',KeyZ:'circle',KeyX:'cross',Escape:'cross',KeyA:'square',KeyS:'triangle',KeyQ:'l1',KeyW:'r1',Digit2:'l2'};
 for (const type of ['pointerdown', 'keydown']) addEventListener(type, unlockAudio, {capture:true, once:true});
 document.addEventListener('keydown', e => {
   const action = keys[e.code];
@@ -993,10 +996,6 @@ gameMenu.addEventListener('click', event => {
 document.addEventListener('fullscreenchange', () => {
   if (!document.fullscreenElement) globalThis.screen.orientation?.unlock?.();
 });
-start.addEventListener('click', () => {
-  if (scene === 'error') location.reload();
-  else intro();
-});
 try {
   const [response, sn4Response] = await Promise.all([fetch(asset('opening.json')), fetch(asset('sn4.json'))]);
   if (!response.ok || !sn4Response.ok) throw new Error('Missing opening or SN4 data');
@@ -1057,6 +1056,12 @@ try {
   // retained only for old save compatibility and is never used for new play.
   pages = [];
   screen = new Screen(canvas, images, data);
-  enter('ready'); start.disabled = false; start.textContent = '게임 시작';
+  enter('ready');
   requestAnimationFrame(frame);
 } catch { fail('게임 데이터를 불러오지 못했습니다.'); }
+if (scene === 'ready') {
+  // shared/player/start-gate.js: the one start screen of every port. The press
+  // that starts the game switches sound on and is not also a game input.
+  await startGate(stage, { onPress: () => { unlockAudio(); } });
+  intro();
+}
