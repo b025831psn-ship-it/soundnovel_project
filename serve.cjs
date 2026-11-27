@@ -35,7 +35,7 @@ const routes = new Map([
 const portTypes = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8',
   '.css': 'text/css; charset=utf-8', '.json': 'application/json; charset=utf-8', '.bin': 'application/octet-stream', '.tsv': 'text/tab-separated-values; charset=utf-8',
   '.mjs': 'text/javascript; charset=utf-8', '.png': 'image/png', '.jpg': 'image/jpeg', '.webp': 'image/webp', '.svg': 'image/svg+xml',
-  '.wasm': 'application/wasm', '.ogg': 'audio/ogg', '.mp3': 'audio/mpeg', '.wav': 'audio/wav', '.woff2': 'font/woff2', '.mp4': 'video/mp4', '.txt': 'text/plain; charset=utf-8', '.PAC': 'application/octet-stream', '.ch0': 'application/octet-stream', '.pac': 'application/octet-stream' };
+  '.wasm': 'application/wasm', '.ogg': 'audio/ogg', '.mp3': 'audio/mpeg', '.wav': 'audio/wav', '.woff2': 'font/woff2', '.mp4': 'video/mp4', '.txt': 'text/plain; charset=utf-8', '.PAC': 'application/octet-stream', '.ch0': 'application/octet-stream', '.pac': 'application/octet-stream', '.wd': 'application/octet-stream' };
 // Kamaitachi 2 (PS2) web build lives in the private kamaitachi2-ps2-kor checkout on this PC; its web/ folder path is
 // in a local, uncommitted serve.ps2web (one line). Disc images are never among the served types.
 const ps1Data = (() => { try { return path.resolve(__dirname, fs.readFileSync(path.join(__dirname, 'serve.ps1data'), 'utf8').trim()); } catch { return path.resolve(__dirname, '..', '..', '_claude-work', 'ps1-web'); } })();
@@ -60,7 +60,7 @@ function portRoute(url) {
     ['/ports/zakuro-sfc/', path.join(__dirname, 'ports', 'zakuro-sfc'), ['.html', '.js', '.css']],
     ['/zakuro-sfc-kor/port-data/', path.join(__dirname, 'zakuro-sfc-kor', 'port-data'), ['.json', '.bin']],
     ['/kamaitachi-ps1-kor/port-data/', ps1Data, ['.json', '.bin', '.PAC', '.pac', '.ch0', '.mp4']],
-    ['/kamaitachi2-ps2/', ps2Web, ['.html', '.js', '.mjs', '.css', '.json', '.bin', '.png', '.jpg', '.webp', '.svg', '.wasm', '.ogg', '.mp3', '.wav', '.mp4', '.woff2', '.txt']],
+    ['/kamaitachi2-ps2/', ps2Web, ['.html', '.js', '.mjs', '.css', '.json', '.bin', '.pac', '.wd', '.png', '.jpg', '.webp', '.svg', '.wasm', '.ogg', '.mp3', '.wav', '.mp4', '.woff2', '.txt']],
   ]) {
     if (!url.startsWith(prefix) || !dir) continue;
     const file = path.join(dir, decodeURIComponent(url.slice(prefix.length)) || 'index.html');
