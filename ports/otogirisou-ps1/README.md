@@ -33,9 +33,12 @@
 민감한 파일명이나 원본 데이터가 섞이지 않았는지 검토한다.
 
 ```sh
-python3 tools/validate_disc_manifest.py /private/path/disc-manifest.json
+python3 ../../tools/media-inventory/inventory.py /private/path/game.cue -o /private/path/disc-manifest.json
 python3 -m unittest discover -s tests -v
 ```
+
+범용 조사 도구는 SFC·N64·GBA·PS1·PS2 원본에 공통으로 사용하며, 제절초
+전용 분석은 그 결과 매니페스트에서 시작한다.
 
 아직 기준 디스크가 작업공간에 없으므로 판본 해시, 디스크 ID, 실행 파일과
 컨테이너 구조는 확정하지 않았다. 추측값을 코드에 넣지 않는다.
