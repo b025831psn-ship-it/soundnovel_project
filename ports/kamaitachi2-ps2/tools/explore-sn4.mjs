@@ -75,6 +75,10 @@ class Explorer extends Sn4Vm {
 class Revisit extends Error {}
 
 const queue = [];
+const endOps = new Set();
+let fromEntry = true;
+const BRANCHING = new Set(['NameInputCriminal', 'NameInputGeneral', 'Panel', 'DelusionPanel', 'ClickMap']);
+const labelList = hex => (Buffer.from(hex, 'hex').toString('latin1').match(/[_a-z]+\d*_?\d*/g) ?? []).filter(t => labels.has(t));
 const endings = new Map();
 let paths = 0, steps = 0;
 function fork(vm, payload) {
@@ -92,6 +96,14 @@ function makeVm() {
       // run. The variable-aware VM takes a boolean (true = no jump); the
       // earlier one jumps to whatever label the hook returns.
       if (name === 'condition') { fork(vm, args[0]); return vm.variables ? true : null; }
+      if (name === 'command' && BRANCHING.has(args[0])) {
+        // The typed name, the picked panel cell or the clicked area chooses one
+        // of the labels packed into a hex operand (section byte + NUL-terminated
+        // label each), so every one of them is a branch.
+        for (const packed of args[1] ?? []) if (typeof packed === 'string' && /^[0-9a-f]+$/.test(packed))
+          for (const t of labelList(packed)) fork(vm, t);
+      }
+      if (name === 'command' && args[0] === 'End' && fromEntry) endOps.add(`${vm.label}+${hex(args[2]?.offset ?? 0)}`);
       if (name === 'caption') { music(vm, args[0]); return 0; }
       if (name === 'unknown') { report('unknown-op', hex(args[0]), where(vm)); return undefined; }
       // Layout state, mirrored from player.js so every page can be laid out without a browser.
@@ -265,6 +277,7 @@ queue.push({label: program.entry, names: NAMES});
 while (queue.length) runPath(queue.shift());
 // Labels nobody reached from the entry are explored as roots so their own
 // problems still show up; they are listed separately as unreachable.
+fromEntry = false;
 const unreachable = program.labels.map(l => l.label).filter(l => !entered.has(l));
 for (const l of unreachable) { queue.push({label: l, names: NAMES, unknownBgm: true}); while (queue.length) runPath(queue.shift()); }
 
@@ -273,11 +286,12 @@ const summary = {
   opcodes: Object.fromEntries([...opcodes].sort((a, b) => a[0] - b[0]).map(([k, v]) => [hex(k), v])),
   reachedFromEntry: program.labels.length - unreachable.length, unreachable,
   paths, steps, endings: Object.fromEntries(endings),
+  endOpsFromEntry: [...endOps].sort(),
   problems: Object.fromEntries([...problems].map(([k, b]) => [k, Object.fromEntries(b)])),
 };
 const md = [
   `# SN4 전수 검사`, '',
-  `라벨 ${summary.labels}개, 명령 ${summary.ops}개, 시작점에서 도달 ${summary.reachedFromEntry}개, 경로 ${paths}개, 끝 라벨 ${endings.size}개.`, '',
+  `라벨 ${summary.labels}개, 명령 ${summary.ops}개, 시작점에서 도달 ${summary.reachedFromEntry}개, 경로 ${paths}개, 끝 라벨 ${endings.size}개, 시작점에서 도달한 엔딩 명령(0x27/0x28) ${endOps.size}개.`, '',
   // info-* kinds are expected engine behaviour worth counting, not listing.
   ...[...problems].flatMap(([kind, bucket]) => [`## ${kind} (${bucket.size}종)`, '',
     ...[...bucket].slice(0, kind.startsWith('info-') ? 3 : 50).map(([key, e]) => `- \`${key}\` ×${e.count} — 처음 ${e.first}`), '']),
