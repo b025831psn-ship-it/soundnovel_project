@@ -66,6 +66,7 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); ou
 }
 .stage.ready #screen { opacity: 1; }
 .screen-box { position: relative; line-height: 0; }
+.screen-box .movie { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: fill; background: #000; }
 /* Menu button over the screen's bottom-right corner, so it stays in reach in full screen and on phones.
    Quiet until hovered; hidden while the game can't open the menu. */
 .menu-button {
