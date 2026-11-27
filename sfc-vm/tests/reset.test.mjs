@@ -406,6 +406,33 @@ test('DMA mode 1 writes source bytes through the VRAM data ports', () => {
   assert.equal(bus.takeDmaMasterCycles(), 18 + 8 + 4 * 8);
 });
 
+test('VMAIN modes 1-3 remap VRAM writes and buffered reads', () => {
+  const cases = [
+    { mode: 1, mapped: 0x12a1 },
+    { mode: 2, mapped: 0x13a0 },
+    { mode: 3, mapped: 0x11a4 },
+  ];
+  for (const { mode, mapped } of cases) {
+    const bus = new SfcBus(fixture());
+    bus.write8(0x2115, 0x80 | (mode << 2)); // increment after high port
+    bus.write8(0x2116, 0x34);
+    bus.write8(0x2117, 0x12);
+    bus.write8(0x2118, 0x56);
+    bus.write8(0x2119, 0x78);
+    assert.equal(bus.vram[mapped * 2], 0x56, `mode ${mode} low write`);
+    assert.equal(bus.vram[mapped * 2 + 1], 0x78, `mode ${mode} high write`);
+    assert.equal(bus.vramAddress, 0x1235, `mode ${mode} increments logical VMADD`);
+
+    bus.vram[mapped * 2] = 0xbc;
+    bus.vram[mapped * 2 + 1] = 0x9a;
+    bus.write8(0x2116, 0x34);
+    bus.write8(0x2117, 0x12); // VMADDH prefetches through the same remap.
+    assert.equal(bus.read8(0x2139), 0xbc, `mode ${mode} buffered low read`);
+    assert.equal(bus.read8(0x213a), 0x9a, `mode ${mode} buffered high read`);
+    assert.equal(bus.vramAddress, 0x1235, `mode ${mode} read increments after high port`);
+  }
+});
+
 test('publishes multiplication and division results only after their hardware delay', () => {
   const bus = new SfcBus(fixture());
   bus.write8(0x4202, 7, 100);

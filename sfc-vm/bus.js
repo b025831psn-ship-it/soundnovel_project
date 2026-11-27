@@ -26,6 +26,7 @@ export class SfcBus {
     this.oam = new Uint8Array(544);
     this.vramAddress = this.cgramAddress = this.oamAddress = this.wramAddress = 0;
     this.vmain = 0;
+    this.vramReadBuffer = 0;
     this.bgHofs = new Uint16Array(4);
     this.bgVofs = new Uint16Array(4);
     this.ppuScrollLatch = 0;
@@ -91,6 +92,7 @@ export class SfcBus {
     }
     if ((bank & 0x40) === 0 && word >= 0x2000 && word < 0x8000) {
       this.finishMath(masterCycle);
+      if (word === 0x2139 || word === 0x213a) return this.readVramPort(word === 0x213a);
       const value = word === 0x4210
         ? (this.io[word - 0x2000] & 0x80) | 0x42
         : this.io[word - 0x2000];
@@ -194,13 +196,16 @@ export class SfcBus {
         break;
       }
       case 0x2116: this.vramAddress = (this.vramAddress & 0xff00) | value; break;
-      case 0x2117: this.vramAddress = (value << 8) | (this.vramAddress & 0xff); break;
+      case 0x2117:
+        this.vramAddress = (value << 8) | (this.vramAddress & 0xff);
+        this.prefetchVram();
+        break;
       case 0x2118:
-        this.vram[(this.vramAddress << 1) & 0xffff] = value;
+        this.vram[(this.vramWordAddress() << 1) & 0xffff] = value;
         if (!(this.vmain & 0x80)) this.incrementVram();
         break;
       case 0x2119:
-        this.vram[((this.vramAddress << 1) + 1) & 0xffff] = value;
+        this.vram[((this.vramWordAddress() << 1) + 1) & 0xffff] = value;
         if (this.vmain & 0x80) this.incrementVram();
         break;
       case 0x2121: this.cgramAddress = value << 1; break;
@@ -253,6 +258,31 @@ export class SfcBus {
 
   incrementVram() {
     this.vramAddress = (this.vramAddress + [1, 32, 128, 128][this.vmain & 3]) & 0xffff;
+  }
+
+  vramWordAddress() {
+    const address = this.vramAddress, mode = (this.vmain >>> 2) & 3;
+    if (mode === 1)
+      return (address & 0xff00) | ((address & 0x001f) << 3) | ((address >>> 5) & 7);
+    if (mode === 2)
+      return (address & 0xfe00) | ((address & 0x003f) << 3) | ((address >>> 6) & 7);
+    if (mode === 3)
+      return (address & 0xfc00) | ((address & 0x007f) << 3) | ((address >>> 7) & 7);
+    return address;
+  }
+
+  prefetchVram() {
+    const byteAddress = (this.vramWordAddress() << 1) & 0xffff;
+    this.vramReadBuffer = this.vram[byteAddress] | (this.vram[(byteAddress + 1) & 0xffff] << 8);
+  }
+
+  readVramPort(high) {
+    const value = high ? this.vramReadBuffer >>> 8 : this.vramReadBuffer & 0xff;
+    if (!!(this.vmain & 0x80) === high) {
+      this.incrementVram();
+      this.prefetchVram();
+    }
+    return value;
   }
 
   runDma(mask, masterCycle = 0) {

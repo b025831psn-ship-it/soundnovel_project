@@ -187,3 +187,17 @@ choice image at NMI 8,400 still differs by 6,390 BGR555 pixels. The no-input
 frame-3,360 capture also retains alternating background rows. These remaining
 results show that the stripe/VRAM problem is an additional graphics-transfer
 or scanline-rendering defect, not a consequence of `$7f:4e0b` alone.
+
+The VMAIN follow-up implements full-graphic address remap modes 1--3 for both
+`$2118/$2119` writes and `$2139/$213a` buffered reads. VMADDH prefetches through
+the translated address, and reads increment the logical address on the port
+selected by VMAIN bit 7. VRAM hashes now agree for all 8,500 recorded-input
+NMIs: the NMI 5,924+ intervals disappear and the NMI 8,400 choice image is
+BGR555 exact. The no-input demo no longer has alternating blue rows at physical
+frames 3,300, 3,360, or 3,600.
+
+The independent WRAM interval at NMI 1,904--2,309 remains. The local no-input
+libretro conversion reports 4,505/4,505/4,898 low-amplitude pixels at physical
+frames 3,300/3,360/3,600 (and 4,851 at frame 3,700) with maximum BGR555
+channel delta 1; these are colour-math quantization differences rather than
+the removed OBJ tile stripes.
