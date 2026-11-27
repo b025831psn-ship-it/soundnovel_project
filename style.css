@@ -66,9 +66,6 @@ kbd {
   height: min(calc(66.667cqw + 52px), calc(100dvh - var(--top) - 2 * var(--gap)));
   min-height: 300px;
 }
-/* PC with the phone view on (player bar button): the frame takes the window's height under the header,
-   the player draws the phone-shaped page in its middle. */
-@media (pointer: fine) { body.reader-on:not(.theatre-mode) .theatre iframe { height: calc(100dvh - var(--top) - 2 * var(--gap)) } }
 
 /* Title card: a night still from the game, falling snow, the title and one button. */
 .marquee {
@@ -256,8 +253,6 @@ body.theatre-mode .theatre iframe { height: 100dvh }
   /* Touch play needs no buttons; when the player shows them (its pad button) the frame grows to hold them. */
   body.pad-on .theatre iframe { height: min(calc(66.667cqw + 52px + 200px), calc(100dvh - var(--top))) }
   body.theatre-mode .theatre iframe { height: 100dvh }
-  /* Portrait reading: the player is a tall page of its own, the window's height under the header. */
-  body.reader-on .theatre iframe { height: calc(100dvh - var(--top)) }
 }
 /* Phone turned sideways while a game is open: the player takes the whole window, like a handheld.
    Turning back to portrait brings the hub back. */

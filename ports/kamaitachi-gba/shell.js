@@ -15,10 +15,7 @@ function fit() {
   // Layout size, not the on-screen box: the stage may be drawn turned a quarter (sideways full screen).
   const box = { width: stage.clientWidth, height: stage.clientHeight };
   const steps = Math.floor(Math.min((box.width * ratio) / 240, (box.height * ratio) / 160));
-  // Upright phone (portrait reading on): the game's own screens take the full width instead of the
-  // largest whole-number scale, which leaves a third of a phone's width empty.
-  const wide = shell.classList.contains("reader-on");
-  const scale = steps >= 1 && !wide ? steps / ratio : Math.min(box.width / 240, box.height / 160);
+  const scale = steps >= 1 ? steps / ratio : Math.min(box.width / 240, box.height / 160);
   canvas.style.width = `${240 * scale}px`;
   canvas.style.height = `${160 * scale}px`;
   $("scale").textContent = steps >= 1 ? `×${steps}` : "축소";
@@ -176,7 +173,7 @@ const toggleFullscreen = async () => {
   if (document.fullscreenEnabled && shell.requestFullscreen) {
     try {
       await shell.requestFullscreen({ navigationUI: "hide" });
-      if (touch && !shell.classList.contains("reader-on")) await screen.orientation?.lock?.("landscape").catch(() => {});
+      if (touch) await screen.orientation?.lock?.("landscape").catch(() => {});
       return;
     } catch { /* fall back to filling the window */ }
   }

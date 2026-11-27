@@ -62,7 +62,7 @@ const screen = new Screen(document.querySelector("#screen"));
 const scene = new SceneLoader(assets, screen);
 // Where in the script the picture on screen was asked for ("bb:oooo" of the 04/05 opcode, like the
 // text editor's keys; the opcode's word has just been read when it calls the loader). A debug jump
-// sets it from the replay. The reader keys per-scene edits on it.
+// sets it from the replay; the debug scene list marks the current one with it.
 let sceneSite = null;
 {
   const request = scene.request.bind(scene);
@@ -254,7 +254,6 @@ if (debugMode) {
       return codec.decode(raw).replace(/\{n([12])\}/g, (_, n) => codec.decode(Uint8Array.from(boot.names[n] ?? []))).replace(/\{[^}]*\}|\n/g, "");
     },
     thumb: (entry) => `/kamaitachi-gba-kor/assets/bg/${String(entry.image).padStart(3, "0")}${entry.variant ? `-${entry.variant}` : ""}.png`,
-    editorLink: (entry) => `editor.html?id=${String(entry.image).padStart(3, "0")}&scene=${encodeURIComponent(`${entry.picture}@${entry.site}`)}&sil=${entry.silhouettes.join(",")}`,
     jump: debugJump,
     current: () => sceneSite,
   });

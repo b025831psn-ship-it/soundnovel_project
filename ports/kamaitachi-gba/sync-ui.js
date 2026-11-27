@@ -1,5 +1,5 @@
 // Save and sync dialog for the shell: passcode, devices, conflicts, backup file.
-// Loaded with one <script type="module" src="sync-ui.js"> after reader.js. It adds a bottom-bar
+// Loaded with one <script type="module" src="sync-ui.js"> after shell.js. It adds a bottom-bar
 // button before #fullscreen and reads the store main.js exposes as globalThis.soundnovelSave.
 import { deriveKeys, SyncClient, startPairing, claimPairing, renewPairing, newSecret } from "../../shared/save/sync.js";
 

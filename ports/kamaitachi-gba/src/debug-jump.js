@@ -143,11 +143,9 @@ export function openScenePanel(game) {
         const pic = String(entry.image).padStart(3, "0");
         const silhouettes = entry.silhouettes.length ? ` · 실루엣 ${entry.silhouettes.join(",")}` : "";
         item.innerHTML = `<img loading="lazy" alt="">
-          <div><div class="meta">그림 ${pic}${entry.variant ? `-${entry.variant}` : ""} · 노드 ${entry.node}${silhouettes}
-          · <a href="${game.editorLink(entry)}" target="_blank" rel="noopener">편집기</a></div><div class="line"></div></div>`;
+          <div><div class="meta">그림 ${pic}${entry.variant ? `-${entry.variant}` : ""} · 노드 ${entry.node}${silhouettes}</div><div class="line"></div></div>`;
         item.querySelector("img").src = game.thumb(entry);
         item.querySelector(".line").textContent = row.line;
-        item.querySelector("a").addEventListener("click", (event) => event.stopPropagation());
         const go = async () => {
           status.textContent = "이동 중…";
           await new Promise((resolve) => setTimeout(resolve, 20));
