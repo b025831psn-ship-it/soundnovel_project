@@ -3,6 +3,9 @@
 // with the caller's sp and with its stack arguments read where the original leaves them
 // (sp + 0x10 onwards). call() returns [v0, v1]; generators (frame waits) are run with yield*.
 import { TRANSLATED } from "./translated.js";
+import { EFFECTS_TRANSLATED } from "../screen/effects-translated.js";
+import { SPECIAL_TRANSLATED } from "../scenario/special-translated.js";
+import { WEATHER_TRANSLATED } from "../screen/weather-translated.js";
 import { tick, tickQuiet, ticks, tickText } from "../tick.js";
 import { newGame, titlePicture, animInit, textInit, storyMovie, systemReset, routeReset, textStrings, firstScenario, bufferAliases, bufferInit, bzero, textSlotReset } from "../init.js";
 import { setVar, savePoint, textSpeedReset, dropLayer, dropPicture, waitFade, waitText, choiceColoursReset, textWindowReset, snapshot } from "../helpers.js";
@@ -19,14 +22,15 @@ import { uploadPicture, loadPicture, drawSdw } from "../screen/picture.js";
 import { animStart, animLoad } from "../screen/anim.js";
 import { animStop, checkpoint } from "../scenario/lib.js";
 import { showPicture } from "../scenario/basic.js";
-import { effect, loadClutSlot } from "../screen/weather.js";
+import { effect, loadClutSlot, snowTick, rainTick } from "../screen/weather.js";
+import { ike } from "../screen/ike.js";
 import { setName } from "../name-entry.js";
 import { HANDLERS, lookahead, textIdle, runOp } from "../scenario/interp.js";
 
 const arg = (ctx, k) => ctx.m.read((ctx.sp + 0x10 + 4 * k) >>> 0, 4) | 0; // stack argument k (5th = 0)
 const unported = (addr) => { throw new Error(`menu: path at 0x${addr.toString(16)} is not ported`); };
 
-const PORTED = {
+export const PORTED = {
   0x80013f34: (c) => tick(c),
   0x80013ff0: (c) => tickQuiet(c),
   0x800140a8: (c, a0) => tickText(c, a0),
@@ -64,6 +68,14 @@ const PORTED = {
   0x80029b34: () => unported(0x80029b34), // memory-card errors (the machine's card never reports one)
   0x80032120: (c, a0) => snapshot(c.m, a0),
   0x8003afc8: (c, a0, a1) => loadPicture(c, a0, a1),
+  0x8003b19c: (c, a0, a1, a2, a3) => loadPicture(c, a0, a1 >>> 0, a2, a3),
+  0x800356c8: (c, a0, a1) => ike(c.m, a0 >>> 0, a1 >>> 0),
+  0x800360b8: (c, a0, a1) => ike(c.m, a0 >>> 0, a1 >>> 0),
+  0x80040410: (c) => snowTick(c),
+  0x8004109c: (c) => rainTick(c),
+  0x80049620: (c, a0, a1, a2) => c.gs.MoveImage(a0 >>> 0, a1, a2),
+  0x8004931c: (c, a0) => c.gs.checkRect(a0 >>> 0),
+  0x8004dd58: (c, a0, a1) => c.gs.GsGetTimInfo(a0 >>> 0, a1 >>> 0),
   0x8001c478: (c) => newGame(c),
   0x8001d080: (c, a0, a1) => titlePicture(c, a0, a1),
   0x8001db2c: (c, a0) => dropLayer(c.m, a0),
@@ -97,6 +109,9 @@ const PORTED = {
   0x80044384: (c, a0) => special(c, a0),
   0x800492b4: (c, a0) => c.gs.DrawSync(a0),
   0x80049560: (c, a0, a1) => c.gs.LoadImage(a0 >>> 0, a1 >>> 0),
+  0x80049438: (c, a0, a1, a2, a3) => c.gs.ClearImage(a0 >>> 0, a1, a2, a3),
+  0x80046d10: (c, a0, a1, a2) => c.gs.LoadClut(a0 >>> 0, a1, a2, c.sp),
+  0x8004ea28: () => { throw new Error("BIOS B(07h) DeliverEvent (a soft-float error) is not ported"); },
   // memory-card library (libcard / BIOS): native on the oracle, served by the machine
   ...Object.fromEntries([0x800624b4, 0x80062504, 0x80062544, 0x80062798, 0x80062fa0, 0x80063240, 0x80063748, 0x80063864, 0x80063a6c, 0x80063c28]
     .map((a) => [a, (c, a0, a1, a2, a3) => c.call(a, [a0, a1, a2, a3, arg(c, 0)], c.sp)])),
@@ -115,7 +130,7 @@ function scenarioOp(m, addr) {
 }
 
 export function* call(ctx, sp, addr, a0, a1, a2, a3) {
-  const f = TRANSLATED[addr] ?? PORTED[addr];
+  const f = TRANSLATED[addr] ?? PORTED[addr] ?? EFFECTS_TRANSLATED[addr] ?? SPECIAL_TRANSLATED[addr] ?? WEATHER_TRANSLATED[addr];
   if (!f) {
     const op = scenarioOp(ctx.m, addr);
     if (op === undefined) unported(addr);

@@ -13,6 +13,8 @@
 //   0x80040178 particlesStep  0x80040410 snowTick  0x80040ebc rainStep  0x8004109c rainTick
 //   0x8003abec loadClutSlot   0x8002d934 plot      0x8002f0e8 uploadPage 0x8003ccf8 upload
 //   0x80044904 memcpy         0x80044be4 bzeroWords
+import { x800416a4 } from "./weather-translated.js";
+import { effectSwitch } from "./effects-translated.js";
 import { randMod } from "./shake.js";
 import { spriteAdd, spriteLayer } from "./sprites.js";
 import { dropLayer, dropOverlay, dropPicture, waitFade } from "../helpers.js";
@@ -186,19 +188,19 @@ export function weatherTick(ctx) { // 0x800416a4
   const { m } = ctx, { r16, w32, g8, g32, p8 } = io(m);
   if (m.read(0x800795e2, 1) === 2) return;
   const sub = { ...ctx, sp: ctx.sp - 0x28 };
+  // the palette animation, the picture flips and the layer scroll: the translated routine whole
+  if (g32(0x1cc) || g8(0x1d2) === 1 || g8(0x1d3) === 1 || g8(0x1e4) === 1) { runToEnd(x800416a4(ctx)); return; }
   snowTick(sub);
   rainTick(sub);
   if (g8(0x1c9) === 1) { // reset the wave table to a random horizontal jitter
     for (let i = 0; i < 8; i++) { w32(WAVE + 8 * i, 0); w32(WAVE + 8 * i + 4, 0xf000); }
     for (let i = 8; i < 0xf0; i++) { w32(WAVE + 8 * i, 0); w32(WAVE + 8 * i + 4, randMod(m, 0xf0) * 256); }
   }
-  if (g32(0x1cc)) unported(0x8003f718); // 0x8003f708: palette animation
   if (g8(0x1d0)) spriteLayer(m, r16(IDS + 4), g8(0x1d1) ? 0xc : 0xf);
   p8(0x1d1, (g8(0x1d1) + 1) & 1);
-  if (g8(0x1d2) === 1) unported(0x800417d4);
-  if (g8(0x1d3) === 1) unported(0x8004188c);
-  if (g8(0x1e4) === 1) unported(0x80041484); // 0x80041464
 }
+
+function runToEnd(g) { const r = g.next(); if (!r.done) throw new Error("weather: the translated 0x800416a4 waited for a frame"); }
 
 // 0x80031e8c effectsOff(): the screen effects' flags (gp 0x444, 0x4bc, 0x474, 0x320, 0x38e
 // and 0x80079584 / 0x800795fc / 0x800795b4) cleared, the overlay sprite dropped.
@@ -280,7 +282,7 @@ export function* effect(ctx, mode) {
     case 36: m.write(0x800792b1, 0, 1); return;
     case 37: m.write(0x800792b1, 1, 1); return;
     case 44: m.write(0x800792ac, mode, 1); m.write(GP + 0x1d0, 1, 1); return;
-    default: ctx.call(0x800418d0, [mode], ctx.sp); return;
+    default: yield* effectSwitch(ctx, mode); return; // the other modes, translated (effects-translated.js)
   }
   m.write(GP + 0x1cc, 0, 4); m.write(GP + 0x390, 0, 1);
   if (s8(g8(0x1d8)) !== -1) { m.write(GP + 0x1d8, 0xff, 1); dropLayer(m, 3); m.write(GP + 0x1e0, 0xffff, 2); }

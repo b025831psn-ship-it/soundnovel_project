@@ -92,11 +92,19 @@ export function vsyncCallback(ctx) { // 0x8002d46c
   const weather = (m.read(GP + 0x1d8, 1) << 24) >> 24, count = () => { const v = m.read(GP + 0x1e2, 2); if (v < 4) m.write(GP + 0x1e2, v + 1, 2); };
   if (weather !== -1 && weather !== 3) count(); // 0x800403d8 (snow)
   if (((m.read(GP + 0x1d8, 1) << 24) >> 24) === 3) count(); // 0x8004106c (rain)
-  if (g32(0x8c) && g32(0x90)) unported(0x8002d580);
-  if (g32(0xac) && g32(0xb0)) unported(0x8002d5e4);
-  if (m.read(GP + 0x88, 2)) unported(0x8002d648);
-  p32(0x8c, g32(0x94)); p32(0x90, g32(0x98));
-  if (m.read(GP + 0xa8, 2)) unported(0x8002d688);
-  p32(0xac, g32(0xb4)); p32(0xb0, g32(0xb8));
-  if (s16(m.read(GP + 0x68, 2)) !== -1) unported(0x8002d6cc);
+  // two wave phases (the effects' set-up routines start them): phase = (phase + speed) mod period,
+  // the period / amplitude pair either stepping toward a target for gp[0x88] frames or set to it
+  if (g32(0x8c) && g32(0x90)) p32(0x84, ((g32(0x84) + g32(0xc4)) | 0) % g32(0x90) | 0);
+  if (g32(0xac) && g32(0xb0)) p32(0xa4, ((g32(0xa4) + g32(0xc4)) | 0) % g32(0xb0) | 0);
+  let n = m.read(GP + 0x88, 2);
+  if (n) { m.write(GP + 0x88, n - 1, 2); p32(0x8c, g32(0x8c) + g32(0x9c)); p32(0x90, g32(0x90) + g32(0xa0)); }
+  else { p32(0x8c, g32(0x94)); p32(0x90, g32(0x98)); }
+  n = m.read(GP + 0xa8, 2);
+  if (n) { m.write(GP + 0xa8, n - 1, 2); p32(0xac, g32(0xac) + g32(0xbc)); p32(0xb0, g32(0xb0) + g32(0xc0)); }
+  else { p32(0xac, g32(0xb4)); p32(0xb0, g32(0xb8)); }
+  const t = m.read(GP + 0x68, 2);
+  if (s16(t) !== -1) { // a vibration countdown (0x8002d6cc): at its end the setting comes back and the motors stop
+    m.write(GP + 0x68, t - 1, 2);
+    if (s16(t - 1) === -1) { m.write(GP + 0x4b0, m.read(0x800792a6, 1), 2); m.write(GP + 0x4c8, 0, 2); m.write(GP + 0x4cc, 0, 2); m.write(GP + 0x68, 0xffff, 2); }
+  }
 }

@@ -11,6 +11,7 @@ import "./scenario/flow.js";
 import "./scenario/basic.js";
 import "./scenario/picture.js";
 import "./scenario/sound.js";
+import "./scenario/xa.js";
 import "./scenario/state.js";
 import "./scenario/prefetch.js";
 import "./scenario/choice.js";

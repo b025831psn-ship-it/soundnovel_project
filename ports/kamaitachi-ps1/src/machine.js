@@ -14,6 +14,7 @@ import { mainLoop } from "./main-loop.js";
 import { vsyncCallback } from "./vsync.js";
 import { silentSound } from "./sound-bridge.js";
 import { MemoryCard } from "./memory-card.js";
+import { playMovie } from "./movie.js";
 
 const CARD_STATE = 0x8008ca38, CARD_SEEN = 0x8008ca34;
 const CARD_LIB = { 0x80062544: "cardExist", 0x80062798: "cardAccept", 0x80062fa0: "cardRead", 0x80063240: "cardWrite", 0x80063748: "cardSync",
@@ -32,7 +33,9 @@ const NOOP = { 0x80053318: "ResetCallback", 0x80062468: "InitCARD", 0x800624b4: 
 export class Machine {
   // card: a MemoryCard (or a raw 128 KB image) in slot 1; none leaves both slots empty, as
   // on the oracle (whose card requests never finish).
-  constructor({ exeData, pacs, sound = null, onError = null, card = null }) {
+  // xa: an XaStream (xa.js) for CD-XA (the voice drama); none plays it silent.
+  // movie: the host's player for the STR movies (movie.js: name -> { ended, stop() }); none skips them.
+  constructor({ exeData, pacs, sound = null, onError = null, card = null, xa = null, movie = null }) {
     this.ram = new Uint8Array(RAM); this.dv = new DataView(this.ram.buffer);
     this.scratch = new Uint8Array(0x400);
     for (const { addr, bytes } of exeData) this.ram.set(bytes, addr & (RAM - 1));
@@ -40,11 +43,12 @@ export class Machine {
     const m = { read: (a, w) => this.read(a, w), write: (a, v, w) => this.write(a, v, w), setBytes: (a, b) => this.ram.set(b, a & (RAM - 1)), vsync: () => this.read(VSYNC_COUNT, 4) };
     this.m = m;
     this.gs = new LibGpu(m);
-    this.cd = new LibCd({ m, pacs });
+    this.cd = new LibCd({ m, pacs, xa });
     sound = typeof sound === "function" ? sound(m) : sound ?? silentSound(); this.sound = sound; this.callback = null; this.buttons = 0; this.frames = 0; this.card = 1; this.onError = onError;
     this.memoryCard = card ? (card instanceof MemoryCard ? card : new MemoryCard(card)) : null; this.onCardWrite = null;
     this.touch = { menu: null, frame: 0 };
     const ctx = { m, sp: 0x801ffff0 - 0x40, gs: this.gs, cd: this.cd, sound, touch: this.touch, call: (a, args, sp) => this.call(a, args, sp), padState: () => 2 };
+    if (movie) ctx.movie = (entry) => playMovie({ ...ctx, sp: ctx.sp - 0x100 }, entry, movie);
     this.ctx = ctx;
     this.game = (function* () { yield* init(ctx); yield* mainLoop({ ...ctx, sp: ctx.sp - 0x18 }); })();
     this.started = false; this.error = null;

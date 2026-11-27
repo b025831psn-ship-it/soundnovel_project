@@ -24,6 +24,7 @@ import { titlePicture, animInit, textSlotsReset, systemReset, routeReset } from 
 import { inputClear, inputTick } from "./input.js";
 import { sound } from "./sound-bridge.js";
 import { title as translatedTitle } from "./menu/translated.js";
+import { specialSwitch } from "./scenario/special-translated.js";
 
 const GP = 0x8007913c, PAD = 0x801eef40, SE = 0x801eef50, CARD_SLOT = 0x800792c3, CARD_CMD = 0x80079524;
 const unported = (addr) => { throw new Error(`title: path at 0x${addr.toString(16)} is not ported`); };
@@ -316,6 +317,6 @@ export function* special(ctx, k) {
     case 106: w8(0x800792a9, 1); return;
     case 107: w8(0x800792a9, 0); return;
     case 1: case 18: case 32: case 33: case 34: case 35: case 36: case 39: case 40: case 41:
-      unported(m.read(0x800129dc + 4 * k, 4) >>> 0);
+      yield* specialSwitch(ctx, k); return; // the selection screens: scenario/special-translated.js
   }
 }

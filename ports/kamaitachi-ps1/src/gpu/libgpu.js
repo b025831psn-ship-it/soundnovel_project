@@ -17,6 +17,7 @@
 //   0x800492b4 DrawSync (mode 0)         0x8004d348   (geometry offset of the active buffer)
 //   0x80049438 ClearImage                0x8004d458   (PutDrawEnv of the active buffer)
 //   0x80049560 LoadImage                 0x8004d518 GsSwapDispBuff
+//   0x80049620 MoveImage
 //   0x800497a0 ClearOTagR                0x8004dc78 GsDrawOt
 //   0x800498a8 DrawOTag                  0x8004dca8 GsClearOt
 //   0x80049918 PutDrawEnv                0x8004dd58 GsGetTimInfo
@@ -206,6 +207,13 @@ export class LibGpu {
     return this.enqueue(this.fillRect, rect, 8, ((b & 0xff) << 16 | (g & 0xff) << 8 | (r & 0xff)) >>> 0);
   }
   LoadImage(rect, src) { this.checkRect(rect); return this.enqueue(this.upload, rect, 8, src); } // 0x80049560
+  MoveImage(rect, x, y) { // 0x80049620: a VRAM-to-VRAM copy, the packet at 0x80072be8 {0x04ffffff, 0x80000000, src, dst, size}
+    this.checkRect(rect);
+    if (!s16(this.r16(rect + 4)) || !s16(this.r16(rect + 6))) return -1;
+    const P = 0x80072be8;
+    this.w32(P + 8, this.r32(rect)); this.w32(P + 0xc, ((y & 0xffff) << 16 | (x & 0xffff)) >>> 0); this.w32(P + 0x10, this.r32(rect + 4));
+    return this.enqueue(this.sendList, P, 0x14, 0);
+  }
   ClearOTagR(ot, n) { // 0x800497a0
     if (this.r8(G.debug) >= 2) unported(0x800497c8);
     this.clearOt(ot, n);
