@@ -59,6 +59,12 @@ const text = new TextWindow({ 1: "透", 2: "真理" });
 const vm = new VM({ banks, scene: new SceneLoader(assets, screen), text, entryRow: 31000,
   transitionTimings: await assets.json("scenario-timing.json").catch(() => null) });
 const books = new MemoryBooks();
+// The script variables the campaign touches (opcodes 40 and 41), for the log comparison.
+const varsUsed = new Set(), flagsUsed = new Set();
+vm.trace = (e) => {
+  if (e.opcode === 0x40 || e.opcode === 0x41) varsUsed.add(e.args[0]);
+  if ([0x0d, 0x0e, 0x0f, 0x1a, 0x54, 0x55].includes(e.opcode)) flagsUsed.add(e.args[0]);
+};
 if (process.env.QA_TRACE) {
   const [tb, lo, hi] = process.env.QA_TRACE.split(",").map((x) => Number.parseInt(x, 16));
   vm.trace = (e) => { if (e.bank === tb && e.offset >= lo && e.offset < hi) console.log("trace", e.offset.toString(16), e.opcode.toString(16), e.args, e.wait, "flags", records().join(","), "ready", vm.ram.inputReady, vm.ram.choiceSkip); };
@@ -154,7 +160,19 @@ function runUntilEvent(limit = 120000) {
   return { kind: "stall", info: { node: vm.ram.node, bank: vm.bank } };
 }
 
+// QA_LOG=<file>: the state at every choice, name entry and round end (JSON lines), for comparing
+// with the same log taken from the original.
+const stepLog = process.env.QA_LOG ? fs.openSync(process.env.QA_LOG, "w") : null;
+const logged = { round: 0, step: 0 };
+const hexOf = (bytes) => Buffer.from(bytes).toString("hex");
+function logStep(kind) {
+  if (stepLog === null) return;
+  fs.writeSync(stepLog, JSON.stringify({ round: logged.round, step: logged.step++, kind, site: site(), node: vm.ram.node,
+    flags: hexOf(vm.ram.flags), vars: hexOf(vm.ram.vars) }) + "\n");
+}
+
 function choose(k) {
+  logStep("choice");
   for (let i = 0; i < k; i++) tap("DOWN");
   tap("A", 2, 4);
 }
@@ -180,6 +198,7 @@ function settleAndSave(limit = 30000) {
 }
 
 function typeName(keys) {
+  logStep("name");
   const map = { U: "UP", D: "DOWN", L: "LEFT", R: "RIGHT", A: "A", S: "START" };
   for (const k of keys) tap(map[k]);
 }
@@ -204,6 +223,8 @@ for (const campaignPath of campaignPaths) {
     if (!round.next_route || !round.new_records?.length) continue;
     roundNumber++;
     const t0 = Date.now(), f0 = frames;
+    logged.round = roundNumber;
+    logged.step = 0;
     const result = { round: roundNumber, from: `${path.basename(campaignPath)} ${round.round}회차`, expected: round.new_records,
       steps: round.next_route.length };
     let why = null, event = null;
@@ -241,6 +262,7 @@ for (const campaignPath of campaignPaths) {
       if (event.kind !== "end") why = `route ended in ${event.kind} ${site()}`;
       else if (!settleAndSave()) why = `bookshelf did not save (bank ${vm.bank.toString(16)})`;
     }
+    logStep("end");
     const book = bookRecords();
     const gained = book.filter((n) => !have.has(n));
     Object.assign(result, { got: gained, book: book.length, frames: frames - f0, ms: Date.now() - t0 });
@@ -256,6 +278,6 @@ for (const campaignPath of campaignPaths) {
   if (report.mismatches.some((m) => m.error)) break;
 }
 const final = bookRecords();
-Object.assign(report, { finished: new Date().toISOString(), frames, bookRecords: final, f52: Boolean(vm.ram.flags[52]), f54: Boolean(vm.ram.flags[54]) });
+Object.assign(report, { finished: new Date().toISOString(), frames, varsUsed: [...varsUsed].sort((a, b) => a - b), flagsUsed: [...flagsUsed].sort((a, b) => a - b), bookRecords: final, f52: Boolean(vm.ram.flags[52]), f54: Boolean(vm.ram.flags[54]) });
 fs.writeFileSync(outPath, JSON.stringify(report, null, 1));
 console.log(JSON.stringify({ rounds: report.rounds.length, mismatches: report.mismatches.length, book: final.length, f52: report.f52, f54: report.f54 }));

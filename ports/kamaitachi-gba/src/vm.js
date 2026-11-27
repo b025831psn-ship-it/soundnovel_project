@@ -424,7 +424,10 @@ export class VM {
       case 0x04: {
         const request = this.word();
         args.push(request);
-        if (!this.suppressed(opcode)) this.scene?.request(request, this.ram);
+        if (this.suppressed(opcode)) break;
+        this.scene?.request(request, this.ram);
+        // 080039BA: the request's low byte is kept in var 2 (08003658), held requests too.
+        this.write("vars", 2, request & 0xff);
         break;
       }
       case 0x05: {

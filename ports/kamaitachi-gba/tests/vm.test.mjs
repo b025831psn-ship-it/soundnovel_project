@@ -500,7 +500,8 @@ test("19, 46, 47, 48, 61 and 62 preserve native operand widths and system state"
 });
 
 test("captured transition timing holds dispatch and carries audio gates", () => {
-  const row = [0x04, 1, 0, 0x41, 2, 7];
+  // Var 5 (set by the 41 after the picture) shows when dispatch resumes; 04 itself writes var 2.
+  const row = [0x04, 1, 0, 0x41, 5, 7];
   const vm = new VM({
     banks: { 27: bank([row]) },
     transitionTimings: { sites: { "1b:2": [
@@ -510,11 +511,12 @@ test("captured transition timing holds dispatch and carries audio gates", () => 
   vm.step();
   assert.equal(vm.waiting, "transition");
   assert.equal(vm.skipAudioFrame, true);
+  assert.equal(vm.ram.vars[2], 1);
   vm.vblank();
   vm.vblank();
-  assert.equal(vm.ram.vars[2], 0);
+  assert.equal(vm.ram.vars[5], 0);
   vm.vblank();
-  assert.equal(vm.ram.vars[2], 7);
+  assert.equal(vm.ram.vars[5], 7);
   assert.equal(vm.waiting, "none");
 });
 
