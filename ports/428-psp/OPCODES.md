@@ -89,3 +89,19 @@
   - 11: 즉시(u16 없음). 12: u16 4개, 마스크 사진을 쓰는 와이프로 보임, 원작 대조 전이라 겹쳐 바뀜으로 대신함.
 - 사진 층: `44 id(u16) 층 b`. 층 1(드물게 0)은 전환으로 들어오는 본 사진, 층 2~8은 위에 겹치는 사진. `6A 층` 보이기, `6B 층` 지우기, `68 속성 층 00 id` 그 속성 키프레임이 끝날 때까지 대기, `69 속성 층 00 id` 그 속성 키프레임 해제.
 - 속성 14 (n=6) `[프레임, x1, y1, x2, y2, 가속]` 겹친 사진의 화면 위치(1280×720 단위, K08A_0010_1200에서 사진 네 장이 6000프레임 동안 천천히 흐름). 속성 24 (n=3) `[프레임, 불투명도 0~255, 가속]`. 겹친 사진의 크기 배율은 본 사진과 같다고 가정(464×256 사진 픽셀 = 480×272 화면). 67의 프레임 수는 지금부터 센다(K08A_0010_1230: 6000프레임 이동 중에 15프레임 이동을 보내고 68로 기다림). 속성 14의 정확한 뜻(위치·시차 스크롤)은 원작 대조 전.
+
+## Zapping (JUMP) and hour blocks
+
+- `70` starts a JUMP keyword (the red word in the text). Payload: `00`, one condition in the `57` term format
+  (usually "the target character waits at its CONTINUE", e.g. var 600 == 1), slot, target label, u16 (?), u16 var.
+  While the condition holds the player can JUMP: the var is set to 1 and play moves to the target label (mostly the
+  other character's `_CONTINUE_CHECK`, which tests that var). `72` ends the keyword. All 77 keywords decode cleanly.
+- The ZAP node of the character who jumped (`..._ZAP` label before the keyword, to.flo kind 3) stays on the time
+  chart, so the player can come back there later.
+- `6C ... 'TIP_xxx'` / `6E` mark a TIPS keyword (not implemented yet).
+- Var 14 is never written by scripts: the engine raises it (0x08876338) when the current hour block is complete.
+  Block tables in the EBOOT (columns K A O M F J T S C E): first scene per character 0x089BDD04, block-end
+  `_CONTINUE_CHECK` per character 0x089BE2E4, block-end vars (300 + ...) 0x089AB654, story var ranges 0x089BFACC.
+  Complete = every block-end var set, every story var in the range set, every block-end label passed.
+  `TOP_FLAG_xxA_GOON_CHECK` then sees var 14 > block and the `_CONTINUE_CHECK` jumps into the next block.
+  Implemented in `engine/game.js` (BLOCKS); `test/game-search.mjs` plays 10:00 through to 11:00 headless.

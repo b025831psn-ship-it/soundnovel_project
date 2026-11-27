@@ -37,6 +37,7 @@ export function decodeControl(op, arg) {
     case 0x57: case 0x58: return decodeIf(op, arg);
     case 0x53: case 0x54: case 0x55: return decodeChoice(op, arg);
     case 0x5c: case 0x5d: return { v: be(arg, 0, 2) };
+    case 0x70: return decodeZap(arg);
   }
   return null;
 }
@@ -56,8 +57,15 @@ function decodeIf(op, arg) {
       }
     }
   }
-  const slot = arg[p]; [tail] = cstrAt(arg, p + 1);
-  return { terms, slot, label: tail };
+  const slot = arg[p]; let end; [tail, end] = cstrAt(arg, p + 1);
+  return { terms, slot, label: tail, end };
+}
+// 70: ZAP keyword start (the red word that lets the player JUMP to another character). Payload: u8 0, one condition
+// term like 57 (zap open only while it holds, e.g. the target waits at its CONTINUE: var 600 == 1), slot, target label,
+// u16 ?, u16 var set to 1 on the jump (read by the target's CONTINUE_CHECK). 72 ends the keyword.
+function decodeZap(arg) {
+  const d = decodeIf(0x57, arg.subarray(1)); const p = 1 + d.end;
+  return { ...d, x: be(arg, p, 2), v: be(arg, p + 2, 2) };
 }
 function decodeChoice(op, arg) {
   // 53/54/55: three header bytes (third*60 = timer frames), count, then per choice u8, slot, label.
@@ -92,6 +100,8 @@ export class VM {
     }
     return !!acc;
   }
+  // JUMP through the keyword of the last 70 (host checks zap.open): mark the target, go to its scene.
+  jump(z = this.zap) { this.set(z.v, 1); this.pendingChoice = null; this.stack = []; this.goto(z.slot, z.label); }
   choose(index) {
     const c = this.pendingChoice; if (!c) throw new Error('no choice pending');
     const o = c.options[index]; this.pendingChoice = null; this.goto(o.slot, o.label);
@@ -115,6 +125,8 @@ export class VM {
       case 0x5c: { const d = decodeControl(op, x.arg); this.set(d.v, 1); return null; }
       case 0x5d: { const d = decodeControl(op, x.arg); this.set(d.v, 0); return null; }
       case 0x53: case 0x54: case 0x55: { const d = decodeControl(op, x.arg); this.pendingChoice = { op, ...d }; return { type: 'choice', op, ...d }; }
+      case 0x70: { const d = decodeControl(op, x.arg); const z = { ...d, open: this.cond(d.terms) }; this.zap = z; return { type: 'zap', ...z }; }
+      case 0x72: return { type: 'zapEnd' };
       case 0x01: return { type: 'text', text: x.text, pc: x.pc };
       case 0x00: return null;
       default: return { type: 'op', op, arg: x.arg, pc: x.pc };
