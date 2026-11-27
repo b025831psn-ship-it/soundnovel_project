@@ -9,6 +9,10 @@ function color(cgram, index) {
 }
 
 const MODE_BPP = [[2, 2, 2, 2], [4, 4, 2], [4, 4], [8, 4], [8, 2], [4, 2], [4]];
+// The 224-line libretro frame starts at SNES visible scanline 1. Sampling the
+// source at y + 1 models that origin directly instead of shifting a composed
+// bitmap after the fact.
+const FIRST_VISIBLE_LINE = 1;
 
 function bgPixel(bus, bg, x, y, bpp) {
   const io = bus.io, screen = io[0x2107 + bg - 0x2000];
@@ -198,7 +202,7 @@ function mode1Layer(bus, bg, width, height) {
   if (bus.mode1LayerKeys[bg] === key) return bus.mode1Layers[bg];
   const layer = new Int32Array(width * height);
   for (let y = 0; y < height; y++) for (let x = 0; x < width; x++)
-    layer[y * width + x] = mode1Pixel(bus, bg, x, y);
+    layer[y * width + x] = mode1Pixel(bus, bg, x, y + FIRST_VISIBLE_LINE);
   bus.mode1LayerKeys[bg] = key; bus.mode1Layers[bg] = layer;
   return layer;
 }
@@ -215,7 +219,7 @@ function renderObjectsMode1(bus, width, height) {
     const oy = bus.oam[at + 1], size = sizeTable[obsel >>> 5][(high >>> 1) & 1];
     const attr = bus.oam[at + 3], priority = [2, 4, 7, 10][(attr >>> 4) & 3];
     for (let py = 0; py < size; py++) {
-      const sy = (oy + py) & 0xff; if (sy >= height) continue;
+      const sy = (oy + py - FIRST_VISIBLE_LINE) & 0xff; if (sy >= height) continue;
       for (let px = 0; px < size; px++) {
         const sx = ox + px; if (sx < 0 || sx >= width) continue;
         const tx = attr & 0x40 ? size - 1 - px : px, ty = attr & 0x80 ? size - 1 - py : py;
@@ -239,12 +243,17 @@ function renderMode1Fast(bus, width, height) {
   const bg0 = enabled & 1 ? mode1Layer(bus, 0, width, height) : null;
   const bg1 = enabled & 2 ? mode1Layer(bus, 1, width, height) : null;
   const bg2 = enabled & 4 ? mode1Layer(bus, 2, width, height) : null;
-  const red = new Uint16Array(256), green = new Uint16Array(256), blue = new Uint16Array(256);
+  // The reference core composites in its RGB565 output precision: 5-bit red
+  // and blue, and the expanded 6-bit green channel. Expanding all channels to
+  // 8-bit first makes half-add blue one step too bright; treating green as only
+  // 5-bit makes odd half-adds one step too dark.
+  const red = new Uint8Array(256), green = new Uint8Array(256), blue = new Uint8Array(256);
   for (let index = 0; index < 256; index++) {
     const value = bus.cgram[index * 2] | (bus.cgram[index * 2 + 1] << 8);
-    red[index] = Math.round((value & 31) * 255 / 31);
-    green[index] = Math.round(((value >>> 5) & 31) * 255 / 31);
-    blue[index] = Math.round(((value >>> 10) & 31) * 255 / 31);
+    red[index] = value & 31;
+    const green5 = (value >>> 5) & 31;
+    green[index] = (green5 << 1) | (green5 >>> 4);
+    blue[index] = (value >>> 10) & 31;
   }
   const useSub = !!(cgwsel & 2), half = !!(math & 0x40), subtract = !!(math & 0x80);
   for (let y = 0; y < height; y++) for (let x = 0; x < width; x++) {
@@ -265,13 +274,14 @@ function renderMode1Fast(bus, width, height) {
         if (sub & 4) { const pixel = bg2[index]; if (pixel > below) below = pixel; }
         if (below >= 0) { second = below & 0x1ff; transparent = false; }
       }
-      const mix = (first, other) => {
+      const mix = (first, other, maximum) => {
         const value = subtract ? first - other : first + other;
-        return Math.max(0, Math.min(255, half && (!useSub || !transparent) ? value / 2 : value));
+        return Math.max(0, Math.min(maximum, half && (!useSub || !transparent) ? value >> 1 : value));
       };
-      r = mix(r, red[second]); g = mix(g, green[second]); b = mix(b, blue[second]);
+      r = mix(r, red[second], 31); g = mix(g, green[second], 63); b = mix(b, blue[second], 31);
     }
-    r = r * brightness / 15; g = g * brightness / 15; b = b * brightness / 15;
+    r = Math.floor(r * brightness / 15); g = Math.floor(g * brightness / 15); b = Math.floor(b * brightness / 15);
+    r = (r << 3) | (r >>> 2); g = (g << 2) | (g >>> 4); b = (b << 3) | (b >>> 2);
     output[index] = 0xff000000 | (b << 16) | (g << 8) | r;
   }
   return rgba;
@@ -293,8 +303,9 @@ export function renderFrame(bus, width = 256, height = 224) {
   const fixed = fixedColor(bus);
   const objects = (main | sub) & 0x10 ? renderObjects(bus, width, height) : null;
   for (let y = 0; y < height; y++) for (let x = 0; x < width; x++) {
-    const top = composeScreen(bus, objects, x, y, main, 0x212e, bpps, !!(cgwsel & 1));
-    const below = composeScreen(bus, objects, x, y, sub, 0x212f, bpps, !!(cgwsel & 1));
+    const sourceY = y + FIRST_VISIBLE_LINE;
+    const top = composeScreen(bus, objects, x, sourceY, main, 0x212e, bpps, !!(cgwsel & 1));
+    const below = composeScreen(bus, objects, x, sourceY, sub, 0x212f, bpps, !!(cgwsel & 1));
     let rgb = top.rgb;
     const colorWindow = windowInside(io, 5, x);
     const clipMode = cgwsel >>> 6, preventMode = (cgwsel >>> 4) & 3;
@@ -356,12 +367,13 @@ export function renderMode3Bg1(bus, width = 256, height = 224) {
   for (let y = 0; y < height; y++) {
     for (let x = 0; x < width; x++) {
       const tileX = (x >>> 3) % mapWidth;
-      const tileY = (y >>> 3) % mapHeight;
+      const sourceY = y + FIRST_VISIBLE_LINE;
+      const tileY = (sourceY >>> 3) % mapHeight;
       const quadrant = (tileX >>> 5) + (tileY >>> 5) * (mapWidth >>> 5);
       const entryOffset = mapBase + quadrant * 0x800 + (((tileY & 31) * 32 + (tileX & 31)) * 2);
       const entry = bus.vram[entryOffset & 0xffff] | (bus.vram[(entryOffset + 1) & 0xffff] << 8);
       const localX = entry & 0x4000 ? 7 - (x & 7) : x & 7;
-      const localY = entry & 0x8000 ? 7 - (y & 7) : y & 7;
+      const localY = entry & 0x8000 ? 7 - (sourceY & 7) : sourceY & 7;
       const paletteIndex = decodeTilePixel(bus.vram, tileBase + (entry & 0x3ff) * 64, localX, localY, 8);
       const rgb = paletteIndex === 0 ? backdrop : color(bus.cgram, paletteIndex);
       const output = (y * width + x) * 4;

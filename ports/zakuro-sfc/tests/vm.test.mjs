@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { ApuTraceComparator, MasterClock, ProgramImage, RESET_MASTER_CYCLES, ZakuroBus, ZakuroVM, accessCycles, createApuLink, inAutoJoypadRead, inVblank, scanlineTiming, vblankBoundary } from '../vm/index.js';
+import { ApuTraceComparator, MasterClock, PPU, ProgramImage, RESET_MASTER_CYCLES, ZakuroBus, ZakuroVM, accessCycles, createApuLink, inAutoJoypadRead, inVblank, renderFrame, rgbaToRgb565, scanlineTiming, vblankBoundary } from '../vm/index.js';
 import { LINK_TIMING, POWER_ON } from '../tools/rom.mjs';
 
 function fixtureRom(program) {
@@ -158,6 +158,22 @@ test('PPU receives VRAM/CGRAM writes and presents a 256x224 RGBA field', () => {
   assert.equal(vm.ppu.presentField(1, 357368).length, 256 * 224 * 4);
   assert.equal(vm.ppu.presentField(2, 714732, false), null);
   assert.equal(vm.ppu.field, 2);
+});
+
+test('Mode 1 starts at visible line 1 and half-adds in RGB565 precision', () => {
+  const ppu = new PPU();
+  ppu.io[0x100] = 15; ppu.io[0x105] = 1;
+  ppu.io[0x107] = 0; ppu.io[0x108] = 4; ppu.io[0x10b] = 0x21;
+  ppu.io[0x12c] = 1; ppu.io[0x12d] = 2; ppu.io[0x130] = 2; ppu.io[0x131] = 0x41;
+  ppu.vram[0] = 0x00; ppu.vram[1] = 0x14; // BG1 palette 5, tile 0.
+  ppu.vram[0x800] = 0x00; ppu.vram[0x801] = 0x1c; // BG2 palette 7, tile 0.
+  // Only source row 1 is non-transparent: BG1 pixel 13 and BG2 pixel 1.
+  ppu.vram[0x2002] = 0xff; ppu.vram[0x2012] = 0xff; ppu.vram[0x2013] = 0xff;
+  ppu.vram[0x4002] = 0xff;
+  ppu.cgram[93 * 2] = 0xb5; ppu.cgram[93 * 2 + 1] = 0x4e;
+  ppu.cgram[113 * 2] = 0x23; ppu.cgram[113 * 2 + 1] = 0x40;
+  const rgb565 = rgbaToRgb565(renderFrame(ppu));
+  assert.equal(rgb565[0] | (rgb565[1] << 8), 0x62d1);
 });
 
 test('recorded joypad frames feed auto-joypad registers and serial reads', () => {
