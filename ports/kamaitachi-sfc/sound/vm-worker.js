@@ -11,17 +11,29 @@ import { APU } from './apu.js';
 import { runRealtime } from './realtime.js';
 import { createPcmSink } from './pcm-sink.js';
 import { VmSound, PAD } from './vm-sound.js';
-import { planTap, PressQueue } from './touch.js';
+import { planTap, PressQueue, isKeyboard, keyboardTarget, keyboardStep } from './touch.js';
 import { SfcMachine } from '../../../sfc-vm/machine.js';
 
-let machine = null, run = null, held = 0;
+let machine = null, run = null, held = 0, seek = null;
+const seekStep = () => {
+  if (!seek || queue.busy) return;
+  const b = keyboardStep(machine.bus.wram, seek.target);
+  if (b === 'A' || ++seek.presses > 24) seek = null;
+  if (b === 'A' || seek) queue.push(PAD[b]);
+};
 const queue = new PressQueue();
 onmessage = ({ data }) => {
   if (data.type === 'start') start(data);
   else if (data.type === 'buttons') held = data.mask;
   else if (data.type === 'pause') run?.setPaused(data.on);
-  else if (data.type === 'tap' && machine && !queue.busy)
-    queue.push(...planTap(machine.bus.wram, machine.bus.io, data.x, data.y).map((n) => PAD[n]));
+  else if (data.type === 'tap' && machine && !queue.busy && !seek) {
+    const w = machine.bus.wram;
+    // On the suspect keyboard a tap types the tapped kana (or runs the tapped command) at once:
+    // the cursor is walked there one press at a time, reading the game's cursor after each.
+    const target = isKeyboard(w) ? keyboardTarget(data.x, data.y) : null;
+    if (target != null) seek = { target, presses: 0 };
+    else if (!isKeyboard(w)) queue.push(...planTap(w, machine.bus.io, data.x, data.y).map((n) => PAD[n]));
+  }
   else if (data.type === 'press' && PAD[data.name]) queue.push(PAD[data.name]);
 };
 
@@ -33,7 +45,7 @@ function start({ game, gauss, port, sram }) {
   // default; a player must switch them off or the tab runs out of memory in minutes.
   machine = new SfcMachine({ rom: new Uint8Array(game), apu,
     busOptions: { eventLimit: 0, apuTraceLimit: 0 }, cpuOptions: { traceLimit: 0 },
-    onFrame: (frame, fb) => { latest = fb; latestFrame = frame; machine.setButtons(held | queue.frame()); } });
+    onFrame: (frame, fb) => { latest = fb; latestFrame = frame; seekStep(); machine.setButtons(held | queue.frame()); } });
   machine.setButtons(0);
   // Battery save: load the stored bookmarks, and hand them back when the game changes them
   // (checked twice a second; sent once the bytes have stayed the same for one check).

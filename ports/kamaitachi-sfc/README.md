@@ -60,5 +60,5 @@
 ## 플레이어 (`index.html`, `player.js`, `shell.css`)
 
 - 허브에서 여는 실제 플레이어다. ROM을 요구하지 않는다. 비공개 `kamaitachi-sfc-kor/port-data/program/`(`tools/extract-program.mjs`로 소유 ROM에서 만든 64 KiB 범위 48개와 `manifest.json`)을 받아 범위별·전체 SHA-256을 확인하고, `sound/vm-worker.js`에서 `sfc-vm/machine.js`와 APU를 실행한다. 기본 자료 경로는 저장소 루트의 `kamaitachi-sfc-kor/port-data/`이고 `?data=URL`로 바꿀 수 있다. `sfc-vm/`은 저장소 루트에 있어야 한다.
-- 조작은 GBA판과 같은 터치 방식이다(`sound/touch.js`). 화면 오른쪽 아래 메뉴 아이콘에 앞 문장(X)·글자 숨기기(SELECT)·START·취소(B)가 있다. 키보드는 `DEFAULT_KEYS`.
+- 조작은 GBA판과 같은 터치 방식이다(`sound/touch.js`). 범인 이름 글자판에서는 글자나 오른쪽 명령(スペース·なおす·全消·終り)을 탭하면 게임 커서(`$1020`)를 한 칸씩 옮겨 바로 입력한다. 화면 오른쪽 아래 메뉴 아이콘에 앞 문장(X)·글자 숨기기(SELECT)·START·취소(B)가 있다. 키보드는 `DEFAULT_KEYS`.
 - 책갈피(배터리 SRAM 8 KiB)는 게임이 쓴 뒤 바뀌지 않으면 `localStorage`의 `kamaitachi-sfc.sram`에 저장된다. 서버 동기화(PR #33 설계)는 아직이다.
