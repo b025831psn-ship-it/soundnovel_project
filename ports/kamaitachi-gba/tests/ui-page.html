@@ -1,0 +1,12 @@
+<!doctype html><meta charset="utf-8"><title>sync ui test</title>
+<style>:root{--surface:#111;--raised:#1b1b1b;--line:#333;--text:#eee;--muted:#999;--accent:#e33}</style>
+<nav><button id="fullscreen" class="icon">fs</button></nav>
+<script type="module">
+  globalThis.__noAutoMountSyncUi = true;
+  const { SaveStore } = await import("/shared/save/store.js");
+  const { mountSyncUi } = await import("/ports/kamaitachi-gba/sync-ui.js");
+  const store = await SaveStore.open({ name: "ui-" + Math.random() });
+  const boot = { titleActive: true, canContinue: () => !!store.read("kamaitachi-gba", "suspend"), continueSuspended: () => true };
+  globalThis.soundnovelSave = { store, boot, gameId: "kamaitachi-gba" };
+  await mountSyncUi({ api: Promise.resolve(globalThis.soundnovelSave) });
+</script>

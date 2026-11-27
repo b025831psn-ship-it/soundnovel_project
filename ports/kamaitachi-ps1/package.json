@@ -1,0 +1,11 @@
+{
+  "type": "module",
+  "scripts": {
+    "test": "node --test tests/*.test.mjs",
+    "run": "node tools/run-headless.mjs",
+    "run-all": "node tools/run-all.mjs",
+    "sweep": "node tools/sweep-flow.mjs",
+    "opcodes": "node tools/opcode-report.mjs",
+    "compare-frames": "node tools/compare-framebuffers.mjs"
+  }
+}
