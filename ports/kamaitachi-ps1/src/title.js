@@ -12,6 +12,7 @@
 // _card_wait) go through ctx.call: native on the oracle, served by the machine in the browser.
 // Paths the original takes that are not ported throw with their address.
 import { offer, withdraw, box } from "./touch.js";
+import { nameEntry } from "./name-entry.js";
 import { setVar, waitText, waitFade, dropLayer, dropPicture } from "./helpers.js";
 import { fadeOut, fadeIn, fadeLevel } from "./screen/fader.js";
 import { addBox } from "./screen/sprites.js";
@@ -301,6 +302,8 @@ export function* special(ctx, k) {
   if (k >= 0x6c) return;
   switch (k) {
     case 0: yield* title(sub); return;
+    case 3: yield* nameEntry(sub, 0); yield* nameEntry(sub, 1); return; // the hero, then the companion
+    case 4: yield* nameEntry(sub, 2); w8(0x80079296, 1); return; // the culprit
     case 7: w8(0x800792a8, 1); return;
     case 28: case 31: w8(0x80079296, 1); return;
     case 102: w8(0x800792a5, 0); w8(0x800792a8, 0); inputClear(m); w8(0x800792a1, 1); return;
@@ -311,7 +314,7 @@ export function* special(ctx, k) {
     case 105: w8(0x800792a5, 1); w8(0x800792c6, 0); return;
     case 106: w8(0x800792a9, 1); return;
     case 107: w8(0x800792a9, 0); return;
-    case 1: case 3: case 4: case 18: case 32: case 33: case 34: case 35: case 36: case 39: case 40: case 41:
+    case 1: case 18: case 32: case 33: case 34: case 35: case 36: case 39: case 40: case 41:
       unported(m.read(0x800129dc + 4 * k, 4) >>> 0);
   }
 }
