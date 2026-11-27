@@ -2,8 +2,11 @@
 // exe-data.bin from tools/extract-exe-data.mjs, and the disc's eight PAC files), runs one
 // game frame per display frame at 60 Hz, and draws the GPU's display area on the canvas.
 // It publishes the shell's contract (shell.js): runtime.input.pulse(name), menuMode().
-// No sound yet (the sound bridge's silent mode): libsnd and the driver come next.
+// Sound: machine-sound.js renders each game frame's samples on the page; they play through
+// sound/web/pcm-worklet.js once the shell's first tap resumes the AudioContext.
 import { Machine } from "./machine.js";
+import { machineSound } from "./machine-sound.js";
+import { PcmQueue } from "../sound/web/pcm-queue.js";
 import { unpack } from "./exe-data.js";
 
 const PACS = ["SCE", "VCE", "BGD", "SDW", "BIN", "MUS", "ANM", "VCP"];
@@ -28,14 +31,38 @@ async function fetchBytes(url, onProgress) {
   return n === out.length ? out : out.subarray(0, n);
 }
 
-export async function startMachine({ canvas, dataRoot, onProgress = null, requestFrame = requestAnimationFrame, now = () => performance.now() }) {
+// The audio output: { ctx, node, gain, send(block) }. An AudioWorklet where the page has one, else a
+// ScriptProcessorNode (plain http pages have no AudioWorklet); null without Web Audio (no sound).
+async function audioOut() {
+  try {
+    const ctx = new AudioContext({ sampleRate: 44100, latencyHint: "interactive" });
+    const gain = new GainNode(ctx, { gain: 1 });
+    let node, send;
+    if (ctx.audioWorklet) {
+      await ctx.audioWorklet.addModule(new URL("../sound/web/pcm-worklet.js", import.meta.url));
+      node = new AudioWorkletNode(ctx, "pcm-player", { numberOfInputs: 0, outputChannelCount: [2] });
+      send = (b) => node.port.postMessage(b, [b.buffer]);
+    } else {
+      const queue = new PcmQueue();
+      node = ctx.createScriptProcessor(1024, 0, 2);
+      node.onaudioprocess = (e) => { const l = e.outputBuffer.getChannelData(0), r = e.outputBuffer.getChannelData(1); l.fill(0); r.fill(0); queue.pull(l, r); };
+      send = (b) => queue.push(b);
+    }
+    node.connect(gain).connect(ctx.destination);
+    return { ctx, node, gain, send };
+  } catch (e) { console.warn("[kamaitachi-ps1 machine] no audio output", e); return null; }
+}
+
+export async function startMachine({ canvas, dataRoot, audio = true, onProgress = null, requestFrame = requestAnimationFrame, now = () => performance.now() }) {
   const base = new URL(dataRoot, location.href);
   let loaded = 0;
   const progress = (n) => { loaded += n; onProgress?.(loaded); };
   const exeData = unpack(await fetchBytes(new URL("exe-data.bin", base), progress));
   const pacs = {};
   await Promise.all(PACS.map(async (k) => { pacs[k] = await fetchBytes(new URL(`${k}.PAC`, base), progress); }));
-  const machine = new Machine({ exeData, pacs, onError: (e) => console.error("[kamaitachi-ps1 machine]", e) });
+  const snd = machineSound({ exeData, pacs, onRumble: (r) => { if (r.on) navigator.vibrate?.(50); } });
+  const out = audio ? await audioOut() : null;
+  const machine = new Machine({ exeData, pacs, sound: snd.bridge, onError: (e) => console.error("[kamaitachi-ps1 machine]", e) });
 
   const ctx2d = canvas.getContext("2d", { alpha: false });
   ctx2d.imageSmoothingEnabled = false;
@@ -48,19 +75,25 @@ export async function startMachine({ canvas, dataRoot, onProgress = null, reques
   const keys = new Map(); // button -> frames left
   const held = () => { let b = 0; for (const [k, n] of keys) { if (n > 0) b |= BUTTON[k]; } return b; };
   const runtime = {
-    machine,
+    machine, soundModule: snd.mod,
     input: { pulse(name) { const k = PULSE[name]; if (k) keys.set(k, HOLD); }, press(k) { keys.set(k, Infinity); }, release(k) { keys.delete(k); } },
     menuMode: () => "menu",
     get error() { return machine.error; },
   };
   const STEP = 1000 / 60;
-  let last = now(), acc = 0, stopped = false;
+  let last = now(), acc = 0, stopped = false, hold = 0, played = 0;
+  // One frame of sound. The driver's own waits come back as extra frames: the game is held for as long.
+  const soundFrame = () => {
+    const blocks = snd.render(); hold += blocks.length - 1;
+    if (out?.ctx.state === "running") for (const b of blocks) { out.send(b); played++; }
+  };
   const loop = () => {
     if (stopped) return;
     const t = now(); acc = Math.min(acc + t - last, STEP * 4); last = t;
     let ran = false;
     while (acc >= STEP && !machine.error) {
-      machine.frame(held());
+      if (hold > 0) { hold--; acc -= STEP; continue; } // the sound driver is waiting (its samples are already queued)
+      machine.frame(held()); soundFrame();
       for (const [k, n] of keys) { if (n !== Infinity) { if (n <= 1) keys.delete(k); else keys.set(k, n - 1); } }
       acc -= STEP; ran = true;
     }
@@ -68,5 +101,12 @@ export async function startMachine({ canvas, dataRoot, onProgress = null, reques
     requestFrame(loop);
   };
   draw(); requestFrame(loop);
-  return { runtime, sound: { resume() {}, setVolume() {} }, stop() { stopped = true; } };
+  const sound = {
+    context: out?.ctx ?? null, node: out?.node ?? null,
+    get framesPlayed() { return played; },
+    resume: () => (out && out.ctx.state !== "running" ? out.ctx.resume() : Promise.resolve()),
+    suspend: () => out?.ctx.suspend(),
+    setVolume: (v) => { if (out) out.gain.gain.value = Math.max(0, Math.min(1, +v || 0)); },
+  };
+  return { runtime, sound, stop() { stopped = true; out?.ctx.close(); } };
 }

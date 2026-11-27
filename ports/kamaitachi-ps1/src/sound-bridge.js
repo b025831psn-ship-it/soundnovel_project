@@ -8,7 +8,7 @@
 //   0x80026534 setVariant(bank, id)  0x80028c74 playUi(n)  0x80028334 fadeMusic(frames; 0 = stop now)  0x80029008 frame()  0x80028ccc reset()
 // Driver state: gp+0x7e current song (-1 = none); 0x801d6240 six effect channels of 0x68
 //   bytes, +6 = effect number; 0x801fd388 done flags by effect number.
-const GP = 0x8007913c, CHANNELS = 0x801d6240, DONE = 0x801fd388;
+const GP = 0x8007913c, CHANNELS = 0x801d6240, DONE = 0x801fd388, FLAGS = 0x801fc460, BANKS = 0x801eef50;
 const s16 = (v) => (v << 16) >> 16;
 
 // 0x800264f0: an effect id's number within its bank, (id - 1000) mod 1000, as u16.
@@ -50,24 +50,36 @@ export function ramSound(ctx) {
 }
 
 // The browser side: the same calls on a SoundModule. Known difference: the module runs the
-// driver's own frame waits (stopMusic's 0x80013ff0, playMusic's VSyncs) without game frames.
-export function moduleSound(mod) {
+// driver's own frame waits (stopMusic's 0x80013ff0, playMusic's VSyncs) without game frames;
+// the caller sees them as extra rendered frames and holds the game for as long (machine-browser.js).
+// With m (the machine's RAM) the module runs in step with the game: its VSync part runs from
+// the game's VSync callback, the settings the game keeps in RAM (stereo 0x800792c5, auto
+// 0x800792c6, vibration 0x800792a6) are read before each call, and the driver state the game
+// reads from RAM (script flags 0x801fc460, done flags, bank ids 0x801eef50) is written back.
+export function moduleSound(mod, m = null) {
+  const pull = () => { if (!m) return; mod.stereo = m.read(0x800792c5, 1); mod.rumbleOff = m.read(0x800792c6, 1); mod.padVibration = m.read(0x800792a6, 1); };
+  const push = () => {
+    if (!m) return;
+    for (let i = 0; i < 0x100; i++) { m.write(FLAGS + i, mod.flags[i], 1); m.write(DONE + i, mod.done[i], 1); }
+    for (let i = 0; i < 12; i++) m.write(BANKS + 2 * i, mod.vabIds[i] & 0xffff, 2);
+  };
+  const run = (f) => (...a) => { pull(); const r = f(...a); push(); return r; };
   return {
-    play: (id, fade) => mod.play(id, fade),
-    stop: (id, fade) => mod.stop(id, fade),
-    setVariant: (bank, id) => mod.setVariant(bank, id),
-    playUi: (n) => mod.playUi(n),
-    fadeMusic: (n) => mod.fadeMusic?.(n),
-    frame: () => mod.frame(),
-    reset: () => mod.reset(),
+    play: run((id, fade) => mod.play(id, fade)),
+    stop: run((id, fade) => mod.stop(id, fade)),
+    setVariant: run((bank, id) => mod.setVariant(bank, id)),
+    playUi: run((n) => mod.playUi(n)),
+    fadeMusic: run((n) => mod.stopMusic(n)),
+    frame: run(() => mod.frame()),
+    reset: run(() => mod.reset()),
     lib: (addr, args) => mod.lib?.(addr, args) ?? LIB_DEFAULT(addr),
-    keyOn: (...a) => mod.keyOn?.(...a.slice(0, 7)),
+    keyOn: run((vab, prog, tone, note, fine, voll, volr) => { if (mod.inited === 1) mod.ss.SsUtKeyOn(vab, prog, tone, note, fine, voll, volr); }),
     start: () => {}, // the module starts the library when it is made
-    vsync: () => {}, // the audio thread runs the module's VSync part on its own clock
+    vsync: m ? run(() => mod.vsync()) : () => {}, // without m the audio thread runs the module's VSync part on its own clock
     song: () => s16(mod.music.song),
     effectPlaying: (n) => mod.ch.some((c) => s16(c.id) === n),
     done: (n) => mod.done[n] === 1,
-    clearDone: (n) => { mod.done[n] = 0; },
+    clearDone: (n) => { mod.done[n] = 0; if (m) m.write(DONE + n, 0, 1); },
   };
 }
 

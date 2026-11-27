@@ -35,8 +35,9 @@ export function exeReader(exe) {
 export const SONG_COUNT = 88; // (0x8006a7c4 - 0x8006a714) / 2
 
 // Game sound tables (data, not code): read at startup from the user's EXE.
-export function readSoundTables(exe) {
-  const r = exeReader(exe);
+export function readSoundTables(exe) { return soundTables(exeReader(exe)); }
+// The same from any reader of the EXE's data by address ({u8, u16, u32, bytes}), e.g. the machine's RAM.
+export function soundTables(r) {
   const songs = [];
   for (let i = 0; i < SONG_COUNT; i++) {
     songs.push({
