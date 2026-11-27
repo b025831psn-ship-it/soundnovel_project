@@ -24,7 +24,7 @@ export function* mainLoop(ctx) {
     if (m.read(AUTO, 1) === 1) { if (m.read(PAD_HELD, 4) & 0x821) m.write(BLOCK, 1, 1); }
     else if (m.read(0x8007929e, 1) && !m.read(0x800792a0, 1)) { yield* menu(ctx); m.write(0x800792a3, 0, 1); }
     const n = m.read(FRAME_STEP, 4) | 0;
-    for (let i = 0; (i & 0xffff) < n; i++) textTask(ctx);
+    for (let i = 0; (i & 0xffff) < n; i++) yield* textTask(ctx);
     yield* step(ctx);
     yield* body(ctx);
     frameStep(m);

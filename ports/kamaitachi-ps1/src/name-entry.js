@@ -140,7 +140,7 @@ export function* nameEntry(ctx, k) {
       addBox(sub, 0xf2, 0x28, 0x38, 0x14, 0xff, 0xff, 0xff, 0, 3);
     }
     if (top !== drawn) publish();
-    textTask(sub); yield* tick(sub);
+    yield* textTask(sub); yield* tick(sub);
     if (done !== 1) continue;
     let blank = true;
     for (let i = 0; i < 6; i++) if (r16(buf + 2 * i) !== swap16(SPACE)) { blank = false; break; }

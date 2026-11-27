@@ -65,7 +65,7 @@ export function* showPicture(ctx, id, layer) {
 function* picture(ctx, fade) {
   const { m } = ctx, v = operand(m).u16(), sp = ctx.sp - 0x18;
   if (skipping(m)) { endFrame(m); return; }
-  if (m.read(NO_EFFECTS, 1) === 1) unported(fade ? 0x8001d674 : 0x8001d73c);
+  if (m.read(NO_EFFECTS, 1) === 1) { endFrame(m); return; } // the backlog
   yield* showPicture({ ...ctx, sp }, (v + m.read(0x800792ba, 1) * 1000) & 0xffff, fade ? 0 : 1);
   if (fade) { fadeLevel(m, 1, 0xff); m.write(0x8007955a, v & 0xff, 1); }
 }
@@ -117,14 +117,14 @@ HANDLERS[0x0a] = function* (ctx) {
 HANDLERS[0x0b] = function* (ctx) {
   const { m } = ctx, k = operand(m).u8();
   if (skipping(m)) { endFrame(m); return; }
-  if (m.read(NO_EFFECTS, 1) === 1) unported(0x8001dccc);
+  if (m.read(NO_EFFECTS, 1) === 1) { endFrame(m); return; } // the backlog
   yield* waitFade({ ...ctx, sp: ctx.sp - 0x18 }, k);
 };
 
 HANDLERS[0x0c] = function* (ctx) {
   const { m } = ctx, n = operand(m).u16();
   if (skipping(m)) { endFrame(m); return; }
-  if (m.read(NO_EFFECTS, 1) === 1) unported(0x8001dd58);
+  if (m.read(NO_EFFECTS, 1) === 1) { endFrame(m); return; } // the backlog
   yield* tickText({ ...ctx, sp: ctx.sp - 0x18 }, n);
 };
 
@@ -181,7 +181,7 @@ HANDLERS[0x1d] = function* (ctx) { // special scenes (title.js)
 
 HANDLERS[0x15] = function* (ctx) {
   const { m } = ctx, { r16, r32, w16, w32, g8, p8 } = io(m);
-  if (m.read(NO_EFFECTS, 1) === 1) unported(0x8001e858);
+  if (m.read(NO_EFFECTS, 1) === 1) { endFrame(m); return; } // the backlog
   if (!skipping(m)) return;
   const STACK = 0x8008da38;
   p8(0, g8(0) - 1);
@@ -213,7 +213,7 @@ HANDLERS[0x17] = function* (ctx) {
 
 HANDLERS[0x1e] = function* (ctx) {
   const { m } = ctx, off = operand(m).u16();
-  if (m.read(NO_EFFECTS, 1) === 1) unported(0x8001f2c4);
+  if (m.read(NO_EFFECTS, 1) === 1) { m.write(0x80079296, 1, 1); m.write(0x80079297, m.read(0x8008dab8 + m.read(0x80079430, 1), 1), 1); } // the backlog: the choice made then
   if (m.read(0x80079296, 1) === 1) m.write(CURSOR, (m.read(BASE, 4) + off) >>> 0, 4);
   endFrame(m);
 };
@@ -398,7 +398,7 @@ HANDLERS[0x43] = function* (ctx) { // 0x80021614 (u16 v): the fall finished (0x8
   const { m } = ctx, v = operand(m).u16(), sub = { ...ctx, sp: ctx.sp - 0x20 }, g = 0x8007913c;
   if (m.read(g + 0x1e4, 1) === 1) while (m.read(g + 0x3aa, 2) < 0xd20) yield* tickText({ ...sub, sp: sub.sp - 0x18 }, 1);
   if (!v) return;
-  while (!(m.read(0x801eef40, 4) & 0x8f5)) { textTask(sub); yield* tick(sub); }
+  while (!(m.read(0x801eef40, 4) & 0x8f5)) { yield* textTask(sub); yield* tick(sub); }
 };
 HANDLERS[0x49] = function* (ctx) { // 0x80021128 the window picture revealed in 8 steps
   const { m } = ctx, sp = ctx.sp - 0x30, sub = { ...ctx, sp };

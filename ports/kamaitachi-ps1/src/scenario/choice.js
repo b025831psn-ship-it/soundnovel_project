@@ -54,9 +54,9 @@ HANDLERS[0x16] = function* (ctx) {
       if (r32(PAD) & 0x5180) { t = 0; choiceColoursReset({ ...ctx, sp }); choiceColour({ ...ctx, sp }, (sel & 0xff) + 1); }
       if (r32(PAD) & 0x21) { if (r8(SE_ON) === 1) sound(ctx).playUi(0, sp); textSpeedReset(m); break; }
       if ((t >>> 0) % 30 < 16) cursor(sel & 0xff);
-      textTask(sub);
+      yield* textTask(sub);
       yield* menu(sub);
-      backlog(sub);
+      yield* backlog(sub);
       if (r8(ABORT) === 1) { aborted = true; break; }
       yield* tick(sub);
       t = (t + r32(0x80079278)) >>> 0;

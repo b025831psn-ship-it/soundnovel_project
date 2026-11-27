@@ -29,7 +29,7 @@ function strcat(m, dst, src) { while (m.read(dst, 1)) dst++; strcpy(m, dst, src)
 function* tickIf(ctx) {
   if (!ctx.m.read(0x80079264, 4)) return;
   const sub = { ...ctx, sp: ctx.sp - 0x18 };
-  textTask(sub);
+  yield* textTask(sub);
   yield* tick(sub);
 }
 

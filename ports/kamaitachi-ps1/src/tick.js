@@ -49,7 +49,7 @@ export function* tickQuiet(ctx) { yield* body(frame(ctx, 0x18), { clear: false, 
 export function* tickStill(ctx) { yield* body(frame(ctx, 0x18), { clear: false, sound: false, anim: false, shakeFirst: true }); }
 export function* tickText(ctx, n) {
   const f = frame(ctx, 0x18);
-  for (; (n << 16) >> 16; n--) { textTask(f); yield* body(f); frameStep(ctx.m); }
+  for (; (n << 16) >> 16; n--) { yield* textTask(f); yield* body(f); frameStep(ctx.m); }
 }
 export function* ticks(ctx, n) {
   const f = frame(ctx, 0x20);

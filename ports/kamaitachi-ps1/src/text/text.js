@@ -54,7 +54,14 @@ export function fillText(ctx, sp, x, y, w, h, colour) {
 }
 
 // 0x80039288
-export function textTask(ctx) {
+// A generator: when the page marker waits and R1 is down, the backlog (0x80024fd0) runs from
+// here, frames and all, before textTask returns (as in the original).
+export function* textTask(ctx) {
+  const sp = textStep(ctx);
+  if (sp !== undefined) yield* backlog({ ...ctx, sp });
+}
+function textStep(ctx) { // the body of 0x80039288; returns the frame's sp when the backlog is to run
+
   const { m } = ctx, fs = (ctx.sp - 0x50) >>> 0, sub = { ...ctx, sp: fs };
   const r8 = (a) => m.read(a, 1), r16 = (a) => m.read(a, 2), r32 = (a) => m.read(a, 4) >>> 0;
   const w8 = (a, v) => m.write(a, v, 1), w16 = (a, v) => m.write(a, v, 2), w32 = (a, v) => m.write(a, v, 4);
@@ -231,6 +238,6 @@ export function textTask(ctx) {
       ctx.gs.DrawSync(0); fill(s16(cx), s16(cy + 16), 0x30, 0, 0);
       w8(T.waiting, 0);
     }
-    backlog({ ...ctx, sp: fs });
+    return fs; // 0x80024fd0, run by textTask
   }
 }

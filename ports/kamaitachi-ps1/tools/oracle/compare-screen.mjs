@@ -101,7 +101,7 @@ export const PORTS = {
   ], null],
   frame: [0x800353b8, () => (c) => { drive(frameFlip({ ...oracleCtx(c), gs: libgpuOf(c) }), c); c.ret(); }],
   glyph: [0x800380ec, () => (c) => { drawGlyph({ ...oracleCtx(c), gs: libgpuOf(c) }, c.r[4] | 0, c.r[5] | 0, c.r[6] >>> 0); c.ret(); }],
-  text: [0x80039288, () => (c) => { textTask({ ...oracleCtx(c), gs: libgpuOf(c) }); c.ret(); }],
+  text: [0x80039288, () => (c) => { if (!textTask({ ...oracleCtx(c), gs: libgpuOf(c) }).next().done) throw new Error("textTask: the backlog waits frames, not on the oracle port"); c.ret(); }],
 };
 
 function hashWords(log, from) { let h = 0x811c9dc5; for (let i = from; i < log.length; i++) { h = Math.imul(h ^ log[i][1], 0x01000193); h = Math.imul(h ^ (log[i][0] === "gp1" ? 1 : 0), 0x01000193); } return h >>> 0; }

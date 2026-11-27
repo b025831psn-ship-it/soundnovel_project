@@ -62,8 +62,8 @@ export function* melt(ctx, k) { // 0x8003e53c
       const p = LINES + 4 * (j & 0xffff), v = r32(p);
       if (v === 0x80000000) w32(p, fill); else fill = v;
     }
-    if (k & 0xff) { textTask(sub); yield* tick(sub); }
-    textTask(sub); yield* tick(sub);
+    if (k & 0xff) { yield* textTask(sub); yield* tick(sub); }
+    yield* textTask(sub); yield* tick(sub);
     if (s16(top)) { const t = s16(top - 1); w16(B + 2 * t, r16(B + 2 * t) + 1); top = top - 1; }
   }
 }
