@@ -104,7 +104,19 @@ whenReady(({ input, sound }) => {
   const press = (key) => { input.buttons.add(key); setTimeout(() => input.buttons.delete(key), 100); };
   // Keep the tap on the button: the screen's own handlers (tap = A, tap to pick) must not see it.
   for (const type of ["pointerdown", "pointerup", "click"]) menuButton.addEventListener(type, (event) => event.stopPropagation());
+  // Holding the menu button for half a second is SELECT: phones have no SELECT key, and the
+  // original's hidden SELECT input (at some page waits) must stay reachable without the pad.
+  let holdTimer = 0;
+  let held = false;
+  menuButton.addEventListener("pointerdown", () => {
+    held = false;
+    clearTimeout(holdTimer);
+    holdTimer = setTimeout(() => { held = true; navigator.vibrate?.(20); sound.resume(); press("SELECT"); }, 500);
+  });
+  for (const type of ["pointerup", "pointercancel", "pointerleave"]) menuButton.addEventListener(type, () => clearTimeout(holdTimer));
+  menuButton.addEventListener("contextmenu", (event) => event.preventDefault());
   menuButton.addEventListener("click", () => {
+    if (held) { held = false; return; }
     navigator.vibrate?.(8);
     sound.resume();
     if (menuMode === "back") { press("B"); return; }
