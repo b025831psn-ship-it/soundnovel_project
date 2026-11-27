@@ -219,7 +219,7 @@ function renderObjectsMode1(bus, width, height) {
     const oy = bus.oam[at + 1], size = sizeTable[obsel >>> 5][(high >>> 1) & 1];
     const attr = bus.oam[at + 3], priority = [2, 4, 7, 10][(attr >>> 4) & 3];
     for (let py = 0; py < size; py++) {
-      const sy = (oy + py - FIRST_VISIBLE_LINE) & 0xff; if (sy >= height) continue;
+      const sy = (oy + py) & 0xff; if (sy >= height) continue;
       for (let px = 0; px < size; px++) {
         const sx = ox + px; if (sx < 0 || sx >= width) continue;
         const tx = attr & 0x40 ? size - 1 - px : px, ty = attr & 0x80 ? size - 1 - py : py;
@@ -247,15 +247,19 @@ function renderMode1Fast(bus, width, height) {
   // and blue, and the expanded 6-bit green channel. Expanding all channels to
   // 8-bit first makes half-add blue one step too bright; treating green as only
   // 5-bit makes odd half-adds one step too dark.
-  const red = new Uint8Array(256), green = new Uint8Array(256), blue = new Uint8Array(256);
+  const red = new Uint8Array(256), green = new Uint8Array(256), greenNative = new Uint8Array(256), blue = new Uint8Array(256);
   for (let index = 0; index < 256; index++) {
     const value = bus.cgram[index * 2] | (bus.cgram[index * 2 + 1] << 8);
     red[index] = value & 31;
-    const green5 = (value >>> 5) & 31;
-    green[index] = (green5 << 1) | (green5 >>> 4);
+    const g5 = (value >>> 5) & 31;
+    greenNative[index] = g5;
+    green[index] = (g5 << 1) | (g5 >>> 4);
     blue[index] = (value >>> 10) & 31;
   }
   const useSub = !!(cgwsel & 2), half = !!(math & 0x40), subtract = !!(math & 0x80);
+  const fixedValue = bus.fixedColor;
+  const fixedRed = fixedValue & 31, fixedGreen5 = (fixedValue >>> 5) & 31;
+  const fixedGreen = (fixedGreen5 << 1) | (fixedGreen5 >>> 4), fixedBlue = (fixedValue >>> 10) & 31;
   for (let y = 0; y < height; y++) for (let x = 0; x < width; x++) {
     const index = y * width + x;
     let top = -1, layer = 5;
@@ -265,22 +269,38 @@ function renderMode1Fast(bus, width, height) {
     if (objects && objects[index] > top) { top = objects[index]; layer = 4; }
     const colorIndex = top < 0 ? 0 : top & 0x1ff;
     let r = red[colorIndex], g = green[colorIndex], b = blue[colorIndex];
-    if (math & (1 << layer)) {
-      let second = 0, transparent = true;
+    const applyMath = !!(math & (1 << layer));
+    if (applyMath) {
+      let otherRed = fixedRed, otherGreen = fixedGreen, otherGreenNative = fixedGreen5,
+        otherBlue = fixedBlue, transparent = true;
       if (useSub) {
         let below = -1;
         if (sub & 1) below = bg0[index];
         if (sub & 2) { const pixel = bg1[index]; if (pixel > below) below = pixel; }
         if (sub & 4) { const pixel = bg2[index]; if (pixel > below) below = pixel; }
-        if (below >= 0) { second = below & 0x1ff; transparent = false; }
+        if (below >= 0) {
+          const second = below & 0x1ff;
+          otherRed = red[second]; otherGreen = green[second]; otherGreenNative = greenNative[second];
+          otherBlue = blue[second]; transparent = false;
+        }
       }
       const mix = (first, other, maximum) => {
         const value = subtract ? first - other : first + other;
         return Math.max(0, Math.min(maximum, half && (!useSub || !transparent) ? value >> 1 : value));
       };
-      r = mix(r, red[second], 31); g = mix(g, green[second], 63); b = mix(b, blue[second], 31);
+      r = mix(r, otherRed, 31);
+      if (half && (!useSub || !transparent)) g = mix(g, otherGreen, 63);
+      else {
+        const value = subtract ? greenNative[colorIndex] - otherGreenNative
+          : greenNative[colorIndex] + otherGreenNative;
+        const g5 = Math.max(0, Math.min(31, value));
+        g = (g5 << 1) | (g5 >>> 4);
+      }
+      b = mix(b, otherBlue, 31);
     }
-    r = Math.floor(r * brightness / 15); g = Math.floor(g * brightness / 15); b = Math.floor(b * brightness / 15);
+    r = Math.round(r * brightness / 15); b = Math.round(b * brightness / 15);
+    if (applyMath) g = Math.round(g * brightness / 15);
+    else { const g5 = Math.round(greenNative[colorIndex] * brightness / 15); g = (g5 << 1) | (g5 >>> 4); }
     r = (r << 3) | (r >>> 2); g = (g << 2) | (g >>> 4); b = (b << 3) | (b >>> 2);
     output[index] = 0xff000000 | (b << 16) | (g << 8) | r;
   }

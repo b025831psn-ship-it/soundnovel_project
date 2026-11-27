@@ -5,18 +5,20 @@
 // early unless the game state makes the next play impossible.
 // Usage: node vm-completion.mjs <vm ports/zakuro-sfc> <rom> <ipl.bin> <boot-dsp.bin> <layout.json> <completion.json> <out.json> [statesDir]
 import { readFile, writeFile, mkdir } from 'node:fs/promises';
+import { createHash } from 'node:crypto';
 import { pathToFileURL } from 'node:url';
 import { resolve } from 'node:path';
 import { gzipSync } from 'node:zlib';
 
-const [vmDir, romPath, iplPath, dspPath, layoutPath, routePath, outPath, statesDir] = process.argv.slice(2);
+const [vmDir, romPath, iplPath, dspPath, layoutPath, routePath, outPath, statesDirArg, screenDirArg, stopAfterScreen] = process.argv.slice(2);
+const statesDir = statesDirArg && statesDirArg !== '-' ? statesDirArg : null;
 const SCENE_COUNT = 1342;
 const BTN = { 3: 0x1000, 5: 0x0400, 8: 0x0080 };
 const LAYOUT = JSON.parse(await readFile(layoutPath, 'utf8'));
 const ENDINGS = Object.fromEntries(Object.entries(LAYOUT.endings).map(([k, v]) => [Number(k), v]));
 const record = JSON.parse(await readFile(routePath, 'utf8'));
 
-const { createApuLink, ZakuroVM } = await import(pathToFileURL(resolve(vmDir, 'vm/index.js')));
+const { createApuLink, rgbaToRgb565, ZakuroVM } = await import(pathToFileURL(resolve(vmDir, 'vm/index.js')));
 const [rom, ipl, powerOnDsp] = await Promise.all([readFile(romPath), readFile(iplPath), readFile(dspPath)]);
 // RESET=cpu uses vm.reset() (CPU only); RESET=power rebuilds the console and keeps the cartridge SRAM.
 const RESET = process.env.RESET ?? 'cpu';
@@ -26,11 +28,22 @@ const powerOn = (sram) => {
   vm = new ZakuroVM({ rom, masterLink: link });
   vm.skipRender = true;
   if (sram) vm.importSram(sram);
+  vm.reset();
   w = vm.bus.wram;
 };
 powerOn(null);
 const hardReset = () => { if (RESET === 'cpu') vm.reset(); else powerOn(vm.exportSram()); };
 let fields = 0;
+const screenDir = process.env.SCREEN_DIR ?? screenDirArg, screens = [];
+if (screenDir) await mkdir(screenDir, { recursive: true });
+const captureScreen = async (checkpoint, play, scene) => {
+  if (!screenDir || screens.some((item) => item.checkpoint === checkpoint)) return;
+  const rgba = vm.ppu.presentField(vm.ppu.field, vm.bus.clock.master, true);
+  const rgb565 = rgbaToRgb565(rgba);
+  await writeFile(resolve(screenDir, `${checkpoint}.rgb565`), rgb565);
+  screens.push({ checkpoint, play, scene, inputField: fields, ppuField: vm.ppu.field,
+    sha256: createHash('sha256').update(rgb565).digest('hex') });
+};
 const step = (b = 0) => { vm.setJoypad(b ? BTN[b] : 0); const f = vm.ppu.field; while (vm.ppu.field === f) vm.step(); fields++; };
 const stepMany = (n, b = 0) => { for (let i = 0; i < n; i++) step(b); };
 const u16 = (a) => w[a] | (w[a + 1] << 8);
@@ -111,6 +124,8 @@ for (const [n, want] of record.plays.entries()) {
       fail(play, `menu ${c.scene}`, { status: 'menu', scene: c.scene, target: c.target }, { status, scene, targets });
       broken = true; break;
     }
+    if (play === 1 && scene === 5) await captureScreen('choice-box', play, scene);
+    if (play === 32 && scene === 1311) await captureScreen('bonus-quiz', play, scene);
     if (process.env.BRANCH) {
       // Fork every option the record never takes from here, check it lands on its target and runs to the next stop.
       for (const [i, t] of targets.entries()) {
@@ -138,6 +153,13 @@ for (const [n, want] of record.plays.entries()) {
     const status = advance();
     ending = readCursor()[0];
     if (status !== 'ending' || ending !== want.ending) { fail(play, 'ending', want.ending, { status, scene: ending }); broken = true; }
+    if (!broken && play === 1 && ending === 317) {
+      await captureScreen('numbered-ending', play, ending);
+      if (stopAfterScreen === 'numbered-ending') {
+        await writeFile(resolve(screenDir, 'screens.json'), JSON.stringify(screens, null, 2));
+        console.log(JSON.stringify(screens, null, 2)); process.exit(0);
+      }
+    }
   }
   // Real reset and reload of the same SRAM slot.
   if (process.env.DUMP_ENDING && play === 1) await writeFile(process.env.DUMP_ENDING, gzipSync(Buffer.from(JSON.stringify({ sram: [...vm.exportSram()] }))));
@@ -164,4 +186,5 @@ const out = {
   visited_scenes: scenes.size, unvisited_scenes: Array.from({ length: SCENE_COUNT }, (_, i) => i).filter((i) => !scenes.has(i)), options_recorded: recorded.size, options_branched: branches.length, failures, branches, plays,
 };
 await writeFile(outPath, JSON.stringify(out, null, 1));
+if (screenDir) await writeFile(resolve(screenDir, 'screens.json'), JSON.stringify(screens, null, 2));
 console.log(JSON.stringify({ ...out, plays: undefined }, null, 1));

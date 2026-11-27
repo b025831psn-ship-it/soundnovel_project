@@ -172,8 +172,20 @@ test('Mode 1 starts at visible line 1 and half-adds in RGB565 precision', () => 
   ppu.vram[0x4002] = 0xff;
   ppu.cgram[93 * 2] = 0xb5; ppu.cgram[93 * 2 + 1] = 0x4e;
   ppu.cgram[113 * 2] = 0x23; ppu.cgram[113 * 2 + 1] = 0x40;
-  const rgb565 = rgbaToRgb565(renderFrame(ppu));
+  let rgb565 = rgbaToRgb565(renderFrame(ppu));
   assert.equal(rgb565[0] | (rgb565[1] << 8), 0x62d1);
+  // Non-half green math happens in 5-bit space, then expands to RGB565.
+  ppu.io[0x131] = 0x01;
+  ppu.cgram[93 * 2] = 0x00; ppu.cgram[93 * 2 + 1] = 0x01;
+  ppu.cgram[113 * 2] = 0x00; ppu.cgram[113 * 2 + 1] = 0x01;
+  rgb565 = rgbaToRgb565(renderFrame(ppu));
+  assert.equal(rgb565[0] | (rgb565[1] << 8), 0x0420);
+  // A transparent subscreen contributes fixed colour, not CGRAM backdrop 0.
+  ppu.io[0x12d] = 0; ppu.fixedColor = 0;
+  ppu.cgram[0] = 0xff; ppu.cgram[1] = 0x7f;
+  ppu.cgram[93 * 2] = 0xa4; ppu.cgram[93 * 2 + 1] = 0x18;
+  rgb565 = rgbaToRgb565(renderFrame(ppu));
+  assert.equal(rgb565[0] | (rgb565[1] << 8), 0x2146);
 });
 
 test('recorded joypad frames feed auto-joypad registers and serial reads', () => {
