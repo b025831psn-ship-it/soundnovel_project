@@ -35,3 +35,19 @@ test("display() reads the display area in 15-bit mode", () => {
   assert.equal(width, 320); assert.equal(height, 240);
   assert.deepEqual([...rgba.slice(0, 4)], [0, 0, 255, 255]);
 });
+
+test("rectangle(): the fast path draws what the plain one draws", () => {
+  let seed = 12345; const rnd = (n) => { seed = (Math.imul(seed, 1103515245) + 12345) >>> 0; return (seed >>> 8) % n; };
+  const a = new Gpu(), b = new Gpu();
+  for (let i = 0; i < a.vram.length; i++) a.vram[i] = b.vram[i] = rnd(0x10000);
+  for (let n = 0; n < 4000; n++) {
+    const state = [0xe1000000 | rnd(0x800), 0xe2000000 | rnd(0x100000), 0xe3000000 | (rnd(200) << 10) | rnd(400), 0xe4000000 | ((200 + rnd(300)) << 10) | (400 + rnd(620)),
+      0xe5000000 | (rnd(40) << 11) | rnd(40), 0xe6000000 | rnd(4)];
+    for (const g of [a, b]) for (const w of state) g.gp0(w);
+    const cmd = 0x60 | rnd(0x20), f = [(cmd << 24) | rnd(0x1000000), ((rnd(600) - 40) & 0x7ff) << 16 | ((rnd(1100) - 40) & 0x7ff)];
+    if (cmd & 4) f.push((rnd(0x8000) << 16) | rnd(0x10000));
+    if (((cmd >> 3) & 3) === 0) f.push((rnd(60) << 16) | rnd(90));
+    a.rectangle(cmd, f); b.rectangleRef(cmd, f);
+  }
+  assert.deepEqual(a.vram, b.vram);
+});

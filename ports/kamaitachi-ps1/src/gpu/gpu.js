@@ -199,7 +199,66 @@ export class Gpu {
     if (ditherOn) { const d = DITHER[y & 3][x & 3]; R += d; G += d; B += d; }
     return (clamp8(R) >> 3) | ((clamp8(G) >> 3) << 5) | ((clamp8(B) >> 3) << 10) | (t !== undefined ? t & 0x8000 : 0);
   }
+  // Rectangles (the game's text, pictures and sprites: nearly all of a frame's pixels). The same
+  // result as rectangleRef, with the drawing area clipped once and the texel, the modulation, the
+  // mask and the blend written out in the loop.
   rectangle(cmd, f) {
+    const tex = cmd & 0x04, semiOn = cmd & 0x02, raw = cmd & 0x01, size = (cmd >> 3) & 3;
+    const r = f[0] & 0xff, g = (f[0] >> 8) & 0xff, b = (f[0] >> 16) & 0xff;
+    const x0 = sx11(f[1]) + this.offX, y0 = sx11(f[1] >>> 16) + this.offY;
+    let k = 2, u0 = 0, v0 = 0, clut = 0;
+    if (tex) { u0 = f[2] & 0xff; v0 = (f[2] >> 8) & 0xff; clut = f[2] >>> 16; k = 3; }
+    let w, h;
+    if (size === 0) { w = f[k] & 0x3ff; h = (f[k] >>> 16) & 0x1ff; } else { w = h = size === 1 ? 1 : size === 2 ? 8 : 16; }
+    const i0 = Math.max(0, this.areaL - x0), i1 = Math.min(w, this.areaR - x0 + 1), j0 = Math.max(0, this.areaT - y0), j1 = Math.min(h, this.areaB - y0 + 1);
+    if (i0 >= i1 || j0 >= j1) return;
+    const vram = this.vram, checkMask = this.checkMask, setMask = this.setMask << 15, mode = this.semi;
+    const blend = (d, c) => {
+      const br = d & 31, bg = (d >> 5) & 31, bb = (d >> 10) & 31, fr = c & 31, fg = (c >> 5) & 31, fb = (c >> 10) & 31;
+      let R, G, B;
+      if (mode === 0) { R = (br + fr) >> 1; G = (bg + fg) >> 1; B = (bb + fb) >> 1; }
+      else if (mode === 1) { R = clamp5(br + fr); G = clamp5(bg + fg); B = clamp5(bb + fb); }
+      else if (mode === 2) { R = clamp5(br - fr); G = clamp5(bg - fg); B = clamp5(bb - fb); }
+      else { R = clamp5(br + (fr >> 2)); G = clamp5(bg + (fg >> 2)); B = clamp5(bb + (fb >> 2)); }
+      return (c & 0x8000) | R | (G << 5) | (B << 10);
+    };
+    if (!tex) {
+      const c = (r >> 3) | ((g >> 3) << 5) | ((b >> 3) << 10);
+      for (let j = j0; j < j1; j++) {
+        let a = ((y0 + j) & (H - 1)) * W;
+        for (let i = i0; i < i1; i++) {
+          const p = a + ((x0 + i) & (W - 1)), d = vram[p];
+          if (checkMask && (d & 0x8000)) continue;
+          vram[p] = (semiOn ? blend(d, c) : c) | setMask;
+        }
+      }
+      return;
+    }
+    const mx = ~(this.twMaskX * 8), ox = (this.twOffX & this.twMaskX) * 8, my = ~(this.twMaskY * 8), oy = (this.twOffY & this.twMaskY) * 8;
+    const bx = this.texX * 64, by = this.texY * 256, depth = this.depth & 3;
+    const cbase = ((clut >> 6) & 0x1ff) * W, cx = (clut & 0x3f) * 16, flipX = this.rectFlipX, flipY = this.rectFlipY;
+    for (let j = j0; j < j1; j++) {
+      const v = (((flipY ? v0 - j : v0 + j) & my) | oy) & 0xff, row = (by + v) * W, a = ((y0 + j) & (H - 1)) * W;
+      for (let i = i0; i < i1; i++) {
+        const u = (((flipX ? u0 - i : u0 + i) & mx) | ox) & 0xff;
+        let t;
+        if (depth === 0) t = vram[cbase + ((cx + ((vram[row + ((bx + (u >> 2)) & (W - 1))] >> ((u & 3) * 4)) & 0xf)) & (W - 1))];
+        else if (depth === 1) t = vram[cbase + ((cx + ((vram[row + ((bx + (u >> 1)) & (W - 1))] >> ((u & 1) * 8)) & 0xff)) & (W - 1))];
+        else t = vram[row + ((bx + u) & (W - 1))];
+        if (t === 0) continue;
+        const p = a + ((x0 + i) & (W - 1)), d = vram[p];
+        if (checkMask && (d & 0x8000)) continue;
+        let c = t;
+        if (!raw) {
+          const R = ((t & 31) * 8 * r) >> 7, G = (((t >> 5) & 31) * 8 * g) >> 7, B = (((t >> 10) & 31) * 8 * b) >> 7;
+          c = (clamp8(R) >> 3) | ((clamp8(G) >> 3) << 5) | ((clamp8(B) >> 3) << 10) | (t & 0x8000);
+        }
+        vram[p] = (semiOn && (t & 0x8000) ? blend(d, c) : c) | setMask;
+      }
+    }
+  }
+  // The plain form of rectangle(), pixel by pixel through texel / shade / plot (tests compare the two).
+  rectangleRef(cmd, f) {
     const tex = cmd & 0x04, semiOn = cmd & 0x02, raw = cmd & 0x01, size = (cmd >> 3) & 3;
     const r = f[0] & 0xff, g = (f[0] >> 8) & 0xff, b = (f[0] >> 16) & 0xff;
     const x0 = sx11(f[1]) + this.offX, y0 = sx11(f[1] >>> 16) + this.offY;

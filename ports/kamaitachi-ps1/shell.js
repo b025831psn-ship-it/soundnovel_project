@@ -64,24 +64,43 @@ whenReady(({ runtime }) => {
   for (const type of ["touchend", "click", "keydown"]) addEventListener(type, resume, { capture: true, passive: true });
 
   // A tap goes to the game when the finger lifts; a downward swipe opens the earlier pages instead
-  // (phones have no START), where the game allows it.
+  // (phones have no START), where the game allows it. On screens that scroll (the flowchart, the
+  // backlog) a drag moves the view the way the finger goes: every 14 screen pixels press the pad
+  // the other way once.
   const canBacklog = () => Boolean(runtime.canBacklog?.());
   const openBacklog = () => { if (!canBacklog()) return false; resume(); runtime.input.pulse("backlog"); return true; };
-  let press = null;
+  const DRAG = 14;
+  let drag = null;
   canvas.addEventListener("pointerdown", (event) => {
     if (!event.isPrimary) return;
     event.preventDefault();
     resume();
-    press = { ...nativePoint(event), id: event.pointerId };
+    const point = nativePoint(event);
+    drag = { id: event.pointerId, x: point.x, y: point.y, from: point, moved: false, keys: runtime.dragKeys?.() ?? [] };
+    canvas.setPointerCapture?.(event.pointerId);
   });
-  canvas.addEventListener("pointercancel", () => { press = null; });
-  canvas.addEventListener("pointerup", (event) => {
-    if (!press || event.pointerId !== press.id) return;
-    const start = press; press = null;
+  canvas.addEventListener("pointermove", (event) => {
+    if (!drag || event.pointerId !== drag.id || !drag.keys.length) return;
+    const { x, y } = nativePoint(event);
+    const step = (delta, back, forward) => {
+      const n = Math.trunc(delta / DRAG); if (!n) return 0;
+      const key = n > 0 ? back : forward;
+      if (drag.keys.includes(key)) runtime.pressSteps(key, Math.abs(n));
+      drag.moved = true; return n * DRAG;
+    };
+    drag.y += step(y - drag.y, "up", "down");
+    drag.x += step(x - drag.x, "left", "right");
+  });
+  const endDrag = (event) => {
+    if (!drag || event.pointerId !== drag.id) return;
+    const d = drag; drag = null;
+    if (d.moved || event.type !== "pointerup") return;
     const end = nativePoint(event);
-    if (end.y - start.y > 40 && Math.abs(end.x - start.x) < end.y - start.y && openBacklog()) return;
-    routeTouch(runtime, start.x, start.y);
-  });
+    if (end.y - d.from.y > 40 && Math.abs(end.x - d.from.x) < end.y - d.from.y && openBacklog()) return;
+    routeTouch(runtime, d.from.x, d.from.y);
+  };
+  canvas.addEventListener("pointerup", endDrag);
+  canvas.addEventListener("pointercancel", endDrag);
   addEventListener("keydown", (event) => {
     if (event.repeat || event.altKey || event.ctrlKey || event.metaKey) return;
     if ((event.key === "b" || event.key === "PageUp") && openBacklog()) { event.preventDefault(); return; }
