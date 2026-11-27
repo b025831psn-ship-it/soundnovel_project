@@ -153,6 +153,8 @@ export function* call(ctx, sp, addr, a0, a1, a2, a3) {
     m.setBytes(c.addr, c.bytes);
     for (let k = 0; k < 4; k++) m.write(((a1 >>> 0) + c.header + k) >>> 0, (off >>> (24 - 8 * k)) & 0xff, 1); // big-endian
   }
+  // Korean: the ending list (table and strings) has just been copied from the EXE to a1
+  if (addr === 0x80044904 && ctx.m.ko?.endings && (a0 >>> 0) === ctx.m.ko.endings.addr) ctx.m.setBytes(a1 >>> 0, ctx.m.ko.endings.bytes);
   return Array.isArray(r) ? r : [typeof r === "number" ? r | 0 : 0, 0];
 }
 
