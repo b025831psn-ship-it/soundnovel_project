@@ -27,19 +27,21 @@ function textEnd(b, from) {
 const fromBase64 = (t) => Uint8Array.from(atob(t), (c) => c.charCodeAt(0));
 
 // One resource with its text payloads replaced. texts: [[record, offset, base64], ...]
-export function patchResource(bytes, texts, id = "?") {
+// offsets: [[record, operand offset], ...]: the u16 operands that hold a byte offset into the
+// resource (tools/ko/offset-operands.mjs); they follow the bytes they point to.
+export function patchResource(bytes, texts, id = "?", offsets = []) {
   const n = u16(bytes, 0) / 2, offs = Array.from({ length: n }, (_, i) => u16(bytes, 2 * i));
   const byRecord = new Map();
   for (const [rec, off, t] of texts) (byRecord.get(rec) ?? byRecord.set(rec, []).get(rec)).push([off, fromBase64(t)]);
-  const parts = [], starts = []; let size = 2 * n;
+  const parts = [], starts = [], cuts = []; let size = 2 * n; // cuts[i]: [old start, old end, new length] of each replaced text
   for (let i = 0; i < n; i++) {
-    const b = bytes.subarray(offs[i], i + 1 < n ? offs[i + 1] : bytes.length), out = []; let at = 0;
+    const b = bytes.subarray(offs[i], i + 1 < n ? offs[i + 1] : bytes.length), out = [], cut = []; let at = 0;
     for (const [off, text] of (byRecord.get(i) ?? []).sort((x, y) => x[0] - y[0])) {
       if (off < at || b[off] !== 0) throw new Error(`ko: resource ${id} record ${i}: no text command at ${off}`);
-      out.push(b.subarray(at, off + 1), text); at = textEnd(b, off + 1);
+      out.push(b.subarray(at, off + 1), text); at = textEnd(b, off + 1); cut.push([off + 1, at, text.length]);
     }
     out.push(b.subarray(at));
-    starts.push(size); for (const p of out) size += p.length; parts.push(out);
+    starts.push(size); for (const p of out) size += p.length; parts.push(out); cuts.push(cut);
   }
   // the last record of an unpacked member runs to the end of its sector: drop that padding
   let tail = parts.at(-1).at(-1), end = tail.length; while (end > 1 && tail[end - 1] === 0 && tail[end - 2] === 0) end--;
@@ -48,16 +50,31 @@ export function patchResource(bytes, texts, id = "?") {
   const res = new Uint8Array(size); let o = 2 * n;
   starts.forEach((s, i) => { res[2 * i] = s & 0xff; res[2 * i + 1] = s >> 8; });
   for (const out of parts) for (const p of out) { res.set(p, o); o += p.length; }
+  // an offset inside record i, old -> new
+  const moved = (i, rel) => {
+    let d = 0;
+    for (const [a, e, len] of cuts[i]) { if (rel >= e) d += len - (e - a); else if (rel > a) throw new Error(`ko: resource ${id} record ${i}: an offset points into a text`); }
+    return starts[i] + rel + d;
+  };
+  for (const [rec, at] of offsets) {
+    const o = offs[rec] + at, old = u16(bytes, o);
+    let i = n - 1; while (i > 0 && offs[i] > old) i--;
+    if (old < offs[0] || old >= bytes.length) continue; // not an offset of this resource: left as it is
+    const to = moved(i, old - offs[i]), w = moved(rec, at);
+    if (to > 0xffff) throw new Error(`ko: resource ${id}: an offset passes 0xffff`);
+    res[w] = to & 0xff; res[w + 1] = to >> 8;
+  }
   if (res[2] === 0x69 && res[3] === 0x6b && res[4] === 0x65 || res[0] === 0x4c && res[1] === 0x5a && res[2] === 0x53) throw new Error(`ko: resource ${id} looks packed`);
   return res;
 }
 
 // SCE.PAC with the Korean text. PAC: rows {id u16, sector u16} up to id 0xffff; 2048-byte sectors.
 export function patchScePac(pac, koScript) {
+  if (!koScript.offsets) throw new Error("ko: ko-script.json has no offsets (tools/ko/offset-operands.mjs, build-ko.py --offsets)");
   const rows = []; for (let i = 0; ; i += 4) { const id = u16(pac, i), s = u16(pac, i + 2); rows.push({ id, s }); if (id === 0xffff) break; }
   const members = rows.slice(0, -1).map((r, i) => {
     const raw = unpackMember(pac.subarray(r.s * 2048, rows[i + 1].s * 2048)), texts = koScript.resources[r.id];
-    return { id: r.id, bytes: texts?.length ? patchResource(raw, texts, r.id) : raw };
+    return { id: r.id, bytes: texts?.length ? patchResource(raw, texts, r.id, koScript.offsets[r.id] ?? []) : raw };
   });
   let sector = rows[0].s; const place = members.map((x) => { const s = sector; sector += Math.ceil(x.bytes.length / 2048); return s; });
   if (sector > 0xffff) throw new Error("ko: SCE.PAC is too large");

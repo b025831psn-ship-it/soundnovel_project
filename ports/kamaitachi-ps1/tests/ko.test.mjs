@@ -29,7 +29,7 @@ test("ko: an offset that is not a text command is refused, and so is a resource 
 test("ko: SCE.PAC is rebuilt with every member at a sector boundary", () => {
   const pac = new Uint8Array(3 * 2048); pac.set([7, 0, 1, 0, 9, 0, 2, 0, 0xff, 0xff, 3, 0]);
   pac.set(resource(), 2048); pac.set(resource(), 4096);
-  const out = patchScePac(pac, { resources: { 9: [[0, 0, b64([0xa0, 0x80])]] } });
+  const out = patchScePac(pac, { offsets: {}, resources: { 9: [[0, 0, b64([0xa0, 0x80])]] } });
   assert.deepEqual([...out.subarray(0, 12)], [7, 0, 1, 0, 9, 0, 2, 0, 0xff, 0xff, 3, 0]);
   assert.deepEqual([...out.subarray(2048, 2048 + 11)], [...resource().subarray(0, 11)]);
   assert.deepEqual([...out.subarray(4096, 4096 + 8)], [4, 0, 8, 0, 0x00, 0xa0, 0x80, 0x00]);
@@ -51,4 +51,15 @@ test("ko: the particle after a name follows the name's last syllable", () => {
   ]) assert.equal(run(name, text), want, `${name} + ${text}`);
   assert.equal(josa(m, 0x82f1, c("는"), 0).emit[0], c("은")); // a kana name ending in ん
   assert.equal(josa(m, 0x82a0, c("는"), 0), null);
+});
+
+test("ko: an operand that holds an offset into the resource follows the bytes it points to", () => {
+  // record 0: text "AB", then 0x1e with the offset of record 1's op 0x07; record 1 as in resource()
+  const r0 = [0x00, 0x82, 0xa0, 0x00, 0x1e, 0, 0], r1 = [0x05, 0x01, 0x00, 0x82, 0xa4, 0x70, 0x00, 0x07];
+  const b = new Uint8Array(4 + r0.length + r1.length); b.set([4, 0, 4 + r0.length, 0]); b.set(r0, 4); b.set(r1, 4 + r0.length);
+  b[9] = 4 + r0.length + 7;
+  const out = patchResource(b, [[0, 0, b64([0xa0, 0x80, 0xa0, 0x81, 0xa0, 0x82])], [1, 2, b64([0xa0, 0x83])]], 1, [[0, 5]]);
+  const at = out.indexOf(0x1e), target = out[at + 1] | out[at + 2] << 8;
+  assert.equal(out[target], 0x07);
+  assert.throws(() => { b[9] = 4 + r0.length + 4; patchResource(b, [[1, 2, b64([0xa0, 0x83, 0xa0, 0x84, 0xa0, 0x85])]], 1, [[0, 5]]); }, /points into a text/);
 });

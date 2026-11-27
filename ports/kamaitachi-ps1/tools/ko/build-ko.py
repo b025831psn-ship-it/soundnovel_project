@@ -7,6 +7,8 @@ translation (kamaitachi-ps1-kor script/ja/script.ja.json, script/ko/script.ko.js
 
 --widths ({"sjis code": width}, read from the original font in BIN.PAC) makes the layout check
 exact for the original glyphs; without it kana count as 15 and kanji as 16.
+--offsets: the list of tools/ko/offset-operands.mjs (required): the operands that hold an offset
+into their resource, moved with the text by src/ko.js.
 --exe-strings / --exe-ko: the strings of the EXE (menus, card screens, ending titles: ids
 "EXE-address") and the flowchart titles (ids "CHART-nnn", the LZS table at 0x800680bb) with
 their translations [{id, ko}]. A string that fits its place is written there; a longer one goes
@@ -346,7 +348,7 @@ def main():
     report['exeStrings'] = {'listed': len(exe_list), 'translated': done, 'moved': len(moved), 'widerThanOriginal': wider, 'flowchartBytes': len(base64.b64decode(chart_patch['bytes'])) if chart_patch else None}
     os.makedirs(out, exist_ok=True)
     open(os.path.join(out, 'ko-font.bin'), 'wb').write(blob)
-    json.dump({'schema': 'kamaitachi.ps1.ko-script.v1', 'source': ja.get('source'), 'glyphs': len(new), 'chars': ''.join(new), 'josaJoin': [JOIN], 'space': SPACE, 'hang': [code[c] for c in HANG if c in code],
+    json.dump({'schema': 'kamaitachi.ps1.ko-script.v1', 'source': ja.get('source'), 'offsets': json.load(open(opt['--offsets'])), 'glyphs': len(new), 'chars': ''.join(new), 'josaJoin': [JOIN], 'space': SPACE, 'hang': [code[c] for c in HANG if c in code],
                'patches': patches, 'moved': moved, 'chart': chart_patch, 'endings': endings_patch,
                'resources': {str(r): v for r, v in sorted(res.items())}}, open(os.path.join(out, 'ko-script.json'), 'w'), separators=(',', ':'))
     json.dump(report, open(os.path.join(out, 'ko-report.json'), 'w'), ensure_ascii=False, indent=1)
