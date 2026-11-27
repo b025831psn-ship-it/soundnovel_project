@@ -210,6 +210,19 @@ export class SoundModule {
     this.vabIds[11] = -1;
   }
 
+  // 0x80028228: close the music at once (no decrescendo), as the flow chart does before a jump.
+  closeMusic() {
+    const ss = this.ss, m = this.music;
+    if (this.vabIds[11] === -1) return;
+    ss.SsSeqStop(m.acc);
+    this.silenceReverb();
+    this.silenceReverb();
+    ss.SsSeqClose(m.acc);
+    ss.SsVabClose(this.vabIds[11]);
+    ss.SpuFree(m.sbAddr);
+    m.headSize = 0; m.sbAddr = 0; this.currentMusic = -1; m.song = -1; this.vabIds[11] = -1; m.duration = 0; m.playing = 0;
+  }
+
   // ---- effects --------------------------------------------------------------
 
   // 0x80026984(id, channel, fadeIn). member = VCE.PAC member already loaded

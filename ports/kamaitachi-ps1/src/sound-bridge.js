@@ -25,6 +25,7 @@ export function ramSound(ctx) {
     setVariant: (bank, id, sp) => call(0x80026534, [bank, id], sp),
     playUi: (n, sp) => call(0x80028c74, [n], sp),
     fadeMusic: (n, sp) => call(0x80028334, [n], sp),
+    closeMusic: (sp) => call(0x80028228, [], sp),
     frame: (sp) => call(0x80029008, [], sp),
     reset: () => {}, // the game's part is ported (sound-reset.js); the library calls come through lib
     lib: (addr, args, sp) => call(addr, args, sp),
@@ -70,6 +71,7 @@ export function moduleSound(mod, m = null) {
     setVariant: run((bank, id) => mod.setVariant(bank, id)),
     playUi: run((n) => mod.playUi(n)),
     fadeMusic: run((n) => mod.stopMusic(n)),
+    closeMusic: run(() => mod.closeMusic()),
     frame: run(() => mod.frame()),
     reset: run(() => mod.reset()),
     lib: (addr, args) => mod.lib?.(addr, args) ?? LIB_DEFAULT(addr),
@@ -88,6 +90,6 @@ export const sound = (ctx) => ctx.sound ?? ramSound(ctx);
 // No audio (a browser without sound yet, or muted start-up): every effect has finished.
 export function silentSound() {
   const no = () => {};
-  return { play: no, stop: no, keyOn: no, lib: (addr) => LIB_DEFAULT(addr), setVariant: no, playUi: no, fadeMusic: no, frame: no, reset: no, start: no, vsync: no,
+  return { play: no, stop: no, keyOn: no, lib: (addr) => LIB_DEFAULT(addr), setVariant: no, playUi: no, fadeMusic: no, closeMusic: no, frame: no, reset: no, start: no, vsync: no,
     song: () => -1, effectPlaying: () => false, done: () => true, clearDone: no };
 }

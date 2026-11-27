@@ -84,7 +84,9 @@ export async function startMachine({ canvas, dataRoot, audio = true, onProgress 
   const runtime = {
     machine, soundModule: snd.mod,
     input: { pulse(name) { const k = PULSE[name]; if (k) keys.set(k, HOLD); }, press(k) { keys.set(k, Infinity); }, release(k) { keys.delete(k); } },
-    menuMode: () => "none", // the in-game menu (0x80018d44) is not ported yet: no corner button
+    // the corner button: × inside the in-game menu (0x800795e2 is set while it is open), the
+    // menu (triangle) while the game allows it (0x8007929f), otherwise nothing
+    menuMode: () => (machine.read(0x800795e2, 1) ? "back" : machine.read(0x8007929f, 1) ? "menu" : "none"),
     touchRows: () => menuNow()?.rows ?? [],
     cursorIndex: () => menuNow()?.index() ?? -1,
     moveCursor(n) {
