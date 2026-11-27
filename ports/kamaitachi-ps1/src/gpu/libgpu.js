@@ -44,8 +44,10 @@ const G = {
   geomOfs: 0x800a0b30, offsetMode: 0x801fecb4, clearW: 0x801eef10, clearH: 0x801eef08, sortClearMask: 0x801d6521,
 };
 
+import { Gte } from "./gte.js";
+
 export class LibGpu {
-  constructor(m) { this.m = m; }
+  constructor(m) { this.m = m; this.gte = new Gte(); }
   r8(a) { return this.m.read(a, 1); } r16(a) { return this.m.read(a, 2); } r32(a) { return this.m.read(a, 4) >>> 0; }
   w8(a, v) { this.m.write(a, v & 0xff, 1); } w16(a, v) { this.m.write(a, v & 0xffff, 2); } w32(a, v) { this.m.write(a, v >>> 0, 4); }
   reg(p) { return this.r32(p); } // hardware register address stored in the driver table
@@ -292,6 +294,7 @@ export class LibGpu {
     const ox = s16(this.r16(G.geomOfs)) + s16(this.r16(i ? G.dispX : G.dispX + 2));
     const oy = s16(this.r16(G.geomOfs + 2)) + s16(this.r16(i ? G.dispY : G.dispY + 2));
     this.w16(G.offX, ox); this.w16(G.offY, oy);
+    this.gte.setOffset(ox, oy); // 0x8004d424 SetGeomOffset
   }
   putActiveDrawEnv() { // 0x8004d458
     const i = s16(this.r16(G.psdIdx)), c = G.clipX, e = G.drawEnvA;
@@ -327,7 +330,8 @@ export class LibGpu {
     this.w8(e + 0x11, vram);
     this.PutDispEnv(e);
   }
-  initGeom() { // 0x8004dd08: InitGeom (GTE registers and the kernel patch: not modelled), offsets 0
+  initGeom() { // 0x8004dd08: InitGeom (the GTE's defaults, src/gpu/gte.js; the kernel patch is not modelled), offsets 0
+    this.gte.initGeom(); this.gte.setOffset(0, 0);
     this.w32(0x80072e00, 0x8004dd18); this.w32(0x8008a420, 0x8004df40); // the return addresses it saves
     this.w16(G.offY, 0); this.w16(G.offX, 0);
   }
