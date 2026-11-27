@@ -28,6 +28,33 @@ const vm = new VM(sns);
 const slot = sns.scripts.findIndex(s => s.labels.has(START));
 vm.goto(slot, START);
 
+// ---- Korean (?lang=ko): lines come from the private 428-psp-kor data (?kodata=<folder with script-ja/ and script-ko/>).
+// Each exported entry starts at the pc of its first text op; the Korean line replaces every text op of that entry.
+const KO = q.get('lang') === 'ko';
+const KODATA = (q.get('kodata') || BASE + 'kor/').replace(/\/?$/, '/');
+const koScripts = new Map(); // script name -> Map(pc -> entry) | 'loading'
+async function loadKo(name) {
+  if (koScripts.has(name)) return; koScripts.set(name, 'loading');
+  try {
+    const [ja, ko] = await Promise.all([json2(`${KODATA}script-ja/${name}.json`), json2(`${KODATA}script-ko/${name}.json`)]);
+    const byId = new Map(ko.entries.map(e => [e.id, e.ko])); const m = new Map();
+    for (const e of ja.entries) if (e.ja !== undefined && byId.has(e.id)) m.set(e.pc, { ...e, ko: byId.get(e.id) });
+    koScripts.set(name, m);
+  } catch { koScripts.set(name, new Map()); }
+}
+async function json2(u) { const r = await fetch(u); if (!r.ok) throw new Error(u); return r.json(); }
+if (KO) await loadKo(vm.script.name.replace(/\.xml$/, ''));
+let koSkip = false; // inside a replaced entry: drop the original's text-building ops until the entry ends
+function koEntry(pc) { const m = koScripts.get(vm.script.name.replace(/\.xml$/, '')); return m instanceof Map ? m.get(pc) : null; }
+function putKo(t) { // {base|reading} ruby, \n forced line, … and ― as cells, 仝 kept as the original's indent glyph
+  for (const [i, part] of t.split('\n').entries()) {
+    if (i) newLine();
+    for (const m of part.matchAll(/\{([^|}]*)\|([^}]*)\}|[^{]+/g)) {
+      if (m[1] !== undefined) { curLine().push({ text: m[1], ruby: m[2] }); } else curLine().push({ text: m[0] });
+    }
+  }
+}
+
 // ---- resources: id -> file in the current chapter CPK (script k01.xml <-> k01.cpk)
 const cpkOf = () => vm.script.name.replace(/\.xml$/, '');
 const resName = id => (ids[cpkOf()] || {})[id & 0x7fff];
@@ -65,6 +92,15 @@ function advanceOps() {
     if (S.movieWait && !S.movieWait.ended && !FAST) return; S.movieWait = null;
     if (S.wait > 0 || S.click || S.choice || (S.trans.run && S.trans.block)) return;
     const e = vm.step(); if (!e) continue;
+    if (KO && (e.type === 'text' || (e.type === 'op' && (e.op === 0x1c || e.op === 0x43)))) { const k = !koSkip && koEntry(e.pc); if (k) { putKo(k.ko); koSkip = true; continue; } if (koSkip && e.type === 'text') continue; }
+    if (KO) loadKo(vm.script.name.replace(/\.xml$/, ''));
+    if (KO && koSkip && e.type === 'op') {
+      if ([0x1c, 0x1d, 0x43, 0x1e].includes(e.op)) continue;
+      if (e.op === 0x1b && S.center) continue;
+      if (e.op === 0x2b) { koSkip = false; continue; }
+      if ([0x1b, 0x1f, 0x25, 0x18].includes(e.op)) koSkip = false;
+    }
+    if (KO && koSkip && e.type !== 'op' && e.type !== 'text') koSkip = false;
     if (e.type === 'text') { putText(e.text); continue; }
     if (e.type === 'choice') { S.choice = e; return; }
     if (e.type === 'sceneEnd' || e.type === 'end') { status.textContent = '장면 끝'; S.click = 'end'; return; }
@@ -175,8 +211,15 @@ addEventListener('fullscreenchange', fit);
 // Glyph header (font units): [adv, em, bx, by, bw, bh] horizontal, then full-width and vertical sets.
 // Units are 1280-wide-screen pixels: screen px = unit x 480/1280 (matches the original's line widths).
 const CELL = 50 * 0.375 + 0.7; // full-width cell (glyph advance 50)
+// Characters the original font lacks (Hangul) are drawn with a web font sized to the original's body text.
+const HANGUL = /[\u1100-\u11ff\u3130-\u318f\uac00-\ud7a3]/;
+const KFONT = 17, kMeasure = new Map();
+document.fonts?.ready.then(() => kMeasure.clear());
+function kAdv(ch) { if (!kMeasure.has(ch)) { g.font = `500 ${KFONT}px 'Noto Sans KR', sans-serif`; kMeasure.set(ch, g.measureText(ch).width); } return kMeasure.get(ch); }
 function advance(ch, scale = 1) {
   if (ch === '…' || ch === '―') return CELL * scale;
+  if (!fontMeta[ch.codePointAt(0)] && ch !== ' ') return (kAdv(ch) + 1) * scale;
+  if (ch === ' ') return CELL * 0.4 * scale;
   const m = fontMeta[ch.codePointAt(0)]; return m ? (m[4] * 0.375 + 0.7) * scale : 10 * scale;
 }
 // The font has no ellipsis or dash; the original draws them as cells (ops 43, 2B).
@@ -186,7 +229,8 @@ function drawSpecial(ch, x, y, scale) {
 }
 function drawGlyph(ch, x, y, scale = 1) {
   if (ch === '…' || ch === '―') { g.fillStyle = g.filter === 'none' ? '#e8e8ee' : '#000'; drawSpecial(ch, x, y, scale); return advance(ch, scale); }
-  const m = fontMeta[ch.codePointAt(0)]; if (!m) return advance(ch, scale);
+  const m = fontMeta[ch.codePointAt(0)];
+  if (!m) { if (ch !== ' ') { g.font = `500 ${KFONT * scale}px 'Noto Sans KR', sans-serif`; g.textBaseline = 'top'; g.fillStyle = g.filter === 'none' ? '#f0f0f0' : '#000'; g.fillText(ch, x, y + 1 * scale); } return advance(ch, scale); }
   g.drawImage(fontImg, m[0], m[1], m[2], m[3], x, y, m[2] * scale, m[3] * scale); return advance(ch, scale);
 }
 const OUTLINE = [[-1, 0], [1, 0], [0, -1], [0, 1], [-1, -1], [1, -1], [-1, 1], [1, 1]]; // dark rim seen on the original text
@@ -207,7 +251,17 @@ function layout() {
       const chars = [...seg.text], sw = chars.reduce((w, c) => w + advance(c), 0);
       if (seg.ruby && row.w + sw > RIGHT - LEFT) open(row.center);
       const x0 = row.w, r0 = row;
-      for (const ch of chars) { if (row.w + advance(ch) > RIGHT - LEFT) open(row.center); row.items.push({ ch, x: row.w }); row.w += advance(ch); }
+      for (let i = 0; i < chars.length; i++) {
+        const ch = chars[i];
+        // Korean wraps between words (Japanese per character, as the original); a wrapped line drops its leading space.
+        if (ch === ' ' && row.w === 0 && row.items.length === 0 && rows.length > 1) continue;
+        if (HANGUL.test(ch) && (i === 0 || chars[i - 1] === ' ')) {
+          let j = i, ww = 0; while (j < chars.length && chars[j] !== ' ') ww += advance(chars[j++]);
+          if (row.w > 0 && row.w + ww > RIGHT - LEFT && ww <= RIGHT - LEFT) open(row.center);
+        } else if (row.w + advance(ch) > RIGHT - LEFT) open(row.center);
+        if (ch === ' ' && row.w === 0 && rows.length > 1) continue;
+        row.items.push({ ch, x: row.w }); row.w += advance(ch);
+      }
       if (seg.ruby) r0.rubies.push({ text: seg.ruby, x: x0, w: row.w - x0 });
     }
   }
