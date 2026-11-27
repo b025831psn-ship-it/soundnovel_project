@@ -64,7 +64,16 @@ const varsUsed = new Set(), flagsUsed = new Set();
 vm.trace = (e) => {
   if (e.opcode === 0x40 || e.opcode === 0x41) varsUsed.add(e.args[0]);
   if ([0x0d, 0x0e, 0x0f, 0x1a, 0x54, 0x55].includes(e.opcode)) flagsUsed.add(e.args[0]);
+  if (watchFlag !== null && vm.ram.flags[watchFlag] !== watchValue) {
+    console.log("watch", watchFlag, watchValue, "->", vm.ram.flags[watchFlag], "round", logged.round, "op", e.bank.toString(16), (e.offset + SITE_BASE).toString(16), e.opcode.toString(16), JSON.stringify(e.args));
+    watchValue = vm.ram.flags[watchFlag];
+  }
+  if (traceOps?.has(e.opcode)) console.log("op", logged.round, logged.step, e.bank.toString(16), (e.offset + SITE_BASE).toString(16), e.opcode.toString(16), JSON.stringify(e.args));
 };
+// QA_WATCH=flag (decimal): print the opcode after which that flag changed.
+const watchFlag = process.env.QA_WATCH ? Number(process.env.QA_WATCH) : null;
+let watchValue = 0;
+const traceOps = process.env.QA_OPS ? new Set(process.env.QA_OPS.split(",").map((x) => Number.parseInt(x, 16))) : null;
 if (process.env.QA_TRACE) {
   const [tb, lo, hi] = process.env.QA_TRACE.split(",").map((x) => Number.parseInt(x, 16));
   vm.trace = (e) => { if (e.bank === tb && e.offset >= lo && e.offset < hi) console.log("trace", e.offset.toString(16), e.opcode.toString(16), e.args, e.wait, "flags", records().join(","), "ready", vm.ram.inputReady, vm.ram.choiceSkip); };
