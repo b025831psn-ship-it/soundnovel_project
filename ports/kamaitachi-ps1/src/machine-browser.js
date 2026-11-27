@@ -125,6 +125,9 @@ export async function startMachine({ canvas, dataRoot, audio = true, onProgress 
     // the menu and the backlog, with at least two history points, not in resources 0x19 / 0x1f
     canBacklog: () => !!machine.read(0x8007929e, 1) && !machine.read(0x800792a0, 1) && !machine.read(0x800795e2, 1)
       && ((machine.read(0x800792b4, 2) - 2) << 16) >= 0 && ![0x19, 0x1f].includes(machine.read(0x8007929c, 2)),
+    // true while a tap's presses are still running: shell.js ignores row taps then, so a double tap
+    // cannot carry its second ○ over to the next screen (e.g. the yes of a yes/no box)
+    busy: () => steps.length > 0,
     touchRows: () => menuNow()?.rows ?? [],
     cursorIndex: () => menuNow()?.index() ?? -1,
     // A tap on another row: the cursor goes there with the original's own pad presses (one frame

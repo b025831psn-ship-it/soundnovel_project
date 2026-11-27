@@ -55,6 +55,7 @@ function nativePoint(event) {
 function routeTouch(runtime, x, y) {
   const hit = (runtime.touchRows?.() || []).find((row) => x >= row.left && x < row.right && y >= row.top && y < row.bottom);
   if (!hit) return runtime.input.pulse("confirm");
+  if (runtime.busy?.()) return;
   const current = runtime.cursorIndex();
   if (hit.index === current) runtime.input.pulse("confirm");
   else runtime.moveCursor(hit.index - current);

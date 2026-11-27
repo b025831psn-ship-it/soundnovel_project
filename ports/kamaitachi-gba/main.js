@@ -101,16 +101,16 @@ boot.originalLoadTiming = new URLSearchParams(location.search).get("timing") ===
 vm.system = boot;
 boot.onMenuClosed = () => { page.drawn = -1; screen.renderBackground(); };
 text.nameBytes = boot.names; // names entered on 1D 03 / 1D 04 show up in the story text
-// Touch and mouse: a tap on an item picks it (the cursor moves there as with the d-pad; a tap on
-// the current item confirms). Taps elsewhere fall through to the shell, which presses A.
+// Touch and mouse: a tap on an item picks it (the cursor moves there as with the d-pad, then it is chosen). Taps elsewhere fall through to the shell, which presses A.
 function tap(x, y) {
   if (vm.waiting === "boot") return boot.tap(x, y);
   if (vm.waiting !== "choice") return false;
   const rows = vm.choiceState?.opcode === 0x13 ? page.menuRows() : screen.choiceRows ?? [];
   const index = rows.findIndex(({ top, bottom }) => y >= top && y < bottom);
   if (index < 0) return true;
-  if (index === vm.choiceSelection) vm.resume();
-  else vm.moveChoice(index - vm.choiceSelection);
+  // A tap picks the row at once, as in the PS1 and Zakuro players (태우 2026-11-28).
+  if (index !== vm.choiceSelection) vm.moveChoice(index - vm.choiceSelection);
+  vm.resume();
   return true;
 }
 const canvas = document.querySelector("#screen");

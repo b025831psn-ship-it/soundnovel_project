@@ -224,11 +224,13 @@ load().then((data) => {
   const begin = async () => {
     if (begun) return; begun = true;
     start.hidden = true;
-    const out = await createAudioOut();
-    await out.resume();
-    const game = startGame(data, out);
-    wireControls(game, out);
-    stage.classList.add('ready');
+    try {
+      const out = await createAudioOut();
+      await out.resume();
+      const game = startGame(data, out);
+      wireControls(game, out);
+      stage.classList.add('ready');
+    } catch (error) { fail(error); } // no audio or a failed start: say so instead of leaving a blank page
     removeEventListener('keydown', begin);
   };
   start.addEventListener('click', begin);
