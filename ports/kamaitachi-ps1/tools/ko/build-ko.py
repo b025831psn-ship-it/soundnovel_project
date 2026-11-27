@@ -2,10 +2,16 @@
 """Korean text for the PS1 machine: the font and the script patch, made from the private
 translation (kamaitachi-ps1-kor script/ja/script.ja.json, script/ko/script.ko.json).
 
-  python3 tools/ko/build-ko.py EXE_DATA.bin SCRIPT_JA.json SCRIPT_KO.json FONT.ttf OUT_DIR [ORIG_WIDTHS.json]
+  python3 tools/ko/build-ko.py EXE_DATA.bin SCRIPT_JA.json SCRIPT_KO.json FONT.ttf OUT_DIR
+      [--widths ORIG_WIDTHS.json] [--exe-strings LIST.json --exe-ko KO.json]
 
-ORIG_WIDTHS.json ({"sjis code": width}, read from the original font in BIN.PAC) makes the layout
-check exact for the original glyphs; without it kana count as 15 and kanji as 16.
+--widths ({"sjis code": width}, read from the original font in BIN.PAC) makes the layout check
+exact for the original glyphs; without it kana count as 15 and kanji as 16.
+--exe-strings / --exe-ko: the strings of the EXE (menus, card screens, ending titles: ids
+"EXE-address") and the flowchart titles (ids "CHART-nnn", the LZS table at 0x800680bb) with
+their translations [{id, ko}]. A string that fits its place is written there; a longer one goes
+to unused kernel RAM, pointers to it in the EXE data follow, and the drawing routines look it
+up (`moved`). The flowchart titles are rebuilt as one section that must not grow.
 
 Writes OUT_DIR/ko-font.bin, OUT_DIR/ko-script.json and OUT_DIR/ko-report.json. The two data
 files hold glyphs and the translated script: they are port data (not committed to this
@@ -30,6 +36,8 @@ SIZE = 13
 SPACE = 6         # the width of the byte 0x20 in the Korean build (src/text/text.js KO_SPACE)
 LEFT, RIGHT, TOP, LINE, LINES = 8, 0x120, 0x11, 0x16, 10
 HASH = 0x8006b754
+SPECIAL = {'デュアルショック': 0x8440, '○': 0x8485, '△': 0x8486, '×': 0x8487, '□': 0x8488, 'メモリーカード': 0x848f, 'オプション': 0x8490, 'R1:スクロール': 0x8491}
+CHART_AT, CHART_END = 0x1684, 0x1684 + 0x210c   # the title section of the unpacked flowchart table (263 big-endian offsets, strings; the header gives its place and size)
 # The default names: the pointers the game copies string 1 (the hero, [n1]) and string 2 (the
 # companion, [n2]) from (0x8003ab98). The original fields hold one and two glyphs; the Korean
 # names go to unused kernel RAM and the pointers follow.
@@ -125,6 +133,9 @@ def ko_code(i): return (0xa0 + (i >> 7)) << 8 | 0x80 + (i & 0x7f)
 
 def main():
     exe, ja_path, ko_path, font, out = sys.argv[1:6]
+    opt = dict(zip(sys.argv[6::2], sys.argv[7::2]))
+    exe_list = json.load(open(opt['--exe-strings'], encoding='utf-8'))['items'] if '--exe-strings' in opt else []
+    exe_ko = {e['id']: e['ko'] for e in json.load(open(opt['--exe-ko'], encoding='utf-8'))} if '--exe-ko' in opt else {}
     read = exe_reader(exe)
     orig = original_codes(read)
     ja = json.load(open(ja_path, encoding='utf-8')); items = ja['items']
@@ -154,7 +165,8 @@ def main():
     extra = sorted(c for c in used if '가' <= c <= '힣' and c not in set(hangul))
     new = hangul + extra
     used.update(''.join(n[3] for n in NAMES))
-    new += [chr(c) for c in range(0x21, 0x7f)]                       # narrow ASCII (0x20 is the space byte)
+    for v in exe_ko.values(): used.update(re.sub(r'\[[^\]]*\]|\{[^}]*\}', '', v))
+    new += [chr(c) for c in range(0x20, 0x7f)]                       # narrow ASCII; the space glyph is for the EXE strings (0x20 is the script's space byte)
     new += sorted(c for c in used if ord(c) >= 0x80 and c not in orig and c not in set(new) and c != '　')
     probe = ImageFont.truetype(font, SIZE)
     missing = [c for c in new if not probe.getmask(c).getbbox()]
@@ -193,7 +205,7 @@ def main():
     except Exception: pass
     for ch, c in orig.items(): owidth[c] = 16 if '一' <= ch <= '鿿' else 15
     for c in (0x8175, 0x8176, 0x8177, 0x8178): owidth[c] = 7
-    if len(sys.argv) > 6: owidth.update({int(k): v for k, v in json.load(open(sys.argv[6])).items()})
+    if '--widths' in opt: owidth.update({int(k): v for k, v in json.load(open(opt['--widths'])).items()})
     owidth[0x8140] = 2
 
     hang = {0x8142, 0x8149, 0x8148, 0x8141, 0x8145, 0x8176, 0x8178, 0x816a, 0x8163, 0x815c, 0x8160} | {code[c] for c in HANG if c in code}
@@ -259,10 +271,55 @@ def main():
     for ptr, old, at, name in NAMES:
         if struct.unpack('<I', read(ptr, 4))[0] != old: raise SystemExit('the name pointer at 0x%x is not 0x%x' % (ptr, old))
         patches += [[at, base64.b64encode(encode(name) + b'\0').decode()], [ptr, base64.b64encode(struct.pack('<I', at)).decode()]]
+    # the strings of the EXE and the flowchart titles
+    def encode_exe(t):
+        b = bytearray()
+        for part in re.split(r'(\[[^\]]*\]|\{[^}]*\})', t):
+            if not part: continue
+            if part[0] == '[' and part[-1] == ']': b += (b' ' if part == '[sp]' else part[1:-1].encode('ascii')); continue
+            if part[0] == '{' and part[-1] == '}':     # a special glyph of the original font (button pictures, word pictures)
+                b += struct.pack('>H', SPECIAL[part[1:-1]] if part[1:-1] in SPECIAL else int(part[2:-1], 16)); continue
+            for ch in part:
+                if ch == '\u3000': b += b'\x81\x40'
+                elif ord(ch) < 0x80 or ch not in orig: b += struct.pack('>H', code[ch])
+                else: b += struct.pack('>H', orig[ch])
+        return bytes(b)
+    def px(b):
+        n, i = 0, 0
+        while i + 1 < len(b):
+            c = b[i] << 8 | b[i + 1]
+            if b[i] >= 0x78: n += width(c) + 1
+            i += 2 if b[i] >= 0x78 or b[i:i + 2].isalnum() else 1
+        return n
+    moved, pool, wider, chart = [], 0x80002000, [], {}
+    exe_bytes = b''.join(read(a, n) for a, n in ((0x80010000, 16180), (0x800677e8, 73752)))
+    done = 0
+    for e in exe_list:
+        t = exe_ko.get(e['id'])
+        if e['id'].startswith('CHART-'): chart[int(e['id'][6:])] = encode_exe(t if t is not None and e.get('translate', True) else e['ja']); done += t is not None; continue
+        if t is None or not e.get('translate', True): continue
+        b = encode_exe(t); addr = int(e['addr'], 16); done += 1
+        if px(b) > e['widthPx']: wider.append([e['id'], e['widthPx'], px(b)])
+        if len(b) <= e['roomBytes']: patches.append([addr, base64.b64encode(b + b'\0').decode()]); continue
+        at = pool; pool += (len(b) + 4) & ~3
+        if pool > 0x8000c000: raise SystemExit('the EXE strings do not fit the spare RAM')
+        patches.append([at, base64.b64encode(b + b'\0').decode()]); moved.append([addr, at])
+        want = struct.pack('<I', addr); i = exe_bytes.find(want)
+        while i >= 0:                              # pointers to the string in the EXE data
+            if i % 4 == 0: patches.append([(0x80010000 + i) if i < 16180 else 0x800677e8 + i - 16180, base64.b64encode(struct.pack('<I', at)).decode()])
+            i = exe_bytes.find(want, i + 1)
+    chart_patch = None
+    if chart and any(i.startswith('CHART-') for i in exe_ko):
+        n = len(chart); body, offs = bytearray(), []
+        for i in range(n): offs.append(4 * n + len(body)); body += chart[i] + b'\0'
+        sec = b''.join(struct.pack('>I', o) for o in offs) + bytes(body)
+        if len(sec) > CHART_END - CHART_AT: raise SystemExit('the flowchart titles are %d bytes, over %d' % (len(sec), CHART_END - CHART_AT))
+        chart_patch = {'at': CHART_AT, 'bytes': base64.b64encode(sec).decode()}
+    report['exeStrings'] = {'listed': len(exe_list), 'translated': done, 'moved': len(moved), 'widerThanOriginal': wider, 'flowchartBytes': len(base64.b64decode(chart_patch['bytes'])) if chart_patch else None}
     os.makedirs(out, exist_ok=True)
     open(os.path.join(out, 'ko-font.bin'), 'wb').write(blob)
     json.dump({'schema': 'kamaitachi.ps1.ko-script.v1', 'source': ja.get('source'), 'glyphs': len(new), 'space': SPACE, 'hang': [code[c] for c in HANG if c in code],
-               'patches': patches,
+               'patches': patches, 'moved': moved, 'chart': chart_patch,
                'resources': {str(r): v for r, v in sorted(res.items())}}, open(os.path.join(out, 'ko-script.json'), 'w'), separators=(',', ':'))
     json.dump(report, open(os.path.join(out, 'ko-report.json'), 'w'), ensure_ascii=False, indent=1)
     print(json.dumps({k: v for k, v in report.items() if k not in ('pageOverflow',)}, ensure_ascii=False))
