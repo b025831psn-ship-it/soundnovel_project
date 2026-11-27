@@ -41,9 +41,15 @@ function whenReady(callback) {
 // Tap rows from the retail renderer in native coordinates; a tap elsewhere is ○.
 function nativePoint(event) {
   const box = canvas.getBoundingClientRect();
+  // Drawn a quarter turn round (iPhone full screen held upright): the box is the turned one, so the
+  // screen's x runs down the page and its y runs right to left. Every pointer event goes through
+  // here (down, move, up), so a drag and a swipe are read the same way as a tap.
+  const turned = filled && innerHeight > innerWidth;
+  const u = turned ? (event.clientY - box.top) / box.height : (event.clientX - box.left) / box.width;
+  const v = turned ? (box.right - event.clientX) / box.width : (event.clientY - box.top) / box.height;
   return {
-    x: Math.max(0, Math.min(W - 1, Math.floor(((event.clientX - box.left) * W) / box.width))),
-    y: Math.max(0, Math.min(H - 1, Math.floor(((event.clientY - box.top) * H) / box.height))),
+    x: Math.max(0, Math.min(W - 1, Math.floor(u * W))),
+    y: Math.max(0, Math.min(H - 1, Math.floor(v * H))),
   };
 }
 function routeTouch(runtime, x, y) {
@@ -216,21 +222,6 @@ const toggleFullscreen = async () => {
 };
 if (!document.fullscreenEnabled && !touch) fullscreen.hidden = true;
 fullscreen.addEventListener("click", toggleFullscreen);
-
-// Drawn a quarter turn round: give the game the tap where it lands on the upright screen.
-const turned = () => filled && innerHeight > innerWidth;
-addEventListener("pointerdown", (event) => {
-  if (!event.isTrusted || !turned() || event.target !== canvas) return;
-  event.stopImmediatePropagation();
-  event.preventDefault();
-  const box = canvas.getBoundingClientRect();
-  const u = (event.clientY - box.top) / box.height;
-  const v = (box.right - event.clientX) / box.width;
-  canvas.dispatchEvent(new PointerEvent("pointerdown", {
-    bubbles: true, cancelable: true, pointerId: event.pointerId, pointerType: event.pointerType, isPrimary: event.isPrimary,
-    clientX: box.left + u * box.width, clientY: box.top + v * box.height,
-  }));
-}, { capture: true });
 
 // Theatre mode belongs to the hub page around this one.
 const theatre = $("theatre");

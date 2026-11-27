@@ -63,7 +63,9 @@ function portRoute(url) {
     ['/kamaitachi2-ps2/', ps2Web, ['.html', '.js', '.mjs', '.css', '.json', '.bin', '.png', '.jpg', '.webp', '.svg', '.wasm', '.ogg', '.mp3', '.wav', '.mp4', '.woff2', '.txt']],
   ]) {
     if (!url.startsWith(prefix) || !dir) continue;
-    const file = path.join(dir, decodeURIComponent(url.slice(prefix.length)) || 'index.html');
+    let rest;
+    try { rest = decodeURIComponent(url.slice(prefix.length)); } catch { return null; } // a malformed %-escape is a 404, never a crash
+    const file = path.join(dir, rest || 'index.html');
     const ext = path.extname(file);
     if (!file.startsWith(dir + path.sep) || !exts.includes(ext) || /(^|[\\/])(tests?|tools|server)[\\/]/.test(file.slice(dir.length))) return null;
     return [file, portTypes[ext]];
