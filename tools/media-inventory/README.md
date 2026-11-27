@@ -1,9 +1,28 @@
 # 범용 게임 미디어 조사 도구
 
 로컬에 보관한 원본을 Git이나 서버에 업로드하지 않고 판본 식별용 JSON을 만드는
-Python 표준 라이브러리 전용 도구다. SFC, Nintendo 64, GBA, PS1, PS2를 지원한다.
+도구다. SFC, Nintendo 64, GBA, PS1, PS2를 지원한다. 일반 사용자는 Windows
+실행파일을 열어 파일 선택 창으로 사용하고, 개발자는 명령행에서도 실행할 수 있다.
 
-## 사용법
+## Windows 실행파일
+
+GitHub Actions의 `media-inventory-windows` 빌드 결과에서
+`SoundNovelMediaInventory-windows` 압축 파일을 받아 풀고
+`SoundNovelMediaInventory.exe`를 실행한다.
+
+1. **ROM·디스크 파일 선택**으로 하나 이상의 ROM, CUE 또는 ISO를 고른다.
+2. 공유할 결과라면 **원본 파일명 숨기기**를 켠 상태로 둔다.
+3. **조사하고 JSON 저장**을 눌러 결과 파일을 저장한다.
+
+원본은 읽기 전용으로 처리되며 네트워크 기능은 없다. CUE를 선택하면 같은 폴더의
+참조 BIN도 자동으로 조사한다. 실행파일 빌드는 PyInstaller만 사용한다.
+
+```sh
+python -m pip install pyinstaller
+python build_windows.py
+```
+
+## 명령행 사용법
 
 ```sh
 python3 inventory.py /path/to/game.sfc -o manifest.json

@@ -1,14 +1,22 @@
 import importlib.util
+import json
+import sys
 import tempfile
 import unittest
 from pathlib import Path
 
 
 TOOL = Path(__file__).parents[1] / "inventory.py"
+sys.path.insert(0, str(TOOL.parent))
 SPEC = importlib.util.spec_from_file_location("media_inventory", TOOL)
 MODULE = importlib.util.module_from_spec(SPEC)
 assert SPEC.loader is not None
 SPEC.loader.exec_module(MODULE)
+
+GUI_SPEC = importlib.util.spec_from_file_location("media_inventory_gui", TOOL.parents[0] / "gui.py")
+GUI_MODULE = importlib.util.module_from_spec(GUI_SPEC)
+assert GUI_SPEC.loader is not None
+GUI_SPEC.loader.exec_module(GUI_MODULE)
 
 
 def directory_record(name: bytes, lba: int, size: int, directory: bool = False) -> bytes:
@@ -144,6 +152,18 @@ class InventoryTest(unittest.TestCase):
         self.assertEqual("input-001", item["name"])
         self.assertEqual("file-001", item["cue"]["files"][0]["name"])
         self.assertFalse(item["cue"]["files"][0]["missing"])
+
+    def test_gui_writes_redacted_manifest_without_opening_window(self):
+        path = self.root / "private-game.gba"
+        rom = bytearray(0xC0)
+        rom[0xB2] = 0x96
+        rom[0xBD] = (-(sum(rom[0xA0:0xBD]) + 0x19)) & 0xFF
+        path.write_bytes(rom)
+        output = self.root / "result.json"
+        GUI_MODULE.write_manifest([path], output, True)
+        saved = json.loads(output.read_text(encoding="utf-8"))
+        self.assertEqual("input-001", saved["inputs"][0]["name"])
+        self.assertNotIn(str(self.root), output.read_text(encoding="utf-8"))
 
 
 if __name__ == "__main__":

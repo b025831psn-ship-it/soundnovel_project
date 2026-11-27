@@ -1,0 +1,35 @@
+name: media-inventory-windows
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - codex/37-otogirisou-ps1-foundation
+    paths:
+      - tools/media-inventory/**
+      - .github/workflows/media-inventory-windows.yml
+
+permissions:
+  contents: read
+
+jobs:
+  test-and-build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Test
+        run: python -m unittest discover -s tools/media-inventory/tests -v
+      - name: Install builder
+        run: python -m pip install --disable-pip-version-check pyinstaller==6.11.1
+      - name: Build one-file GUI
+        working-directory: tools/media-inventory
+        run: python build_windows.py
+      - name: Upload executable
+        uses: actions/upload-artifact@v4
+        with:
+          name: SoundNovelMediaInventory-windows
+          path: tools/media-inventory/dist/SoundNovelMediaInventory.exe
+          if-no-files-found: error
