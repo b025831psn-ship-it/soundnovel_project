@@ -50,6 +50,22 @@ const MENU = [
   { rect: [0x81, 0x83, 0x33, 0x12], textX: 0x8a, cursorX: 0x81, label: [0x90, 0xe0, 0x81, 0x40, 0x81, 0x40, 0x81, 0x40, 0x81, 0x40, 0x96, 0xbe] },
 ];
 const MENU_TEXT_Y = 0x86;
+// 0800EBBC: with 挑戦状！ (0801AE80) the menu has three items: rectangles 0801AEC4, text x
+// 0801AEBC, cursor x 0801AEBF.
+const MENU_CHALLENGE = [
+  { ...MENU[0], rect: [0x16, 0x83, 0x34, 0x12], textX: 0x18, cursorX: 0x16 },
+  { ...MENU[1], rect: [0x5f, 0x83, 0x33, 0x12], textX: 0x67, cursorX: 0x5e },
+  { rect: [0xa4, 0x83, 0x34, 0x12], textX: 0xa6, cursorX: 0xa4, label: [0x92, 0xa7, 0x90, 0xed, 0x8f, 0xf3, 0x81, 0x49] },
+];
+// 0800BA48 kinds 0 and 1: the endings a book counts as 完 (solved) and 終 (the others).
+const GOOD_ENDINGS = [1, 2, 3, 14, 18, 19, 21, 22, 25];
+const BAD_ENDINGS = [4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 15, 16, 17, 20, 23, 24, 26, 27, 28, 29, 30, 31, 32,
+  33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43];
+// 0800E1A0: the bookmarks under each book n (08001794 ids 5-8, OBJ 32x32): 桃 at x (0x72 + 0xF0n)
+// * 64 / 256, 金 at x (0xCC + 0xF0n) * 64 / 256, y (0xA64 + 0x8Cn) / 20. The front book's are lit
+// (palettes 0/1, level 15), the others dim (palettes 2/3, level 9; 0800E328 copies 0801AC40 both ways).
+const BOOKMARK_PALETTES = 0x1ac40; // 金 then 桃, 16 colors each
+
 // 0801AC80 header bar of the bookmark screen and 080199D4 未使用.
 const HEADER = [0x00, 0x05, 0xf0, 0x13];
 const UNUSED = [0x96, 0xa2, 0x8e, 0x67, 0x97, 0x70];
@@ -226,6 +242,7 @@ export class Boot {
       if (!previousDefaults || same(this.names[slot], previousDefaults[slot])) this.names[slot] = this.defaultNames[slot];
     }
     this.nameEntry = new NameEntry({ boot: this, font: this.font, table: this.nameTable });
+    try { this.bookmarkTiles = await assets.bin("ui/bookmark-tiles.bin"); } catch { this.bookmarkTiles = null; }
     try { this.flow = await assets.bin("ui/flow-map.bin"); } catch { this.flow = null; }
     try {
       const [glyphs, titles] = await Promise.all([assets.bin("ui/map-glyphs.bin"), assets.bin("ui/map-titles.bin")]);
@@ -299,6 +316,9 @@ export class Boot {
     }
     // 1D 6A / 6B (080098C8 / 080098D4): SELECT is armed for page waits (0800750C), or not.
     if (command === 0x6a || command === 0x6b) { ram.selectArmed = command === 0x6a ? 1 : 0; return undefined; }
+    // 1D 6E / 6F (080098E0 / 080098EC): 020007A9 |= 1 / 2. The 移動 map then shows the last
+    // choice letter at scenes 5 and 0x16 (0800D120).
+    if (command === 0x6e || command === 0x6f) { ram.flowBranches = (ram.flowBranches ?? 0) | (command === 0x6e ? 1 : 2); return undefined; }
     // 1D 20 / 21 / 22 (08012CF4): the culprit's name (slot 0) is tried against each suspect in
     // turn; a match writes the suspect's proper name into slot 0 and makes its option the entry
     // opcode 16 takes (02000780). Slot 0 is then copied to slot 3, 4 or 5 (080081D0).
@@ -681,7 +701,8 @@ export class Boot {
   // `returning`: back from the bookmark screen the cursor starts at another phase and shows after
   // two frames, and the first frame still lacks the last glyph (mGBA 739 -> 741).
   *menu(returning = false) {
-    const items = MENU; // 0800EBBC adds 挑戦状 when a save slot is in use; saves are not ported yet.
+    // 0800EBBC: 挑戦状！ joins when a book holds one of the solved endings 1-3 (0800BA48 kind 4).
+    const items = [0, 1, 2].some((n) => this.bookRecord(n)?.challenge) ? MENU_CHALLENGE : MENU;
     let selected = 0;
     let tick = returning ? CURSOR_RETURN_TICK : CURSOR_FIRST_TICK;
     const visible = tick + CURSOR_HIDDEN;
@@ -707,6 +728,15 @@ export class Boot {
       this.layer = null;
       yield; // 08006B8C clears the OBJ text surface
       if (selected === 0) return;
+      // 0800ED68: 挑戦状！ dims the title (080065A8(1, 0xC8)), shows the header bar and 0800C008(1).
+      if (selected === 2 && this.options) {
+        this.setLevel(1, 0xc8);
+        yield* this.waitFade(1);
+        yield* this.options.help(1);
+        this.layer = null;
+        this.setLevel(1, 0x100);
+        continue;
+      }
       // 0800EDA4: 説明 runs オプション in its title mode over the title picture.
       if (this.options) yield* this.options.run(1);
     }
@@ -749,12 +779,45 @@ export class Boot {
       }
       if (encoded === 0x8140) { x += SPACE_ADVANCE; continue; }
       const index = this.font.find(encoded);
-      glyphs.push({ x, y: top, encoded, color });
+      // 08006E1C: ▲ (8489) is copied from its fifth row to the glyph's top, so it sits 4 pixels
+      // higher; ▼ (848A) only loses its top 5 rows and stays.
+      glyphs.push({ x, y: encoded === 0x8489 ? top - 4 : top, encoded, color });
       // 、 and 。 advance 8 pixels (mGBA: 明度、彩度の調整).
       const punctuation = encoded === 0x8141 || encoded === 0x8142;
       x += advance || (punctuation ? 8 : index < 0 ? 8 : this.font.glyph(index).width);
     }
     return glyphs;
+  }
+
+  // 0800BA48: what a book's ending record (+0x26, flags 0-0x4F of its saved state) gives: the 完
+  // and 終 counts (kinds 0, 1), its bookmarks (kind 3: 0x34 桃, 0x36 金) and whether one of the
+  // solved endings 1-3 is there (kind 4, for 挑戦状！). Null for an unused book.
+  bookRecord(book) {
+    const raw = this.books.read(book)?.state?.ram?.flags;
+    const flags = raw?.$bytes ?? raw;
+    if (!flags) return null;
+    const count = (list) => list.filter((n) => flags[n]).length;
+    return {
+      good: count(GOOD_ENDINGS),
+      bad: count(BAD_ENDINGS),
+      bookmarks: (flags[0x34] ? 1 : 0) + (flags[0x36] ? 1 : 0),
+      challenge: count([1, 2, 3]),
+    };
+  }
+
+  // 0800E1A0 as OBJ images for draw(): the bookmarks of the three books, `front` lit.
+  bookmarkImages(front) {
+    if (!this.bookmarkTiles || !this.systemText) return [];
+    const images = [];
+    for (let n = 0; n < 3; n++) {
+      const count = this.bookRecord(n)?.bookmarks ?? 0;
+      const y = Math.trunc((0xa64 + 0x8c * n) / 20);
+      const level = n === front ? 15 : 9;
+      // 桃 (tiles 0x825D4C, palette 1) from one bookmark, 金 (0x825B4C, palette 0) from two.
+      if (count >= 1) images.push({ x: ((0x72 + 0xf0 * n) * 64) >> 8, y, tiles: 0x200, palette: 16, level });
+      if (count >= 2) images.push({ x: ((0xcc + 0xf0 * n) * 64) >> 8, y, tiles: 0, palette: 0, level });
+    }
+    return images;
   }
 
   // 0800B7C4 for an unused book: 未使用 on the front book's spine label, then in the header bar.
@@ -767,13 +830,20 @@ export class Boot {
       // the good and bad endings seen (完, 終) on the front book.
       const at = (n) => Math.trunc(((five * 16 + n) * 3 * 64) / 256);
       this.text(glyphs, data.title ?? [], 7, 0x0c, 2, true);
+      const record = this.bookRecord(book);
       const turns = this.digits(data.turns ?? 1);
       this.text(glyphs, turns, at(0x33), five * 2 + 0x96, 2, true);
       this.text(glyphs, SJIS.turns, at(0x33) + 8 * turns.length / 2, five * 2 + 0x96, 2, true);
+      // 0800B980: a count up to 9 is one digit (08007070, a 1 moves 2 pixels right) at 0x3B / 0x6B,
+      // more is printed by 080070DC from 0x33 / 0x63.
+      const count = (value, x) => {
+        if (value > 9) return this.text(glyphs, this.digits(value), at(x - 8), five * 2 + 0xa9, 2, true);
+        return this.text(glyphs, this.digits(value), at(x) + (value === 1 ? 2 : 0), five * 2 + 0xa9, 2, true);
+      };
       this.text(glyphs, SJIS.good, at(0x23), five * 2 + 0xa9, 2, true);
-      this.text(glyphs, this.digits(data.good ?? 0), at(0x3b), five * 2 + 0xa9, 2, true);
+      count(record?.good ?? 0, 0x3b);
       this.text(glyphs, SJIS.bad, at(0x53), five * 2 + 0xa9, 2, true);
-      this.text(glyphs, this.digits(data.bad ?? 0), at(0x6b), five * 2 + 0xa9, 2, true);
+      count(record?.bad ?? 0, 0x6b);
       return glyphs;
     }
     this.text(glyphs, UNUSED, Math.trunc(((five * 16 + 0x37) * 3 * 64) / 256), five * 2 + 0x9b, 2, true);
@@ -784,6 +854,14 @@ export class Boot {
   // 0800E328 with the 0800E4E4 callback (title) or 0800EA10 (セーブ in the game).
   // Returns true when a book was chosen.
   *bookmarks(mode = "title") {
+    try {
+      return yield* this.shelf(mode);
+    } finally {
+      this.shelfFront = null;
+    }
+  }
+
+  *shelf(mode) {
     let book = this.book;
     let shown = -1;
     let first = true;
@@ -802,6 +880,7 @@ export class Boot {
           yield;
         }
         this.layer = { boxes: [HEADER], glyphs, boxBlack: first ? 2 : 0 };
+        this.shelfFront = book; // 0800E3C6: 02028C39 = book + 1 turns the bookmarks on
         if (first) {
           // 080063F4(1, 5) and (1, 1): straight to full brightness.
           this.fadeIn(1, 5);
@@ -1005,8 +1084,6 @@ export class Boot {
     this.books.write(book, {
       title: this.nodeTitle(this.vm.ram.node),
       turns: Math.min(999, (old?.turns ?? 0) + 1),
-      good: old?.good ?? 0,
-      bad: old?.bad ?? 0,
       tone: { ...this.screen.tone }, // 0800A840 keeps 03001EE4/5 at +0x5E/+0x5F
       state,
     });
@@ -1408,6 +1485,30 @@ export class Boot {
     };
     const blend = (top, pixel) =>
       top.map((value, i) => Math.min(255, (value * EVA + data[4 * pixel + i] * EVB) >> 4));
+    // Priority 2 OBJs under everything else (the bookshelf's bookmarks): 4bpp, 1D tiles.
+    if (this.shelfFront != null) {
+      for (const image of this.bookmarkImages(this.shelfFront)) {
+        const colors = [];
+        for (let i = 0; i < 16; i++) {
+          const at = BOOKMARK_PALETTES - 0x19400 + 2 * (image.palette + i);
+          const raw = this.systemText[at] | (this.systemText[at + 1] << 8);
+          // 08000D54 scales each channel by level / 15; the color then goes through the tone.
+          const scaled = [0, 5, 10].reduce((c, shift) => c | (Math.floor((((raw >> shift) & 31) * image.level) / 15) << shift), 0);
+          colors.push(scaled ? rgb(screen.menuColor?.(scaled) ?? scaled) : rgb(0));
+        }
+        for (let py = 0; py < 32; py++) {
+          for (let px = 0; px < 32; px++) {
+            const x = image.x + px, y = image.y + py;
+            if (x < 0 || x >= 240 || y < 0 || y >= 160) continue;
+            // 0801949C ids 5-8 set the vertical flip (attr1 0x2000): the string hangs down.
+            const ty = 31 - py;
+            const byte = this.bookmarkTiles[image.tiles + ((ty >> 3) * 4 + (px >> 3)) * 32 + (ty & 7) * 4 + ((px & 7) >> 1)];
+            const index = px & 1 ? byte >> 4 : byte & 15;
+            if (index) put(y * 240 + x, colors[index]);
+          }
+        }
+      }
+    }
     const text = new ObjTextSurface();
     // OBJ order: sprites behind the text surface (priority 1, 終了 highlight), the text, then
     // the priority 0 cursor squares on top.

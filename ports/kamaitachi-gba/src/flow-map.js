@@ -165,8 +165,8 @@ export class FlowMap {
       const value = (tried >> shift) & 3;
       return value === 3 ? 2 : value === 1 ? 0 : 1;
     });
-    if (id === 5 && !(ram.endings & 1)) kind--;
-    if (id === 0x16 && !(ram.endings & 2)) kind--;
+    if (id === 5 && !(ram.flowBranches & 1)) kind--; // 020007A9 (1D 6E / 6F)
+    if (id === 0x16 && !(ram.flowBranches & 2)) kind--;
     const digits = String(id).padStart(3, "0");
     // 0800CF58: hundreds only from 100, tens only from 10.
     if (id > 99) this.character(surface, digits.charCodeAt(0), x + 2, y, 8, color);

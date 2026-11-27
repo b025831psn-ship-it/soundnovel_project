@@ -169,6 +169,9 @@ export class TextWindow {
           this.pageRaw = [];
           this.wait = "none";
         }
+      } else if (control === "c") {
+        // 08007CC2: foreground n for the glyphs that follow (C sets n + 8).
+        this.fragments.push({ objColor: arg - 0x30 });
       } else if (control === "C") {
         // Text color: C4 (light blue) marks the player's names, C0 returns to white.
         this.fragments.push({ color: arg - 0x30 });
