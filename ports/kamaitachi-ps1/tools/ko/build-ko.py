@@ -37,7 +37,7 @@ SPACE = 6         # the width of the byte 0x20 in the Korean build (src/text/tex
 LEFT, RIGHT, TOP, LINE, LINES = 8, 0x120, 0x11, 0x16, 10
 HASH = 0x8006b754
 SPECIAL = {'デュアルショック': 0x8440, '○': 0x8485, '△': 0x8486, '×': 0x8487, '□': 0x8488, 'メモリーカード': 0x848f, 'オプション': 0x8490, 'R1:スクロール': 0x8491}
-CHART_AT, CHART_END = 0x1684, 0x1684 + 0x210c   # the title section of the unpacked flowchart table (263 big-endian offsets, strings; the header gives its place and size)
+CHART_POOL, CHART_ROOM = 0x80009000, 0x3000   # spare kernel RAM for the flowchart title section (263 big-endian offsets, then the strings)
 # The default names: the pointers the game copies string 1 (the hero, [n1]) and string 2 (the
 # companion, [n2]) from (0x8003ab98). The original fields hold one and two glyphs; the Korean
 # names go to unused kernel RAM and the pointers follow.
@@ -297,12 +297,12 @@ def main():
     for e in exe_list:
         t = exe_ko.get(e['id'])
         if e['id'].startswith('CHART-'): chart[int(e['id'][6:])] = encode_exe(t if t is not None and e.get('translate', True) else e['ja']); done += t is not None; continue
-        if t is None or not e.get('translate', True): continue
+        if not t or not e.get('translate', True): continue
         b = encode_exe(t); addr = int(e['addr'], 16); done += 1
         if px(b) > e['widthPx']: wider.append([e['id'], e['widthPx'], px(b)])
         if len(b) <= e['roomBytes']: patches.append([addr, base64.b64encode(b + b'\0').decode()]); continue
         at = pool; pool += (len(b) + 4) & ~3
-        if pool > 0x8000c000: raise SystemExit('the EXE strings do not fit the spare RAM')
+        if pool > CHART_POOL: raise SystemExit('the EXE strings do not fit the spare RAM')
         patches.append([at, base64.b64encode(b + b'\0').decode()]); moved.append([addr, at])
         want = struct.pack('<I', addr); i = exe_bytes.find(want)
         while i >= 0:                              # pointers to the string in the EXE data
@@ -313,8 +313,10 @@ def main():
         n = len(chart); body, offs = bytearray(), []
         for i in range(n): offs.append(4 * n + len(body)); body += chart[i] + b'\0'
         sec = b''.join(struct.pack('>I', o) for o in offs) + bytes(body)
-        if len(sec) > CHART_END - CHART_AT: raise SystemExit('the flowchart titles are %d bytes, over %d' % (len(sec), CHART_END - CHART_AT))
-        chart_patch = {'at': CHART_AT, 'bytes': base64.b64encode(sec).decode()}
+        # the memory after the table is in use, so a larger section goes to spare RAM: the hook
+        # writes it there and points the table's header (big-endian offset at +0x14) to it
+        if len(sec) > CHART_ROOM: raise SystemExit('the flowchart titles are %d bytes, over %d' % (len(sec), CHART_ROOM))
+        chart_patch = {'addr': CHART_POOL, 'header': 0x14, 'bytes': base64.b64encode(sec).decode()}
     report['exeStrings'] = {'listed': len(exe_list), 'translated': done, 'moved': len(moved), 'widerThanOriginal': wider, 'flowchartBytes': len(base64.b64decode(chart_patch['bytes'])) if chart_patch else None}
     os.makedirs(out, exist_ok=True)
     open(os.path.join(out, 'ko-font.bin'), 'wb').write(blob)

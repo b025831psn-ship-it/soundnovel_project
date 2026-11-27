@@ -72,7 +72,7 @@ export function koBuild(pacs, ko) {
   return { pacs: { ...pacs, SCE: patchScePac(pacs.SCE, ko.script) }, text: { font: ko.font, glyphs: ko.script.glyphs, space: ko.script.space ?? 6, hang: new Set(ko.script.hang ?? []),
       // strings of the EXE that did not fit their place: old address -> new address (title.js drawString, scenario/lib.js textStart)
       moved: new Map(ko.script.moved ?? []),
-      // the title section of the flowchart table, written over the table the game has just unpacked (menu/calls.js)
-      chart: ko.script.chart ? { at: ko.script.chart.at, bytes: fromBase64(ko.script.chart.bytes) } : null },
+      // the title section of the flowchart table: kept in spare RAM; the header of the table the game has just unpacked is pointed to it (menu/calls.js)
+      chart: ko.script.chart ? { addr: ko.script.chart.addr, header: ko.script.chart.header, bytes: fromBase64(ko.script.chart.bytes) } : null },
     patches: (ko.script.patches ?? []).map(([addr, t]) => [addr, fromBase64(t)]) }; // bytes of the EXE data: the default names
 }
