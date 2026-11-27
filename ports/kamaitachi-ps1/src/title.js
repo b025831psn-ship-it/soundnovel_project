@@ -23,6 +23,7 @@ import { cdLoadAsync } from "./cd-load.js";
 import { titlePicture, animInit, textSlotsReset, systemReset, routeReset } from "./init.js";
 import { inputClear, inputTick } from "./input.js";
 import { sound } from "./sound-bridge.js";
+import { title as translatedTitle } from "./menu/translated.js";
 
 const GP = 0x8007913c, PAD = 0x801eef40, SE = 0x801eef50, CARD_SLOT = 0x800792c3, CARD_CMD = 0x80079524;
 const unported = (addr) => { throw new Error(`title: path at 0x${addr.toString(16)} is not ported`); };
@@ -301,7 +302,7 @@ export function* special(ctx, k) {
   k &= 0xffff;
   if (k >= 0x6c) return;
   switch (k) {
-    case 0: yield* title(sub); return;
+    case 0: yield* translatedTitle(sub); return; // 0x8001b694, translated (title() below is the hand port of its card-less path)
     case 3: yield* nameEntry(sub, 0); yield* nameEntry(sub, 1); return; // the hero, then the companion
     case 4: yield* nameEntry(sub, 2); w8(0x80079296, 1); return; // the culprit
     case 7: w8(0x800792a8, 1); return;

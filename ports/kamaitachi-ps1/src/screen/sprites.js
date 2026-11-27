@@ -143,7 +143,11 @@ export function sortBoxes(ctx) {
 // 0x8003ce2c
 export function sortOverlays(ctx) {
   const { m } = ctx;
-  for (let i = 0; i < 8; i++) if ((m.read(OVERLAYS + i * SPRITE_SIZE, 4) >>> 0) !== 0x80000000) unported(0x8003ce6c);
+  const sub = { ...ctx, sp: ctx.sp - 0x38 }, r8 = (a) => m.read(a, 1), r16 = (a) => m.read(a, 2);
+  for (let i = 0; i < 8; i++) {
+    const t = OVERLAYS + i * SPRITE_SIZE, a = m.read(t, 4) >>> 0;
+    if (a !== 0x80000000) spriteAdd(sub, r8(t + 0xc), s16(r16(t + 4)), s16(r16(t + 6)), r8(t + 0xe), r8(t + 0xf), r16(t + 8), r16(t + 0xa), a, r8(t + 0x33));
+  }
 }
 
 // --- sprite table management ---

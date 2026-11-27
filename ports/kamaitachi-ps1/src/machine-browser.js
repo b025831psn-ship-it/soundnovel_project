@@ -4,10 +4,24 @@
 // It publishes the shell's contract (shell.js): runtime.input.pulse(name), menuMode().
 // Sound: machine-sound.js renders each game frame's samples on the page; they play through
 // sound/web/pcm-worklet.js once the shell's first tap resumes the AudioContext.
+// Memory card: a virtual card in slot 1 (memory-card.js, the raw 128 KB image as a real card
+// holds it), kept in localStorage after every write; runtime.exportCard() / importCard(bytes)
+// hand the image to and from the shell (e.g. the save server).
 import { Machine } from "./machine.js";
+import { current } from "./touch.js";
 import { machineSound } from "./machine-sound.js";
 import { PcmQueue } from "../sound/web/pcm-queue.js";
 import { unpack } from "./exe-data.js";
+import { MemoryCard, CARD_BYTES } from "./memory-card.js";
+
+const CARD_KEY = "kamaitachi-ps1.card1";
+const toBase64 = (b) => { let s = ""; for (let i = 0; i < b.length; i += 0x8000) s += String.fromCharCode(...b.subarray(i, i + 0x8000)); return btoa(s); };
+const fromBase64 = (t) => Uint8Array.from(atob(t), (c) => c.charCodeAt(0));
+function loadCard() {
+  try { const t = localStorage.getItem(CARD_KEY); if (t) { const b = fromBase64(t); if (b.length === CARD_BYTES) return b; } } catch {}
+  return null;
+}
+function storeCard(bytes) { try { localStorage.setItem(CARD_KEY, toBase64(bytes)); } catch (e) { console.warn("[kamaitachi-ps1] memory card not stored", e); } }
 
 const PACS = ["SCE", "VCE", "BGD", "SDW", "BIN", "MUS", "ANM", "VCP"];
 // libpad bits (active high here; the machine inverts them into the pad report)
@@ -62,7 +76,9 @@ export async function startMachine({ canvas, dataRoot, audio = true, onProgress 
   await Promise.all(PACS.map(async (k) => { pacs[k] = await fetchBytes(new URL(`${k}.PAC`, base), progress); }));
   const snd = machineSound({ exeData, pacs, onRumble: (r) => { if (r.on) navigator.vibrate?.(50); } });
   const out = audio ? await audioOut() : null;
-  const machine = new Machine({ exeData, pacs, sound: snd.bridge, onError: (e) => console.error("[kamaitachi-ps1 machine]", e) });
+  const card = new MemoryCard(loadCard());
+  const machine = new Machine({ exeData, pacs, sound: snd.bridge, card, onError: (e) => console.error("[kamaitachi-ps1 machine]", e) });
+  machine.onCardWrite = (c) => { storeCard(c.bytes); runtime.onCardChange?.(); };
 
   const ctx2d = canvas.getContext("2d", { alpha: false });
   ctx2d.imageSmoothingEnabled = false;
@@ -81,7 +97,7 @@ export async function startMachine({ canvas, dataRoot, audio = true, onProgress 
     if (s) { if (s.phase < 1) b |= BUTTON[s.key]; if (++s.phase === 2) { s.phase = 0; if (--s.left <= 0) steps.shift(); } }
     return b;
   };
-  const menuNow = () => machine.touch.menu;
+  const menuNow = () => current(machine.touch);
   const runtime = {
     machine, soundModule: snd.mod,
     input: { pulse(name) { const k = PULSE[name]; if (k) keys.set(k, HOLD); }, press(k) { keys.set(k, Infinity); }, release(k) { keys.delete(k); } },
@@ -100,6 +116,15 @@ export async function startMachine({ canvas, dataRoot, audio = true, onProgress 
       const { cols, across } = t.grid, from = t.index(), to = from + n;
       steps = [...move(t.keys, Math.floor(to / cols) - Math.floor(from / cols)), ...move(across, (to % cols) - (from % cols))];
     },
+    // the memory card in slot 1: a copy of the raw 128 KB image; importCard swaps the card as
+    // if a different one were inserted (the library reports a new card on its next request)
+    exportCard: () => card.bytes.slice(),
+    importCard(bytes) {
+      bytes = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
+      if (bytes.length !== CARD_BYTES) throw new Error(`memory card image: ${bytes.length} bytes, expected ${CARD_BYTES}`);
+      card.bytes.set(bytes); machine.cardSwapped(); storeCard(card.bytes);
+    },
+    onCardChange: null, // set by the shell: called after the game writes the card
     get error() { return machine.error; },
   };
   const STEP = 1000 / 60;

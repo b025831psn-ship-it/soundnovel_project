@@ -17,6 +17,7 @@ FUNCS = [
  ("8002c4c0","f8002c4c0"),("8002baa0","f8002baa0"),("800338ac","f800338ac"),("80038b8c","f80038b8c"),("80038ce8","f80038ce8",None),
  ("80038f58","f80038f58"),("80029a6c","f80029a6c"),("80029ad0","f80029ad0"),
  ("80015fa8","cardMessage",None),("8002a980","f8002a980"),("80025898","f80025898"),("8002c530","f8002c530"),("8002a9f8","noCardBox"),("8002a320","yesNo"),("8002bd1c","cardCheck"),("800298e4","cardLoad"),
+ ("8001b694","title"),("80016078","startMenu"),("8002a1ac","f8002a1ac"),("8002aa70","f8002aa70"),("8002b4e0","f8002b4e0"),("80033848","f80033848"),("8002b7f4","f8002b7f4"),("8003360c","f8003360c"),("8002c4f8","f8002c4f8"),("80032974","f80032974"),("80021320","op3d"),("800329ec","restoreBookmark"),("8001f328","op1f"),("8002188c","op44"),("8001bda4","f8001bda4"),("8001c21c","f8001c21c"),("8001fb38","f8001fb38"),("800216a8","f800216a8"),("8003d8dc","f8003d8dc"),("80044b60","f80044b60"),
 ]
 # Tap rows (machine mode): offered before the frame wait of each selection loop; the caller's
 # rows come back when the routine returns.
@@ -33,6 +34,12 @@ HOOKS = {
  "8002a320": {"8002a754": 'offer(ctx, (fp & 0xff) ? [box(0, 0x3c, 0x7e, 0xc8, 0x1a), box(1, 0x3c, 0x98, 0xc8, 0x1a)] : [box(0, 0x3c, 0x8a, 0xc8, 0x38)], () => s1 & 0xff, ["up", "down"]);'},
  "80017e14": {"80017ff8": 'offer(ctx, [box(0, 0x23, 0x59, 0x75, 0x12), box(1, 0xaa, 0x59, 0x75, 0x12)], () => s0 & 0xff, ["left", "right"]);'},
  "8002a89c": {"8002a924": NOTAP},
+ "8001b694": {"8001ba80": 'offer(ctx, [0x1e, 0x7b, 0xd9].map((x, i) => box(i, x, 0xb4, 0x40, 0x12)), () => s0 & 0xff, ["left", "right"]);'},
+ "80016078": {"80016288": 'offer(ctx, [box(0, 0x23, 0x59, 0x75, 0x12), box(1, 0xaa, 0x59, 0x75, 0x12)], () => s1 & 0xff, ["left", "right"]);',
+              "80016724": 'offer(ctx, [0, 1, 2].map((i) => box(i, 107 * i, 0x30, 106, 0xb0)), () => s7 & 0xff, ["left", "right"]);',
+              "8001751c": 'offer(ctx, Array.from({ length: Math.min((fp & 0xff) + 1, 4) }, (_, i) => box(i, 0x64, 0x3c + 20 * i, 0x78, 0x10)), () => s1 & 0xff, ["up", "down"]);',
+              "80017330": 'offer(ctx, Array.from({ length: Math.min((fp & 0xff) + 1, 3) }, (_, i) => box(i, 0x64, 0x3c + 20 * i, 0x78, 0x10)), () => s1 & 0xff, ["up", "down"]);'},
+ "80025c74": {"80025e9c": 'offer(ctx, [box(0, 0x64, 0x68, 0x78, 0x10), box(1, 0x64, 0x7a, 0x78, 0x10)], () => s1 & 0xff, ["up", "down"]);'},
 }
 out=[]; allc=set(); names={}
 for f in FUNCS:

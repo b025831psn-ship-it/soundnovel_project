@@ -13,7 +13,11 @@ import { init } from "./init.js";
 import { mainLoop } from "./main-loop.js";
 import { vsyncCallback } from "./vsync.js";
 import { silentSound } from "./sound-bridge.js";
+import { MemoryCard } from "./memory-card.js";
 
+const CARD_STATE = 0x8008ca38, CARD_SEEN = 0x8008ca34;
+const CARD_LIB = { 0x80062544: "cardExist", 0x80062798: "cardAccept", 0x80062fa0: "cardRead", 0x80063240: "cardWrite", 0x80063748: "cardSync",
+  0x80063864: "cardCreate", 0x80063a6c: "cardDelete", 0x80063c28: "cardFormat", 0x80062504: "cardEnd" };
 const RAM = 0x200000, VSYNC_COUNT = 0x800785c0, PAD = 0x801d6660;
 // The EXE's data: 0x80010000-0x80013f34 (strings, jump tables) and 0x800677e8-0x80079800
 // (tables, the first scenario, libraries' data); 0x80013f34-0x800677e8 is code and is not loaded.
@@ -26,7 +30,9 @@ const NOOP = { 0x80053318: "ResetCallback", 0x80062468: "InitCARD", 0x800624b4: 
   0x800343b0: "STR movie (skipped)", 0x80059708: "libsnd (sound module)" };
 
 export class Machine {
-  constructor({ exeData, pacs, sound = null, onError = null }) {
+  // card: a MemoryCard (or a raw 128 KB image) in slot 1; none leaves both slots empty, as
+  // on the oracle (whose card requests never finish).
+  constructor({ exeData, pacs, sound = null, onError = null, card = null }) {
     this.ram = new Uint8Array(RAM); this.dv = new DataView(this.ram.buffer);
     this.scratch = new Uint8Array(0x400);
     for (const { addr, bytes } of exeData) this.ram.set(bytes, addr & (RAM - 1));
@@ -36,7 +42,8 @@ export class Machine {
     this.gs = new LibGpu(m);
     this.cd = new LibCd({ m, pacs });
     sound = typeof sound === "function" ? sound(m) : sound ?? silentSound(); this.sound = sound; this.callback = null; this.buttons = 0; this.frames = 0; this.card = 1; this.onError = onError;
-    this.touch = { menu: null };
+    this.memoryCard = card ? (card instanceof MemoryCard ? card : new MemoryCard(card)) : null; this.onCardWrite = null;
+    this.touch = { menu: null, frame: 0 };
     const ctx = { m, sp: 0x801ffff0 - 0x40, gs: this.gs, cd: this.cd, sound, touch: this.touch, call: (a, args, sp) => this.call(a, args, sp), padState: () => 2 };
     this.ctx = ctx;
     this.game = (function* () { yield* init(ctx); yield* mainLoop({ ...ctx, sp: ctx.sp - 0x18 }); })();
@@ -53,6 +60,7 @@ export class Machine {
     if (addr === 0x80066c38) { this.write(args[0], 0xff, 1); this.write(args[1], 0xff, 1); return 1; } // PadInitDirect
     if (addr === 0x800454b8) { this.write(0x80079660, args[0], 4); return 0; }
     if (addr === 0x8004eb00) return 0; // CdSetDebug
+    if (this.memoryCard && addr in CARD_LIB) return this[CARD_LIB[addr]](args);
     if (addr === 0x80062544 || addr === 0x80062798) return this.cardStart(addr === 0x80062544 ? 1 : 2, args[0]); // _card_info / _card_load
     if (addr === 0x80063748) { // _card_wait: no memory card (as the oracle reports), the command done
       if (args[1]) this.write(args[1], this.read(0x8008ca80, 4), 4);
@@ -75,6 +83,74 @@ export class Machine {
     }
     return 1;
   }
+
+  // ---- the memory card library (libmcrd) with a card in slot 1 ----
+  // Each request finishes at once, leaving the library's state as its completion code does
+  // (0x80063dbc): {kind, result} at 0x8008ca80, the request slot idle, the done flag set.
+  // Results: 0 none, 1 no card, 3 new card (the first answer from a card the library has not
+  // seen: bit `channel` of 0x8008ca34), 4 not formatted, 5 no such file, 6 file exists, 7 card full.
+  cardPresent(chan) { return (chan >>> 0) === 0; }
+  cardProbe(chan) { // the _card_info part every request starts with (0x800625ac)
+    const bit = 1 << (chan & 31), seen = this.read(CARD_SEEN, 4);
+    if (!this.cardPresent(chan)) { this.write(CARD_SEEN, seen & ~bit, 4); return 1; }
+    this.write(CARD_SEEN, seen | bit, 4);
+    return seen & bit ? 0 : 3;
+  }
+  cardSeen(chan) { this.write(CARD_SEEN, this.read(CARD_SEEN, 4) | 1 << (chan & 31), 4); }
+  cardDone(kind, chan, result) {
+    if (this.read(CARD_STATE, 4)) return 0; // busy: refused
+    this.write(CARD_STATE + 0xc, chan, 4);
+    this.write(0x8008ca80, kind, 4); this.write(0x8008ca84, result, 4);
+    this.write(CARD_STATE, 0, 4); this.write(CARD_STATE + 4, 0, 4); this.write(CARD_STATE + 8, 1, 4);
+    return 1;
+  }
+  cardBusy() { return this.read(CARD_STATE, 4) !== 0; }
+  cardName(a) { let s = ""; for (let i = 0; i < 32; i++) { const c = this.read(a + i, 1); if (!c) break; s += String.fromCharCode(c); } return s; }
+  cardExist([chan]) { return this.cardBusy() ? 0 : this.cardDone(1, chan, this.cardProbe(chan)); }
+  cardAccept([chan]) {
+    if (this.cardBusy()) return 0;
+    let r = this.cardProbe(chan);
+    if ((r === 0 || r === 3) && !this.memoryCard.formatted()) r = 4;
+    return this.cardDone(2, chan, r);
+  }
+  cardFile(kind, [chan, name, data, offset, bytes]) { // MemCardReadFile / MemCardWriteFile
+    if (this.cardBusy() || (bytes & 0x7f)) return 0;
+    let r = this.cardProbe(chan);
+    if (r === 0) {
+      const c = this.memoryCard, n = this.cardName(name);
+      if (!c.formatted() || !c.chain(n)) r = 5;
+      else if (kind === 3) { const b = c.read(n, offset >>> 0, bytes >>> 0); for (let i = 0; i < b.length; i++) this.write(data + i, b[i], 1); }
+      else { const b = new Uint8Array(bytes >>> 0); for (let i = 0; i < b.length; i++) b[i] = this.read(data + i, 1); c.write(n, offset >>> 0, b); this.onCardWrite?.(c); }
+    }
+    return this.cardDone(kind, chan, r);
+  }
+  cardRead(args) { return this.cardFile(3, args); }
+  cardWrite(args) { return this.cardFile(4, args); }
+  cardSync([mode, cmd, res]) { // MemCardSync (0x80063748)
+    if (!this.cardBusy() && !this.read(CARD_STATE + 8, 4)) return -1;
+    if (this.read(CARD_STATE + 8, 4)) {
+      if (res) this.write(res, this.read(0x8008ca84, 4), 4);
+      if (cmd) this.write(cmd, this.read(0x8008ca80, 4), 4);
+      this.write(CARD_STATE + 8, 0, 4); return 1;
+    }
+    if (mode === 0) throw new Error("MemCardSync(0): a request that never finishes");
+    if (res) this.write(res, this.read(CARD_STATE + 4, 4), 4);
+    if (cmd) this.write(cmd, this.read(CARD_STATE, 4), 4);
+    return 0;
+  }
+  cardSyncOp(chan, op) { // the synchronous calls: create / delete / format
+    if (this.cardBusy()) return -1;
+    this.cardSeen(chan);
+    if (!this.cardPresent(chan)) return 1;
+    const r = op(this.memoryCard);
+    if (r === 0) this.onCardWrite?.(this.memoryCard);
+    return r;
+  }
+  cardCreate([chan, name, blocks]) { const n = this.cardName(name); return this.cardSyncOp(chan, (c) => c.formatted() ? c.create(n, blocks & 0xffff) : 4); }
+  cardDelete([chan, name]) { const n = this.cardName(name); return this.cardSyncOp(chan, (c) => c.formatted() ? c.erase(n) : 4); }
+  cardFormat([chan]) { return this.cardSyncOp(chan, (c) => (c.format(), 0)); }
+  cardSwapped() { this.write(CARD_SEEN, this.read(CARD_SEEN, 4) & ~1, 4); } // slot 1 taken out and a card put in
+  cardEnd() { return 0; } // waits for the request slot to go idle (it always is), then stops the card interrupts
 
   // ---- memory and I/O ----
   read(a, w) {
@@ -133,7 +209,7 @@ export class Machine {
 
   // ---- frames ----
   vblank() {
-    this.write(VSYNC_COUNT, this.read(VSYNC_COUNT, 4) + 1, 4); this.frames++;
+    this.write(VSYNC_COUNT, this.read(VSYNC_COUNT, 4) + 1, 4); this.frames++; this.touch.frame = this.frames;
     if (this.callback) this.callback({ ...this.ctx, sp: 0x8000f000 }); // the interrupt runs on the kernel's stack, not the game's
     const v = ~this.buttons & 0xffff; // libpad report: status 0, digital pad, buttons active low
     this.write(PAD, 0, 1); this.write(PAD + 1, 0x41, 1); this.write(PAD + 2, v & 0xff, 1); this.write(PAD + 3, v >> 8, 1);
