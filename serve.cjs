@@ -56,6 +56,9 @@ function portRoute(url) {
     // XA voice channel and converted movies; folder in serve.ps1data, default ../../_claude-work/ps1-web). Open-beta paths
     // since 2026-11-28 (태우: "아이디랑 비밀번호 없이 오픈").
     ['/ports/kamaitachi-ps1/', path.join(__dirname, 'ports', 'kamaitachi-ps1'), ['.html', '.js', '.css']],
+    // 석류의 맛 SFC port: its page and the private data (program, sound) from zakuro-sfc-kor.
+    ['/ports/zakuro-sfc/', path.join(__dirname, 'ports', 'zakuro-sfc'), ['.html', '.js', '.css']],
+    ['/zakuro-sfc-kor/port-data/', path.join(__dirname, 'zakuro-sfc-kor', 'port-data'), ['.json', '.bin']],
     ['/kamaitachi-ps1-kor/port-data/', ps1Data, ['.json', '.bin', '.PAC', '.pac', '.ch0', '.mp4']],
     ['/kamaitachi2-ps2/', ps2Web, ['.html', '.js', '.mjs', '.css', '.json', '.bin', '.png', '.jpg', '.webp', '.svg', '.wasm', '.ogg', '.mp3', '.wav', '.mp4', '.woff2', '.txt']],
   ]) {

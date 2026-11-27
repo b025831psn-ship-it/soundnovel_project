@@ -99,6 +99,18 @@ whenReady(({ runtime }) => {
     if (end.y - d.from.y > 40 && Math.abs(end.x - d.from.x) < end.y - d.from.y && openBacklog()) return;
     routeTouch(runtime, d.from.x, d.from.y);
   };
+  // A mouse wheel scrolls those screens too: one notch (or 40 px of a touchpad) is one pad press.
+  let wheel = 0;
+  canvas.addEventListener("wheel", (event) => {
+    const keys = runtime.dragKeys?.() ?? [];
+    if (!keys.length) return;
+    event.preventDefault();
+    wheel += event.deltaMode ? event.deltaY * 40 : event.deltaY;
+    const n = Math.trunc(wheel / 40); if (!n) return;
+    wheel -= n * 40;
+    const key = n > 0 ? "down" : "up";
+    if (keys.includes(key)) runtime.pressSteps(key, Math.abs(n));
+  }, { passive: false });
   canvas.addEventListener("pointerup", endDrag);
   canvas.addEventListener("pointercancel", endDrag);
   addEventListener("keydown", (event) => {
