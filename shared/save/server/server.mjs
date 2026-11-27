@@ -146,6 +146,13 @@ export function createServer({ dir, maxBody = MAX_BODY, maxSlots = MAX_SLOTS, no
         let env;
         try { env = JSON.parse(await readBody(req)); } catch (e) { return send(res, e.code === 413 ? 413 : 400, { error: "bad body" }); }
         if (env?.gameId !== gameId || env?.slot !== slot || env?.format !== 1) return send(res, 400, { error: "envelope mismatch" });
+        // The body was awaited: another request may have changed this vault meanwhile. Read it again and
+        // re-check the revision; nothing below awaits, so the write is atomic and no slot is lost.
+        const vault = load(vaultId);
+        if (!vault) return send(res, 404, { error: "no vault" });
+        const cur = vault.saves[key];
+        const curRev = cur?.revision ?? 0;
+        if (ifMatch !== curRev) return send(res, 409, { current: cur && !cur.deleted ? { ...cur.env, revision: cur.revision } : null, revision: curRev });
         if (!cur && Object.values(vault.saves).filter((s) => !s.deleted).length >= maxSlots) return send(res, 413, { error: "too many slots" });
         const revision = curRev + 1;
         const others = Object.entries(vault.saves).reduce((n, [k, s]) => n + (k === key || s.deleted ? 0 : JSON.stringify(s.env).length), 0);
