@@ -130,6 +130,47 @@ def summer_movies(disc, stage):
             video(source, source.with_suffix(".mp4"))
 
 
+def complete_scene_assets(disc, scene_pack, work, assets):
+    """Convert every ScenePack still and copy every BGM with stable leaf names.
+
+    ScenePack stores only leaf names, but this disc has no duplicate IPU/OGG
+    leaves. Existing outputs are retained so an interrupted full build resumes.
+    """
+    leaves = {}
+    for disc_name in disc.files:
+        leaf = disc_name.rsplit("/", 1)[-1].lower()
+        if leaf in leaves and leaves[leaf] != disc_name:
+            leaves[leaf] = None
+        else:
+            leaves[leaf] = disc_name
+    requested = {ext: set() for ext in (".ipu", ".ogg")}
+    for entry in scene_pack.values():
+        for command in entry.get("commands", []):
+            filename = command.get("file")
+            if not isinstance(filename, str):
+                continue
+            leaf = filename.replace("\\", "/").rsplit("/", 1)[-1].lower()
+            suffix = Path(leaf).suffix
+            if suffix in requested:
+                requested[suffix].add(leaf)
+    for suffix, names in requested.items():
+        unresolved = [name for name in names if not leaves.get(name)]
+        if unresolved:
+            raise ValueError(f"ScenePack {suffix} files unresolved or ambiguous: {unresolved[:8]}")
+    total = len(requested[".ipu"])
+    for index, name in enumerate(sorted(requested[".ipu"]), 1):
+        destination = assets / (Path(name).stem + ".png")
+        if not destination.exists():
+            if index == 1 or index % 100 == 0:
+                print(f"ScenePack IPU {index}/{total}: {name}", flush=True)
+            still_png(disc.read(disc.files[leaves[name]]), work, destination, encode)
+    for name in sorted(requested[".ogg"]):
+        destination = assets / name
+        if not destination.exists():
+            destination.write_bytes(disc.read(disc.files[leaves[name]]))
+    return {"backgrounds": total, "music": len(requested[".ogg"])}
+
+
 def prepare(image, output):
     disc = Disc(image).open_index()
     disc.verify()
@@ -181,6 +222,9 @@ def prepare(image, output):
                         str(full_pack)], check=True)
         opening = json.loads((stage / "opening.json").read_text(encoding="utf-8"))
         opening["scenePack"] = json.loads(full_pack.read_text(encoding="utf-8"))
+        manifest = complete_scene_assets(disc, opening["scenePack"], stage, assets)
+        (stage / "full-assets.json").write_text(
+            json.dumps(manifest, separators=(",", ":")), encoding="utf-8")
         (stage / "opening.json").write_text(
             json.dumps(opening, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
         for file in stage.iterdir():

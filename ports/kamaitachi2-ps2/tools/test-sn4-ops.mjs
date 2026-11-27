@@ -2,7 +2,7 @@
 // (calc 0x00219670, compare 0x002196B0). Uses a synthetic program only.
 //   node ports/kamaitachi2-ps2/tools/test-sn4-ops.mjs
 import assert from 'node:assert/strict';
-import { Sn4Vm } from '../sn4.js';
+import { Sn4Vm, SN4_SPECIAL_EXECUTE } from '../sn4.js';
 
 const set = (v, op, value) => ({op: 0x68, offset: 0, args: [{var: v, op, value}]});
 const copy = (v, op, source) => ({op: 0x69, offset: 0, args: [{var: v, op, source}]});
@@ -88,4 +88,6 @@ run([{op:0x02, offset:0, args:['底']}, {op:0x106, offset:1, args:['　',['そ']
   {ruby:(word, readings, offset) => ruby.push({word,readings,offset})});
 assert.deepEqual(ruby, [{word:'　', readings:['そ'], offset:1}], 'ruby keeps its absolute text offset');
 assert.equal(classes.size + 3, 47, 'all 47 formerly unknown opcodes are covered');
+assert.equal(Object.keys(SN4_SPECIAL_EXECUTE).length, 37, 'all 37 EE special commands have Execute addresses');
+assert.ok(Object.values(SN4_SPECIAL_EXECUTE).every(address => address >= 0x100000), 'special Execute addresses are EE VAs');
 console.log('sn4 variable/condition semantics: PASS');

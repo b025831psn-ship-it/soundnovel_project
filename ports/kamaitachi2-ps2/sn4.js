@@ -1,3 +1,15 @@
+// Execute addresses recovered from the command vtables at EE 0x0021A240.
+export const SN4_SPECIAL_EXECUTE = Object.freeze({
+  0x10:0x127b88,0x11:0x127b88,0x17:0x1286e0,0x1a:0x1373b8,0x1b:0x135208,
+  0x1f:0x133538,0x23:0x1314b0,0x27:0x12f048,0x28:0x12f048,0x29:0x12fb60,
+  0x2d:0x133bc0,0x2e:0x132fd0,0x2f:0x12de30,0x31:0x12e1d8,0x34:0x135d50,
+  0x35:0x135d50,0x3a:0x136a78,0x3b:0x136a78,0x3c:0x136f30,0x3d:0x1317c8,
+  0x3e:0x1317c8,0x47:0x1314b0,0x48:0x136000,0x57:0x12de30,0x59:0x12e1d8,
+  0x5b:0x12d9f0,0x76:0x12f2f8,0x79:0x12fb60,0x7a:0x12fe10,0x7b:0x133bc0,
+  0x7c:0x130248,0x7e:0x130a18,0x7f:0x130f80,0x81:0x131d08,0x82:0x131d08,
+  0x83:0x132fd0,0x84:0x132fd0,
+});
+
 // Strict SN4 virtual machine. Presentation stays in player.js; this module
 // owns scenario control flow and refuses commands it cannot execute.
 export class Sn4Vm {
@@ -16,6 +28,29 @@ export class Sn4Vm {
     this.pending = null;
     this.clearBeforeRun = false;
     this.variables = new Map();
+    this.special = {autoRead:false, record:false, inbou:false, miniGameArea:false,
+      endings:[], effects:[], events:[], clickMap:null, pageLoop:false, panel:null,
+      tMemory:null, nameInput:null};
+  }
+
+  applySpecial(op, name, args, context) {
+    const s = this.special;
+    s.events.push({op, name, args, address:SN4_SPECIAL_EXECUTE[op], label:context.label, offset:context.offset});
+    if (op === 0x27 || op === 0x28) s.endings.push(op);
+    else if (op === 0x29 || op === 0x79) s.autoRead = args[0] ?? true;
+    else if (op === 0x34) s.record = true;
+    else if (op === 0x35) s.record = false;
+    else if (op === 0x3a) s.inbou = true;
+    else if (op === 0x3b) s.inbou = false;
+    else if (op === 0x3d) s.miniGameArea = true;
+    else if (op === 0x3e) s.miniGameArea = false;
+    else if ([0x2f,0x31,0x57,0x59,0x5b].includes(op)) s.effects.push({op,args,offset:this.text.length});
+    else if (op === 0x7a) s.clickMap = args[0];
+    else if (op === 0x7c) s.pageLoop = true;
+    else if (op === 0x7e || op === 0x7f) s.panel = {op,args};
+    else if (op === 0x81 || op === 0x82) s.nameInput = {op,args};
+    else if (op === 0x83) s.tMemory = new Map(this.variables);
+    else if (op === 0x84 && s.tMemory) this.variables = new Map(s.tMemory);
   }
 
   // EE 0x0017ED10: a uniform draw over [0, max + 1) truncated and clamped
@@ -91,10 +126,14 @@ export class Sn4Vm {
       const unknown = () => this.hooks.unknown?.(command.op, args, {
         label:this.label, offset:command.offset, variables:this.variables,
       });
-      const invoke = name => this.hooks.command?.(name, args, {
+      const invoke = name => {
+        const context = {
         op:command.op, label:this.label, offset:command.offset,
         variables:this.variables, text:this.text,
-      });
+        };
+        if (SN4_SPECIAL_EXECUTE[command.op]) this.applySpecial(command.op, name, args, context);
+        return this.hooks.command?.(name, args, context);
+      };
       switch (command.op) {
         case 0x02: this.text += args[0]; break;
         case 0x04: this.text += '\n'; break;

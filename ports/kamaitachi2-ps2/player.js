@@ -13,6 +13,12 @@ const shell = document.querySelector('main');
 const menuButton = document.querySelector('#menu-button');
 const gameMenu = document.querySelector('#game-menu');
 const asset = name => new URL('assets/' + name, import.meta.url).href;
+const SCENEPACK_EFFECT_HANDLER = Object.freeze({
+  0x05:0x1abb18,0x08:0x1abc38,0x09:0x1abc88,0x0a:0x1abcd8,
+  0x0b:0x1abcf0,0x0e:0x1abd78,0x12:0x1abee8,0x13:0x1abf18,
+  0x16:0x1abfc8,0x19:0x1ac088,0x1a:0x1ac0e8,0x1b:0x1ac138,
+  0x1c:0x1ac150,0x1f:0x1ac1b8,0x23:0x1ac210,0x24:0x1ac228,
+});
 // L= comments in the Special Box Vorbis tracks, in 48 kHz PCM frames.
 const loopFrames = {
   'k1a001.ogg': 1017889, 'k1a004.ogg': 36359, 'k2h002.ogg': 461348,
@@ -44,7 +50,8 @@ let sn4SpeedMarks = [], sn4Shown = '';
 const sn4Style = {speed:1, letterSpacing:0, lineSpacing:7, fontType:0, fontSize:33,
   marginLeft:32, marginRight:32, marginTop:32, marginBottom:32,
   moves:[], lines:[], styles:[], effects:[], centers:[], rubies:[], scene:null, scenePack:null, caption:null, retainMovie:false,
-  sceneCommands:[], unknown:[]};
+  sceneCommands:[], unknown:[], sceneFx:{layers:new Map(), filters:new Map(), models:new Map(), resources:new Map(),
+    screen:null, staffRoll:null, trigger:null}};
 let scene = 'loading', index = 0, role = 0, page = 0, revealed = 0;
 let names = [], autosave = false, slot = 0, entered = 0, lastFrame, userNotice = '';
 let idleMovie = 'opening';
@@ -149,6 +156,33 @@ function playMusic(file, options) {
   music.play(file, options);
 }
 
+// ScenePack executor dispatches op 0x00..0x25 through the EE jump table at
+// 0x00220380 (dispatcher 0x001AB960). Preserve its layer/resource lifetime and
+// timed screen effects even where the PS2-specific 3D subsystem has no web peer.
+function applySceneEffect(name, command) {
+  const fx = sn4Style.sceneFx, op = command.op, now = performance.now();
+  if (!SCENEPACK_EFFECT_HANDLER[op]) throw new Error(`Unmapped ScenePack effect ${op}`);
+  const frames = command.fadeFrames ?? command.data?.values?.[0] ?? 0;
+  const timed = {op, name, command, ee:SCENEPACK_EFFECT_HANDLER[op], start:now, end:now + frames * 1000 / 60};
+  if (op === 0x05) { fx.layers.clear(); fx.filters.clear(); }
+  else if (op === 0x08) fx.layers.set(command.layer ?? 0, timed);
+  else if (op === 0x09) fx.layers.delete(command.layer ?? 0);
+  else if (op === 0x0a) fx.filters.set(command.layer ?? 0, timed);
+  else if (op === 0x0b) fx.filters.set(command.id, timed);
+  else if (op === 0x0e) return Math.max(0, ...[...fx.layers.values(), ...fx.filters.values()].map(x => Math.ceil((x.end - now) * 60 / 1000)));
+  else if (op === 0x12) fx.screen = {...timed, from:0, to:1};
+  else if (op === 0x13) fx.screen = {...timed, from:1, to:0};
+  else if (op === 0x16) { fx.screen = null; fx.filters.clear(); }
+  else if (op === 0x19) fx.resources.set(command.id, command.file);
+  else if (op === 0x1a) fx.trigger = command.id;
+  else if (op === 0x1b) fx.trigger = null;
+  else if (op === 0x1c) fx.models.set(command.file, {motion:command.motion, vector:command.vector});
+  else if (op === 0x1f) fx.models.clear();
+  else if (op === 0x23) fx.staffRoll = command.data;
+  else if (op === 0x24) fx.resources.set(command.file, command.file);
+  return command.wait ? frames + 1 : 0;
+}
+
 function applyScenePack(name) {
   const entry = data.scenePack?.[name];
   if (name === 'my0003_00') {
@@ -191,12 +225,10 @@ function applyScenePack(name) {
       case 0x0c: case 0x0d: case 0x0f: case 0x10: case 0x11:
         if (se) se.command(command); else pendingSe.push(command);
         break;
-      // Preserve all non-audio effects in source order and continue. Renderer
-      // hooks can consume these records as their EE semantics are confirmed.
       case 0x05: case 0x08: case 0x09: case 0x0a: case 0x0b:
       case 0x0e: case 0x12: case 0x13: case 0x16: case 0x19:
       case 0x1a: case 0x1b: case 0x1c: case 0x1f: case 0x23: case 0x24:
-        sn4Style.unknown.push({name, command}); break;
+        wait = Math.max(wait, applySceneEffect(name, command)); break;
       default:
         sn4Style.unknown.push({name, command, kind:'unknown-op'}); break;
     }
@@ -720,6 +752,13 @@ function drawStory(time) {
     ? Math.max(0, measured.y + 33 * finalStyle.scale - 448) : 0;
   const end = screen.text(text, x, y - scrollY, textOptions);
   screen.c.restore();
+  const fade = sn4Mode && sn4Style.sceneFx.screen;
+  if (fade) {
+    const span = Math.max(1, fade.end - fade.start);
+    const progress = Math.max(0, Math.min(1, (performance.now() - fade.start) / span));
+    const alpha = fade.from + (fade.to - fade.from) * progress;
+    if (alpha > 0) screen.rect(0, 0, 640, 448, `rgba(0,0,0,${alpha})`);
+  }
   if (revealed >= storyText().length) {
     const tick = Math.floor(time * 6);
     if (block.book) {
