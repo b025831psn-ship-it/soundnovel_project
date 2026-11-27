@@ -296,3 +296,33 @@ The per-frame effects 0x800416a4 that `weatherTick` does not port by hand run tr
   `runtime.pressSteps`, `shell.js`). The corner button is × there (back).
 - `Gpu.rectangle` has a fast path (drawing area clipped once, texel / blend inline), about 2.7×
   fewer milliseconds per frame; `rectangleRef` keeps the plain form and a test compares the two.
+
+## Korean (machine)
+
+The machine shows Korean by default when the Korean data is next to the PAC files
+(`machine/ko/ko-script.json`, `machine/ko/ko-font.bin`); `?lang=ja`, or no Korean data, runs the
+original Japanese. The game's code is the same in both.
+
+```sh
+python3 tools/ko/build-ko.py machine/exe-data.bin SCRIPT_JA.json SCRIPT_KO.json FONT.ttf machine/ko
+```
+
+`SCRIPT_JA.json` / `SCRIPT_KO.json` are `script/ja/script.ja.json` and `script/ko/script.ko.json`
+of the private `kamaitachi-ps1-kor`; `FONT.ttf` is an OFL font with Hangul (NanumGothicBold was
+used). The two data files hold the translated script and are port data: not committed here.
+`ko-report.json` has the checks (ids, control codes, Japanese left, glyphs, page overflow).
+
+- Font: a second font in the game's own glyph format (width, height, 4-bit pixels with the dark
+  outline) for the codes 0xa080-0xdfff, which the original font does not use (`src/text/glyph.js`).
+  Characters the original font has keep their SJIS codes and glyphs.
+- Script: `src/ko.js` rebuilds SCE.PAC in memory with the translated text payloads; a resource
+  must stay within the game's 0xb000-byte script buffer. The larger file moves to a free
+  position of the disc (`src/libcd.js`).
+- Text routine (`src/text/text.js`, Korean only): the space byte 0x20 has a width and the line
+  breaks at it when the next word would pass the right edge; Korean punctuation may hang past
+  the edge once, like the original's.
+- Default names: 토오루 / 마리 (the name pointers of 0x8003ab98 are redirected).
+- The Korean build keeps its own memory card (`kamaitachi-ps1.card1.ko`): a save holds a
+  position inside the script text.
+- Not translated yet: the text of the EXE (menus, card and book screens, chapter titles of the
+  flowchart, the name entry board).

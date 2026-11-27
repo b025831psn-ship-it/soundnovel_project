@@ -18,11 +18,14 @@ import { MemoryCard, CARD_BYTES } from "./memory-card.js";
 const CARD_KEY = "kamaitachi-ps1.card1";
 const toBase64 = (b) => { let s = ""; for (let i = 0; i < b.length; i += 0x8000) s += String.fromCharCode(...b.subarray(i, i + 0x8000)); return btoa(s); };
 const fromBase64 = (t) => Uint8Array.from(atob(t), (c) => c.charCodeAt(0));
+// The Korean build keeps its own card: a save holds a position inside the script text, and the
+// Korean text has other lengths.
+let cardKey = CARD_KEY;
 function loadCard() {
-  try { const t = localStorage.getItem(CARD_KEY); if (t) { const b = fromBase64(t); if (b.length === CARD_BYTES) return b; } } catch {}
+  try { const t = localStorage.getItem(cardKey); if (t) { const b = fromBase64(t); if (b.length === CARD_BYTES) return b; } } catch {}
   return null;
 }
-function storeCard(bytes) { try { localStorage.setItem(CARD_KEY, toBase64(bytes)); } catch (e) { console.warn("[kamaitachi-ps1] memory card not stored", e); } }
+function storeCard(bytes) { try { localStorage.setItem(cardKey, toBase64(bytes)); } catch (e) { console.warn("[kamaitachi-ps1] memory card not stored", e); } }
 
 const PACS = ["SCE", "VCE", "BGD", "SDW", "BIN", "MUS", "ANM", "VCP"];
 // libpad bits (active high here; the machine inverts them into the pad report)
@@ -68,13 +71,23 @@ async function audioOut() {
   } catch (e) { console.warn("[kamaitachi-ps1 machine] no audio output", e); return null; }
 }
 
-export async function startMachine({ canvas, dataRoot, audio = true, onProgress = null, requestFrame = requestAnimationFrame, now = () => performance.now(), timer = requestFrame === requestAnimationFrame, gate = null }) {
+export async function startMachine({ canvas, dataRoot, audio = true, onProgress = null, requestFrame = requestAnimationFrame, now = () => performance.now(), timer = requestFrame === requestAnimationFrame, gate = null, lang = "ko" }) {
   const base = new URL(dataRoot, location.href);
   let loaded = 0;
   const progress = (n) => { loaded += n; onProgress?.(loaded); };
   const exeData = unpack(await fetchBytes(new URL("exe-data.bin", base), progress));
   const pacs = {};
   await Promise.all(PACS.map(async (k) => { pacs[k] = await fetchBytes(new URL(`${k}.PAC`, base), progress); }));
+  // Korean (the default): ko/ko-script.json and ko/ko-font.bin next to the PAC files
+  // (tools/ko/build-ko.py). Without them, or with lang "ja", the original Japanese runs.
+  let ko = null;
+  if (lang !== "ja") {
+    try {
+      const [script, font] = await Promise.all([fetch(new URL("ko/ko-script.json", base)).then((r) => { if (!r.ok) throw new Error(`ko-script.json ${r.status}`); return r.json(); }), fetchBytes(new URL("ko/ko-font.bin", base), progress)]);
+      ko = { script, font };
+    } catch (e) { console.warn("[kamaitachi-ps1 machine] no Korean data, running in Japanese", e); }
+  }
+  cardKey = ko ? `${CARD_KEY}.ko` : CARD_KEY;
   // CD-XA (the gold bookmark's voice drama): fetched by range only when it plays
   const xaSources = new Map(), xaSource = (c) => { if (!xaSources.has(c)) xaSources.set(c, rangeSource(new URL(xaFileName(c), base).href)); return xaSources.get(c); };
   const snd = machineSound({ exeData, pacs, xaSource, onRumble: (r) => { if (r.on) navigator.vibrate?.(50); } });
@@ -95,7 +108,7 @@ export async function startMachine({ canvas, dataRoot, audio = true, onProgress 
     v.play().catch(() => { v.muted = true; v.play().catch(() => h.stop()); addEventListener("pointerdown", unmute, { once: true }); addEventListener("keydown", unmute, { once: true }); });
     return h;
   };
-  const machine = new Machine({ exeData, pacs, sound: snd.bridge, card, xa: snd.xa, movie, onError: (e) => console.error("[kamaitachi-ps1 machine]", e) });
+  const machine = new Machine({ exeData, pacs, sound: snd.bridge, card, xa: snd.xa, movie, ko, onError: (e) => console.error("[kamaitachi-ps1 machine]", e) });
   machine.onCardWrite = (c) => { storeCard(c.bytes); runtime.onCardChange?.(); };
 
   const ctx2d = canvas.getContext("2d", { alpha: false });
@@ -135,7 +148,7 @@ export async function startMachine({ canvas, dataRoot, audio = true, onProgress 
   const presses = (key, left, down = 1, up = 1) => ({ key, left, phase: 0, down, up });
   const menuNow = () => current(machine.touch);
   const runtime = {
-    machine, soundModule: snd.mod,
+    machine, soundModule: snd.mod, lang: ko ? "ko" : "ja",
     input: { pulse(name) { const k = PULSE[name]; if (k) keys.set(k, HOLD); }, press(k) { keys.set(k, Infinity); }, release(k) { keys.delete(k); } },
     // the corner button: × inside the in-game menu (0x800795e2 is set while it is open) and in the
     // backlog (0x800792a0), the menu (triangle) while the game allows it (0x8007929f), otherwise nothing

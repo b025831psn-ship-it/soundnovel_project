@@ -20,6 +20,10 @@ export class LibCd {
   constructor({ m, pacs = {}, onEvent = null, frame = () => 0, xa = null }) {
     this.m = m; this.loc = 0; this.onEvent = onEvent; this.frame = frame; this.xa = xa; this.filter = { file: 0, chan: 0 }; this.mode = 0;
     this.files = Object.entries(DISC_LBA).map(([name, lba]) => ({ name, lba, data: pacs[name] ?? new Uint8Array(0) }));
+    // A file that has outgrown its place on the disc (the Korean SCE.PAC) moves past the last one;
+    // the game takes every position from CdSearchFile.
+    let free = 400000;
+    for (const f of this.files) if (this.files.some((g) => g !== f && g.lba > f.lba && g.lba < f.lba + f.data.length / 2048)) { f.lba = free; free += Math.ceil(f.data.length / 2048) + 16; }
   }
   str(a) { let s = ""; for (let ch; (ch = this.m.read(a++, 1)); ) s += String.fromCharCode(ch); return s; }
   CdInit() { return 1; }
