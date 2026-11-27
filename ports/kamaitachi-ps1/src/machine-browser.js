@@ -84,7 +84,7 @@ export async function startMachine({ canvas, dataRoot, audio = true, onProgress 
   const runtime = {
     machine, soundModule: snd.mod,
     input: { pulse(name) { const k = PULSE[name]; if (k) keys.set(k, HOLD); }, press(k) { keys.set(k, Infinity); }, release(k) { keys.delete(k); } },
-    menuMode: () => "menu",
+    menuMode: () => "none", // the in-game menu (0x80018d44) is not ported yet: keep the corner button hidden
     touchRows: () => menuNow()?.rows ?? [],
     cursorIndex: () => menuNow()?.index() ?? -1,
     moveCursor(n) { const t = menuNow(); if (!t || !n) return; steps = { key: t.keys[n < 0 ? 0 : 1], left: Math.abs(n), phase: 0 }; },
