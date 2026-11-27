@@ -273,3 +273,15 @@ tests) the movies are skipped as before.
 
 The per-frame effects 0x800416a4 that `weatherTick` does not port by hand run translated in
 `src/screen/weather-translated.js` (`tools/translate/gen-weather.py`).
+
+## Timing of the page and of the card (machine)
+
+- The game's frames follow the clock, not the display: `machine-browser.js` runs them from a timer
+  as well as from the display's frames, so the sound does not break up where the display
+  refreshes slowly (measured in headless Chromium at about 21 display frames a second: 361 gaps in
+  90 s of the voice drama before, none after; the recorded output equals the Node render sample
+  for sample).
+- Memory card requests take the time a real card takes (`CARD_FRAMES` in `machine.js`: 4 frames for
+  the status exchange, 36 for a card's directory, 1 per 128-byte frame read, 2 per frame written).
+  The game waits inside the library call, as the original does, with its own "checking the memory
+  card" screen up; `new Machine({ cardTiming: false })` finishes every request at once (tests, QA).
