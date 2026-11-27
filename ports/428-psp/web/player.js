@@ -73,7 +73,9 @@ function advanceOps() {
     const u16 = o => (a[o] << 8) | a[o + 1], u32 = o => ((a[o] << 24) | (a[o + 1] << 16) | (a[o + 2] << 8) | a[o + 3]) >>> 0;
     switch (e.op) {
       case 0x2d: S.wait = FAST ? 0 : u32(0); break;                                  // wait frames
-      case 0x44: S.next = picture(u16(0)); break;                                    // picture to show at next transition
+      case 0x44: { const e = picture(u16(0)); S.next = e && { id: u16(0), get img() { return e.img; }, keys: [], t: 0 }; break; } // picture to show at next transition
+      case 0x66: case 0x67: key(e.op, a); break;                                     // property keyframe (camera rect = property 8)
+      case 0x69: for (const p of [S.pic, S.next]) if (p && p.id === u16(3)) { p.keys = []; } break; // release the picture's keyframes
       case 0x63: S.trans = { type: a[0], frames: a.length >= 5 ? u16(3) : 0, t: 0, run: false }; break;
       case 0x64: if (S.next) { S.trans.run = true; S.trans.t = 0; if (!S.trans.frames || FAST) finishTrans(); } break;
       case 0x65: if (S.trans.run) S.trans.block = true; break;                       // wait for transition
@@ -113,6 +115,29 @@ function putText(t) {
     line.push({ text: t, ruby: S.ruby.reading }); S.ruby = null; return;
   }
   line.push({ text: t });
+}
+// 66/67 <prop> <layer> 00 <id u16> <n values> <u16 × n>: 66 sets the first keyframe, 67 adds one later.
+// prop 8 (n=6) = [frame, x1, y1, x2, y2, ease]: the source rectangle shown on screen. Units: 1280×720 = 464×256 picture
+// pixels (the size of an ordinary full-screen picture); camera pictures are 752×496. Matched on the original
+// (K01A_0010 c04 end keyframe, correlation 0.98). ease 0 linear, 1–3 eased (curves provisional).
+function key(op, a) {
+  const id = (a[3] << 8) | a[4], n = a[5], v = []; for (let i = 0; i < n; i++) v.push((a[6 + i * 2] << 8) | a[7 + i * 2]);
+  if (a[0] !== 8 || n !== 6) return;
+  const p = [S.next, S.pic].find(p => p && p.id === id); if (!p) return;
+  const k = { t: v[0], r: [v[1] * 464 / 1280, v[2] * 256 / 720, v[3] * 464 / 1280, v[4] * 256 / 720], ease: v[5] };
+  if (op === 0x66) { p.keys = [k]; p.t = 0; } else { p.keys.push(k); p.keys.sort((x, y) => x.t - y.t); }
+}
+const EASE = [t => t, t => t * t, t => 1 - (1 - t) * (1 - t), t => t * t * (3 - 2 * t)];
+function rectOf(p) {
+  const k = p.keys; if (!k?.length) return null;
+  let i = 0; while (i < k.length - 1 && k[i + 1].t <= p.t) i++;
+  if (i === k.length - 1) return k[i].r;
+  const a = k[i], b = k[i + 1], u = (EASE[b.ease] || EASE[0])((p.t - a.t) / Math.max(1, b.t - a.t));
+  return a.r.map((x, j) => x + (b.r[j] - x) * u);
+}
+function drawPic(p) {
+  const r = rectOf(p); const im = p.img; if (!im) return;
+  if (r) g.drawImage(im, r[0], r[1], r[2] - r[0], r[3] - r[1], 0, 0, W, H); else g.drawImage(im, 0, 0, W, H);
 }
 function finishTrans() { S.pic = S.next; S.next = null; S.trans.run = false; S.trans.block = false; }
 
@@ -232,8 +257,12 @@ function frame() {
   advanceOps();
   // picture layer
   g.fillStyle = '#000'; g.fillRect(0, 0, W, H);
-  if (S.pic?.img) g.drawImage(S.pic.img, 0, 0, W, H);
-  if (S.trans.run && S.next?.img) { g.globalAlpha = S.trans.t / S.trans.frames; g.drawImage(S.next.img, 0, 0, W, H); g.globalAlpha = 1; }
+  for (const p of [S.pic, S.trans.run && S.next]) if (p && p.keys?.length) p.t++;
+  if (S.pic?.img) drawPic(S.pic);
+  if (S.trans.run && S.next?.img) { g.globalAlpha = S.trans.t / S.trans.frames; drawPic(S.next); g.globalAlpha = 1; }
+  // The original shows pictures and movies darker and warmer than the decoded files (measured: ×0.73 R, ×0.69 G,
+  // ×0.65 B on K01A_0010 c04; cause not found yet, possibly a vertex colour or a brightness setting).
+  if (S.pic || S.next) { g.globalCompositeOperation = 'multiply'; g.fillStyle = 'rgb(186,176,166)'; g.fillRect(0, 0, W, H); g.globalCompositeOperation = 'source-over'; }
   if (S.fade.a) { g.fillStyle = `rgba(0,0,0,${S.fade.a})`; g.fillRect(0, 0, W, H); }
 
   tick++;
