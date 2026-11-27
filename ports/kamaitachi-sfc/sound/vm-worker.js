@@ -12,14 +12,17 @@ import { APU } from './apu.js';
 import { runRealtime } from './realtime.js';
 import { createPcmSink } from './pcm-sink.js';
 import { VmSound, PAD } from './vm-sound.js';
-import { tapTarget, PressQueue, isKeyboard, keyboardTarget, keyboardStep } from './touch.js';
+import { tapTarget, storyChoice, PressQueue, isKeyboard, keyboardTarget, keyboardStep } from './touch.js';
 import { SfcMachine } from '../../../sfc-vm/machine.js';
 
 let machine = null, run = null, held = 0, seek = null;
+// The option the game last took from a story choice (its cursor when the choice closed), for status.
+let choiceCursor = null, picked = null;
+const watchChoice = () => { const c = storyChoice(machine.bus.wram); if (c) choiceCursor = c.current; else if (choiceCursor != null) { picked = choiceCursor; choiceCursor = null; } };
 // Taps on lists and keyboards walk the game's own cursor one press at a time, reading it back
 // after each press, because the game drops presses while a screen fades in or text types.
-// List (choice, bookmark shelf, name check): a tap on the item under the cursor presses A;
-// on another item it moves there, and the next tap chooses it.
+// List (choice, bookmark shelf, name check): the tapped item is chosen at once: the cursor
+// moves there, then A.
 // Keyboard: the cursor goes to the tapped cell and A types it at once. When a press does not
 // move the cursor it tries the other axis; if that does not move it either (a message box is
 // up), it presses A once and stops.
@@ -37,7 +40,8 @@ const seekStep = () => {
   if (seek.read) {
     const cur = seek.read(w, machine.bus.io);
     if (cur == null) { if (++seek.waits > 90) seek = null; return; }
-    if (cur === seek.target || ++seek.presses > 40) { seek = null; return; }
+    if (cur === seek.target) { seek = { read: seek.read, target: seek.target, confirm: true, tries: 0, wait: 0 }; return; }
+    if (++seek.presses > 40) { seek = null; return; }
     queue.push(PAD[seek.target > cur ? 'DOWN' : 'UP']);
     return;
   }
@@ -68,6 +72,13 @@ onmessage = ({ data }) => {
     }
   }
   else if (data.type === 'press' && PAD[data.name]) queue.push(PAD[data.name]);
+  // A vertical drag or the wheel: on a name keyboard it pages the kanji list; on the story it
+  // goes back a sentence (X) when dragged down / wheeled up.
+  else if (data.type === 'scroll' && machine && !queue.busy && !seek) {
+    const w = machine.bus.wram;
+    if (isKeyboard(w)) { const col = Math.min(11, Math.max(2, w[0x1020] & 15)); seek = { target: (data.dir > 0 ? 9 : 1) * 16 + col, press: false, scroll: data.dir, presses: 0 }; }
+    else if (data.dir < 0 && tapTarget(w, machine.bus.io, 128, 112) === 'A') queue.push(PAD.X);
+  }
 };
 
 function start({ game, gauss, port, sram }) {
@@ -78,7 +89,7 @@ function start({ game, gauss, port, sram }) {
   // default; a player must switch them off or the tab runs out of memory in minutes.
   machine = new SfcMachine({ rom: new Uint8Array(game), apu,
     busOptions: { eventLimit: 0, apuTraceLimit: 0 }, cpuOptions: { traceLimit: 0 },
-    onFrame: (frame, fb) => { latest = fb; latestFrame = frame; seekStep(); machine.setButtons(held | queue.frame()); } });
+    onFrame: (frame, fb) => { latest = fb; latestFrame = frame; watchChoice(); seekStep(); machine.setButtons(held | queue.frame()); } });
   machine.setButtons(0);
   // Battery save: load the stored bookmarks, and hand them back when the game changes them
   // (checked twice a second; sent once the bytes have stayed the same for one check).
@@ -112,7 +123,7 @@ function start({ game, gauss, port, sram }) {
       watchSram(now);
       if (now < reportAt) return; reportAt = now + 250;
       const w = machine.bus.wram;
-      postMessage({ type: 'status', frame: vm.frame, time: vm.time, cost, keyboard: isKeyboard(w), cursor: w[0x1020], title: w[0x3c3], item: w[0x2482], typed: w[0x1024] });
+      postMessage({ type: 'status', frame: vm.frame, time: vm.time, cost, keyboard: isKeyboard(w), cursor: w[0x1020], title: w[0x3c3], item: w[0x2482], typed: w[0x1024], choice: storyChoice(w), picked });
     },
   });
 }

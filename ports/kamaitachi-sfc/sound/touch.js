@@ -1,6 +1,6 @@
-// Touch and click for the SFC VM, as in the GBA player: a tap on an item moves the cursor
-// there (as the d-pad would), a tap on the item already chosen confirms it, and a tap
-// anywhere else is A. The VM runs the original code, so the player reads the game's own
+// Touch and click for the SFC VM, as in every port (issue #41): a tap on an item chooses it
+// at once (the cursor is moved there as the d-pad would, then A); on a list, a tap away from
+// the items decides nothing; anywhere else a tap is A. The VM runs the original code, so the player reads the game's own
 // work RAM to know which screen is up and where its items are; it then presses the same
 // buttons a player would. Addresses found on the Japanese ROM (see README).
 //
@@ -73,7 +73,8 @@ export function tapTarget(w, io, x, y) {
   const choice = storyChoice(w);
   if (choice) {
     const { tops } = choice;
-    if (y < tops[0] - 4) return null; // the question above the options
+    // The question above the options, or well below the last one: nothing is decided.
+    if (y < tops[0] - 4 || y >= tops.at(-1) + PITCH * 2 + 4) return null;
     let target = 0;
     while (target + 1 < tops.length && y >= tops[target + 1] - 4) target++;
     return { target, read: (v) => storyChoice(v)?.current ?? null };
@@ -89,12 +90,14 @@ export function tapTarget(w, io, x, y) {
   return 'A';
 }
 
-// The same as button presses, for a screen that takes every press (tests, scripted play).
+// The same as button presses, for a screen that takes every press (tests, scripted play):
+// the tapped item is chosen at once (cursor moves there, then A).
 export function planTap(w, io, x, y) {
   const t = tapTarget(w, io, x, y);
   if (!t) return [];
   if (t === 'A') return ['A'];
-  return move(t.read(w, io), t.target);
+  const from = t.read(w, io);
+  return from === t.target ? ['A'] : [...move(from, t.target), 'A'];
 }
 
 // Presses buttons one after another, a few frames down and a few up, from the machine's

@@ -1,8 +1,8 @@
 // 카마이타치의 밤 (SFC) player: the original 65c816 program runs in the VM (sfc-vm/) with the
 // SPC700 + S-DSP (sound/), in a Worker. No ROM is asked for: the program image comes from the
 // private port-data, each range checked by SHA-256. Played by touch like the Kamaitachi Advance
-// player: tap the screen = A; on a choice, the bookmark shelf or the name check, tap an item to
-// move there and tap it again to choose; the corner button opens the other original buttons.
+// player (issue #41): tap the story = next; tap a choice, bookmark or name-check item = choose it;
+// tap a kana = type it; drag down = previous sentence; the corner button opens the other buttons.
 //
 // Data: ?data=URL (default ../../kamaitachi-sfc-kor/port-data/) with
 //   program/manifest.json + program/NN.bin, sound/dsp-gauss.bin.
@@ -97,17 +97,43 @@ function startGame(data, out) {
 function wireControls(worker, out) {
   const sheet = $('sheet'), menu = $('menu');
   const toggleSheet = (open) => { sheet.hidden = !open; menu.setAttribute('aria-expanded', String(open)); };
-  canvas.addEventListener('pointerdown', (event) => {
-    event.preventDefault(); out.resume();
-    if (!sheet.hidden) { toggleSheet(false); return; }
+  // Game pixels of a pointer event; held upright in the window-filling full screen the picture is
+  // drawn a quarter turn round, so the axes swap.
+  const point = (event) => {
     const box = canvas.getBoundingClientRect();
     const turned = shell.classList.contains('filled') && innerHeight > innerWidth;
     const u = turned ? (event.clientY - box.top) / box.height : (event.clientX - box.left) / box.width;
     const v = turned ? (box.right - event.clientX) / box.width : (event.clientY - box.top) / box.height;
-    worker.postMessage({ type: 'tap', x: Math.floor(u * 256), y: Math.floor(v * 224) });
+    return { x: u * 256, y: v * 224 };
+  };
+  // A tap acts on release; a vertical drag of 24+ game pixels scrolls instead (kanji list on the
+  // name keyboards, or back a sentence when dragged down on the story).
+  let down = null;
+  canvas.addEventListener('pointerdown', (event) => {
+    event.preventDefault(); out.resume();
+    if (!sheet.hidden) { toggleSheet(false); down = null; return; }
+    down = { ...point(event), id: event.pointerId };
+    canvas.setPointerCapture?.(event.pointerId);
   });
+  canvas.addEventListener('pointerup', (event) => {
+    if (!down || down.id !== event.pointerId) return;
+    const p = point(event), dy = p.y - down.y, start = down; down = null;
+    if (Math.abs(dy) >= 24 && Math.abs(dy) > Math.abs(p.x - start.x)) worker.postMessage({ type: 'scroll', dir: dy < 0 ? 1 : -1 });
+    else worker.postMessage({ type: 'tap', x: Math.floor(start.x), y: Math.floor(start.y) });
+  });
+  canvas.addEventListener('pointercancel', () => { down = null; });
+  let wheelAt = 0;
+  canvas.addEventListener('wheel', (event) => {
+    event.preventDefault();
+    const now = performance.now(); if (now < wheelAt || !event.deltaY) return; wheelAt = now + 250;
+    worker.postMessage({ type: 'scroll', dir: event.deltaY > 0 ? 1 : -1 });
+  }, { passive: false });
   for (const type of ['pointerdown', 'pointerup']) { menu.addEventListener(type, (e) => e.stopPropagation()); sheet.addEventListener(type, (e) => e.stopPropagation()); }
   menu.addEventListener('click', () => { navigator.vibrate?.(8); out.resume(); toggleSheet(sheet.hidden); });
+  addEventListener('keydown', (event) => {
+    if (event.code !== 'KeyS' || event.repeat || event.ctrlKey || event.metaKey || event.altKey || menu.classList.contains('unavailable')) return;
+    event.preventDefault(); toggleSheet(sheet.hidden); if (!sheet.hidden) sheet.querySelector('button').focus();
+  });
   for (const el of sheet.querySelectorAll('button')) el.addEventListener('click', () => { worker.postMessage({ type: 'press', name: el.dataset.b }); toggleSheet(false); });
 
   let held = 0;
