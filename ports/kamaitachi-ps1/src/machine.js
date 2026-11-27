@@ -4,7 +4,7 @@
 // from the user's PAC files), VSync and its callback, the pad report, and no-op stand-ins
 // for kernel / memory-card / debug-font set-up. The game itself runs as the ported
 // generator init() + mainLoop(): each yield is a VSync(0), i.e. one frame.
-//   const mc = new Machine({ exeData, pacs, sound });   // sound: a sound-bridge object
+//   const mc = new Machine({ exeData, pacs, sound });   // sound: a sound-bridge object, or (m) => one (m = the RAM)
 //   mc.frame(buttons)  -> one video frame; mc.display() -> { width, height, rgba }
 import { Gpu } from "./gpu/gpu.js";
 import { LibGpu } from "./gpu/libgpu.js";
@@ -35,7 +35,7 @@ export class Machine {
     this.m = m;
     this.gs = new LibGpu(m);
     this.cd = new LibCd({ m, pacs });
-    sound ??= silentSound(); this.sound = sound; this.callback = null; this.buttons = 0; this.frames = 0; this.card = 1; this.onError = onError;
+    sound = typeof sound === "function" ? sound(m) : sound ?? silentSound(); this.sound = sound; this.callback = null; this.buttons = 0; this.frames = 0; this.card = 1; this.onError = onError;
     const ctx = { m, sp: 0x801ffff0 - 0x40, gs: this.gs, cd: this.cd, sound, call: (a, args, sp) => this.call(a, args, sp), padState: () => 2 };
     this.ctx = ctx;
     this.game = (function* () { yield* init(ctx); yield* mainLoop({ ...ctx, sp: ctx.sp - 0x18 }); })();
