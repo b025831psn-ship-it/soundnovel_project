@@ -20,7 +20,7 @@ const discList = discAt >= 0 ? argv.splice(discAt, 2)[1] : null;
 const web = path.resolve(argv[0] || '.');
 const out = argv[1] ? path.resolve(argv[1]) : null;
 const { Sn4Vm } = await import(pathToFileURL(path.join(web, 'sn4.js')).href);
-const { JAPANESE_NO_START, KOREAN_NO_START, NO_END, wordWidth } =
+const { JAPANESE_NO_START, KOREAN_NO_START, NO_END, originalStoryBox, wordWidth } =
   await import(pathToFileURL(path.join(web, 'text-layout.js')).href);
 const program = JSON.parse(await readFile(path.join(web, 'assets/sn4.json'), 'utf8'));
 const opening = JSON.parse(await readFile(path.join(web, 'assets/opening.json'), 'utf8'));
@@ -170,8 +170,9 @@ function music(vm, name) {
 function checkLayout(vm, raw) {
   const text = raw.trimEnd();
   if (!text.trim()) return;
-  const L = vm.layout ?? {letterSpacing:0, lineSpacing:7, fontSize:33,
+  const rawLayout = vm.layout ?? {letterSpacing:0, lineSpacing:7, fontSize:33,
     marginLeft:32, marginRight:32, marginTop:32, marginBottom:32, moves:[], lines:[], styles:[], centers:[]};
+  const L = originalStoryBox(vm.label, rawLayout);
   const at = where(vm);
   const x = L.marginLeft, y = L.marginTop, right = 640 - L.marginRight, bottom = 448;
   let px = x, py = y, offset = 0, lineStart = true, overRight = false, glyphBottom = 0;
@@ -194,7 +195,8 @@ function checkLayout(vm, raw) {
   const chars = Array.from(text);
   const noStart = program.language === 'ko' ? KOREAN_NO_START : JAPANESE_NO_START;
   for (let i = 0; i < chars.length; i++) {
-    const ch = chars[i], style = styleAt(offset), leading = style.fontSize + style.lineSpacing;
+    const ch = chars[i], style = styleAt(offset);
+    const leading = style.fontSize + originalStoryBox(vm.label, style).lineSpacing;
     for (const move of L.moves.filter(item => item.offset === offset)) {
       if (move.absolute) { px = move.x; py = move.y; } else { px += move.x; py += move.y; }
     }

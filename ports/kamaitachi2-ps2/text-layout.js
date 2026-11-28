@@ -16,3 +16,17 @@ export function wordWidth(chars, at, offset, advance) {
   }
   return width;
 }
+
+// PCSX2 comparison: the main-island message window begins at x=18 and uses
+// 34px baselines. The prologue/snow and authored margins keep their values.
+export function originalStoryBox(label, layout) {
+  if (/^my01_00(?:78|79|80|81)/.test(label ?? ''))
+    return {...layout, lineSpacing: layout.lineSpacing === 7 ? 1 : layout.lineSpacing};
+  if (!/^(?:my0[23]|_my[23])/.test(label ?? '')) return layout;
+  return {
+    ...layout,
+    marginLeft: layout.marginLeft === 32 ? 18 : layout.marginLeft,
+    marginRight: layout.marginRight === 32 ? 18 : layout.marginRight,
+    lineSpacing: layout.lineSpacing === 7 ? 1 : layout.lineSpacing,
+  };
+}

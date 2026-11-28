@@ -5,6 +5,7 @@ import { LoopingMusic } from './music.js';
 import { SePlayer } from './se-player.js';
 import { psychometryRegion } from './psychometry-grid.js';
 import { openSaves, varsToArray, arrayToVars, GAME_ID } from './save.js';
+import { originalStoryBox } from './text-layout.js';
 
 const canvas = document.querySelector('#screen');
 const movie = document.querySelector('#movie');
@@ -817,7 +818,8 @@ function drawStory(time) {
   if (block.movie && !text) return;
   const retainMovie = block.retainMovie || (sn4Mode && sn4Style.retainMovie);
   if (!block.movie && !retainMovie) screen.background(background, background === 'my0645', time);
-  const origin = sn4Mode ? {x:sn4Style.marginLeft, y:sn4Style.marginTop}
+  const storyBox = sn4Mode ? originalStoryBox(sn4.label, sn4Style) : sn4Style;
+  const origin = sn4Mode ? {x:storyBox.marginLeft, y:storyBox.marginTop}
     : (block.background === 'my0000' ? data.invitationOrigin : {x:32, y:31});
   const scale = block.center || (background === 'my0645' && !block.movie && !block.retainMovie) ? .96 : .91;
   const y = block.center ? 192 : origin.y;
@@ -834,14 +836,15 @@ function drawStory(time) {
   }
   const metrics = sn4Mode ? {spacing:sn4Style.letterSpacing, widthScale:1}
     : block.nativeGlyphWidth ? {spacing:0, widthScale:1} : {};
-  const right = sn4Mode ? 640 - sn4Style.marginRight : 640;
+  const right = sn4Mode ? 640 - storyBox.marginRight : 640;
   const max = right - x;
   const full = storyText();
   const styleAt = sn4Mode ? offset => {
     const style = sn4Style.styles.findLast(mark => mark.offset <= offset) ?? sn4Style;
     const ratio = style.fontSize / 33;
+    const lineSpacing = style.lineSpacing === 7 ? storyBox.lineSpacing : style.lineSpacing;
     return {scale:scale * ratio, widthScale:ratio, spacing:style.letterSpacing,
-      leading:style.fontSize + style.lineSpacing};
+      leading:style.fontSize + lineSpacing};
   } : undefined;
   const lineStart = sn4Mode && sn4Style.centers.length ? offset => {
     if (!sn4Style.centers.includes(offset)) return undefined;
