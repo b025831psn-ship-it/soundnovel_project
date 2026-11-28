@@ -109,6 +109,7 @@ kbd {
   margin: 6px 0 6px; line-height: 1;
   filter: drop-shadow(0 6px 24px rgba(0, 0, 0, .7));
 }
+.card [hidden] { display: none !important }
 .logo img { display: block; width: clamp(266px, 53.2cqw, 608px); height: auto }
 .logo:not(.text) .jp, .logo:not(.text) .adv { display: none }
 .logo.text img { display: none }
