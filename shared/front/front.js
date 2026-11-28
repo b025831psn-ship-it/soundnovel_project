@@ -18,9 +18,9 @@ const enter = front.querySelector(".front-enter");
 // Night only, as the game shows the pension (태우 2026-11-28: day and dusk pictures dropped).
 front.dataset.hour = "night";
 
-// The weather of this visit, picked once: clear, light snow, snow, or a blizzard.
+// The weather of this visit, picked once: light snow, snow, or a blizzard.
 const forced = new URLSearchParams(location.search).get("weather");
-const weathers = [["clear", .25], ["light", .3], ["snow", .3], ["blizzard", .15]];
+const weathers = [["light", .3], ["snow", .45], ["blizzard", .25]]; // it always snows (태우 2026-11-28)
 let weather = forced;
 if (!weathers.some(([w]) => w === weather)) { let r = Math.random(); weather = weathers.find(([, p]) => (r -= p) < 0)?.[0] ?? "snow"; }
 front.dataset.weather = weather;
@@ -39,7 +39,7 @@ drawSharp().catch(() => pictureModule.then(({ drawPicture }) => drawPicture(pict
 // Snow in three depths, drawn as soft flakes: far ones small and dim, near ones large, loose and out of
 // focus; each falls with its own sway and a slow turn. How much, and how hard the wind blows, is the weather's.
 (function snowfall() {
-  const amount = { clear: 0, light: .35, snow: 1, blizzard: 2.4 }[weather];
+  const amount = { light: .8, snow: 1.7, blizzard: 3.2 }[weather];
   if (!amount) return;
   const wind = { light: 8, snow: 18, blizzard: 220 }[weather];
   const ctx = snow.getContext("2d"), still = matchMedia("(prefers-reduced-motion: reduce)");
@@ -76,7 +76,7 @@ drawSharp().catch(() => pictureModule.then(({ drawPicture }) => drawPicture(pict
   function resize() {
     ratio = Math.min(devicePixelRatio || 1, 2); w = snow.clientWidth; h = snow.clientHeight;
     snow.width = Math.round(w * ratio); snow.height = Math.round(h * ratio);
-    const count = Math.round(Math.min(1100, w * h / 2600 * amount));
+    const count = Math.round(Math.min(2200, w * h / 2600 * amount));
     flakes = layers.flatMap((layer) => Array.from({ length: Math.round(count * layer.share) }, () => make(layer)));
   }
   function draw(dt) {
