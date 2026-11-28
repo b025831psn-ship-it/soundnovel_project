@@ -56,6 +56,14 @@ FLOW_X = [(0, 2, None, [71, 78, 85]), (0, 70, None, [39, 46, 53]), (0, 98, None,
 # a fifth member {offset: column}: that piece is put at the place of the line's glyph of that number (0 the first), as
 # the original's fixed places did for the line that opens with a bracket: the glyph after the narrow 「 stands in
 # the column of the second glyphs of the other lines
+# Labels and messages the original draws centred in a box or on the screen (the title's three buttons, the card
+# buttons and messages, the unused book): a shorter translation is moved right by half the difference in width
+# (src/title.js drawString), so it stands in the middle as the original does. 태우 2026-11-28.
+CENTRE = {0x800110c8, 0x800110d4, 0x800110e4, 0x80010dd0, 0x80010df4, 0x80010e08, 0x80010e1c, 0x80010e44, 0x80010e58, 0x80010e94,
+          0x80011714, 0x8001172c, 0x800117d8, 0x800117f8, 0x80079228}
+# The title's buttons: the original spreads 説明 and 特報！ over the button with wide spaces, so the width of the
+# string says nothing; these are centred in the button itself: address -> (x the game draws at, button left, button width).
+CENTRE_BOX = {0x800110c8: (0x21, 30, 64), 0x800110d4: (0x86, 123, 64), 0x800110e4: (0xdc, 217, 64)}
 CHART_POOL, CHART_ROOM = 0x80009000, 0x3000   # spare kernel RAM for the flowchart title section (263 big-endian offsets, then the strings)
 # The default names: the pointers the game copies string 1 (the hero, [n1]) and string 2 (the
 # companion, [n2]) from (0x8003ab98). The original fields hold one and two glyphs; the Korean
@@ -383,6 +391,7 @@ def main():
     moved, pool, wider, chart = [], 0x80002000, [], {}
     exe_bytes = b''.join(read(a, n) for a, n in ((0x80010000, 16180), (0x800677e8, 73752)))
     done = 0
+    centre = []
     for e in exe_list:
         t = exe_ko.get(e['id'])
         if e['id'].startswith('CHART-'): chart[int(e['id'][6:])] = encode_exe(t if t is not None and e.get('translate', True) else e['ja']); done += t is not None; continue
@@ -392,6 +401,8 @@ def main():
             if w != t: rewrapped.append([e['id'], t.count('[rr]') - 1, w.count('[rr]') - 1, max(line_px(l) for l in w.split('[rr]'))]); t = w
         b = encode_exe(t); addr = int(e['addr'], 16); done += 1
         if px(b) > e['widthPx']: wider.append([e['id'], e['widthPx'], px(b)])
+        if addr in CENTRE_BOX: x0, left, room = CENTRE_BOX[addr]; centre.append([addr, left + (room - px(b) + 1) // 2 - x0])
+        elif addr in CENTRE and px(b) < e['widthPx']: centre.append([addr, (e['widthPx'] - px(b)) // 2])
         if len(b) <= e['roomBytes']: patches.append([addr, base64.b64encode(b + b'\0').decode()]); continue
         at = pool; pool += (len(b) + 4) & ~3
         if pool > CHART_POOL: raise SystemExit('the EXE strings do not fit the spare RAM')
@@ -454,7 +465,7 @@ def main():
                'patches': patches, 'moved': moved, 'chart': chart_patch, 'endings': endings_patch,
                'resources': {str(r): v for r, v in sorted(res.items())},
                # the original font's characters and codes: the owner's edits are encoded in the browser (src/ko-text.js)
-               'orig': {'chars': ''.join(orig), 'codes': list(orig.values())}, 'names': NAME_W, 'operands': dict(operands)}, open(os.path.join(out, 'ko-script.json'), 'w'), separators=(',', ':'))
+               'orig': {'chars': ''.join(orig), 'codes': list(orig.values())}, 'names': NAME_W, 'operands': dict(operands), 'centre': centre}, open(os.path.join(out, 'ko-script.json'), 'w'), separators=(',', ':'))
     json.dump(report, open(os.path.join(out, 'ko-report.json'), 'w'), ensure_ascii=False, indent=1)
     if '--editor' in opt:   # the dialogue editor's data (tools/text-editor): game text, so it stays out of this repository
         json.dump({'schema': 'kamaitachi.ps1.ko-editor.v1', 'widths': {str(c): w for c, w in sorted(owidth.items())},

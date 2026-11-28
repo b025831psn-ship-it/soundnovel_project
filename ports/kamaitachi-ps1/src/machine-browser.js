@@ -348,6 +348,7 @@ export async function startMachine({ canvas, dataRoot, audio = true, onProgress 
       // while the original's cursor walks.
       // They are run a few milliseconds at a time: a long walk in one go would keep the page from
       // sending sound for that long (a gap). No picture is drawn until the walk is over.
+      if (seek) machine.sound.quiet = true; // the walk's cursor sounds: one, at the end (below)
       if (seek) { machine.sound.still = true; const t0 = performance.now(); for (let n = 0; seek && n < 400 && !machine.error && performance.now() - t0 < 6; n++) machine.frame(held()); machine.sound.still = false; }
       // a debug jump: ○ every 40 frames, unseen and unheard, until the script of the wanted scene is the one running
       for (let n = 0; jump && n < 400 && !machine.error; n++) {
@@ -355,7 +356,10 @@ export async function startMachine({ canvas, dataRoot, audio = true, onProgress 
         if (machine.read(0x8007929c, 2) === jump.resource || ++jump.frames > 30000) { jump.done?.(); jump = null; }
         snd.js.out.length = 0; // the driver's own waits on the way (music changes) made samples: they are not played
       }
-      machine.frame(held()); soundFrame(); follow?.(); keepPage?.();
+      machine.frame(held());
+      // the cursor is there: its sound once, unless the row is chosen now (the choice has its own sound)
+      if (!seek && machine.sound.quiet) { const f = machine.sound.missed; machine.sound.quiet = false; machine.sound.missed = null; if (f && !steps.length) f(); }
+      soundFrame(); follow?.(); keepPage?.();
       for (const [k, n] of keys) { if (n !== Infinity) { if (n <= 1) keys.delete(k); else keys.set(k, n - 1); } }
       acc -= STEP; if (!seek) dirty = true;
     }

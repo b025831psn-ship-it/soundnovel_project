@@ -66,22 +66,27 @@ export function moduleSound(mod, m = null) {
   };
   const run = (f) => (...a) => { pull(); const r = f(...a); push(); return r; };
   const vsync = run(() => mod.vsync());
+  const playUi = run((n) => mod.playUi(n));
+  const keyOn = run((vab, prog, tone, note, fine, voll, volr) => { if (mod.inited === 1) mod.ss.SsUtKeyOn(vab, prog, tone, note, fine, voll, volr); });
   return {
     play: run((id, fade) => mod.play(id, fade)),
     stop: run((id, fade) => mod.stop(id, fade)),
     setVariant: run((bank, id) => mod.setVariant(bank, id)),
-    playUi: run((n) => mod.playUi(n)),
+    playUi(n) { if (this.quiet) { this.missed = () => playUi(n); return; } return playUi(n); },
     fadeMusic: run((n) => mod.stopMusic(n)),
     closeMusic: run(() => mod.closeMusic()),
     frame: run(() => mod.frame()),
     reset: run(() => mod.reset()),
     lib: (addr, args) => mod.lib?.(addr, args) ?? LIB_DEFAULT(addr),
-    keyOn: run((vab, prog, tone, note, fine, voll, volr) => { if (mod.inited === 1) mod.ss.SsUtKeyOn(vab, prog, tone, note, fine, voll, volr); }),
+    keyOn(...a) { if (this.quiet) { this.missed = () => keyOn(...a); return; } return keyOn(...a); },
     start: () => {}, // the module starts the library when it is made
     // without m the audio thread runs the module's VSync part on its own clock.
     // still: frames run at once and unheard (a tap that walks the cursor, machine-browser.js) do not move the
     // song on: no samples are made in them, so the sequencer would leave out that part of the music
     still: false,
+    // quiet: while a tap walks the cursor to its row, the cursor sounds (the UI sounds and key-ons) are not
+    // played; the last one is kept in `missed`, for the page to play once when the cursor is there
+    quiet: false, missed: null,
     vsync: m ? function () { if (!this.still) vsync(); } : () => {},
     song: () => s16(mod.music.song),
     effectPlaying: (n) => mod.ch.some((c) => s16(c.id) === n),

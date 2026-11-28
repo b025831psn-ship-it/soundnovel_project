@@ -140,6 +140,8 @@ export function koBuild(pacs, ko) {
   return { pacs: { ...pacs, SCE: patchScePac(pacs.SCE, ko.script) }, text: { font: ko.font, glyphs: ko.script.glyphs, space: ko.script.space ?? 6, hang: new Set(ko.script.hang ?? []),
       // strings of the EXE that did not fit their place: old address -> new address (title.js drawString, scenario/lib.js textStart)
       moved: new Map(ko.script.moved ?? []),
+      // labels the original draws centred: address -> pixels to the right for the shorter translation (title.js drawString)
+      centre: new Map(ko.script.centre ?? []),
       // the title section of the flowchart table: kept in spare RAM; the flowchart's title pointer is turned to it (menu/calls.js)
       chart: ko.script.chart ? { addr: ko.script.chart.addr, bytes: fromBase64(ko.script.chart.bytes) } : null,
       // the culprit judge: address of a name of its table -> the Korean names taken as that name (menu/calls.js)

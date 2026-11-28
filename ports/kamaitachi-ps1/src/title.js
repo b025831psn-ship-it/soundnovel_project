@@ -45,6 +45,7 @@ export function drawString(ctx, x, y, str, step) { // 0x80038658
   const { m } = ctx, sp = ctx.sp - 0x30, sub = { ...ctx, sp }, left = x, STRINGS = 0x8006b030;
   // Korean: the particle after a name follows the name (text/josa.js); `name` is the last glyph of a name just drawn
   let name = m.ko?.josa?.join.has(str >>> 0) ? lastGlyph(m, m.read(STRINGS + 4, 4) >>> 0) : 0;
+  x += m.ko?.centre?.get(str >>> 0) ?? 0; // Korean: a label the original centres stays in the middle
   str = m.ko?.moved.get(str >>> 0) ?? str; // Korean: a string that did not fit its place
   step &= 0xff;
   const advance = () => { x = step ? x + step : x + 1 + m.read(GP + 0x19e, 1); };
