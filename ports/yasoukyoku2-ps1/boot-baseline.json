@@ -1,0 +1,10 @@
+{
+  "idle": {
+    "frames": 12050,
+    "sha256": "c8cfab95b09991a917f40eb72c206d48ab5d225ade166734c8d0c003b9626e94"
+  },
+  "buttons": {
+    "frames": 12050,
+    "sha256": "b1be4aaef0bcc8c89cbc7adbbe3a98f170857cedcfac262869b2203a4da53fcd"
+  }
+}
