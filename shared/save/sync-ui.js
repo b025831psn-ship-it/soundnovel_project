@@ -5,6 +5,7 @@
 // It adds a bottom-bar button before #fullscreen. `boot` (optional) carries the web suspend:
 //   { canContinue(), titleActive, continueSuspended(), continueLabel?, continueNote?, notice? }
 import { deriveKeys, SyncClient, startPairing, claimPairing, renewPairing, newSecret } from "./sync.js";
+import { mountQuickSave } from "./quick-save.js";
 
 const el = (tag, props = {}, ...kids) => {
   const e = Object.assign(document.createElement(tag), props);
@@ -41,6 +42,7 @@ let mounted = false;
 export async function mountSyncUi({ api = ready(), fetchImpl, initialTimeoutMs = 4000 } = {}) {
   mounted = true;
   const { store, boot, gameId: GAME } = await api;
+  mountQuickSave({ store, gameId: GAME, boot, fetchImpl });
   document.head.append(el("style", { textContent: css }));
   const dialog = el("dialog", { id: "save-dialog" });
   const button = el("button", { className: "icon", type: "button", title: "저장 동기화", ariaLabel: "저장 동기화" });
