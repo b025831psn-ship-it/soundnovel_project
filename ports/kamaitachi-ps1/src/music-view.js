@@ -20,8 +20,8 @@ const AHEAD = 0.3; // seconds of sound kept queued
 export async function songPlayer(dataRoot, { song = 8, volume = 0.5 } = {}) {
   const base = new URL(dataRoot, location.href);
   const [exe, member] = await Promise.all([
-    fetch(new URL("exe-data.bin", base)).then(async (r) => { if (!r.ok) throw new Error(`exe-data.bin: ${r.status}`); return unpack(new Uint8Array(await r.arrayBuffer())); }),
-    fetchPacMember(new URL("MUS.PAC", base).href, song)]);
+    fetch(new URL("exe-data.bin", base)).catch((e) => { throw new Error(`exe-data.bin: ${e.message}`); }).then(async (r) => { if (!r.ok) throw new Error(`exe-data.bin: ${r.status}`); return unpack(new Uint8Array(await r.arrayBuffer())); }),
+    fetchPacMember(new URL("MUS.PAC", base).href, song).catch((e) => { throw new Error(`MUS.PAC: ${e.message}`); })]);
   if (!member) throw new Error(`song ${song}: no such member`);
   const js = new JsSs();
   const mod = new SoundModule(js.ss, soundTables(reader(exe)), { loadMember: (kind, id) => (kind === "MUS" && id === song ? musMember(member) : null), rumble() {} });

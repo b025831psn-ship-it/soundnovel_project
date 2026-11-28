@@ -289,18 +289,12 @@ body.front-on { overflow: hidden }
 }
 .front.ready .front-picture { opacity: 1 }
 .front-picture.sharp { image-rendering: auto }
-.front .front-picture.sharp.own-hour { filter: none }
 @keyframes front-drift { from { transform: scale(1) } to { transform: scale(1.08) translate(-1%, -1%) } }
 .front-sky { position: absolute; inset: 0; z-index: -2; pointer-events: none; transition: background 30s linear }
 .front-snow { position: absolute; inset: 0; z-index: -1; width: 100%; height: 100%; pointer-events: none }
-/* The hour of the visitor's clock: the night picture as it is, dusk warmer, day lifted and cooled. */
+/* Night, as the game shows it. */
 .front[data-hour="night"] .front-picture { filter: saturate(.9) brightness(.85) }
 .front[data-hour="night"] .front-sky { background: radial-gradient(120% 90% at 50% 40%, transparent 40%, rgba(0,0,0,.75)), linear-gradient(rgba(4,6,14,.55), rgba(4,5,10,.2) 40%, rgba(4,5,10,.85)) }
-.front[data-hour="dusk"] .front-picture { filter: brightness(1.35) saturate(1.1) sepia(.35) hue-rotate(-12deg) }
-.front[data-hour="dusk"] .front-sky { background: linear-gradient(rgba(120,60,90,.45), rgba(230,120,70,.25) 45%, rgba(10,8,14,.8)); mix-blend-mode: normal }
-.front[data-hour="day"] .front-picture { filter: brightness(1.9) contrast(.85) saturate(.35) }
-.front[data-hour="day"] .front-sky { background: linear-gradient(rgba(150,185,230,.5), rgba(200,215,235,.15) 45%, rgba(10,12,18,.75)) }
-.front[data-hour="day"] .front-title { text-shadow: 0 2px 6px rgba(0,0,0,.85), 0 0 28px rgba(0,0,0,.7) }
 .front[data-weather="blizzard"] .front-sky::after { content: ""; position: absolute; inset: 0; background: rgba(220,228,240,.22); backdrop-filter: blur(1.5px) }
 .front-title { position: relative; display: grid; justify-items: center; gap: 14px; padding: 24px; text-align: center; text-shadow: 0 2px 18px rgba(0,0,0,.8) }
 .front-kicker { margin: 0; color: rgba(236,232,225,.7); font: 500 11px/1 "IBM Plex Sans KR", sans-serif; letter-spacing: .32em }

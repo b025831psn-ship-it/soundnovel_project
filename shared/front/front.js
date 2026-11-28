@@ -1,9 +1,9 @@
-// The hub's front page: the pension at the visitor's hour, the weather of this visit, and the song of the
+// The hub's front page: the pension at night, the weather of this visit, and the song of the
 // greeting / name screen. The picture and the song come from the PS1 port's own data, drawn and played by
 // the port's code (picture-view.js, music-view.js); nothing is copied out of the game.
 // The picture and the song load apart: if one fails on a browser, the other still comes.
 const pictureModule = import("/ports/kamaitachi-ps1/src/picture-view.js");
-const musicModule = import("/ports/kamaitachi-ps1/src/music-view.js?v=7");
+const musicModule = import("/ports/kamaitachi-ps1/src/music-view.js?v=8");
 
 const DATA = "/kamaitachi-ps1-kor/port-data/machine/";
 const PICTURE = 2; // the pension at the end of the snowy road, windows lit
@@ -15,13 +15,8 @@ const snow = front.querySelector(".front-snow");
 const sound = front.querySelector(".front-sound");
 const enter = front.querySelector(".front-enter");
 
-// The hour: day, dusk or night, from the visitor's own clock; checked again each minute.
-function hourClass(h) { return h >= 7 && h < 16 ? "day" : (h >= 5 && h < 7) || (h >= 16 && h < 19) ? "dusk" : "night"; }
-function setHour() {
-  const cls = hourClass(new Date().getHours());
-  front.dataset.hour = cls;
-}
-setHour(); setInterval(setHour, 60000);
+// Night only, as the game shows the pension (태우 2026-11-28: day and dusk pictures dropped).
+front.dataset.hour = "night";
 
 // The weather of this visit, picked once: clear, light snow, snow, or a blizzard.
 const forced = new URLSearchParams(location.search).get("weather");
@@ -29,45 +24,55 @@ const weathers = [["clear", .25], ["light", .3], ["snow", .3], ["blizzard", .15]
 let weather = forced;
 if (!weathers.some(([w]) => w === weather)) { let r = Math.random(); weather = weathers.find(([, p]) => (r -= p) < 0)?.[0] ?? "snow"; }
 front.dataset.weather = weather;
-const forcedHour = new URLSearchParams(location.search).get("hour");
-if (["day", "dusk", "night"].includes(forcedHour)) { front.dataset.hour = forcedHour; }
 
 // A sharper copy of the same picture (AI 4x with the original texture laid back, made on the PC, kept with
-// the port data) is used when the server has it; day and dusk have their own pictures made from it
-// (front-pension-day.png, -dusk.png). Without them the night picture is tinted; without any, the port
-// draws the original 320x240.
-const load = (name) => new Promise((resolve, reject) => {
-  const img = new Image(); img.onload = () => resolve(img); img.onerror = reject; img.src = DATA + name;
-});
-let shown = "";
-async function drawHour() {
-  const hour = front.dataset.hour;
-  if (shown === hour) return;
-  let img = null, own = false;
-  if (hour !== "night") { img = await load(`front-pension-${hour}.png`).catch(() => null); own = Boolean(img); }
-  img ??= await load("front-pension.png");
-  picture.width = img.naturalWidth; picture.height = img.naturalHeight; picture.getContext("2d").drawImage(img, 0, 0);
-  picture.classList.add("sharp"); picture.classList.toggle("own-hour", own); shown = hour;
+// the port data) is used when the server has it; otherwise the port draws the original 320x240.
+function drawSharp() {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => { picture.width = img.naturalWidth; picture.height = img.naturalHeight; picture.getContext("2d").drawImage(img, 0, 0); picture.classList.add("sharp"); resolve(); };
+    img.onerror = reject; img.src = DATA + "front-pension.png";
+  });
 }
-drawHour().catch(() => pictureModule.then(({ drawPicture }) => drawPicture(picture, DATA, PICTURE))).then(() => front.classList.add("ready")).catch((e) => { console.error("front picture", e); front.classList.add("ready", "no-picture"); });
-setInterval(() => { if (picture.classList.contains("sharp")) drawHour().catch(() => {}); }, 60000);
+drawSharp().catch(() => pictureModule.then(({ drawPicture }) => drawPicture(picture, DATA, PICTURE))).then(() => front.classList.add("ready")).catch((e) => { console.error("front picture", e); front.classList.add("ready", "no-picture"); });
 
-// Snow in three depths; how much and how hard the wind blows depends on the weather.
+// Snow in three depths, drawn as soft flakes: far ones small and dim, near ones large, loose and out of
+// focus; each falls with its own sway and a slow turn. How much, and how hard the wind blows, is the weather's.
 (function snowfall() {
   const amount = { clear: 0, light: .35, snow: 1, blizzard: 2.4 }[weather];
   if (!amount) return;
   const wind = { light: 8, snow: 18, blizzard: 220 }[weather];
   const ctx = snow.getContext("2d"), still = matchMedia("(prefers-reduced-motion: reduce)");
-  const layers = [
-    { share: .55, size: [.8, 2], speed: [22, 40], alpha: [.4, .75], blur: 0 },
-    { share: .33, size: [2, 3.4], speed: [45, 80], alpha: [.65, .95], blur: 0 },
-    { share: .12, size: [4, 7], speed: [90, 140], alpha: [.45, .8], blur: 3 },
-  ];
   const rand = (a, b) => a + Math.random() * (b - a);
+  // A flake: a few soft overlapping blobs (a clump of crystals), brightest in the middle; a blurred one for
+  // the near, out-of-focus flakes.
+  function sprite(size, soft) {
+    const c = document.createElement("canvas"), n = Math.ceil(size * 4); c.width = c.height = n;
+    const g = c.getContext("2d"), m = n / 2;
+    const blobs = soft ? 1 : 3 + Math.floor(Math.random() * 4);
+    for (let i = 0; i < blobs; i++) {
+      const r = size * (soft ? 1.6 : rand(.45, .8)), x = m + (soft ? 0 : rand(-.5, .5) * size), y = m + (soft ? 0 : rand(-.5, .5) * size);
+      const grad = g.createRadialGradient(x, y, 0, x, y, r);
+      grad.addColorStop(0, soft ? "rgba(255,255,255,.55)" : "rgba(255,255,255,.95)");
+      grad.addColorStop(soft ? .5 : .55, soft ? "rgba(240,244,252,.25)" : "rgba(246,249,255,.55)");
+      grad.addColorStop(1, "rgba(235,240,250,0)");
+      g.fillStyle = grad; g.beginPath(); g.arc(x, y, r, 0, 6.2832); g.fill();
+    }
+    return c;
+  }
+  const layers = [
+    { share: .55, size: [1, 2.2], speed: [20, 36], alpha: [.35, .7], soft: false },
+    { share: .33, size: [2.2, 4], speed: [40, 70], alpha: [.6, .95], soft: false },
+    { share: .12, size: [5, 9], speed: [80, 130], alpha: [.35, .7], soft: true },
+  ];
+  const sprites = layers.map((l) => Array.from({ length: 12 }, (_, i) => sprite(l.size[0] + (l.size[1] - l.size[0]) * (i / 11), l.soft)));
   let flakes = [], w = 0, h = 0, ratio = 1, last = 0;
   const speedUp = weather === "blizzard" ? 2.2 : 1;
-  const make = (layer, y) => ({ layer, x: Math.random() * (w + 400) - 200, y: y ?? rand(-h, h), r: rand(...layer.size), v: rand(...layer.speed) * speedUp,
-    a: rand(...layer.alpha), phase: Math.random() * 6.28, sway: rand(.4, 1.4), drift: rand(8, 26) });
+  const make = (layer, y) => {
+    const li = layers.indexOf(layer), k = Math.floor(Math.random() * 12), img = sprites[li][k];
+    return { layer, img, d: img.width, x: Math.random() * (w + 400) - 200, y: y ?? rand(-h, h), v: rand(...layer.speed) * speedUp,
+      a: rand(...layer.alpha), phase: Math.random() * 6.28, sway: rand(.3, 1.1), drift: rand(10, 30), turn: rand(-1, 1), angle: Math.random() * 6.28, flutter: rand(.6, 1.6) };
+  };
   function resize() {
     ratio = Math.min(devicePixelRatio || 1, 2); w = snow.clientWidth; h = snow.clientHeight;
     snow.width = Math.round(w * ratio); snow.height = Math.round(h * ratio);
@@ -75,15 +80,21 @@ setInterval(() => { if (picture.classList.contains("sharp")) drawHour().catch(()
     flakes = layers.flatMap((layer) => Array.from({ length: Math.round(count * layer.share) }, () => make(layer)));
   }
   function draw(dt) {
-    ctx.setTransform(ratio, 0, 0, ratio, 0, 0); ctx.clearRect(0, 0, w, h); ctx.fillStyle = "#f4f6fb";
+    ctx.setTransform(ratio, 0, 0, ratio, 0, 0); ctx.clearRect(0, 0, w, h);
     for (const f of flakes) {
-      f.phase += dt * f.sway; f.y += f.v * dt; f.x += (wind * (.6 + f.layer.share) + Math.sin(f.phase) * f.drift) * dt;
-      if (f.y - f.r > h) Object.assign(f, make(f.layer, -f.r * 2));
+      f.phase += dt * f.sway; f.angle += dt * f.turn;
+      // a flake drifts down unevenly: it slows and speeds as it rocks
+      f.y += f.v * dt * (.75 + .25 * Math.sin(f.phase * f.flutter * 2));
+      f.x += (wind * (.6 + f.layer.share) + Math.sin(f.phase) * f.drift) * dt;
+      if (f.y - f.d > h) Object.assign(f, make(f.layer, -f.d));
       if (f.x > w + 200) f.x -= w + 400;
-      ctx.globalAlpha = f.a; ctx.shadowColor = "rgba(255,255,255,.9)"; ctx.shadowBlur = f.layer.blur;
-      ctx.beginPath(); ctx.arc(f.x, f.y, f.r, 0, 6.2832); ctx.fill();
+      ctx.globalAlpha = f.a;
+      ctx.setTransform(ratio, 0, 0, ratio, f.x * ratio, f.y * ratio); ctx.rotate(f.angle);
+      // seen edge-on as it turns, a flake narrows a little
+      ctx.scale(1, .7 + .3 * Math.abs(Math.cos(f.angle)));
+      ctx.drawImage(f.img, -f.d / 2, -f.d / 2);
     }
-    ctx.globalAlpha = 1; ctx.shadowBlur = 0;
+    ctx.globalAlpha = 1;
   }
   function tick(now) {
     const dt = Math.min((now - (last || now)) / 1000, .05); last = now;

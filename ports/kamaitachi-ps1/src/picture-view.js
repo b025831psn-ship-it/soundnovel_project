@@ -43,7 +43,9 @@ const heads = new Map(), wholes = new Map();
 export async function fetchPacMember(url, id) {
   const range = async (from, to) => {
     if (wholes.has(url)) return (await wholes.get(url)).subarray(from, to);
-    const r = await fetch(url, { headers: { Range: `bytes=${from}-${to - 1}` } }); if (!r.ok) throw new Error(`${url}: ${r.status}`);
+    // a browser or something on its way that refuses the byte range: then the whole file, once
+    const r = await fetch(url, { headers: { Range: `bytes=${from}-${to - 1}` } }).catch(() => fetch(url, { cache: "reload" }));
+    if (!r.ok) throw new Error(`${url}: ${r.status}`);
     const b = new Uint8Array(await r.arrayBuffer());
     if (r.status !== 200) return b;
     wholes.set(url, Promise.resolve(b)); return b.subarray(from, to);
