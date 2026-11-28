@@ -1,0 +1,23 @@
+{
+  "schemaVersion": 1,
+  "gameId": "test-media-pending",
+  "title": "지연 배경 테스트",
+  "assets": "media/",
+  "entry": "a",
+  "nodes": {
+    "a": { "set": { "v:group": 0, "v:pending": 0 }, "bg": "red.png", "pages": [["빨강에서 시작."]], "next": [{ "if": { "v:group": 0 }, "to": "a_d" }, { "to": "a_i" }] },
+    "a_d": { "pages": [], "set": { "v:pending": 81 }, "to": "b" },
+    "a_i": { "pages": [], "bg": { "by": "v:group", "map": { "1": "blue.png" } }, "to": "b" },
+    "b": { "pages": [["묶음 0: 요청만 보류, 빨강 유지."]], "to": "c" },
+    "c": { "pages": [], "bg": { "by": "v:pending", "map": { "81": "blue.png" } }, "to": "d" },
+    "d": { "set": { "v:pending": 0 }, "pages": [["보류 요청 적용: 파랑."]], "to": "e" },
+    "e": { "pages": [], "bg": { "by": "v:pending", "map": { "81": "red.png" } }, "to": "f" },
+    "f": { "pages": [["보류가 비었으면 파랑 유지."]], "to": "g" },
+    "g": { "set": { "v:pending": 99 }, "pages": [], "bg": { "by": "v:pending", "map": { "81": "red.png" } }, "to": "h" },
+    "h": { "pages": [["범위 밖 보류값도 파랑 유지."]], "to": "i" },
+    "i": { "set": { "v:group": 1 }, "bg": "red.png", "pages": [["묶음 1, 빨강."]], "next": [{ "if": { "v:group": 0 }, "to": "i_d" }, { "to": "i_i" }] },
+    "i_d": { "pages": [], "set": { "v:pending": 81 }, "to": "j" },
+    "i_i": { "pages": [], "bg": { "by": "v:group", "map": { "1": "blue.png" } }, "to": "j" },
+    "j": { "pages": [["묶음 1에서는 바로 파랑."]], "to": null }
+  }
+}

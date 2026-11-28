@@ -1,12 +1,18 @@
 // 석류의 맛 (SFC) player: runs the original program in the 65c816 VM with its own PPU and APU,
 // from private port-data (no ROM). Everything is played by touch, like the Kamaitachi Advance
-// player: tap the screen = A, tap a choice = pick it, the corner button = B. Keyboards work too.
+// player (issue #41): on the logo and title a tap is START; on a choice, the slot disks, the file
+// menu and the name board the tapped item is chosen; a tap away from every item does nothing;
+// elsewhere a tap goes on (A). The corner button is B. Keys: Z/Enter confirm, X cancel.
 //
 // Data: ?data=URL (default ../../zakuro-sfc-kor/port-data/) with
 //   sound/ipl.bin, sound/boot-dsp.bin, sound/dsp-gauss.bin, program/manifest.json + ranges.
+import { fitScale } from "../../shared/player/fit-scale.js";
 import { createAudioOut } from './sound/output.js';
+import { startGate } from '../../shared/player/start-gate.js';
 import { ProgramImage, ZakuroVM, createApuLink } from './vm/browser.js';
 import { InputQueue, PAD } from './input-queue.js';
+import { GAME_ID, openSaves } from './save-store.js';
+import { itemAt, planFor, planForLateTap, screenOf } from './screens.js';
 
 const $ = (id) => document.getElementById(id);
 const shell = $('shell'), stage = $('stage'), canvas = $('screen');
@@ -19,16 +25,14 @@ const store = {
 
 const MASTER_HZ = 21477272.727, DSP_HZ = 32000, SLICE = 35791; // ~1/600 s of master clock
 const LEAD = 0.12, BUDGET_MS = 30;
-const SRAM_KEY = 'zakuro-sfc.sram';
 
 // Whole-number scale in device pixels, so every SFC pixel is the same size.
 function fit() {
   const ratio = devicePixelRatio || 1;
-  const steps = Math.floor(Math.min((stage.clientWidth * ratio) / 256, (stage.clientHeight * ratio) / 224));
-  const scale = steps >= 1 ? steps / ratio : Math.min(stage.clientWidth / 256, stage.clientHeight / 224);
+  const { scale, whole, steps } = fitScale(stage.clientWidth, stage.clientHeight, 256, 224, ratio);
   canvas.style.width = `${256 * scale}px`;
   canvas.style.height = `${224 * scale}px`;
-  $('scale').textContent = steps >= 1 ? `×${steps}` : '축소';
+  $('scale').textContent = whole ? `×${steps}` : '맞춤';
 }
 new ResizeObserver(fit).observe(stage);
 fit();
@@ -36,11 +40,9 @@ fit();
 const get = (p) => fetch(new URL(p, base)).then((r) => { if (!r.ok) throw new Error(`${p}: HTTP ${r.status}`); return r; });
 const bin = (p) => get(p).then((r) => r.arrayBuffer()).then((b) => new Uint8Array(b));
 const hex = (buf) => [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, '0')).join('');
-const toBase64 = (bytes) => { let s = ''; for (const b of bytes) s += String.fromCharCode(b); return btoa(s); };
-const fromBase64 = (text) => Uint8Array.from(atob(text), (c) => c.charCodeAt(0));
 
 function fail(error) {
-  $('loading').hidden = true; $('start').hidden = true;
+  $('loading').hidden = true; $('start')?.remove();
   $('error').hidden = false; $('error').textContent = `원작 데이터를 불러오지 못했습니다.\n${error.message ?? error}`;
 }
 
@@ -61,7 +63,7 @@ async function load() {
   return { ipl, dsp, gauss: new Int16Array(gauss.buffer, gauss.byteOffset, 512), program, replay };
 }
 
-function startGame(data, out) {
+function startGame(data, out, saves) {
   const { apu, link } = createApuLink({ ipl: data.ipl, gauss: data.gauss, powerOnDsp: data.dsp });
   let produced = 0;
   apu.dsp.onSample = (l, r) => { produced++; out.sample(l, r); };
@@ -78,10 +80,32 @@ function startGame(data, out) {
       saveTimer = setTimeout(saveSram, 800);
     },
   });
-  function saveSram() { clearTimeout(saveTimer); store.set(SRAM_KEY, toBase64(vm.exportSram())); }
-  addEventListener('pagehide', saveSram);
-  const saved = data.replay ? null : store.get(SRAM_KEY);
-  if (saved) { try { vm.importSram(fromBase64(saved)); } catch { /* size changed: start fresh */ } }
+  // Saves (save-store.js): the cartridge's three SRAM slots live in the shared save store, which syncs
+  // them with the save server; a verification run (?replay) never touches them.
+  function saveSram() { clearTimeout(saveTimer); if (saves) saves.takeSram(vm.exportSram()); }
+  if (saves) {
+    vm.importSram(saves.fillSram(vm.exportSram()));
+    saves.store.subscribe((event) => {
+      if (event.type === 'remote' && event.gameId === GAME_ID) saves.applyRemote(vm.bus.sram, event.slot);
+    });
+  }
+  // Web only: the page being played is kept in the suspend slot when the page is left (and every
+  // minute of play), so another device can carry on from the same moment.
+  const inStory = () => { const now = screenOf(vm.bus.wram, vm.getTouchState()); return vm.bus.wram[0x1000] === 0xf6 && (now === 'story' || now === 'choice'); };
+  // The state is ~130 KB packed, so the minute timer writes it only after the scene has changed.
+  let suspendedAt = -1, suspendedScene = -1;
+  const suspend = async ({ always = true } = {}) => {
+    if (!saves || vm.ppu.field === suspendedAt) return;
+    if (!inStory()) return; // logo, title, slots, name board: no page to carry on from
+    const w = vm.bus.wram;
+    const scene = w[0x1002] | (w[0x1003] << 8);
+    if (!always && scene === suspendedScene) return;
+    suspendedAt = vm.ppu.field; suspendedScene = scene;
+    try { await saves.writeSuspend(vm.saveState(), { scene }); } catch { /* keep playing */ }
+  };
+  addEventListener('pagehide', () => { saveSram(); suspend(); });
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') { saveSram(); suspend(); } });
+  setInterval(() => suspend({ always: false }), 60000);
   // The VM renders only when asked (once per display frame, below), so catching up after a stall
   // costs CPU time only. Input is fed once per field from the field counter instead.
   vm.skipRender = true;
@@ -95,20 +119,25 @@ function startGame(data, out) {
   vm.reset();
 
   // Paced by the audio buffer: run the VM until ~LEAD s of S-DSP output is queued ahead of playback.
-  let startTime = out.context.currentTime;
+  // Until the first tap the AudioContext is suspended (browser rule) and its clock stands still: the game
+  // then runs by the wall clock, and the clock is re-anchored when the sound starts.
+  const wallStart = performance.now() / 1000;
+  const clock = () => (out.context.state === 'running' ? out.context.currentTime : performance.now() / 1000 - wallStart);
+  let startTime = clock();
+  out.context.addEventListener('statechange', () => { startTime = clock() - produced / DSP_HZ; });
   const glow = $('glow').getContext('2d');
   let tick = 0;
   const step = () => {
     const started = performance.now();
-    let ahead = produced / DSP_HZ - (out.context.currentTime - startTime);
+    let ahead = produced / DSP_HZ - (clock() - startTime);
     // After a hidden tab or a stall, restart the clock instead of racing to catch up.
-    if (ahead < -0.25) { startTime = out.context.currentTime - produced / DSP_HZ; ahead = 0; }
+    if (ahead < -0.25) { startTime = clock() - produced / DSP_HZ; ahead = 0; }
     try {
       while (ahead < LEAD && !vm.cpu.stopped && performance.now() - started < BUDGET_MS) {
         const goal = vm.bus.clock.master + SLICE;
         while (vm.bus.clock.master < goal && !vm.cpu.stopped) { vm.step(); perField(); }
         link.sync(vm.bus.clock.master);
-        ahead = produced / DSP_HZ - (out.context.currentTime - startTime);
+        ahead = produced / DSP_HZ - (clock() - startTime);
       }
     } catch (error) {
       out.flush(); out.setPaused(true);
@@ -126,8 +155,44 @@ function startGame(data, out) {
     if (!vm.cpu.stopped) requestAnimationFrame(step);
   };
   requestAnimationFrame(step);
-  window.zakuro = { vm, input, out, saveSram };
-  return { vm, input };
+  // The quick-save button (shared/save/quick-save.js) writes the suspend slot at the moment it is pressed.
+  // Outside the story (title, slots, name board) there is no page to carry on from, so the suspend slot
+  // is marked empty and loading lands on the title with the saved slots.
+  const saveNow = async () => {
+    saveSram();
+    if (!saves) return;
+    if (!inStory()) { saves.clearSuspend(); return; }
+    suspendedAt = -1;
+    await suspend();
+  };
+
+  // What the report button sends: the scene, the fixed id of the line being read (the translation id,
+  // zakuro-sfc-kor translations/*.json) and the Japanese lines up to it (port-data script/ja.json).
+  let script = null;
+  const loadScript = () => { script ??= get('script/ja.json').then((r) => r.json()).catch(() => ({ scenes: {} })); return script; };
+  let scriptData = null;
+  setTimeout(() => loadScript().then((d) => { scriptData = d; }), 8000); // an idle callback can starve while the game runs
+  globalThis.soundnovelReport = () => {
+    if (!inStory()) return { scene: '타이틀·메뉴 화면' };
+    const w = vm.bus.wram;
+    const scene = w[0x1002] | (w[0x1003] << 8), cursor = w[0x34] | (w[0x35] << 8);
+    const p = 0x3836 + scene * 3, read = (o) => data.program.read(o);
+    const at = (read(p) & 0x7f) * 0x8000 + ((read(p + 1) | (read(p + 2) << 8)) & 0x7fff) + cursor;
+    const lines = (scriptData?.scenes?.[scene] ?? []).filter(([offset]) => offset < at).slice(-4);
+    const id = (offset) => `s${String(scene).padStart(4, '0')}-${offset.toString(16).padStart(6, '0')}`;
+    return { scene, line: lines.length ? id(lines.at(-1)[0]) : `${id(at)} 부근`, text: lines.map(([, t]) => t).join('\n') };
+  };
+
+  const resume = async () => {
+    const state = await saves?.readSuspend();
+    if (!state) return false;
+    vm.loadState(state);
+    vm.importSram(saves.fillSram(vm.exportSram()));
+    input.clear(); lastField = -1; shown = null;
+    return true;
+  };
+  window.zakuro = { vm, input, out, saveSram, suspend, resume };
+  return { vm, input, resume, saveNow };
 }
 
 // Screen coordinates of a pointer event, in the game's 256x224 pixels.
@@ -140,28 +205,52 @@ function gamePoint(event) {
 }
 
 function wireControls({ vm, input }, out) {
-  // Tap the screen: on a choice, pick the choice under the finger; anywhere else, A.
+  const wram = vm.bus.wram;
+  const screen = () => screenOf(wram, vm.getTouchState());
   canvas.addEventListener('pointerdown', (event) => {
     event.preventDefault();
     out.resume();
     const { x, y } = gamePoint(event);
-    const choice = vm.getTouchState().choice;
-    const hit = choice?.ready ? choice.rectangles.find((r) => x >= r.x && x < r.x + r.width && y >= r.y && y < r.y + r.height) : null;
-    if (hit) { input.clear(); input.choose(hit.index); } else input.tap(PAD.A);
+    const touch = vm.getTouchState();
+    const now = screenOf(wram, touch);
+    if (now === 'choice') {
+      const choice = touch.choice;
+      const hit = choice.ready ? choice.rectangles.find((r) => x >= r.x && x < r.x + r.width && y >= r.y && y < r.y + r.height) : null;
+      if (hit) { input.clear(); input.choose(hit.index); } // away from every choice: nothing
+      return;
+    }
+    if (now === 'start') { input.tap(PAD.START, 4); return; }
+    if (now === 'story') { input.tap(PAD.A); return; }
+    if (now === 'prompt') { input.clear(); input.tap(PAD.A, 6); return; } // shows the default name
+    if (now === 'busy') { input.clear(); input.seek(planForLateTap(x, y, () => wram, () => vm.getTouchState())); return; }
+    const item = itemAt(now, x, y, wram);
+    if (!item) return; // away from every item: decides nothing
+    input.clear();
+    input.seek(planFor(item, now, () => wram, () => vm.getTouchState()));
   });
   const menu = $('menu');
   for (const type of ['pointerdown', 'pointerup', 'click']) menu.addEventListener(type, (event) => event.stopPropagation());
-  menu.addEventListener('click', () => { navigator.vibrate?.(8); out.resume(); input.tap(PAD.B); });
+  menu.addEventListener('click', () => { navigator.vibrate?.(8); out.resume(); input.tap(PAD.B, 6); });
+  // The button sits over 決定 on the name board; it steps aside there, as in the Kamaitachi player.
+  // The board blinks through other values for a field now and then, so only settled screens count.
+  setInterval(() => { const now = screen(); if (now !== 'busy') menu.classList.toggle('unavailable', now === 'names' || now === 'prompt'); }, 200);
 
-  const keys = { KeyZ: PAD.A, KeyX: PAD.B, KeyA: PAD.Y, KeyS: PAD.X, Enter: PAD.START, ShiftRight: PAD.SELECT, KeyQ: PAD.L, KeyW: PAD.R,
+  // Z/Enter confirm (START on the logo and title, where A does nothing), X cancels.
+  const confirm = () => (screen() === 'start' ? PAD.START : PAD.A);
+  const keys = { KeyZ: confirm, Enter: confirm, KeyX: PAD.B, KeyA: PAD.Y, KeyS: PAD.X, Space: PAD.START, ShiftRight: PAD.SELECT, KeyQ: PAD.L, KeyW: PAD.R,
     ArrowUp: PAD.UP, ArrowDown: PAD.DOWN, ArrowLeft: PAD.LEFT, ArrowRight: PAD.RIGHT };
+  const down = new Map();
   addEventListener('keydown', (event) => {
-    const bit = keys[event.code];
-    if (!bit || event.ctrlKey || event.metaKey || event.altKey) return;
-    event.preventDefault(); out.resume(); input.held |= bit;
+    const key = keys[event.code];
+    if (!key || event.ctrlKey || event.metaKey || event.altKey) return;
+    event.preventDefault(); out.resume();
+    if (down.has(event.code)) return;
+    const bit = typeof key === 'function' ? key() : key;
+    down.set(event.code, bit); input.held |= bit;
   });
-  addEventListener('keyup', (event) => { const bit = keys[event.code]; if (bit) input.held &= ~bit; });
-  addEventListener('blur', () => { input.held = 0; });
+  const release = (code) => { const bit = down.get(code); down.delete(code); if (bit) input.held &= ~[...down.values()].reduce((m, b) => m & ~b, bit); };
+  addEventListener('keyup', (event) => release(event.code));
+  addEventListener('blur', () => { down.clear(); input.held = 0; });
 
   const mute = $('mute'), volume = $('volume');
   const gain = out.context.createGain();
@@ -215,22 +304,34 @@ let idleTimer = 0;
 const wake = () => { shell.classList.remove('idle'); clearTimeout(idleTimer); idleTimer = setTimeout(() => shell.classList.add('idle'), 2500); };
 addEventListener('pointermove', wake); addEventListener('pointerdown', wake); wake();
 
-// Audio may only start inside a user gesture, so the game starts on the first tap or key.
-load().then((data) => {
-  $('loading').hidden = true;
-  const start = $('start');
-  start.hidden = false;
-  let begun = false;
-  const begin = async () => {
-    if (begun) return; begun = true;
-    start.hidden = true;
-    const out = await createAudioOut();
-    await out.resume();
-    const game = startGame(data, out);
-    wireControls(game, out);
-    stage.classList.add('ready');
-    removeEventListener('keydown', begin);
-  };
-  start.addEventListener('click', begin);
-  addEventListener('keydown', begin);
+// The game starts at once; audio may only start inside a user gesture, so it is silent until the first tap or key.
+// The save dialog (shared/save/sync-ui.js) reaches the store and the suspend slot through this.
+let game = null;
+const openStore = (data) => (data.replay ? Promise.resolve(null) : openSaves().catch(() => null)).then((saves) => {
+  if (saves) {
+    globalThis.soundnovelSave = { store: saves.store, gameId: GAME_ID, boot: {
+      get titleActive() { return !!game; },
+      canContinue: () => saves.hasSuspend(),
+      continueSuspended: () => game?.resume() ?? false,
+      saveNow: () => game?.saveNow(),
+      continueLabel: '마지막 장면에서 이어하기',
+      continueNote: '게임 중 언제든 쓸 수 있습니다. 원작 저장 슬롯은 그대로 둡니다.',
+    } };
+    dispatchEvent(new Event('soundnovel-save-ready'));
+  }
+  return saves;
+});
+
+load().then(async (data) => {
+  const saves = await openStore(data);
+  let out = null;
+  startGate(stage, { onPress: () => out?.resume() }).then(async () => {
+    try {
+      out = await createAudioOut();
+      out.resume(); // silent until the first tap or key (startGate's onPress)
+      game = startGame(data, out, saves);
+      wireControls(game, out);
+      stage.classList.add('ready');
+    } catch (error) { fail(error); } // no audio or a failed start: say so instead of leaving a blank page
+  });
 }, fail);

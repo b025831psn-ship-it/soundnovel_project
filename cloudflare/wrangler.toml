@@ -1,0 +1,15 @@
+# Cloudflare Pages project for 펜션 슈프르 (deploy with: node cloudflare/deploy.mjs, run on the PC).
+name = "pension-spur"
+pages_build_output_dir = "out/dist"
+compatibility_date = "2025-06-01"
+
+[[r2_buckets]]
+binding = "DATA"
+bucket_name = "pension-spur-data"
+
+[[d1_databases]]
+binding = "SAVES"
+database_name = "pension-spur-saves"
+database_id = "b8049d5c-e36a-4d6b-a388-a9995078bb2c"
+# EDIT_PASSWORD is a secret: npx wrangler pages secret put EDIT_PASSWORD --project-name pension-spur
+# GITHUB_REPORT_TOKEN is a secret (beta testers' reports -> issues): npx wrangler pages secret put GITHUB_REPORT_TOKEN --project-name pension-spur

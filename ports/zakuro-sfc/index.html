@@ -27,7 +27,6 @@
       <span class="bar-track"><span></span></span>
       <span>원작 데이터를 불러오는 중</span>
     </div>
-    <button type="button" class="start" id="start" hidden>눌러서 시작</button>
     <p class="error" id="error" hidden></p>
   </div>
 
@@ -35,10 +34,10 @@
     <div class="meta">
       <span class="scale" id="scale" title="원본 256×224 화면을 정수 배율로 확대합니다">×1</span>
       <p class="keys" id="keys">
-        <span><kbd>Z</kbd> 결정</span>
+        <span><kbd>Z</kbd><kbd>Enter</kbd> 결정</span>
         <span><kbd>X</kbd> 취소 · 이전 글</span>
         <span><kbd>↑</kbd><kbd>↓</kbd><kbd>←</kbd><kbd>→</kbd> 선택</span>
-        <span><kbd>Enter</kbd> START</span>
+        <span><kbd>Space</kbd> START</span>
       </p>
     </div>
     <div class="controls">
@@ -56,5 +55,6 @@
   </footer>
 </main>
 <script type="module" src="player.js"></script>
+<script type="module" src="../../shared/save/sync-ui.js"></script>
 </body>
 </html>

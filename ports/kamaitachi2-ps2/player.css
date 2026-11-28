@@ -1,0 +1,32 @@
+:root { color-scheme: dark; font-family: system-ui, sans-serif; }
+* { box-sizing: border-box; }
+html, body { height: 100%; }
+body { margin: 0; min-height: 100svh; background: #090a0c; color: #d5d8dc; display: grid; place-items: center; overflow: hidden; }
+main { width: min(100%, 900px, calc(100svh * 4 / 3)); min-width: min(100%, 320px); text-align: center; }
+#screen { width: 100%; aspect-ratio: 4 / 3; background: black; position: relative; overflow: hidden; }
+#movie, canvas { position: absolute; width: 100%; height: 93.333333%; left: 0; top: 3.333333%; object-fit: fill; }
+canvas { touch-action: manipulation; cursor: pointer; }
+canvas:focus { outline: none; }
+#loading { position: absolute; inset: 0; display: grid; place-items: center; background: #000; z-index: 6; }
+#loading[hidden] { display: none; }
+#loading button { padding: .7rem 1.25rem; }
+button { color: inherit; background: #14171b; border: 1px solid #343a41; border-radius: .4rem; padding: .65rem .8rem; cursor: pointer; touch-action: manipulation; }
+button:hover, button:focus-visible { background: #2a3037; border-color: #8597a3; }
+#menu-button { position: absolute; z-index: 5; right: 2.5%; bottom: 5.5%; width: 44px; height: 44px; padding: 9px; border-color: rgba(255,255,255,.2); background: rgba(8,9,11,.58); backdrop-filter: blur(4px); opacity: .72; }
+#menu-button svg { width: 100%; height: 100%; fill: none; stroke: currentColor; stroke-width: 1.75; stroke-linecap: round; stroke-linejoin: round; }
+#menu-button .back, #menu-button.is-back .open { display: none; }
+#menu-button.is-back .back { display: block; }
+#menu-button[hidden] { display: none; }
+#game-menu { position: absolute; z-index: 4; inset: 3.333% 0 3.333%; display: grid; place-content: center; gap: 12px; background: rgba(0,0,0,.72); backdrop-filter: blur(5px); }
+#game-menu[hidden] { display: none; }
+#game-menu button { min-width: 180px; min-height: 48px; }
+#game-menu button[hidden] { display: none; }
+#game-menu button.attention { border-color: #c8333a; }
+.sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(100%); }
+main:fullscreen { width: min(100vw, calc(100vh * 4 / 3)); }
+html.filled main { position: fixed; inset: 0; width: 100vw; height: 100dvh; z-index: 100; display: grid; place-items: center; background: #000; }
+html.filled #screen { width: min(100vw, calc(100dvh * 4 / 3)); }
+@media (orientation: portrait) {
+  html.filled main { inset: auto; top: 0; left: 100vw; width: 100dvh; height: 100vw; transform-origin: 0 0; transform: rotate(90deg); }
+  html.filled #screen { width: min(100dvh, calc(100vw * 4 / 3)); }
+}
