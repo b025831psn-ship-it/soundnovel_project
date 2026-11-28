@@ -284,6 +284,7 @@ body.front-on { overflow: hidden }
 .front.leaving { opacity: 0; transform: scale(1.03); pointer-events: none }
 .front-picture {
   position: absolute; inset: 5% -3% -11%; width: 106%; height: 106%; object-fit: cover; object-position: 50% 15%; z-index: -3;
+  -webkit-mask-image: linear-gradient(transparent, #000 9%); mask-image: linear-gradient(transparent, #000 9%);
   image-rendering: pixelated; opacity: 0; transition: opacity 1.6s ease, filter 30s linear;
   animation: front-drift 60s ease-in-out infinite alternate;
 }
