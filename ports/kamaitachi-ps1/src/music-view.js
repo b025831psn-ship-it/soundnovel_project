@@ -52,14 +52,21 @@ export async function songPlayer(dataRoot, { song = 8, volume = 0.5 } = {}) {
     while (sent < due) frame();
   };
   const hidden = () => { if (!out || !on) return; if (document.hidden) out.ctx.suspend(); else out.ctx.resume(); };
+  let starting = null;
   return {
     get playing() { return on; },
-    async start() {
-      if (on) return;
-      const first = !out; out ??= await open();
-      await out.ctx.resume(); on = true;
-      if (first) { t0 = out.ctx.currentTime; document.addEventListener("visibilitychange", hidden); }
-      timer = setInterval(pump, 50); pump();
+    // true once the browser really lets it sound (a swipe or a too-early call leaves it suspended)
+    get sounding() { return on && out?.ctx.state === "running"; },
+    start() {
+      // one start at a time: two quick calls (a press and its click) make one sound, not two
+      return (starting ??= (async () => {
+        const first = !out; out ??= await open();
+        await out.ctx.resume();
+        if (on) return;
+        on = true;
+        if (first) { t0 = out.ctx.currentTime; document.addEventListener("visibilitychange", hidden); }
+        timer = setInterval(pump, 50); pump();
+      })().finally(() => { starting = null; }));
     },
     stop() { if (!on) return; on = false; clearInterval(timer); out.ctx.suspend(); },
     setVolume(v) { volume = Math.max(0, Math.min(1, +v || 0)); if (out) out.gain.gain.value = volume; },

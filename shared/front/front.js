@@ -3,7 +3,7 @@
 // the port's code (picture-view.js, music-view.js); nothing is copied out of the game.
 // The picture and the song load apart: if one fails on a browser, the other still comes.
 const pictureModule = import("/ports/kamaitachi-ps1/src/picture-view.js");
-const musicModule = import("/ports/kamaitachi-ps1/src/music-view.js");
+const musicModule = import("/ports/kamaitachi-ps1/src/music-view.js?v=4");
 
 const DATA = "/kamaitachi-ps1-kor/port-data/machine/";
 const PICTURE = 2; // the pension at the end of the snowy road, windows lit
@@ -87,14 +87,19 @@ drawSharp().catch(() => pictureModule.then(({ drawPicture }) => drawPicture(pict
 // The song: browsers sound only after a press, so the first tap or key anywhere starts it.
 let music = null, wanted = (() => { try { return localStorage.getItem("front-music") !== "off"; } catch { return true; } })();
 const loading = musicModule.then(({ songPlayer }) => songPlayer(DATA, { song: 8, volume: .45 })).then((m) => (music = m)).catch((e) => { console.error("front music", e); return null; });
-function showSound() { sound.setAttribute("aria-pressed", String(Boolean(music?.playing))); sound.title = music?.playing ? "음악 끄기" : "음악 켜기"; }
-async function play() { await loading; if (!music || music.playing) return; await music.start(); showSound(); }
-function wake() { if (wanted && !front.hidden) play(); }
-addEventListener("pointerdown", wake, { once: true, capture: true });
-addEventListener("keydown", wake, { once: true, capture: true });
+function showSound() { sound.setAttribute("aria-pressed", String(Boolean(music?.sounding))); sound.title = music?.sounding ? "음악 끄기" : "음악 켜기"; }
+async function play() { await loading; if (!music || music.sounding) return; await music.start(); showSound(); return music.sounding; }
+// Only a tap, click or key counts as a press for the browser (a swipe does not), so the song is asked for on
+// each of them until it really sounds; the sound button does its own work.
+const presses = ["pointerup", "touchend", "click", "keydown"];
+async function wake(e) {
+  if (e?.target?.closest?.(".front-sound") || !wanted || front.hidden) return;
+  if (await play()) presses.forEach((t) => removeEventListener(t, wake, true));
+}
+presses.forEach((t) => addEventListener(t, wake, true));
 sound.addEventListener("click", async (e) => {
   e.stopPropagation(); await loading; if (!music) return;
-  if (music.playing) { music.stop(); wanted = false; } else { wanted = true; await music.start(); }
+  if (music.sounding) { music.stop(); wanted = false; } else { wanted = true; await music.start(); }
   try { localStorage.setItem("front-music", wanted ? "on" : "off"); } catch {}
   showSound();
 });
