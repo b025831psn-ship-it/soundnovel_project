@@ -36,7 +36,7 @@ export const codec = {
     { id: 'suspend', group: 'suspend', canCopy: false, canErase: true, canWrite: true, showInOriginalUi: false },
   ],
   encode: (snapshot) => snapshot,
-  validate: (p) => (typeof p?.sram === 'string' || typeof p?.state?.gz === 'string' ? { ok: true } : { ok: false, reason: 'corrupt' }),
+  validate: (p) => (typeof p?.sram === 'string' || typeof p?.state?.gz === 'string' || p?.state === null ? { ok: true } : { ok: false, reason: 'corrupt' }),
   migrate: () => ({ ok: false, reason: 'unsupportedSchema' }),
   decode: (p) => ({ ok: true, state: p }),
   summarize: (p) => ({ title: typeof p?.title === 'string' ? p.title : '' }),
@@ -99,7 +99,11 @@ export class ZakuroSaves {
     return true;
   }
 
-  hasSuspend() { return !!this.store.read(GAME_ID, 'suspend'); }
+  hasSuspend() { return typeof this.store.read(GAME_ID, 'suspend')?.payload?.state?.gz === 'string'; }
+
+  // "Nothing to carry on from" (saved at the title or the slots): written rather than erased, so a quick
+  // save made there also replaces an older suspend slot on the device that loads it.
+  clearSuspend() { this.store.write(GAME_ID, 'suspend', this.#fields({ state: null, scene: -1 })); }
 
   async writeSuspend(state, { scene = -1 } = {}) {
     const packed = await packState({ ...state, bus: { ...state.bus, sram: undefined } });
