@@ -3,17 +3,20 @@ import { Screen } from './render.js';
 import { Sn4Vm } from './sn4.js';
 import { LoopingMusic } from './music.js';
 import { SePlayer } from './se-player.js';
-import { startGate } from '/shared/player/start-gate.js';
 
 const canvas = document.querySelector('canvas');
 const movie = document.querySelector('#movie');
 const loading = document.querySelector('#loading');
-const stage = document.querySelector('#screen');
 const status = document.querySelector('#status');
 const shell = document.querySelector('main');
 const menuButton = document.querySelector('#menu-button');
 const gameMenu = document.querySelector('#game-menu');
 const asset = name => new URL('assets/' + name, import.meta.url).href;
+async function startImmediately() {
+  // This port starts without a gate. The global gesture listeners below wake
+  // audio on the first real press, so the private build remains self-contained.
+  document.querySelector('#loading').hidden = true;
+}
 const SCENEPACK_EFFECT_HANDLER = Object.freeze({
   0x05:0x1abb18,0x08:0x1abc38,0x09:0x1abc88,0x0a:0x1abcd8,
   0x0b:0x1abcf0,0x0e:0x1abd78,0x12:0x1abee8,0x13:0x1abf18,
@@ -28,17 +31,18 @@ const loopFrames = {
 const music = new LoopingMusic({
   asset, loopFrames, onBlocked: () => { status.textContent = '오디오를 재생하려면 화면을 눌러 주세요.'; },
 });
-let se = null, seStarting = null;
+let se = null, seStarting = null, seContext = null;
 const pendingSe = [];
 async function unlockAudio() {
   music.unlock();
+  if (seContext && seContext.state !== 'running') seContext.resume().catch(() => {});
   if (!seStarting) seStarting = (async () => {
-    const context = new AudioContext({sampleRate:48000});
-    await context.resume();
-    se = await SePlayer.create(context, name => asset('se/' + name));
+    seContext = new AudioContext({sampleRate:48000});
+    seContext.resume().catch(() => {});
+    se = await SePlayer.create(seContext, name => asset('se/' + name));
     for (const command of pendingSe.splice(0)) se.command(command);
     return se;
-  })().catch(error => { console.warn('SE unavailable', error); seStarting = null; });
+  })().catch(error => { console.warn('SE unavailable', error); seStarting = null; seContext = null; });
   return seStarting;
 }
 const cues = Object.fromEntries(['confirm','cancel','move'].map(name => [name, new Audio(asset(name + '.wav'))]));
@@ -46,6 +50,7 @@ const saveKey = 'soundnovel.slps25132.opening.v1';
 let saved = readSave();
 let data, screen, groups, editor, pages, sn4;
 let sn4Mode = false, sn4Event, sn4WaitUntil = 0;
+let specialInput = null;
 // EE 0x112610: one character every max(1, speed) frames; CommandSpeed stores speed at +0x2a4.
 let sn4SpeedMarks = [], sn4Shown = '';
 const sn4Style = {speed:1, letterSpacing:0, lineSpacing:7, fontType:0, fontSize:33,
@@ -67,6 +72,42 @@ const heldArrows = new Set();
 const keyboardEdits = new Set();
 const editPriority = ['circle', 'cross', 'triangle'];
 const confirmPriority = ['circle', 'cross', 'square', 'up', 'down'];
+const clickMapAnchors = [
+  [134,220],[92,112],[176,104],[272,112],[362,126],
+  [454,150],[510,226],[392,292],[213,177],
+];
+const criminalHeads = Array.from('あかさたなはまやらわがざだばぱ');
+const criminalRows = [
+  Array.from('あかさたなはまやらわがざだばぱ'),
+  Array.from('いきしちにひみ　りゐぎじぢびぴ'),
+  Array.from('うくすつぬふむゆる　ぐずづぶぷ'),
+  Array.from('えけせてねへめ　れゑげぜでべぺ'),
+  Array.from('おこそとのほもよろをごぞどぼぽ'),
+  ['ぁ','','','っ','','','', 'ゃ','', 'ー','','','','',''],
+];
+
+function beginSpecial(event) {
+  specialInput = {kind:event.kind, targets:event.targets ?? [], fallback:event.fallback,
+    panels:event.panels ?? [], index:0, x:320, y:224, row:0, column:0, value:'', buttons:[], length:event.length};
+  enter(event.kind === 'click-map' ? 'click-map' :
+    event.kind === 'criminal-name' ? 'criminal-name' : event.kind === 'cipher' ? 'cipher' : 'panel');
+}
+
+function clickMapRegion(x, y) {
+  if (x >= 133 && x <= 135 && Math.abs(y - 220) <= 3) return 0;
+  if (Math.hypot(x - 213, y - 177) <= 14) return 8;
+  let best = 9, distance = 28;
+  clickMapAnchors.forEach(([cx, cy], i) => {
+    if (i === 0 || i === 8) return;
+    const next = Math.hypot(x - cx, y - cy);
+    if (next < distance) { best = i; distance = next; }
+  });
+  return best;
+}
+
+function criminalGlyph() {
+  return criminalRows[specialInput.row][specialInput.column] || '';
+}
 
 function titleAction(actions) {
   const confirm = actions.find(key => ['circle', 'start', 'l2'].includes(key));
@@ -264,7 +305,17 @@ function playMovie(file, next, loop = false) {
   movie.loop = loop;
   movie.onerror = () => fail('게임 영상을 불러오지 못했습니다.');
   movie.onended = next;
-  movie.play().catch(error => { if (error.name !== 'AbortError') fail('브라우저에서 영상을 재생할 수 없습니다.'); });
+  movie.muted = false;
+  movie.play().catch(error => {
+    if (error.name === 'NotAllowedError') {
+      movie.muted = true;
+      movie.play().catch(() => {});
+      const unmute = () => { movie.muted = false; };
+      for (const type of ['pointerdown', 'keydown']) addEventListener(type, unmute, {once:true, capture:true});
+      return;
+    }
+    if (error.name !== 'AbortError') fail('브라우저에서 영상을 재생할 수 없습니다.');
+  });
 }
 
 function intro() {
@@ -331,6 +382,8 @@ function showSn4(event) {
     enter('name');
   } else if (event.type === 'choice') {
     enter('choice');
+  } else if (event.type === 'special') {
+    beginSpecial(event);
   } else {
     // Text after 0x09 Pause continues the same page: keep what is already shown
     // and type only the new characters. The wait (0x50/0x51) starts once typed.
@@ -571,7 +624,7 @@ function makePages(s) {
 }
 
 function step(key) {
-  if (scene === 'ready') return; // start-gate.js owns the first press
+  if (scene === 'ready') return;
   if (['logo','copyright','opening','attract','title-entry'].includes(scene)) {
     if (['circle','start','l2'].includes(key)) title(false);
     return;
@@ -615,6 +668,50 @@ function step(key) {
   }
   if (scene === 'created') { if (key === 'circle') enter('save-note'); return; }
   if (scene === 'save-note') { if (key === 'circle') beginStory(); return; }
+  if (scene === 'click-map') {
+    const delta = {left:[-3,0],right:[3,0],up:[0,-3],down:[0,3]}[key];
+    if (delta) {
+      specialInput.x = Math.max(0, Math.min(640, specialInput.x + delta[0]));
+      specialInput.y = Math.max(0, Math.min(448, specialInput.y + delta[1]));
+    } else if (key === 'circle') {
+      const picked = clickMapRegion(specialInput.x, specialInput.y);
+      cue('confirm'); showSn4(sn4.chooseSpecial(picked));
+    }
+    return;
+  }
+  if (scene === 'panel') {
+    const length = specialInput.targets.length;
+    if (key === 'left') specialInput.index = (specialInput.index - 1 + length) % length;
+    else if (key === 'right') specialInput.index = (specialInput.index + 1) % length;
+    else if (key === 'up') specialInput.index = (specialInput.index - 4 + length) % length;
+    else if (key === 'down') specialInput.index = (specialInput.index + 4) % length;
+    else if (key === 'circle') { cue('confirm'); showSn4(sn4.chooseSpecial(specialInput.index)); }
+    else if (key === 'cross' && specialInput.fallback) { cue('cancel'); showSn4(sn4.chooseSpecial(-1)); }
+    return;
+  }
+  if (scene === 'criminal-name') {
+    if (key === 'left') specialInput.column = (specialInput.column + 1) % 15;
+    else if (key === 'right') specialInput.column = (specialInput.column + 14) % 15;
+    else if (key === 'up') specialInput.row = (specialInput.row + 5) % 6;
+    else if (key === 'down') specialInput.row = (specialInput.row + 1) % 6;
+    else if (key === 'circle') {
+      const glyph = criminalGlyph();
+      if (glyph && specialInput.value.length < 8) specialInput.value += glyph;
+    } else if (key === 'cross') specialInput.value = specialInput.value.slice(0, -1);
+    else if (key === 'triangle' && specialInput.value) {
+      cue('confirm'); showSn4(sn4.submitCriminalName(specialInput.value));
+    }
+    return;
+  }
+  if (scene === 'cipher') {
+    if (['cross','triangle','square'].includes(key)) {
+      specialInput.buttons.push(key);
+      if (specialInput.buttons.length === specialInput.length) {
+        cue('confirm'); showSn4(sn4.submitCipher(specialInput.buttons));
+      }
+    }
+    return;
+  }
   if (scene === 'choice') {
     if (key === 'up' || key === 'down') {
       const length = sn4Mode ? sn4Event.targets.length : pages[page].choice.length;
@@ -774,6 +871,55 @@ function drawStory(time) {
   }
 }
 
+function drawSpecialInput(time) {
+  screen.background(sn4Style.scene ?? 'my0645', true, time);
+  if (scene === 'click-map') {
+    screen.rect(0, 0, 640, 34, 'rgba(0,0,0,.72)');
+    screen.text('方向キーで調べる場所を選び、○で決定', 18, 5, {scale:.72});
+    clickMapAnchors.forEach(([x, y], i) => {
+      screen.rect(x - 6, y - 6, 12, 12, i === 0 || i === 8 ? 'rgba(245,210,60,.65)' : 'rgba(100,170,230,.48)');
+    });
+    screen.c.strokeStyle = '#fff'; screen.c.lineWidth = 2;
+    screen.c.beginPath();
+    screen.c.moveTo(specialInput.x - 10, specialInput.y); screen.c.lineTo(specialInput.x + 10, specialInput.y);
+    screen.c.moveTo(specialInput.x, specialInput.y - 10); screen.c.lineTo(specialInput.x, specialInput.y + 10);
+    screen.c.stroke();
+    return;
+  }
+  if (scene === 'panel') {
+    screen.rect(40, 35, 560, 378, 'rgba(0,0,0,.62)');
+    specialInput.targets.forEach((target, i) => {
+      const x = 68 + i % 4 * 134, y = 68 + Math.floor(i / 4) * 78;
+      if (i === specialInput.index) screen.rect(x - 5, y - 5, 124, 58, 'rgba(90,150,220,.78)');
+      screen.text(String(i + 1), x + 44, y + 5, {scale:.88});
+    });
+    screen.text('○ 決定　× 戻る', 220, 382, {scale:.72});
+    return;
+  }
+  if (scene === 'criminal-name') {
+    screen.rect(34, 26, 572, 390, 'rgba(0,0,0,.70)');
+    screen.text(`犯人の名前：${specialInput.value}`, 55, 40, {scale:.82});
+    for (let column = 0; column < 15; column++) {
+      const x = 548 - column * 33;
+      screen.text(criminalHeads[column], x, 84, {scale:.72});
+      for (let row = 0; row < 6; row++) {
+        const y = 126 + row * 39;
+        if (column === specialInput.column && row === specialInput.row)
+          screen.rect(x - 5, y - 4, 34, 35, 'rgba(90,150,220,.80)');
+        const glyph = criminalRows[row][column];
+        if (glyph) screen.text(glyph, x, y, {scale:.78});
+      }
+    }
+    screen.text('○ 入力　× 削除　△ 終了', 176, 381, {scale:.70});
+    return;
+  }
+  screen.rect(68, 116, 504, 204, 'rgba(0,0,0,.72)');
+  screen.text('暗号を入力してください', 176, 142, {scale:.86});
+  const marks = specialInput.buttons.map(button => ({cross:'×',triangle:'△',square:'□'})[button]).join(' ');
+  screen.text(marks, 104, 205, {scale:.83, max:440});
+  screen.text(`× / △ / □　${specialInput.buttons.length}/${specialInput.length}`, 181, 278, {scale:.70});
+}
+
 function frame(now) {
   if (scene === 'name') moveKeyboardCursor(now);
   flushKeyboardEdit();
@@ -789,6 +935,7 @@ function frame(now) {
     screen.title(index, Boolean(saved));
     if (now - entered >= 4801 * 1000 / 59.94) opening(true);
   } else if (['autosave','slot','file-select','created','save-note'].includes(scene)) screen.autosave(scene, index, slot, names[0]);
+  else if (['click-map','panel','criminal-name','cipher'].includes(scene)) drawSpecialInput(time);
   else if (scene === 'choice-wait') {
     drawStory(time);
     if (now - entered >= pages[page].choiceWait * 1000 / 59.94) enter('choice');
@@ -925,6 +1072,31 @@ function touchGame(event) {
     if (x >= 104 && x < 188) { step('circle'); return; }
     if (x >= 188 && x < 275 && !['created','save-note'].includes(scene)) { step('cross'); return; }
   }
+  if (scene === 'click-map') {
+    specialInput.x = x; specialInput.y = y; step('circle'); return;
+  }
+  if (scene === 'panel') {
+    const column = Math.floor((x - 63) / 134), row = Math.floor((y - 63) / 78);
+    const picked = row * 4 + column;
+    if (column >= 0 && column < 4 && picked >= 0 && picked < specialInput.targets.length) {
+      specialInput.index = picked; step('circle');
+    } else if (y >= 370 && specialInput.fallback) step('cross');
+    return;
+  }
+  if (scene === 'criminal-name') {
+    if (y >= 116 && y < 360 && x >= 78 && x <= 570) {
+      specialInput.column = Math.max(0, Math.min(14, Math.round((548 - x) / 33)));
+      specialInput.row = Math.max(0, Math.min(5, Math.floor((y - 116) / 39)));
+      step('circle');
+    } else if (y >= 370) {
+      if (x < 280) step('circle'); else if (x < 395) step('cross'); else step('triangle');
+    }
+    return;
+  }
+  if (scene === 'cipher') {
+    if (y >= 250) step(x < 214 ? 'cross' : x < 426 ? 'triangle' : 'square');
+    return;
+  }
   if (scene === 'title') {
     if (y >= 360) { index = Math.max(0, Math.min(2, Math.floor((x - 79) / 152))); step('circle'); }
     return;
@@ -1060,8 +1232,6 @@ try {
   requestAnimationFrame(frame);
 } catch { fail('게임 데이터를 불러오지 못했습니다.'); }
 if (scene === 'ready') {
-  // shared/player/start-gate.js: the one start screen of every port. The press
-  // that starts the game switches sound on and is not also a game input.
-  await startGate(stage, { onPress: () => { unlockAudio(); } });
+  await startImmediately();
   intro();
 }
