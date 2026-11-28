@@ -4,7 +4,7 @@ import json
 import re
 import struct
 
-from PIL import Image
+from PIL import Image, ImageDraw, ImageFont
 
 
 # SLPS_251.32 command-constructor dispatch entries used by the opening path.
@@ -87,6 +87,51 @@ def font_atlas(data, out):
     metrics["　"] = [0, 0, 33, 0, 0]
     atlas.save(out / "font.png")
     return metrics
+
+
+def extend_korean_font(out, metrics, strings, font_path):
+    """Append Korean glyph bitmaps to the original 36px SN4 atlas.
+
+    The browser deliberately does not use Canvas text: Japanese and Korean
+    both take the original ``font[ch]`` sprite path, dimensions and tinting.
+    """
+    cell, columns = 36, 64
+    chars = sorted({ch for text in strings for ch in text
+                    if not ch.isspace() and ch not in metrics})
+    if not chars:
+        return
+    font = ImageFont.truetype(str(font_path), 30)
+    source = Image.open(out / "font.png").convert("RGBA")
+    used = 1 + max((value[1] // cell) * columns + value[0] // cell
+                   for value in metrics.values() if value[2] and value[3])
+    rows = (used + len(chars) + columns - 1) // columns
+    atlas = Image.new("RGBA", (columns * cell, rows * cell))
+    atlas.alpha_composite(source)
+    probe = Image.new("L", (cell * 2, cell * 2))
+    for index, ch in enumerate(chars, used):
+        mask = Image.new("L", probe.size)
+        draw = ImageDraw.Draw(mask)
+        bbox = draw.textbbox((0, 0), ch, font=font, stroke_width=1)
+        width = min(cell, max(1, bbox[2] - bbox[0]))
+        height = min(cell, max(1, bbox[3] - bbox[1]))
+        x0 = max(0, (cell - width) // 2 - bbox[0])
+        y0 = -bbox[1]
+        draw.text((x0, y0), ch, font=font, fill=255,
+                  stroke_width=1, stroke_fill=255)
+        fill = Image.new("L", probe.size)
+        ImageDraw.Draw(fill).text((x0, y0), ch, font=font, fill=255)
+        crop = mask.crop((0, 0, cell, height))
+        fill = fill.crop((0, 0, cell, height))
+        rgba = Image.new("RGBA", crop.size)
+        rgba.putdata([(value, value, value, alpha)
+                      for value, alpha in zip(fill.getdata(), crop.getdata())])
+        x, y = (index % columns) * cell, (index // columns) * cell
+        atlas.alpha_composite(rgba, (x, y))
+        # Korean full-width text uses the original 33px advance; ASCII keeps
+        # its raster width so debug labels and numbers remain compact.
+        advance = 33 if ord(ch) >= 0x80 else min(33, width + 1)
+        metrics[ch] = [x, y, advance, height, 0]
+    atlas.save(out / "font.png")
 
 
 def texture(data):

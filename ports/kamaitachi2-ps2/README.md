@@ -11,11 +11,12 @@ Python 3.11 이상과 Pillow, IPU 디코더 및 libx264 인코더가 있는 FFmp
 ```powershell
 $iso = (Resolve-Path -LiteralPath 'roms/Kamaitachi no Yoru 2 - Kangoku-jima no Warabe-uta (Japan) (Special Box).iso').Path
 python -B ports/kamaitachi2-ps2/prepare.py "$iso" --output outputs/kamaitachi2-ps2-kor/web `
-  --translation kamaitachi2-ps2-kor/translation
+  --translation kamaitachi2-ps2-kor/translation `
+  --korean-font 'fonts/NotoSansCJKkr-Regular.otf'
 python -m http.server 8772 --bind 127.0.0.1 --directory outputs/kamaitachi2-ps2-kor/web
 ```
 
-[로컬 플레이 화면](http://127.0.0.1:8772/)은 즉시 시작하며 첫 탭이나 키 입력에서 소리를 활성화한다. 번역 경로를 지정한 빌드는 한국어가 기본이며 `?lang=ja`를 붙이면 원문을 표시한다. 일본어는 원판 글꼴과 이름 문자표를 사용한다. 방향키로 이동하고 Enter 또는 Z로 ○, Esc 또는 X로 ×, S로 △를 누른다. Q와 W가 L1과 R1, Space가 START다. 화면 아래의 버튼과 표준 매핑 게임패드도 같은 입력 처리기를 사용한다.
+[로컬 플레이 화면](http://127.0.0.1:8772/)은 즉시 시작하며 첫 탭이나 키 입력에서 소리를 활성화한다. 번역 경로를 지정한 빌드는 한국어가 기본이며 `?lang=ja`를 붙이면 원문을 표시한다. `--korean-font`의 글자는 빌드할 때 원판과 같은 36픽셀 셀 비트맵 아틀라스에 굳혀지며, 브라우저 글꼴에는 의존하지 않는다. 일본어는 원판 글꼴과 이름 문자표를 사용한다. 방향키로 이동하고 Enter 또는 Z로 ○, Esc 또는 X로 ×, S로 △를 누른다. Q와 W가 L1과 R1, Space가 START다. 화면 아래의 버튼과 표준 매핑 게임패드도 같은 입력 처리기를 사용한다.
 
 ## 판본과 디스크
 

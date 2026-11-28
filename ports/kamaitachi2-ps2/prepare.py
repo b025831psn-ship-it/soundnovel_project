@@ -13,7 +13,24 @@ from tempfile import TemporaryDirectory
 import wave
 
 from disc import Disc, SECTOR
-from opening import opening_assets, still_png
+from opening import extend_korean_font, opening_assets, still_png
+
+
+KOREAN_UI_TEXT = (
+    "토오루마리주인공여자친구이름을입력해주십시오이이름으로괜찮습니까예아니오"
+    "ㄱㄴㄷㄹㅁㅂㅅㅇㅈㅊㅋㅌㅍㅎㅏㅑㅓㅕㅗㅛㅜㅠㅡㅣ＊＿"
+)
+
+
+def json_strings(value):
+    if isinstance(value, str):
+        yield value
+    elif isinstance(value, list):
+        for item in value:
+            yield from json_strings(item)
+    elif isinstance(value, dict):
+        for item in value.values():
+            yield from json_strings(item)
 
 
 def pss_audio(data):
@@ -171,7 +188,7 @@ def complete_scene_assets(disc, scene_pack, work, assets):
     return {"backgrounds": total, "music": len(requested[".ogg"])}
 
 
-def prepare(image, output, translation=None):
+def prepare(image, output, translation=None, korean_font=None):
     disc = Disc(image).open_index()
     disc.verify()
     assets = output / "assets"
@@ -231,6 +248,12 @@ def prepare(image, output, translation=None):
                         str(full_pack)], check=True)
         opening = json.loads((stage / "opening.json").read_text(encoding="utf-8"))
         opening["scenePack"] = json.loads(full_pack.read_text(encoding="utf-8"))
+        if translation:
+            if korean_font is None or not korean_font.is_file():
+                raise ValueError("A Korean TrueType/OpenType font is required with --korean-font")
+            program = json.loads((stage / "sn4-ko.json").read_text(encoding="utf-8"))
+            extend_korean_font(stage, opening["font"],
+                               [*json_strings(program), KOREAN_UI_TEXT], korean_font)
         manifest = complete_scene_assets(disc, opening["scenePack"], stage, assets)
         (stage / "full-assets.json").write_text(
             json.dumps(manifest, separators=(",", ":")), encoding="utf-8")
@@ -253,7 +276,9 @@ if __name__ == "__main__":
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--translation", type=Path,
                         help="kamaitachi2-ps2-kor/translation directory; builds Korean default plus ?lang=ja")
+    parser.add_argument("--korean-font", type=Path,
+                        help="Korean TTF/OTF used to build SN4-style bitmap glyphs")
     args = parser.parse_args()
     if not all(shutil.which(tool) for tool in ("ffmpeg", "ffprobe")):
         parser.error("Install FFmpeg with its IPU decoder and libx264 encoder")
-    prepare(args.iso, args.output, args.translation)
+    prepare(args.iso, args.output, args.translation, args.korean_font)
