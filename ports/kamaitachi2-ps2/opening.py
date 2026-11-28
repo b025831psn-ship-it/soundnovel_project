@@ -115,7 +115,9 @@ def extend_korean_font(out, metrics, strings, font_path):
     # The EE draws each bitmap at line_y + top.  Keep a common baseline and
     # derive top from the font's baseline-relative ink box; punctuation then
     # sits at the bottom of the line instead of being pinned to y=0.
-    baseline = 29
+    # 28 leaves room for Latin descenders (g/y) while Hangul still starts at
+    # y=1 and low punctuation remains on the baseline.
+    baseline = 28
     for index, ch in enumerate(chars, used):
         bbox = font.getbbox(ch, stroke_width=1, anchor="ls")
         width = bbox[2] - bbox[0]
