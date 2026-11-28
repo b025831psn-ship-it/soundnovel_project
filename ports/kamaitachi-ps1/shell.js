@@ -7,6 +7,7 @@
 //   runtime.menuMode?.()                  "menu" | "back" | "none" (what the corner button does now)
 //   sound.resume() / sound.setVolume?.(0..1)
 // (the contract of src/touch-shell.js, Claude-PS1 / Codex).
+import { fitScale } from "../../shared/player/fit-scale.js";
 const W = 320, H = 240;
 const $ = (id) => document.getElementById(id);
 const shell = $("shell");
@@ -23,11 +24,10 @@ const store = {
 function fit() {
   const ratio = devicePixelRatio || 1;
   const box = { width: stage.clientWidth, height: stage.clientHeight };
-  const steps = Math.floor(Math.min((box.width * ratio) / W, (box.height * ratio) / H));
-  const scale = steps >= 1 ? steps / ratio : Math.min(box.width / W, box.height / H);
+  const { scale, whole, steps } = fitScale(box.width, box.height, W, H, ratio);
   canvas.style.width = `${W * scale}px`;
   canvas.style.height = `${H * scale}px`;
-  $("scale").textContent = steps >= 1 ? `×${steps}` : "축소";
+  $("scale").textContent = whole ? `×${steps}` : "맞춤";
   $("scale").title = `원본 ${W}×${H} → ${Math.round(W * scale * ratio)}×${Math.round(H * scale * ratio)} (정수 배율)`;
 }
 new ResizeObserver(fit).observe(stage);

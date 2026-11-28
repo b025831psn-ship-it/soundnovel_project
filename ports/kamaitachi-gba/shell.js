@@ -1,5 +1,6 @@
 // The player around the game screen: whole-number scaling, touch buttons, volume and full screen.
 // It only reads window.kamaitachi (set by main.js) and never draws on the game screen.
+import { fitScale } from "../../shared/player/fit-scale.js";
 const $ = (id) => document.getElementById(id);
 const shell = $("shell");
 const stage = $("stage");
@@ -14,11 +15,10 @@ function fit() {
   const ratio = devicePixelRatio || 1;
   // Layout size, not the on-screen box: the stage may be drawn turned a quarter (sideways full screen).
   const box = { width: stage.clientWidth, height: stage.clientHeight };
-  const steps = Math.floor(Math.min((box.width * ratio) / 240, (box.height * ratio) / 160));
-  const scale = steps >= 1 ? steps / ratio : Math.min(box.width / 240, box.height / 160);
+  const { scale, whole, steps } = fitScale(box.width, box.height, 240, 160, ratio);
   canvas.style.width = `${240 * scale}px`;
   canvas.style.height = `${160 * scale}px`;
-  $("scale").textContent = steps >= 1 ? `×${steps}` : "축소";
+  $("scale").textContent = whole ? `×${steps}` : "맞춤";
   $("scale").title = `원본 240×160 → ${Math.round(240 * scale * ratio)}×${Math.round(160 * scale * ratio)} (정수 배율)`;
 }
 new ResizeObserver(fit).observe(stage);

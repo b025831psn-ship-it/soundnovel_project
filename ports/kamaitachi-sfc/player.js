@@ -6,6 +6,7 @@
 //
 // Data: ?data=URL (default ../../kamaitachi-sfc-kor/port-data/) with
 //   program/manifest.json + program/NN.bin, sound/dsp-gauss.bin.
+import { fitScale } from "../../shared/player/fit-scale.js";
 import { createAudioOut } from './sound/output.js';
 import { startGate } from '../../shared/player/start-gate.js';
 import { PAD, DEFAULT_KEYS } from './sound/vm-sound.js';
@@ -24,11 +25,10 @@ if (params.has('embed') || window.self !== window.top) document.documentElement.
 // Whole-number scale in device pixels, so every SFC pixel is the same size.
 function fit() {
   const ratio = devicePixelRatio || 1;
-  const steps = Math.floor(Math.min((stage.clientWidth * ratio) / 256, (stage.clientHeight * ratio) / 224));
-  const scale = steps >= 1 ? steps / ratio : Math.min(stage.clientWidth / 256, stage.clientHeight / 224);
+  const { scale, whole, steps } = fitScale(stage.clientWidth, stage.clientHeight, 256, 224, ratio);
   canvas.style.width = `${256 * scale}px`;
   canvas.style.height = `${224 * scale}px`;
-  $('scale').textContent = steps >= 1 ? `×${steps}` : '축소';
+  $('scale').textContent = whole ? `×${steps}` : '맞춤';
 }
 new ResizeObserver(fit).observe(stage);
 fit();
