@@ -290,7 +290,13 @@ The per-frame effects 0x800416a4 that `weatherTick` does not port by hand run tr
 
 - A tap on another row of a list moves the original's cursor there with its own pad presses and
   chooses it at once (`runtime.moveCursor`); in the flowchart's grid a tap moves the cursor and a
-  second tap chooses.
+  second tap chooses. The frames in which the cursor walks to the row are run at once, without a
+  picture or a sound frame between them, so no cursor is seen moving.
+- The unattended demo of the title ends at a button and the title comes back within a few frames
+  (the console loads from the disc meanwhile), so a button pressed during auto mode reaches the
+  game for one frame only: the same press cannot also choose on the title.
+- A game pad (Gamepad API) is read in `shell.js`: the buttons are the PlayStation pad's own
+  (0 ×, 1 ○, 2 □, 3 △, 8 SELECT, 9 START, the d-pad and the left stick), held while they are held.
 - On screens whose rows include direction buttons (the flowchart, the backlog) a drag scrolls:
   the view follows the finger, one pad press per 14 screen pixels (`runtime.dragKeys`,
   `runtime.pressSteps`, `shell.js`). The corner button is × there (back).
@@ -324,8 +330,6 @@ used). The two data files hold the translated script and are port data: not comm
 - Default names: 토오루 / 마리 (the name pointers of 0x8003ab98 are redirected).
 - The Korean build keeps its own memory card (`kamaitachi-ps1.card1.ko`): a save holds a
   position inside the script text.
-- Not translated yet: the text of the EXE (menus, card and book screens, chapter titles of the
-  flowchart, the name entry board).
 
 Offsets: three scenario commands hold a byte offset into their own resource (0x1e, 0x45, 0x39
 animStart). `node tools/ko/offset-operands.mjs SCE.PAC PORT_DATA/manifest.json offsets.json` lists
@@ -338,3 +342,24 @@ inserted name (`[n1]`, `[n2]`) is chosen when the text is typed (`src/text/josa.
 in `drawString`. The translation is written for the default names. The ending list is written over
 the copy the game makes of its table (`ko-script.json` `endings`), so its titles are not bound to
 the original block.
+
+Names: in the Korean build the name entry (`src/name-entry.js`) shows a board of consonants and
+vowels (their glyphs are added to the font by `build-ko.py`), and a pressed cell is composed with
+the last character of the name (ㅁ ㅣ -> 미, 미 ㄴ -> 민, 민 ㅏ -> 미나); delete takes a whole
+character. The culprit judge compares the typed name with the kana names of its table, so
+`build-ko.py --culprit FILE` (`{"names": {address of a name of the table: [Korean names]},
+"display": {address: the name stored on a match}}`) puts the Korean names in `ko-script.json`
+(`culprit`), and `src/menu/calls.js` takes a typed name that equals one of them as a match of that
+entry. The file of the names holds game text and stays outside this repository.
+
+Spaces and size: a space (byte 0x20) is typed only right after a glyph of the same line, so a
+piece of text that opens with a space joins the piece before it with a gap and a line never
+starts with one. The Hangul glyphs are rastered at 12 px in a 14 px cell (`build-ko.py --size N`
+tries another size), one under the original's kana, which keeps most translated pages within the
+original's ten lines. `build-ko.py --lines FILE` (and `--lines-ja FILE`) writes every page as the
+screen shows it, line by line, and `ko-report.json` counts the pages by their number of lines
+(`pagesByLines`); those files hold game text and stay outside this repository. The character
+profiles are broken by hand and never wrap, so `build-ko.py` breaks a Korean line longer than the
+original's longest again at its spaces (`profilesRewrapped`), and `drawString` leaves out a glyph
+past the right edge of the screen in the Korean build (drawn there it would stay in the next
+page's place and show up on a later screen).

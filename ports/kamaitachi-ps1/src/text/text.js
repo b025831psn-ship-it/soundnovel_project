@@ -102,8 +102,10 @@ function textStep(ctx) { // the body of 0x80039288; returns the frame's sp when 
   // when the word that follows would pass the right edge (the original skips the byte: Japanese
   // has no spaces and breaks anywhere).
   function koSpace(w, q) {
-    const x = r16(T.x + 2 * w), left = r16(T.left + 2 * w);
-    if (x <= left) return;
+    const x = r16(T.x + 2 * w), left = r16(T.left + 2 * w), a = m.ko.after?.[w];
+    // a space counts only right after a glyph of this line (the left margin may sit at x in the
+    // middle of a line, so x alone does not tell a line start); after a load, x past the margin
+    if (a ? a.x !== x || a.y !== r16(T.y + 2 * w) : x <= left) return;
     let n = 0, last = 0;
     for (; r8(q) >= 0x78; q += 2) { last = glyphWidth(m, r8(q) << 8 | r8(q + 1)) + 1; n += last; }
     if (n && x + m.ko.space + n - last >= 0x120) { w16(T.x + 2 * w, left); down(w); }
@@ -231,6 +233,7 @@ function textStep(ctx) { // the body of 0x80039288; returns the frame's sp when 
     glyph(r16(T.x + 2 * u), r16(T.y + 2 * u), code);
     u = win();
     w16(T.x + 2 * u, r8(T.glyphW) + r16(T.x + 2 * u) + 1);
+    if (m.ko) (m.ko.after ??= [null, null])[u] = { x: r16(T.x + 2 * u), y: r16(T.y + 2 * u) };
     return 0;
   }
 

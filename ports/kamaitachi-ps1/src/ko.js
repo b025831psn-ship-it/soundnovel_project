@@ -98,6 +98,8 @@ export function koBuild(pacs, ko) {
       moved: new Map(ko.script.moved ?? []),
       // the title section of the flowchart table: kept in spare RAM; the flowchart's title pointer is turned to it (menu/calls.js)
       chart: ko.script.chart ? { addr: ko.script.chart.addr, bytes: fromBase64(ko.script.chart.bytes) } : null,
+      // the culprit judge: address of a name of its table -> the Korean names taken as that name (menu/calls.js)
+      culprit: new Map((ko.script.culprit ?? []).map(([a, list]) => [a >>> 0, list.map(fromBase64)])),
       // the particle after a name (text/josa.js)
       josa: ko.script.chars ? koJosa(ko.script) : null,
       // the ending list: written over the copy the game makes of it (menu/calls.js)
