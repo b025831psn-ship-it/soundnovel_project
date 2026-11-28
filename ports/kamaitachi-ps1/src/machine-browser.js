@@ -71,7 +71,7 @@ async function audioOut() {
   } catch (e) { console.warn("[kamaitachi-ps1 machine] no audio output", e); return null; }
 }
 
-export async function startMachine({ canvas, dataRoot, audio = true, onProgress = null, requestFrame = requestAnimationFrame, now = () => performance.now(), timer = requestFrame === requestAnimationFrame, gate = null, lang = "ko" }) {
+export async function startMachine({ canvas, dataRoot, audio = true, onProgress = null, requestFrame = requestAnimationFrame, now = () => performance.now(), timer = requestFrame === requestAnimationFrame, gate = null, lang = "ko", displayShift = 4 }) {
   const base = new URL(dataRoot, location.href);
   let loaded = 0;
   const progress = (n) => { loaded += n; onProgress?.(loaded); };
@@ -117,7 +117,13 @@ export async function startMachine({ canvas, dataRoot, audio = true, onProgress 
   const draw = () => {
     const d = machine.gpu.displayWidth, h = machine.gpu.displayHeight;
     if (!image || image.width !== d || image.height !== h) { image = ctx2d.createImageData(d, h); canvas.width = d; canvas.height = h; }
-    machine.gpu.display(image.data); ctx2d.putImageData(image, 0, 0);
+    machine.gpu.display(image.data);
+    // The game shows its pictures 12 lines down and 4 lines short of the bottom (its own display
+    // area). The web player shows the frame displayShift lines higher, 8 and 8 (태우 2026-11-28):
+    // the top lines, which are black, are dropped and the bottom is filled with black. The GPU and
+    // VRAM stay the original's; ?display=original shows the frame as it is.
+    if (displayShift > 0 && displayShift < h) { const px = image.data, n = displayShift * d * 4; px.copyWithin(0, n); px.fill(0, px.length - n); for (let i = px.length - n + 3; i < px.length; i += 4) px[i] = 255; }
+    ctx2d.putImageData(image, 0, 0);
   };
   const keys = new Map(); // button -> frames left
   // moveCursor: presses of the direction that moves the original's cursor, 1 frame down, 1 up each
