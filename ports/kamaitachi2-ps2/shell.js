@@ -1,6 +1,6 @@
 // The player around the PS2 screen: the same shell as the other ports (ports/kamaitachi-ps1/shell.js,
-// 태우 2026-11-28: one UI for every port). Whole-number scaling (fit-scale.js, full width on an upright
-// phone), the blurred scene at the sides, sound and volume, full screen, theatre mode in the hub, and the
+// 태우 2026-11-28: one UI for every port). The screen fills the stage (whole numbers only where they fill
+// it anyway; full width on an upright phone), the blurred scene at the sides, sound and volume, full screen, theatre mode in the hub, and the
 // bar resting while immersed. The game's own input (taps, keys, pad) stays in player.js, which publishes
 //   window.kamaitachi2Ps2 = { setVolume(0..1), resume() }
 import { fitScale, upright } from "/shared/player/fit-scale.js";
@@ -17,7 +17,12 @@ const store = {
 function fit() {
   const ratio = devicePixelRatio || 1;
   document.documentElement.classList.toggle("upright", upright());
-  const { scale, whole, steps } = fitScale(stage.clientWidth, stage.clientHeight, W, H, ratio);
+  // The PS2 draws photographs and movies at 640x448, not pixel art: whole-number steps would leave it
+  // at x1 on a common PC window (1280x900 less the bar), so it fills the stage at any scale, like an
+  // upright phone (fit-scale.js). Whole numbers are kept only where they fill the stage anyway.
+  const fitted = fitScale(stage.clientWidth, stage.clientHeight, W, H, ratio);
+  const exact = Math.min(stage.clientWidth / W, stage.clientHeight / H);
+  const { scale, whole, steps } = fitted.whole && fitted.scale >= exact * 0.9 ? fitted : { scale: exact, whole: false, steps: fitted.steps };
   const band = (H - LINES) / 2 * scale;
   canvas.style.width = `${W * scale}px`;
   canvas.style.height = `${LINES * scale}px`;
