@@ -63,7 +63,7 @@ kbd {
 .theatre iframe[hidden] { display: none }
 .theatre iframe {
   display: block; width: 100%; border: 0; background: #000;
-  height: min(calc(66.667cqw + 52px), calc(100dvh - var(--top) - 2 * var(--gap)));
+  height: min(calc(var(--aspect, .66667) * 100cqw + 52px), calc(100dvh - var(--top) - 2 * var(--gap)));
   min-height: 300px;
 }
 
@@ -273,7 +273,7 @@ body.theatre-mode .theatre iframe { height: 100dvh }
 }
 @media (pointer: coarse) {
   /* Touch play needs no buttons; when the player shows them (its pad button) the frame grows to hold them. */
-  body.pad-on .theatre iframe { height: min(calc(66.667cqw + 52px + 200px), calc(100dvh - var(--top))) }
+  body.pad-on .theatre iframe { height: min(calc(var(--aspect, .66667) * 100cqw + 52px + 200px), calc(100dvh - var(--top))) }
   body.theatre-mode .theatre iframe { height: 100dvh }
 }
 /* Phone turned sideways while a game is open: the player takes the whole window, like a handheld.

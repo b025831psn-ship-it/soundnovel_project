@@ -239,6 +239,9 @@
       const src = selected.dataset.src ?? (selected.hash === '#kamaitachi'
         ? '/ports/kamaitachi-gba/index.html'
         : '/play/' + selected.hash.slice(1) + '/');
+      // the frame's height follows the game's screen shape (height / width), so a phone held upright shows it full width
+      const aspect = { '#kamaitachi': 160 / 240, '#kamaitachi-ps1': 240 / 320, '#kamaitachi-sfc': 224 / 256, '#zakuro-sfc': 224 / 256, '#kamaitachi2-ps2': 3 / 4 }[selected.hash] ?? 2 / 3;
+      frame.style.setProperty('--aspect', String(aspect));
       if (frame.getAttribute('src') !== src) frame.src = src;
       frame.focus();
     } else {
