@@ -24,3 +24,4 @@ ED 하나에 JSON 파일 하나를 생성한다. 페이지마다 장면명, ED �
 ## 로컬 그래픽
 
 `python prepare_media.py "<원본 BIN>" "<로컬 리소스 디렉터리>"`로 디스크 경로를 보존한 리소스를 준비한다. image.mjs의 parts와 decodeImage는 CFP의 팔레트와 압축된 인덱스 이미지를 RGBA로 변환한다. SLPS-20196의 CFP 2,181개에서 압축 스트림 길이·픽셀 수·색 심도를 검사했다. 픽셀과 원본 화면의 대조는 별도 검증 항목이다.
+로컬 리소스 폴더에 대해 python av.py "<로컬 리소스 디렉터리>"를 실행하면 movies에 H.264 MP4, sound에 원본 순서의 PCM WAV가 생성된다. FFmpeg가 필요하다. PSS의 독립 PCM 패킷에서 좌우 채널을 재배열한다.
