@@ -17,6 +17,12 @@ class SfcAudioOut extends AudioWorkletProcessor {
   }
   process(_, outputs) {
     const L = outputs[0][0], R = outputs[0][1] ?? outputs[0][0];
+    // The game starts before the first tap, with the context suspended (browser rule): what piled up
+    // meanwhile is dropped down to the normal lead, so the sound is in step from the first tap on.
+    if (!this.live) {
+      this.live = true;
+      const rs = this.rs; if (rs.fill > rs.targetFill) rs.read = (rs.write - rs.targetFill + rs.cap) % rs.cap;
+    }
     if (this.paused) { L.fill(0); R.fill(0); return true; }
     this.rs.pull(L, R);
     if (this.muted) { L.fill(0); R.fill(0); }

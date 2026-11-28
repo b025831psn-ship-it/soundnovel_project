@@ -99,20 +99,25 @@ function startGame(data, out) {
   vm.reset();
 
   // Paced by the audio buffer: run the VM until ~LEAD s of S-DSP output is queued ahead of playback.
-  let startTime = out.context.currentTime;
+  // Until the first tap the AudioContext is suspended (browser rule) and its clock stands still: the game
+  // then runs by the wall clock, and the clock is re-anchored when the sound starts.
+  const wallStart = performance.now() / 1000;
+  const clock = () => (out.context.state === 'running' ? out.context.currentTime : performance.now() / 1000 - wallStart);
+  let startTime = clock();
+  out.context.addEventListener('statechange', () => { startTime = clock() - produced / DSP_HZ; });
   const glow = $('glow').getContext('2d');
   let tick = 0;
   const step = () => {
     const started = performance.now();
-    let ahead = produced / DSP_HZ - (out.context.currentTime - startTime);
+    let ahead = produced / DSP_HZ - (clock() - startTime);
     // After a hidden tab or a stall, restart the clock instead of racing to catch up.
-    if (ahead < -0.25) { startTime = out.context.currentTime - produced / DSP_HZ; ahead = 0; }
+    if (ahead < -0.25) { startTime = clock() - produced / DSP_HZ; ahead = 0; }
     try {
       while (ahead < LEAD && !vm.cpu.stopped && performance.now() - started < BUDGET_MS) {
         const goal = vm.bus.clock.master + SLICE;
         while (vm.bus.clock.master < goal && !vm.cpu.stopped) { vm.step(); perField(); }
         link.sync(vm.bus.clock.master);
-        ahead = produced / DSP_HZ - (out.context.currentTime - startTime);
+        ahead = produced / DSP_HZ - (clock() - startTime);
       }
     } catch (error) {
       out.flush(); out.setPaused(true);
@@ -243,12 +248,13 @@ let idleTimer = 0;
 const wake = () => { shell.classList.remove('idle'); clearTimeout(idleTimer); idleTimer = setTimeout(() => shell.classList.add('idle'), 2500); };
 addEventListener('pointermove', wake); addEventListener('pointerdown', wake); wake();
 
-// Audio may only start inside a user gesture, so the game starts on the first tap or key.
+// The game starts at once; audio may only start inside a user gesture, so it is silent until the first tap or key.
 load().then((data) => {
-  startGate(stage).then(async () => {
+  let out = null;
+  startGate(stage, { onPress: () => out?.resume() }).then(async () => {
     try {
-      const out = await createAudioOut();
-      await out.resume();
+      out = await createAudioOut();
+      out.resume(); // silent until the first tap or key (startGate's onPress)
       const game = startGame(data, out);
       wireControls(game, out);
       stage.classList.add('ready');

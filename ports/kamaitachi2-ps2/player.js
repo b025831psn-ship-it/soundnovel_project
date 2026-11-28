@@ -264,7 +264,19 @@ function playMovie(file, next, loop = false) {
   movie.loop = loop;
   movie.onerror = () => fail('게임 영상을 불러오지 못했습니다.');
   movie.onended = next;
-  movie.play().catch(error => { if (error.name !== 'AbortError') fail('브라우저에서 영상을 재생할 수 없습니다.'); });
+  movie.muted = false;
+  movie.play().catch(error => {
+    // The game starts before any tap (shared/player/start-gate.js): the browser then only lets a muted
+    // movie play, so it plays muted and the sound comes on with the first tap or key.
+    if (error.name === 'NotAllowedError') {
+      movie.muted = true;
+      movie.play().catch(() => {});
+      const unmute = () => { movie.muted = false; };
+      for (const type of ['pointerdown', 'keydown']) addEventListener(type, unmute, { once: true, capture: true });
+      return;
+    }
+    if (error.name !== 'AbortError') fail('브라우저에서 영상을 재생할 수 없습니다.');
+  });
 }
 
 function intro() {
@@ -1060,8 +1072,7 @@ try {
   requestAnimationFrame(frame);
 } catch { fail('게임 데이터를 불러오지 못했습니다.'); }
 if (scene === 'ready') {
-  // shared/player/start-gate.js: the one start screen of every port. The press
-  // that starts the game switches sound on and is not also a game input.
+  // shared/player/start-gate.js: every port starts at once; each tap or key wakes the sound.
   await startGate(stage, { onPress: () => { unlockAudio(); } });
   intro();
 }

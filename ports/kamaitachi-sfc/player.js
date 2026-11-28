@@ -199,11 +199,12 @@ let idleTimer = 0;
 const wake = () => { shell.classList.remove('idle'); clearTimeout(idleTimer); idleTimer = setTimeout(() => shell.classList.add('idle'), 2500); };
 addEventListener('pointermove', wake); addEventListener('pointerdown', wake); wake();
 
-// Audio may only start inside a user gesture, so the game starts on the first tap or key.
+// The game starts at once; audio may only start inside a user gesture, so it is silent until the first tap or key.
 load().then((data) => {
-  startGate(stage).then(async () => {
-    const out = await createAudioOut();
-    await out.resume();
+  let out = null;
+  startGate(stage, { onPress: () => out?.resume() }).then(async () => {
+    out = await createAudioOut();
+    out.resume(); // silent until the first tap or key (startGate's onPress)
     const worker = startGame(data, out);
     wireControls(worker, out);
     stage.classList.add('ready');
