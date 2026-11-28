@@ -36,18 +36,23 @@ for (const file of captures) {
     if (!line) continue;
     const { z: taken, p } = JSON.parse(line), z = turned(taken);
     if (!z) continue;
-    const page = []; // the lines of this page, in the order typed: [id, where its command is]
-    for (const { r, h } of p) {
-      let hits = (byResource.get(r) ?? []).filter(([, hex]) => h.startsWith(hex));
-      if (!hits.length) { unknown++; continue; }
+    const page = []; // the lines of this page, in the order typed: [id, where its command is, resource]
+    const found = p.map(({ r, h }) => ({ r, hits: (byResource.get(r) ?? []).filter(([, hex]) => h.startsWith(hex)) }));
+    found.forEach(({ r, hits }, k) => {
+      if (!hits.length) { unknown++; return; }
       if (hits.length > 1) {
-        shared++; const c = cursor(z);
-        if (c.res !== r) continue; // no telling which
-        hits = [hits.reduce((best, x) => (Math.abs(x[2] - c.at) < Math.abs(best[2] - c.at) ? x : best))];
-        if (Math.abs(hits[0][2] - c.at) > 0x400) continue;
+        // lines that begin alike (a bare code, the same words): the one nearest to a line of this
+        // page that is known for sure, else to where the state's cursor stands
+        shared++;
+        const sure = found.map((f, j) => [Math.abs(j - k), f]).filter(([, f]) => f.r === r && f.hits.length === 1).sort((x, y) => x[0] - y[0])[0]?.[1].hits[0][2];
+        const c = cursor(z), near = sure ?? (c.res === r ? c.at : null);
+        if (near === null) return;
+        const best = hits.reduce((b, x) => (Math.abs(x[2] - near) < Math.abs(b[2] - near) ? x : b));
+        if (Math.abs(best[2] - near) > 0x400) return;
+        hits = [best];
       }
       page.push([hits[0][0], hits[0][2], r]);
-    }
+    });
     if (!page.length || page.every(([id]) => id in pieces)) continue;
     // The interpreter's cursor at a page wait stands inside the text being typed; a book resumes at
     // a command. The state is made to resume at the text command of the first line of its page.
