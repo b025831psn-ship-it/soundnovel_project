@@ -18,6 +18,7 @@ from opening import extend_korean_font, opening_assets, still_png
 
 KOREAN_UI_TEXT = (
     "토오루마리주인공여자친구이름을입력해주십시오이이름으로괜찮습니까예아니오"
+    "결정지우기완료문자표확인입니다돌아가기닿홀○×△"
     "ㄱㄴㄷㄹㅁㅂㅅㅇㅈㅊㅋㅌㅍㅎㅏㅑㅓㅕㅗㅛㅜㅠㅡㅣ＊＿"
 )
 

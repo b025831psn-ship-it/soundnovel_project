@@ -1,4 +1,4 @@
-import { DirectionRepeat, NameEditor, keyboardGroups } from './names.js';
+import { DirectionRepeat, NameEditor, keyboardGroups, koreanKeyboardGroups } from './names.js';
 import { Screen } from './render.js';
 import { Sn4Vm } from './sn4.js';
 import { LoopingMusic } from './music.js';
@@ -1215,7 +1215,7 @@ try {
   await Promise.all(['font','copyrigh','g_start','title_00','my0000','my0002','my0007','my0011','my0016b','my0021','my0645','mo0000','name_e01','mark','sys_fc01','sys_cd01','sys_cd02','sys_jo01','sys_jo02','sys_jo03','sys_save','sys_wa01'].map(async name => {
     const image = new Image(); image.src = asset(name + '.png'); await image.decode(); images[name] = image;
   }));
-  groups = keyboardGroups(data.rows);
+  groups = data.language === 'ko' ? koreanKeyboardGroups : keyboardGroups(data.rows);
   const signed16 = value => (value << 16) >> 16;
   const point = value => ({x:value >> 16, y:signed16(value)});
   const markStyle = offset => sn4Style.styles.push({offset,

@@ -171,6 +171,12 @@ export class Screen {
     this.rect(0, 390, 640, 26);
     this.sprite('name_e01', 0, 66, 54, 22, nameScreen ? 40 : 38, lowRow ? 391 : 393);
     this.sprite('name_e01', 0, 114, 22, 22, 112, lowRow ? 391 : 392);
+    if (this.data.language === 'ko' && nameScreen) {
+      this.rect(34, 390, 525, 28);
+      this.text(state === 'name' ? '○ 결정  × 지우기  △ 완료  L1/R1 문자표' : '○ 결정  × 돌아가기',
+        45, 393, {scale:.55, widthScale:.55, spacing:0});
+      return;
+    }
     if (state === 'created' || state === 'save-note') {
       this.sprite('sys_fc01', 243, 0, 45, 24, 138, 390);
     } else if (state === 'name') {
@@ -281,8 +287,13 @@ export class Screen {
       this.text(ch, x + inset, y, dim ? editorDimInk : editorInk);
     };
     this.rect(0, 28, 640, 36);
-    this.sprite('name_e01', 0, role ? 33 : 0, role ? 183 : 94, 32, role ? 63 : 123, 29, role ? 150 : 91, 34);
-    this.sprite('name_e01', 160, 0, 93, 32, 215, 29, 96, 34);
+    if (this.data.language === 'ko') {
+      this.text(role ? '여자친구 이름' : '주인공 이름', role ? 73 : 119, 31,
+        {...editorInk, scale:.8, widthScale:.8, spacing:0});
+    } else {
+      this.sprite('name_e01', 0, role ? 33 : 0, role ? 183 : 94, 32, role ? 63 : 123, 29, role ? 150 : 91, 34);
+      this.sprite('name_e01', 160, 0, 93, 32, 215, 29, 96, 34);
+    }
     const insertionColumn = Math.min(5, editor.value.length);
     glyph('＿', 352 + 32 * insertionColumn, 33);
     for (let i = 0; i < 6; i++) {
@@ -330,18 +341,24 @@ export class Screen {
 
   confirm(name, role, selection) {
     this.rect(0, 28, 640, 36);
-    this.sprite('name_e01', 192, 0, 61, 32, 239, 29);
-    this.sprite('name_e01', 160, 0, 32, 32, 302, 29);
-    this.sprite('name_e01', 185, 32, 67, 32, 335, 29);
+    if (this.data.language === 'ko') this.text('이름 확인', 247, 31, {...editorInk, scale:.8, widthScale:.8});
+    else {
+      this.sprite('name_e01', 192, 0, 61, 32, 239, 29);
+      this.sprite('name_e01', 160, 0, 32, 32, 302, 29);
+      this.sprite('name_e01', 185, 32, 67, 32, 335, 29);
+    }
     const left = role ? 48 : 112;
     const promptStyle = {...editorInk, scale:.96, widthScale:1, spacing:0};
-    this.text(this.data.prompts[role] + name + '。', left, 143, promptStyle);
-    this.text(this.data.prompts[2], 176, 199, promptStyle);
+    const prompts = this.data.language === 'ko'
+      ? [role ? '여자친구 이름은 ' : '주인공 이름은 ', '이 이름으로 괜찮습니까?']
+      : [this.data.prompts[role], this.data.prompts[2]];
+    this.text(prompts[0] + name + (this.data.language === 'ko' ? '입니다.' : '。'), left, 143, promptStyle);
+    this.text(prompts[1], this.data.language === 'ko' ? 135 : 176, 199, promptStyle);
     this.rect(235, 252, 138, 72);
     this.c.save();
     this.c.filter = 'brightness(86%)'; // Peak label intensity is 219/255 in the PS2 capture.
-    this.text('はい', 272, 254, {spacing:0});
-    this.text('いいえ', 272, 286, {spacing:0});
+    this.text(this.data.language === 'ko' ? '예' : 'はい', 272, 254, {spacing:0});
+    this.text(this.data.language === 'ko' ? '아니오' : 'いいえ', 272, 286, {spacing:0});
     this.c.restore();
     this.c.save();
     this.c.globalAlpha = .73;
