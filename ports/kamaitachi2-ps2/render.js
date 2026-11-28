@@ -1,3 +1,5 @@
+import { JAPANESE_NO_START, KOREAN_NO_START, NO_END, wordWidth } from './text-layout.js';
+
 const blue = 'rgba(48,84,137,.80)';
 const editorInk = { tint: Array(3).fill(219 * 128 / 255) };
 const editorDimInk = { tint: Array(3).fill(109 * 128 / 255) };
@@ -63,8 +65,8 @@ export class Screen {
     readings, colors, tint, lineStart, styleAt, moves = [], lines = [], measureOnly = false } = {}) {
     // lineStart(offset) may move the first glyph of a line (SN4 CommandCenter).
     let px = lineStart?.(0) ?? x, py = y, offset = 0;
-    const noStart = new Set('、。？！＿ヽヾゝゞ々仝〃ー’”）〕］〉」』】＞ぁぃぅぇぉっゃゅょゎァィゥェォッャュョヮ');
-    const noEnd = new Set('（〔［〈「『＜');
+    const korean = this.data.language === 'ko';
+    const noStart = korean ? KOREAN_NO_START : JAPANESE_NO_START;
     const chars = Array.from(str);
     for (let at = 0; at < chars.length; at++) {
       const ch = chars[at];
@@ -94,9 +96,15 @@ export class Screen {
       const next = chars[at + 1];
       const nextGlyph = next ? this.metric(next) : null;
       const nextAdvance = nextGlyph ? (nextGlyph[2] + glyphSpacing) * glyphWidthScale : 0;
+      const beginsWord = korean && at > 0 && !/\s/u.test(ch) && /\s/u.test(chars[at - 1]);
+      const tokenWidth = beginsWord ? wordWidth(chars, at, offset, (c, o) => {
+        const tokenStyle = styleAt?.(o) ?? {widthScale, spacing};
+        return (this.metric(c)[2] + (tokenStyle.spacing ?? spacing)) * (tokenStyle.widthScale ?? widthScale);
+      }) : 0;
+      const wordWrap = beginsWord && px > x && tokenWidth <= max && px + tokenWidth > x + max;
       const wrap = px + advance > x + max && !noStart.has(ch);
-      const pushOpening = noEnd.has(ch) && next && px + advance + nextAdvance > x + max;
-      if (ch === '\n' || wrap || pushOpening) { px = lineStart?.(offset) ?? x; py += lineHeight; }
+      const keepPair = (NO_END.has(ch) || noStart.has(next)) && next && px + advance + nextAdvance > x + max;
+      if (ch === '\n' || wordWrap || wrap || keepPair) { px = lineStart?.(offset) ?? x; py += lineHeight; }
       const reading = readings?.get(offset);
       offset += ch.length;
       if (ch === '\n') { px = lineStart?.(offset) ?? px; continue; }

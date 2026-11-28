@@ -20,6 +20,8 @@ const discList = discAt >= 0 ? argv.splice(discAt, 2)[1] : null;
 const web = path.resolve(argv[0] || '.');
 const out = argv[1] ? path.resolve(argv[1]) : null;
 const { Sn4Vm } = await import(pathToFileURL(path.join(web, 'sn4.js')).href);
+const { JAPANESE_NO_START, KOREAN_NO_START, NO_END, wordWidth } =
+  await import(pathToFileURL(path.join(web, 'text-layout.js')).href);
 const program = JSON.parse(await readFile(path.join(web, 'assets/sn4.json'), 'utf8'));
 const opening = JSON.parse(await readFile(path.join(web, 'assets/opening.json'), 'utf8'));
 const scenePack = opening.scenePack ?? {};
@@ -165,8 +167,6 @@ function music(vm, name) {
 // Lay out a page like player.js drawStory()/render.text() and flag what the
 // original would not show: lines past the screen, automatic wraps that start a
 // line with a closing mark, centered lines wider than the text box.
-const NO_START = new Set([...'、。？！＿ヽヾゝゞ々仝〃ー’”）〕］〉」』】＞ぁぃぅぇぉっゃゅょゎァィゥェォッャュョヮ']);
-const NO_END = new Set([...'（〔［〈「『＜']);
 function checkLayout(vm, raw) {
   const text = raw.trimEnd();
   if (!text.trim()) return;
@@ -178,7 +178,7 @@ function checkLayout(vm, raw) {
   const styleAt = o => L.styles.findLast(mark => mark.offset <= o) ?? L;
   const advance = (ch, o) => {
     const s = styleAt(o), ratio = s.fontSize / 33;
-    const localized = localizedGlyph(ch) ? [0, 0, ch === ' ' ? 16 : /^[\x21-\x7e]$/.test(ch) ? 18 : 30] : null;
+    const localized = localizedGlyph(ch) ? [0, 0, ch === ' ' ? 16 : /^[\x21-\x7e]$/.test(ch) ? 18 : 33] : null;
     return ((opening.font?.[ch] ?? localized ?? opening.font?.['�'] ?? [0, 0, 32])[2]
       + s.letterSpacing) * ratio;
   };
@@ -192,6 +192,7 @@ function checkLayout(vm, raw) {
   };
   px = centerAt(0);
   const chars = Array.from(text);
+  const noStart = program.language === 'ko' ? KOREAN_NO_START : JAPANESE_NO_START;
   for (let i = 0; i < chars.length; i++) {
     const ch = chars[i], style = styleAt(offset), leading = style.fontSize + style.lineSpacing;
     for (const move of L.moves.filter(item => item.offset === offset)) {
@@ -202,12 +203,15 @@ function checkLayout(vm, raw) {
       px += line.width;
     }
     const a = advance(ch, offset), next = chars[i + 1], nextA = next ? advance(next, offset + ch.length) : 0;
-    const wrap = px + a > right && !NO_START.has(ch);
-    const pushOpening = NO_END.has(ch) && next && px + a + nextA > right;
-    if (ch === '\n' || wrap || pushOpening) { px = centerAt(offset); py += leading; }
+    const beginsWord = program.language === 'ko' && i > 0 && !/\s/u.test(ch) && /\s/u.test(chars[i - 1]);
+    const tokenWidth = beginsWord ? wordWidth(chars, i, offset, advance) : 0;
+    const wordWrap = beginsWord && px > x && tokenWidth <= right - x && px + tokenWidth > right;
+    const wrap = px + a > right && !noStart.has(ch);
+    const keepPair = (NO_END.has(ch) || noStart.has(next)) && next && px + a + nextA > right;
+    if (ch === '\n' || wordWrap || wrap || keepPair) { px = centerAt(offset); py += leading; }
     if (ch === '\n') { offset += ch.length; px = centerAt(offset); continue; }
     glyphBottom = Math.max(glyphBottom, localizedGlyph(ch) ? Math.min(bottom, py + style.fontSize) : py + style.fontSize);
-    if (px + a > right + 1 && !NO_START.has(ch) && !overRight) {
+    if (px + a > right + 1 && !noStart.has(ch) && !overRight) {
       overRight = true; report('layout-positioned-past-right', `${vm.label} (${Math.round(px + a)}px)`, at);
     }
     px += a; offset += ch.length;
