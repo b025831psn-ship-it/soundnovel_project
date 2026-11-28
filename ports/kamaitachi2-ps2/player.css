@@ -20,6 +20,8 @@ button:hover, button:focus-visible { background: #2a3037; border-color: #8597a3;
 #game-menu { position: absolute; z-index: 4; inset: 3.333% 0 3.333%; display: grid; place-content: center; gap: 12px; background: rgba(0,0,0,.72); backdrop-filter: blur(5px); }
 #game-menu[hidden] { display: none; }
 #game-menu button { min-width: 180px; min-height: 48px; }
+#game-menu button[hidden] { display: none; }
+#game-menu button.attention { border-color: #c8333a; }
 .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(100%); }
 main:fullscreen { width: min(100vw, calc(100vh * 4 / 3)); }
 html.filled main { position: fixed; inset: 0; width: 100vw; height: 100dvh; z-index: 100; display: grid; place-items: center; background: #000; }

@@ -4,6 +4,7 @@ import { Sn4Vm } from './sn4.js';
 import { LoopingMusic } from './music.js';
 import { SePlayer } from './se-player.js';
 import { psychometryRegion } from './psychometry-grid.js';
+import { openSaves, varsToArray, arrayToVars, GAME_ID } from './save.js';
 
 const canvas = document.querySelector('canvas');
 const movie = document.querySelector('#movie');
@@ -47,8 +48,12 @@ async function unlockAudio() {
   return seStarting;
 }
 const cues = Object.fromEntries(['confirm','cancel','move'].map(name => [name, new Audio(asset(name + '.wav'))]));
-const saveKey = 'soundnovel.slps25132.opening.v1';
-let saved = readSave();
+// Saves (save.js): the story save on the chosen card, the carry-over variables written at each ending,
+// and the web-only suspend slot, kept by the shared store and synced through /sync.
+const saves = await openSaves();
+let saved = saves.latest();
+// The last place play can resume from: each choice or input screen (SN4 label and the command index).
+let resumePoint = null, systemDue = false;
 let data, screen, groups, editor, pages, sn4;
 let sn4Mode = false, sn4Event, sn4WaitUntil = 0;
 let specialInput = null;
@@ -128,7 +133,7 @@ function enter(next, selected = 0) {
   canvas.dataset.scene = next;
   userNotice = '';
   closeMenu();
-  menuButton.hidden = !['story','complete','choice','choice-wait','autosave','slot',
+  menuButton.hidden = !['title','story','complete','choice','choice-wait','autosave','slot',
     'file-select','created','save-note','name','confirm'].includes(next);
   announce();
 }
@@ -140,8 +145,9 @@ function closeMenu() {
 }
 
 function openMenu() {
-  if (!['story','complete','choice','choice-wait'].includes(scene)) return;
+  if (!['title','story','complete','choice','choice-wait'].includes(scene)) return;
   menuOpen = true;
+  gameMenu.querySelector('[data-menu="title"]').hidden = scene === 'title';
   gameMenu.hidden = false;
   menuButton.classList.add('is-back');
 }
@@ -318,6 +324,8 @@ function opening(attract = false) {
 }
 
 function title(animate) {
+  saved = saves.latest();
+  sn4Mode = false;
   pendingSe.length = 0;
   se?.stop(null);
   playMusic(data.titleMusic);
@@ -330,13 +338,6 @@ function title(animate) {
   }
 }
 
-function readSave() {
-  try {
-    const value = JSON.parse(localStorage.getItem(saveKey));
-    return Array.isArray(value?.names) && value.names.length === 2 &&
-      value.names.every(n => typeof n === 'string' && n.length > 0 && n.length <= 6) ? value : null;
-  } catch { return null; }
-}
 
 function newGame() {
   stopMovie(); stopMusic();
@@ -346,8 +347,51 @@ function newGame() {
 }
 
 function beginStory() {
-  startSn4('my01_0000');
+  resumePoint = null;
+  // The carry-over variables of the chosen card (the original reads its SYSTEM file); none without a card.
+  startSn4('my01_0000', autosave ? saves.system(slot) : null);
 }
+
+// Snapshot at a choice or input screen: the command that stopped, so resuming shows it again.
+function markResume(event) {
+  resumePoint = {names:[...names], resume:{label:sn4.label, pc:Math.max(0, sn4.pc - 1)},
+    variables:varsToArray(sn4.variables), scene:sn4Style.scene ?? null, music:music.file ?? null,
+    // A looping scene movie (ScenePack .m2v) stands behind the text instead of the still.
+    movie:sn4Style.retainMovie && !movie.hidden && movie.loop ? decodeURIComponent(movie.src.split('/').at(-1)).replace(/\.mp4$/, '') : null};
+  if (autosave) { if (saves.writeStory(slot, resumePoint)) saved = saves.latest(); }
+}
+
+// EndFlow writes the variable block after the ending's own flag updates, which run in the same frame:
+// write it at the next stop.
+function writeSystemIfDue() {
+  if (!systemDue) return;
+  systemDue = false;
+  if (autosave) saves.writeSystem(slot, varsToArray(sn4.variables));
+}
+
+function resumeAt(point) {
+  names = [...point.names];
+  stopMovie();
+  sn4Mode = true;
+  sn4.reset(point.resume.label);
+  sn4.pc = point.resume.pc;
+  if (point.variables) sn4.variables = arrayToVars(point.variables);
+  sn4.setNames(names);
+  sn4Style.scene = point.scene ?? null;
+  sn4Style.retainMovie = Boolean(point.movie);
+  if (point.movie) playMovie(point.movie, null, true);
+  if (point.music) playMusic(point.music); else stopMusic();
+  resumePoint = null;
+  showSn4(sn4.run());
+}
+
+// Web only: the player left the page (another device can carry on from here).
+function suspend() {
+  if (!sn4Mode || !resumePoint) return;
+  saves.writeSuspend({...resumePoint, card:slot, autosave});
+}
+addEventListener('pagehide', suspend);
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') suspend(); });
 
 function storyText() {
   if (sn4Mode) return sn4Event?.text?.trimEnd() ?? '';
@@ -356,6 +400,8 @@ function storyText() {
 
 function showSn4(event) {
   sn4Event = event;
+  writeSystemIfDue();
+  if (event.type === 'choice' || event.type === 'special') markResume(event);
   if (event.type === 'break') {
     // CommandBreak tears down the active scenario state and yields the EE
     // frame. end05_0000 contains no following command, so return to title.
@@ -384,9 +430,10 @@ function showSn4(event) {
   }
 }
 
-function startSn4(label) {
+function startSn4(label, variables = null) {
   sn4Mode = true;
   sn4.reset(label);
+  if (variables) sn4.variables = arrayToVars(variables);
   sn4.setNames(names);
   showSn4(sn4.run());
 }
@@ -626,10 +673,9 @@ function step(key) {
       cue('confirm');
       if (!index) newGame();
       else if (index === 1 && saved) {
-        names = [...saved.names]; stopMovie(); playMusic('k1a001.ogg');
-        slot = saved.slot;
+        slot = saved.card;
         autosave = true;
-        startSn4('my01_0070');
+        resumeAt(saved);
       } else {
         userNotice = index === 1 ? '이 브라우저에 이어할 기록이 없습니다.' : '이 빌드는 스키 여행 회상의 첫 분기까지 플레이할 수 있습니다.';
         status.textContent = userNotice;
@@ -758,14 +804,11 @@ function step(key) {
         showSn4(sn4.resume(editor.value));
       } else { page++; printPage(); }
       if (role === 1 && autosave) {
-        const checkpoint = {names:[...names], slot};
-        try {
-          localStorage.setItem(saveKey, JSON.stringify(checkpoint));
-          saved = checkpoint;
-        } catch {
-          userNotice = '자동 저장에 실패했습니다. 현재 게임은 계속할 수 있습니다.';
-          announce();
-        }
+        // Before the first choice the story save resumes where the two names have been given.
+        const checkpoint = {names:[...names], resume:{label:'my01_0070', pc:0}, variables:varsToArray(sn4.variables),
+          scene:null, music:'k1a001.ogg'};
+        if (saves.writeStory(slot, checkpoint)) saved = saves.latest();
+        else { userNotice = '자동 저장에 실패했습니다. 현재 게임은 계속할 수 있습니다.'; announce(); }
       }
     }
   }
@@ -1137,7 +1180,7 @@ canvas.addEventListener('click', touchGame);
 menuButton.addEventListener('click', event => {
   event.stopPropagation();
   if (menuOpen) closeMenu();
-  else if (['story','complete','choice','choice-wait'].includes(scene)) openMenu();
+  else if (['title','story','complete','choice','choice-wait'].includes(scene)) openMenu();
   else step('cross');
   canvas.focus();
 });
@@ -1146,7 +1189,27 @@ gameMenu.addEventListener('click', event => {
   if (action === 'resume') closeMenu();
   else if (action === 'fullscreen') { closeMenu(); toggleFullscreen(); }
   else if (action === 'title') { closeMenu(); title(false); }
+  else if (action === 'saves') { closeMenu(); syncUi?.open(); }
 });
+// 저장과 기기 연결 (sync-ui.js): only with the shared store, i.e. when the build is served by the hub.
+let syncUi = null;
+if (saves.store) {
+  const savesButton = gameMenu.querySelector('[data-menu="saves"]');
+  saves.store.subscribe(event => { if (event.type === 'remote') saved = saves.latest(); });
+  import('./sync-ui.js').then(({mountSyncUi}) => mountSyncUi({store:saves.store, gameId:GAME_ID, parent:document.querySelector('main'),
+    onPaint:bad => savesButton.classList.toggle('attention', bad), onClose:() => canvas.focus(),
+    boot:{
+      canContinue:() => Boolean(saves.suspended()),
+      get titleActive() { return scene === 'title'; },
+      continueSuspended:() => {
+        const point = saves.suspended();
+        if (!point || scene !== 'title') return false;
+        slot = point.card ?? 0; autosave = Boolean(point.autosave);
+        resumeAt(point);
+        return true;
+      },
+    }})).then(ui => { syncUi = ui; }).catch(error => console.warn('Sync dialog unavailable', error));
+} else gameMenu.querySelector('[data-menu="saves"]').hidden = true;
 document.addEventListener('fullscreenchange', () => {
   if (!document.fullscreenElement) globalThis.screen.orientation?.unlock?.();
 });
@@ -1192,6 +1255,7 @@ try {
     caption:value => { sn4Style.caption = value; return applyScenePack(value); },
     command:(name, args, context) => {
       sn4Style.sceneCommands.push({kind:'sn4', name, args, ...context});
+      if (name === 'End') systemDue = true;
       // EE 0x136f30: measure the rest of the line and move the cursor by half the free width.
       if (name === 'Center') sn4Style.centers.push(sn4.text.length);
       else if (name === 'Default') {
