@@ -1,9 +1,11 @@
-// Save and sync dialog shared by the players: passcode, devices, conflicts, backup file.
-// A player loads it with one <script type="module"> after its shell. It adds a bottom-bar button
-// before #fullscreen and reads what the player exposes as globalThis.soundnovelSave:
-//   { store, gameId, boot } where boot (optional) offers the web-only suspend slot:
-//   canContinue(), titleActive, continueSuspended() (may return a promise), continueLabel, continueNote.
+// Save and sync dialog for a port's player: passcode, devices, conflicts, backup file, carry on.
+// Same dialog as the Kamaitachi Advance one (ports/kamaitachi-gba/sync-ui.js), for any port:
+//   const ui = await mountSyncUi({ api: { store, gameId, boot } });
+//   await ui.initial;   // the first sync after opening (resolves at once when no device is linked)
+// It adds a bottom-bar button before #fullscreen. `boot` (optional) carries the web suspend:
+//   { canContinue(), titleActive, continueSuspended(), continueLabel?, continueNote?, notice? }
 import { deriveKeys, SyncClient, startPairing, claimPairing, renewPairing, newSecret } from "./sync.js";
+
 const el = (tag, props = {}, ...kids) => {
   const e = Object.assign(document.createElement(tag), props);
   for (const k of kids) e.append(k);
@@ -35,8 +37,10 @@ function ready() {
   });
 }
 
-export async function mountSyncUi({ api = ready(), fetchImpl } = {}) {
-  const { store, boot, gameId: GAME = "kamaitachi-gba" } = await api;
+let mounted = false;
+export async function mountSyncUi({ api = ready(), fetchImpl, initialTimeoutMs = 4000 } = {}) {
+  mounted = true;
+  const { store, boot, gameId: GAME } = await api;
   document.head.append(el("style", { textContent: css }));
   const dialog = el("dialog", { id: "save-dialog" });
   const button = el("button", { className: "icon", type: "button", title: "저장 동기화", ariaLabel: "저장 동기화" });
@@ -64,7 +68,21 @@ export async function mountSyncUi({ api = ready(), fetchImpl } = {}) {
     return keys;
   }
 
-  async function sync() {
+  // One sync at a time: two overlapping runs would push the same slot twice from the same base
+  // revision and the second would come back as a conflict with this device's own save.
+  let running = null, again = false;
+  function sync() {
+    if (running) { again = true; return running; }
+    running = (async () => {
+      let r;
+      do { again = false; r = await syncOnce(); } while (again && client);
+      running = null;
+      return r;
+    })();
+    return running;
+  }
+
+  async function syncOnce() {
     if (!client) return null;
     try {
       const r = await client.sync();
@@ -78,13 +96,18 @@ export async function mountSyncUi({ api = ready(), fetchImpl } = {}) {
   }
 
   let timer = 0;
-  const later = () => { clearTimeout(timer); timer = setTimeout(sync, 4000); };
+  // At most 4 s after the first change (a game that keeps writing its bookmarks still syncs).
+  const later = () => { if (!timer) timer = setTimeout(() => { timer = 0; sync(); }, 4000); };
   store.subscribe((ev) => { if (ev.type === "dirty") later(); if (ev.type === "conflict" || ev.type === "error") paint(); });
   addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") sync(); });
   addEventListener("online", () => sync());
 
   const saved = store.getMeta("vaultSecret");
-  if (saved && server()) { await connect(unb64(saved)); sync(); }
+  let initial = Promise.resolve(null);
+  if (saved && server()) {
+    await connect(unb64(saved));
+    initial = Promise.race([sync(), new Promise((r) => setTimeout(() => r(null), initialTimeoutMs))]);
+  }
 
   function paint() {
     const bad = store.status !== "persistent" || store.conflicts.size > 0;
@@ -146,9 +169,13 @@ export async function mountSyncUi({ api = ready(), fetchImpl } = {}) {
         el("button", { type: "button", textContent: "이 기기 것 쓰기", onclick: () => { store.resolveConflict(key, "local"); sync(); paint(); } }),
         el("button", { type: "button", textContent: "다른 기기 것 쓰기", onclick: () => { store.resolveConflict(key, "remote"); paint(); } })));
     }
-    const can = boot?.canContinue?.();
-    form.append(section("이어하기", el("button", { type: "button", disabled: !(can && boot.titleActive), textContent: boot?.continueLabel ?? "마지막 페이지에서 이어하기", onclick: async () => { if (await boot.continueSuspended()) dialog.close(); } }),
-      el("p", { className: "note", textContent: can ? (boot.continueNote ?? "타이틀 화면에서만 쓸 수 있습니다.") : "이어할 저장이 없습니다." })));
+    if (boot) {
+      const can = boot.canContinue?.();
+      form.append(section("이어하기", el("button", { type: "button", disabled: !(can && boot.titleActive), textContent: boot.continueLabel ?? "마지막 페이지에서 이어하기", onclick: async () => { if (await boot.continueSuspended()) dialog.close(); } }),
+        el("p", { className: "note", textContent: can ? ((typeof boot.continueNote === "function" ? boot.continueNote() : boot.continueNote) ?? "타이틀 화면에서만 쓸 수 있습니다.") : "이어할 저장이 없습니다." })));
+      const notice = boot.notice?.();
+      if (notice) form.append(el("p", { className: "note", textContent: notice }));
+    }
     const file = el("input", { type: "file", accept: ".snsave,application/json", hidden: true, onchange: async () => {
       try { const r = store.importBackup(JSON.parse(await file.files[0].text())); message = `가져옴 ${r.imported}, 건너뜀 ${r.skipped}, 잘못됨 ${r.invalid}`; }
       catch { message = "백업 파일을 읽지 못했습니다."; }
@@ -172,7 +199,10 @@ export async function mountSyncUi({ api = ready(), fetchImpl } = {}) {
 
   button.addEventListener("click", () => { render(); dialog.showModal(); });
   paint();
-  return { dialog, button, sync };
+  const open = () => { if (!dialog.open) { render(); dialog.showModal(); } };
+  return { dialog, button, sync, initial, paint, open };
 }
 
-if (typeof document !== "undefined" && !globalThis.__noAutoMountSyncUi) mountSyncUi();
+// Pages that load this file with a <script type="module"> (GBA, PS1, 석류의 맛) get the dialog once the
+// player announces its store (soundnovel-save-ready); a player that calls mountSyncUi itself is left alone.
+if (typeof document !== "undefined" && !globalThis.__noAutoMountSyncUi) ready().then((api) => { if (!mounted) mountSyncUi({ api }); });

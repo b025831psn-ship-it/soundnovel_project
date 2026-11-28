@@ -40,9 +40,11 @@ export function createServer({ dir, maxBody = MAX_BODY, maxSlots = MAX_SLOTS, no
   const store = (id, v) => { const f = vaultFile(id); fs.writeFileSync(f + ".tmp", JSON.stringify(v)); fs.renameSync(f + ".tmp", f); };
   const send = (res, code, body) => { res.writeHead(code, { "content-type": "application/json", "access-control-allow-origin": "*", "access-control-allow-headers": "authorization,content-type,if-match,x-vault-id", "access-control-allow-methods": "GET,PUT,POST,DELETE,OPTIONS" }); res.end(body === undefined ? "" : JSON.stringify(body)); };
   const readBody = (req) => new Promise((resolve, reject) => {
+    // Past the limit the rest is read and dropped, so the 413 reaches the client (destroying the
+    // socket left the client's fetch waiting forever).
     let n = 0; const chunks = [];
-    req.on("data", (c) => { n += c.length; if (n > maxBody) { reject(Object.assign(new Error("too large"), { code: 413 })); req.destroy(); } else chunks.push(c); });
-    req.on("end", () => resolve(Buffer.concat(chunks).toString("utf8")));
+    req.on("data", (c) => { n += c.length; if (n <= maxBody) chunks.push(c); });
+    req.on("end", () => (n > maxBody ? reject(Object.assign(new Error("too large"), { code: 413 })) : resolve(Buffer.concat(chunks).toString("utf8"))));
     req.on("error", reject);
   });
 

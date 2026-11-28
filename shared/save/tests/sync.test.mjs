@@ -82,7 +82,8 @@ test("wrong code and oversize are refused", async () => {
   const other = await deriveKeys(newSecret());
   const bad = new SyncClient({ store: a.store, baseUrl: t.baseUrl, keys: { ...t.keys, authToken: other.authToken } });
   await assert.rejects(bad.sync());
-  const big = await t.mk(); big.store.write("demo", "suspend", { schema: 1, payload: { blob: "x".repeat(300000) } });
+  // A slot of its own: on "suspend" the server would answer 409 (a's save) before reading the body.
+  const big = await t.mk(); big.store.write("demo", "big", { schema: 1, payload: { blob: "x".repeat(300000) } });
   assert.equal((await big.sync.sync()).errors.length, 1);
   t.close();
 });
