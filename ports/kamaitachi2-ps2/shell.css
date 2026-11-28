@@ -351,3 +351,9 @@ html.filled, html.filled body { overflow: hidden; }
 .screen-box #movie[hidden] { display: none; }
 #screen { image-rendering: auto; }
 #screen:focus { outline: none; }
+
+/* The scene movie plays under the canvas: the game draws its menus and text over the movie (the title menu,
+   lyrics), as on the console. The canvas is cleared each frame, so the movie shows through it. */
+.screen-box #movie { z-index: 0; }
+.screen-box #screen { z-index: 1; }
+.screen-box .menu-button, .screen-box .sn-tool { z-index: 2; }
