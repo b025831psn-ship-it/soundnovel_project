@@ -33,20 +33,21 @@ const sync = http.createServer((req, res) => {
   syncServer.emit('request', req, res);
 }).listen(0, '127.0.0.1');
 await Promise.all([new Promise((r) => web.on('listening', r)), new Promise((r) => sync.on('listening', r))]);
-const url = `http://127.0.0.1:${web.address().port}/ports/kamaitachi-sfc/index.html?data=${encodeURIComponent('/kor/port-data/')}&syncServer=${encodeURIComponent(`http://127.0.0.1:${sync.address().port}`)}`;
+// ?devices=1 shows the device-linking (cloud) button the shell otherwise hides.
+const url = `http://127.0.0.1:${web.address().port}/ports/kamaitachi-sfc/index.html?devices=1&data=${encodeURIComponent('/kor/port-data/')}&syncServer=${encodeURIComponent(`http://127.0.0.1:${sync.address().port}`)}`;
 const seed = process.argv[2] ? fs.readFileSync(process.argv[2]).toString('base64') : null;
 
 const browser = await chromium.launch({ args: ['--autoplay-policy=no-user-gesture-required'] });
 let failed = 0;
 const check = (ok, msg) => { console.log(ok ? 'ok  ' : 'FAIL', msg); if (!ok) failed++; };
-const open = async (options, init) => {
+const open = async (options, init, { query = '', ready = true } = {}) => {
   const ctx = await browser.newContext(options);
   if (init) await ctx.addInitScript(init.fn, init.arg);
   const page = await ctx.newPage();
   page.on('pageerror', (e) => { console.log('pageerror', e.message); failed++; });
   page.on('console', (m) => { if (m.type() === 'warning' || m.type() === 'error') console.log('console', m.text()); });
-  await page.goto(url);
-  await page.waitForFunction(() => window.kamaitachi?.status?.frame > 30, null, { timeout: 120000 });
+  await page.goto(url + query);
+  if (ready) await page.waitForFunction(() => window.kamaitachi?.status?.frame > 30, null, { timeout: 120000 });
   return page;
 };
 const dialog = async (page) => { await page.click("button[title='저장 동기화']"); await page.waitForSelector('#save-dialog[open]'); };
@@ -148,26 +149,54 @@ await phone.tap('text=지금 동기화');
 await phone.waitForTimeout(1500);
 check(await phone.evaluate(() => window.kamaitachi.saves.api.sram()[0x1800 + 0x100]) === 0x44, "PC's 이 기기 것 쓰기 reached the phone");
 
-// Quick save (disk button): the PC saves the moment it is pressed; a new device loads the code,
-// reloads, and carries on from that very screen by itself.
+// Save code (disk button, one 6-digit code per player): the PC's saves go up to its code by
+// themselves; 지금 저장 writes the suspend at the press. A new device answers 이어하기 with that code,
+// reloads and carries on from the PC's screen by itself.
 await pc.keyboard.press('Escape').catch(() => {});
 await key(pc, 'KeyZ', 4, 900); await pc.waitForTimeout(2500);
-await pc.click('.sn-tool >> nth=0'); await pc.click('#quick-save button.primary');
+await pc.waitForFunction(() => /^\d{6}$/.test(localStorage.getItem('sn-save-code') ?? ''), null, { timeout: 40000 });
+await pc.click('.sn-tool >> nth=0');
 const qcode = (await pc.waitForSelector('#quick-save .code').then((e) => e.textContent())).trim();
-check(/^\d{4}$/.test(qcode), `quick save code ${qcode}`);
+check(/^\d{6}$/.test(qcode), `the PC's saves made its 6-digit code by themselves (${qcode})`);
+await pc.click('#quick-save button.primary');
+await pc.waitForSelector('#quick-save >> text=저장했습니다', { timeout: 30000 });
+check(true, '지금 저장 wrote the suspend and uploaded it');
 await pc.click('#quick-save .close');
-const fresh = await open({ ...devices['iPhone 13 landscape'], deviceScaleFactor: 1 });
-await fresh.tap('.sn-tool >> nth=0'); await fresh.tap('#quick-save button >> text=불러오기');
-await fresh.fill('#quick-save input', qcode);
-await Promise.all([fresh.waitForNavigation(), fresh.tap('#quick-save button.primary')]);
+const fresh = await open({ ...devices['iPhone 13 landscape'], deviceScaleFactor: 1 }, null, { query: '&choice=1', ready: false });
+await fresh.waitForSelector('#start-choice', { timeout: 120000 });
+check(await fresh.evaluate(() => !window.kamaitachi), 'a new device waits on 새로하기 / 이어하기');
+await fresh.tap('#start-choice >> text=이어하기');
+await fresh.fill('#start-choice input', qcode);
+await Promise.all([fresh.waitForNavigation(), fresh.tap('#start-choice >> text=불러오기')]);
 await fresh.waitForFunction(() => window.kamaitachi?.status?.frame > 30, null, { timeout: 120000 });
 await fresh.waitForTimeout(5000);
 const q = differ(await screen(pc), await screen(fresh));
-check(q < 0.02, `after 불러오기 the new device carried on from the PC's screen by itself (${(q * 100).toFixed(2)}% differ)`);
+check(q < 0.02, `after 이어하기 + code the new device carried on from the PC's screen by itself (${(q * 100).toFixed(2)}% differ)`);
 const report = await fresh.evaluate(() => globalThis.soundnovelReport());
 check(/^script 0x[0-9A-F]+\.[0-7]$/.test(report.scene ?? ''), `report context: ${JSON.stringify(report)}`);
 const pcReport = await pc.evaluate(() => globalThis.soundnovelReport());
 check(pcReport.scene === report.scene, `same script position on both (${pcReport.scene})`);
+// Hiding the tab writes the suspend and sends it to the code at once.
+const before = await pc.evaluate(() => window.kamaitachi.saves.api.store.read('kamaitachi-sfc', 'suspend').savedAt);
+const puts = []; pc.on('request', (r) => { if (r.method() === 'PUT' && r.url().includes('/v1/code/')) puts.push(Date.now()); });
+await key(pc, 'KeyZ', 1, 1500);
+await pc.evaluate(() => { Object.defineProperty(document, 'hidden', { value: true, configurable: true }); Object.defineProperty(document, 'visibilityState', { value: 'hidden', configurable: true }); document.dispatchEvent(new Event('visibilitychange')); });
+await pc.waitForTimeout(3000);
+const after = await pc.evaluate(() => window.kamaitachi.saves.api.store.read('kamaitachi-sfc', 'suspend').savedAt);
+check(after > before && puts.length >= 1, `hiding the tab wrote a new suspend and uploaded it within 3 s (${puts.length} upload)`);
+await pc.evaluate(() => { delete document.hidden; delete document.visibilityState; document.dispatchEvent(new Event('visibilitychange')); });
+const size = await pc.evaluate(() => JSON.stringify(window.kamaitachi.saves.api.store.exportBackup('kamaitachi-sfc')).length);
+console.log(`info upload size per save: ${Math.round(size / 1024)} KB`);
+// The PC itself, reopened: 이어하기 with its own code goes straight on.
+const again = await pc.context().newPage();
+again.on('pageerror', (e) => { console.log('pageerror', e.message); failed++; });
+await again.goto(url + '&choice=1');
+await again.waitForSelector('#start-choice', { timeout: 120000 });
+await again.click('#start-choice >> text=이어하기');
+await again.waitForFunction(() => window.kamaitachi?.status?.frame > 30, null, { timeout: 120000 });
+await again.waitForTimeout(5000);
+const q2 = differ(await screen(pc), await screen(again));
+check(q2 < 0.02, `the PC's own 이어하기 (no code typed) carried on from its save (${(q2 * 100).toFixed(2)}% differ)`);
 
 await browser.close(); web.close(); sync.close();
 process.exit(failed ? 1 : 0);

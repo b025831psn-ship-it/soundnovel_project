@@ -95,7 +95,8 @@ async function writeSuspend({ now = false, force = false } = {}) {
   if (!r.data) return;
   if (Math.ceil(r.data.length / 3) * 4 > SUSPEND_LIMIT) { console.warn('suspend too large', r.data.length); return; }
   saves.api.writeSuspend(r.data, { frame: window.kamaitachi?.status?.frame ?? 0 });
-  if (now) saves.ui?.sync();
+  // Hidden tab or closing page: send it now (timers may not run again on a hidden phone page).
+  if (now) { saves.ui?.sync(); saves.ui?.quick?.upload?.(); }
 }
 const suspendBoot = {
   // Carrying on is possible on any screen (the whole VM state is restored), so always "at the title".
