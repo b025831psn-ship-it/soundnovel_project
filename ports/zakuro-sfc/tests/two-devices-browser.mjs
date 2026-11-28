@@ -19,7 +19,7 @@ const web = http.createServer((req, res) => {
 }).listen(0, '127.0.0.1');
 const sync = createServer({ dir: fs.mkdtempSync(path.join(os.tmpdir(), 'zk-')) }).listen(0, '127.0.0.1');
 await Promise.all([new Promise((r) => web.on('listening', r)), new Promise((r) => sync.on('listening', r))]);
-const url = `http://127.0.0.1:${web.address().port}/ports/zakuro-sfc/index.html?syncServer=${encodeURIComponent(`http://127.0.0.1:${sync.address().port}`)}`;
+const url = `http://127.0.0.1:${web.address().port}/ports/zakuro-sfc/index.html?devices=1&syncServer=${encodeURIComponent(`http://127.0.0.1:${sync.address().port}`)}`;
 const t0 = Date.now(); const log = (...a) => console.log(`${((Date.now() - t0) / 1000).toFixed(0)}s`, ...a);
 let failed = 0; const check = (ok, msg) => { log(ok ? 'ok  ' : 'FAIL', msg); if (!ok) failed++; };
 const browser = await chromium.launch({ args: ['--autoplay-policy=no-user-gesture-required'] });

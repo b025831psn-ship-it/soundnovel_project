@@ -32,7 +32,7 @@ const web = http.createServer((req, res) => {
 }).listen(0, '127.0.0.1');
 const sync = createServer({ dir: fs.mkdtempSync(path.join(os.tmpdir(), 'zk-')) }).listen(0, '127.0.0.1');
 await Promise.all([new Promise((r) => web.on('listening', r)), new Promise((r) => sync.on('listening', r))]);
-const url = `http://127.0.0.1:${web.address().port}/ports/zakuro-sfc/index.html?syncServer=${encodeURIComponent(`http://127.0.0.1:${sync.address().port}`)}`;
+const url = `http://127.0.0.1:${web.address().port}/ports/zakuro-sfc/index.html?choice=1&syncServer=${encodeURIComponent(`http://127.0.0.1:${sync.address().port}`)}`;
 const t0 = Date.now(); const log = (...a) => console.log(`${((Date.now() - t0) / 1000).toFixed(0)}s`, ...a);
 let failed = 0; const check = (ok, msg) => { log(ok ? 'ok  ' : 'FAIL', msg); if (!ok) failed++; };
 const browser = await chromium.launch({ args: ['--autoplay-policy=no-user-gesture-required'] });
@@ -48,7 +48,9 @@ async function device(name, ctxOpts) {
     return { s: [w[0x1ffd], w[0x1ffa]], choice: t.choice && { ready: t.choice.ready, targets: t.choice.targets, r: t.choice.rectangles }, scene: w[0x1000] === 0xf6 ? w[0x1002] | (w[0x1003] << 8) : -1 }; });
   d.tap = async (x, y) => { const box = await p.locator('#screen').boundingBox(); const X = box.x + x / 256 * box.width, Y = box.y + y / 224 * box.height; if (touch) await p.touchscreen.tap(X, Y); else await p.mouse.click(X, Y); };
   d.until = async (want, x, y, every = 700, max = 240000) => { const end = Date.now() + max; for (;;) { const st = await d.state(); if (want(screenOf(st), st)) return st; if (Date.now() > end) throw new Error(`${name} timeout at ${JSON.stringify(st)}`); if (x != null) await d.tap(x, y); await p.waitForTimeout(every); } };
-  d.boot = async () => { await p.goto(url); await p.waitForFunction(() => window.zakuro?.vm, null, { timeout: 60000 }); await p.waitForSelector("button[title='저장 동기화']"); };
+  d.boot = async (choice = '새로하기', code = null) => { await p.goto(url); await p.waitForSelector('#start-choice', { timeout: 60000 }); await p.click(`#start-choice >> text=${choice}`);
+    if (code) { await p.fill('#start-choice input', code); await Promise.all([p.waitForNavigation({ timeout: 30000 }), p.click('#start-choice >> text=불러오기')]); }
+    await p.waitForFunction(() => window.zakuro?.vm, null, { timeout: 60000 }); await p.waitForSelector("button[title='저장 동기화']"); };
   d.dialog = async () => { if (!(await p.evaluate(() => document.querySelector('#save-dialog')?.open))) await p.click("button[title='저장 동기화']"); };
   d.close = () => p.evaluate(() => document.querySelector('#save-dialog').close());
   d.syncNow = async () => { await d.dialog(); await p.click('text=지금 동기화'); await p.waitForFunction(() => document.querySelector('#save-dialog')?.textContent.includes('마지막:')); await p.waitForTimeout(500); };
@@ -71,11 +73,12 @@ try {
   for (let i = 0; i < 8; i++) { await pc.tap(128, 150); await pc.p.waitForTimeout(900); }
   const at = await pc.state();
   await pc.p.screenshot({ path: path.join(shots, 'qs-pc-story.png') });
-  // Quick save
-  await pc.p.click("button[title='저장 / 불러오기']"); await pc.p.click('#quick-save button:text-is("저장")');
-  await pc.p.waitForSelector('#quick-save .code', { timeout: 30000 });
+  // Saves go up by themselves to the player's 6-digit code; 지금 저장 writes this very page first.
+  await pc.p.waitForFunction(() => /^\d{6}$/.test(localStorage.getItem('sn-save-code') ?? ''), null, { timeout: 40000 });
+  await pc.p.click("button[title='저장 / 불러오기']");
   const code = (await pc.p.textContent('#quick-save .code')).trim();
-  check(/^\d{4}$/.test(code), `PC: quick save at scene ${at.scene} gives code ${code}`);
+  await pc.p.click('#quick-save button.primary'); await pc.p.waitForSelector('#quick-save >> text=저장했습니다', { timeout: 30000 });
+  check(/^\d{6}$/.test(code) && (await pc.p.textContent('#quick-save .code')).trim() === code, `PC: saved at scene ${at.scene} to the player's code ${code}`);
   await pc.p.evaluate(() => document.querySelector('#quick-save').close());
   // Report
   const ctx = await pc.p.evaluate(() => globalThis.soundnovelReport());
@@ -87,19 +90,22 @@ try {
   await pc.p.evaluate(() => document.querySelector('#report-dialog').close());
 
   const phone = await device('phone', { ...devices['iPhone 13'], deviceScaleFactor: 1 });
-  await phone.boot(); log('phone started');
-  await phone.p.click("button[title='저장 / 불러오기']"); await phone.p.click('#quick-save button:text-is("불러오기")');
-  await phone.p.fill('#quick-save input', code);
-  await Promise.all([phone.p.waitForNavigation({ timeout: 30000 }), phone.p.click('#quick-save button.primary')]);
-  await phone.p.waitForFunction(() => window.zakuro?.vm, null, { timeout: 60000 });
+  await phone.boot('이어하기', code); log('phone: 이어하기 with the code');
   const landed = await phone.until((s, x) => x.scene === at.scene && s === 'story', null, null, 300, 30000).catch(() => null);
-  check(!!landed, `phone: after 불러오기 the game carries on by itself at scene ${landed?.scene ?? (await phone.state()).scene} (PC ${at.scene})`);
+  check(!!landed, `phone: after 이어하기 + code the game carries on by itself at scene ${landed?.scene ?? (await phone.state()).scene} (PC ${at.scene})`);
   await phone.p.waitForTimeout(9000); // the Japanese lines are fetched 8 s after start
   const same = await phone.p.evaluate(() => globalThis.soundnovelReport().line);
   check(same === ctx.line, `phone: same line as the PC (${same})`);
   await phone.p.screenshot({ path: path.join(shots, 'qs-phone-story.png') });
   const boxes = await phone.p.evaluate(() => [...document.querySelectorAll('.sn-tool, .menu-button')].map((b) => { const r = b.getBoundingClientRect(); return [b.title || b.id, Math.round(r.x), Math.round(r.y), Math.round(r.width)]; }));
   log('phone buttons', JSON.stringify(boxes));
+  // Same device again: 이어하기 goes straight on without the code
+  const again = await pc.p.context().newPage();
+  await again.route(/fonts\.(googleapis|gstatic)\.com/, (r) => r.abort());
+  await again.goto(url); await again.waitForSelector('#start-choice', { timeout: 60000 });
+  await again.click('#start-choice >> text=이어하기');
+  const back = await again.waitForFunction((want) => { const w = window.zakuro?.vm?.bus.wram; return w && w[0x1000] === 0xf6 && (w[0x1002] | (w[0x1003] << 8)) === want; }, at.scene, { timeout: 60000 }).then(() => true, () => false);
+  check(back && !(await again.$('#start-choice input')), 'PC: 이어하기 on the same device goes straight on without the code');
 } catch (e) { log('FAIL', e.message); failed++; }
 await browser.close(); web.close(); sync.close();
 log(failed ? `${failed} failed` : 'all passed'); process.exit(failed ? 1 : 0);
