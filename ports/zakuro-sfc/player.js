@@ -7,7 +7,7 @@
 // Data: ?data=URL (default ../../zakuro-sfc-kor/port-data/) with
 //   sound/ipl.bin, sound/boot-dsp.bin, sound/dsp-gauss.bin, program/manifest.json + ranges.
 import { createAudioOut } from './sound/output.js';
-import { fetchDebugSave } from '../../shared/player/debug-save.js';
+import { fetchDebugSave } from '../../shared/player/admin-run.js';
 import { startGate } from '../../shared/player/start-gate.js';
 import { ProgramImage, ZakuroVM, createApuLink } from './vm/browser.js';
 import { InputQueue, PAD } from './input-queue.js';

@@ -7,7 +7,7 @@
 // Data: ?data=URL (default ../../kamaitachi-sfc-kor/port-data/) with
 //   program/manifest.json + program/NN.bin, sound/dsp-gauss.bin.
 import { createAudioOut } from './sound/output.js';
-import { fetchDebugSave } from '../../shared/player/debug-save.js';
+import { fetchDebugSave } from '../../shared/player/admin-run.js';
 import { startGate } from '../../shared/player/start-gate.js';
 import { PAD, DEFAULT_KEYS } from './sound/vm-sound.js';
 

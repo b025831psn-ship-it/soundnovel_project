@@ -8,7 +8,7 @@ import { Boot, KEY } from "./src/boot.js";
 import { startGate } from "../../shared/player/start-gate.js";
 import { createSound } from "./sound/output.js";
 import { Silhouettes } from "./src/silhouette.js";
-import { fetchDebugSave } from "../../shared/player/debug-save.js";
+import { fetchDebugSave } from "../../shared/player/admin-run.js";
 import { MemoryBackend } from "../../shared/save/backends.js";
 import { openBooks } from "./src/books-store.js";
 import { restoreData, restorePosition } from "./src/save.js";
