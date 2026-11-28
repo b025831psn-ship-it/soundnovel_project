@@ -28,13 +28,19 @@ export async function songPlayer(dataRoot, { song = 8, volume = 0.5 } = {}) {
   mod.reset(); mod.stereo = 1; mod.play(song, 0);
   let out = null, timer = 0, sent = 0, t0 = 0, on = false;
   const open = async () => {
-    const ctx = new AudioContext({ sampleRate: 44100 }), gain = new GainNode(ctx, { gain: volume });
+    // Some browsers refuse a chosen rate or the worklet: then the device's rate and the older processor.
+    const AC = window.AudioContext ?? window.webkitAudioContext;
+    let ctx; try { ctx = new AC({ sampleRate: 44100 }); } catch { ctx = new AC(); }
+    const gain = ctx.createGain(); gain.gain.value = volume;
     let node, send;
-    if (ctx.audioWorklet) {
-      await ctx.audioWorklet.addModule(new URL("../sound/web/pcm-worklet.js", import.meta.url));
-      node = new AudioWorkletNode(ctx, "pcm-player", { numberOfInputs: 0, outputChannelCount: [2] });
-      send = (b) => node.port.postMessage(b, [b.buffer]);
-    } else {
+    if (ctx.sampleRate === 44100 && ctx.audioWorklet) {
+      try {
+        await ctx.audioWorklet.addModule(new URL("../sound/web/pcm-worklet.js", import.meta.url));
+        node = new AudioWorkletNode(ctx, "pcm-player", { numberOfInputs: 0, outputChannelCount: [2] });
+        send = (b) => node.port.postMessage(b, [b.buffer]);
+      } catch (e) { console.warn("music: worklet refused, the older processor plays", e); node = null; }
+    }
+    if (!node) {
       const queue = new PcmQueue();
       node = ctx.createScriptProcessor(1024, 0, 2);
       node.onaudioprocess = (e) => { const l = e.outputBuffer.getChannelData(0), r = e.outputBuffer.getChannelData(1); l.fill(0); r.fill(0); queue.pull(l, r); };

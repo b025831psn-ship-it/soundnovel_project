@@ -3,7 +3,7 @@
 // the port's code (picture-view.js, music-view.js); nothing is copied out of the game.
 // The picture and the song load apart: if one fails on a browser, the other still comes.
 const pictureModule = import("/ports/kamaitachi-ps1/src/picture-view.js");
-const musicModule = import("/ports/kamaitachi-ps1/src/music-view.js?v=5");
+const musicModule = import("/ports/kamaitachi-ps1/src/music-view.js?v=6");
 
 const DATA = "/kamaitachi-ps1-kor/port-data/machine/";
 const PICTURE = 2; // the pension at the end of the snowy road, windows lit
@@ -86,9 +86,18 @@ drawSharp().catch(() => pictureModule.then(({ drawPicture }) => drawPicture(pict
 
 // The song: browsers sound only after a press, so the first tap or key anywhere starts it.
 let music = null, wanted = (() => { try { return localStorage.getItem("front-music") !== "off"; } catch { return true; } })();
-const loading = musicModule.then(({ songPlayer }) => songPlayer(DATA, { song: 8, volume: .45 })).then((m) => (music = m)).catch((e) => { console.error("front music", e); return null; });
-function showSound() { sound.setAttribute("aria-pressed", String(Boolean(music?.sounding))); sound.title = music?.sounding ? "음악 끄기" : "음악 켜기"; }
-async function play() { await loading; if (!music || music.sounding) return; await music.start(); showSound(); return music.sounding; }
+const loading = musicModule.then(({ songPlayer }) => songPlayer(DATA, { song: 8, volume: .45 })).then((m) => (music = m)).catch((e) => { fail("불러오기", e); return null; });
+function showProblem() {
+  let note = front.querySelector(".front-note");
+  if (!note) { note = document.createElement("p"); note.className = "front-note"; front.append(note); }
+  note.textContent = problem || "음악을 불러오는 중입니다";
+}
+function showSound() { sound.setAttribute("aria-pressed", String(Boolean(music?.sounding))); if (!problem) sound.title = music?.sounding ? "음악 끄기" : "음악 켜기"; }
+// When the song cannot sound, the button says why (shown on a press of it), so the reason can be told back.
+let problem = "";
+function fail(step, e) { console.error("front music", step, e); problem = `음악 ${step} 실패: ${e?.name ?? ""} ${e?.message ?? e}`.trim(); sound.title = problem; sound.dataset.error = ""; }
+async function begin() { try { await music.start(); } catch (e) { fail("재생", e); } }
+async function play() { await loading; if (!music || music.sounding) return; await begin(); showSound(); return music.sounding; }
 // Only a tap, click or key counts as a press for the browser (a swipe does not), so the song is asked for on
 // each of them until it really sounds; the sound button does its own work.
 const presses = ["pointerup", "touchend", "click", "keydown"];
@@ -98,8 +107,9 @@ async function wake(e) {
 }
 presses.forEach((t) => addEventListener(t, wake, true));
 sound.addEventListener("click", async (e) => {
-  e.stopPropagation(); await loading; if (!music) return;
-  if (music.sounding) { music.stop(); wanted = false; } else { wanted = true; await music.start(); }
+  e.stopPropagation(); if (!music || problem) showProblem(); await loading;
+  if (!music || problem) { showProblem(); if (!music) return; } else front.querySelector(".front-note")?.remove();
+  if (music.sounding) { music.stop(); wanted = false; } else { wanted = true; await begin(); if (problem) showProblem(); }
   try { localStorage.setItem("front-music", wanted ? "on" : "off"); } catch {}
   showSound();
 });
