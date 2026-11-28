@@ -67,3 +67,9 @@ python -B tools/render_ko_sample.py /private/port-data/font/ko /private/ko-sampl
 ```
 
 이름 조사는 `은(는)·이(가)·을(를)·과(와)·(으)로·(이)라고·(이)라는·(이)랑·(이)야·이었다(였다)`를 지원한다. `(으)로`는 ㄹ 받침 예외를 적용한다. `[wNN]`은 번역 데이터 순서 그대로 글자별 VSync 대기로 재생한다. TTF, 생성 KF1, 번역문과 검사 ID 목록은 공개 저장소에 커밋하지 않는다.
+
+한글 포트 데이터는 `translation.lock.json`의 비공개 커밋 하나에서만 만든다. 파일별 SHA-256과 7,263개 ID를 빌드 전에 확인한다.
+
+```sh
+python -B tools/check_translation_lock.py /private/majo-tachi-ps1-kor
+```

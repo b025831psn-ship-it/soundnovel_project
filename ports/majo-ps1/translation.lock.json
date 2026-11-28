@@ -1,0 +1,17 @@
+{
+  "schema": "soundnovel.private-translation-lock.v1",
+  "repository": "b025831psn-ship-it/majo-tachi-ps1-kor",
+  "commit": "b0f613def46a0b1fa947edc8b769585c16a83c83",
+  "files": {
+    "script/ko/script.ko.json": {
+      "sha256": "dba4e1f64514995caa1911d1f7b12b8cd345af10d116c68aa5e8578c9e930cd2",
+      "entries": 7263
+    },
+    "script/ko/reveal.json": {
+      "sha256": "f7cc91699531cd6a67cf7f4d2407d2cbc37cd49ddb4339cfa3ba5db181bbbb38"
+    },
+    "glossary.md": {
+      "sha256": "5f1c2b8830238db5d5e5402e6fcf19a616630d4f27e5245d0e4482d2d59ab5ba"
+    }
+  }
+}
