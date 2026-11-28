@@ -250,7 +250,8 @@ for (const [op, sign] of [[0x10, 1], [0x11, -1]]) HANDLERS[op] = function* (ctx)
 };
 HANDLERS[0x18] = function* (ctx) { // 0x8001f060 textSpeed(v · 5/4)
   const { m } = ctx, v = operand(m).u16();
-  if (!skipping(m)) textSpeed(m, (v + (v >> 2)) & 0xffff);
+  // 0xffff is not a value of the original: the Korean build writes it where a piece is to follow the one before it (ko.js operands)
+  if (!skipping(m) && v !== 0xffff) textSpeed(m, (v + (v >> 2)) & 0xffff);
   endFrame(m);
 };
 HANDLERS[0x19] = function* (ctx) { // 0x8001f0d8 the second wait counters (0x8003a714)
