@@ -65,6 +65,9 @@ for (const [url, [file, type]] of [...files].sort()) {
 if (staticCount > 20000) throw new Error(`${staticCount} static files: over the Pages limit of 20,000`);
 
 // _routes.json: at most 100 rules. Single files while they fit, else their folders.
+// the dialogue edits are read through the Function even before the first one is saved
+const LIVE_PATHS = ["/kamaitachi-gba-kor/port-data/text-edits.json", "/kamaitachi-gba-kor/port-data-ko/text-edits.json", "/kamaitachi-ps1-kor/port-data/machine/ko/text-edits.json"];
+for (const p of LIVE_PATHS) if (!fnPaths.includes(p)) fnPaths.push(p);
 let include = ["/sync/*", "/edit/*", ...fnPaths];
 if (include.length > 100) include = ["/sync/*", "/edit/*", ...new Set(fnPaths.map((p) => p.slice(0, p.lastIndexOf("/") + 1) + "*"))];
 if (include.length > 100) throw new Error(`${include.length} function routes: over 100`);
