@@ -77,8 +77,14 @@ function portRoute(url) {
   // through /edit/ (the password from outside), never through the open data paths below.
   const debugScenes = /^\/edit\/kamaitachi-gba\/debug-scenes-(ja|ko)\.json$/.exec(url);
   if (debugScenes) return [path.join(__dirname, 'kamaitachi-gba-kor', debugScenes[1] === 'ko' ? 'port-data-ko' : 'port-data', 'debug-scenes.json'), portTypes['.json']];
-  // The owner's debug save (every ending seen, gold bookmark): the GBA debug run loads it, like PS1's debug-card.bin.
-  if (url === '/edit/kamaitachi-gba/debug-save.json') return [path.join(__dirname, 'kamaitachi-gba-kor', 'port-data', 'debug-save.json'), portTypes['.json']];
+  // The owner's debug saves (every ending seen, gold bookmark), one per port, read by its debug run like
+  // PS1's debug-card.bin: /edit/<port>/debug-save.<json|bin|srm> -> debug-save.* in that port's private data.
+  const debugSave = /^\/edit\/(kamaitachi-gba|kamaitachi-sfc|zakuro-sfc|kamaitachi2-ps2)\/debug-save\.(json|bin|srm)$/.exec(url);
+  if (debugSave) {
+    const dir = { 'kamaitachi-gba': path.join(__dirname, 'kamaitachi-gba-kor', 'port-data'), 'kamaitachi-sfc': path.join(__dirname, 'kamaitachi-sfc-kor', 'port-data'),
+      'zakuro-sfc': path.join(__dirname, 'zakuro-sfc-kor', 'port-data'), 'kamaitachi2-ps2': ps2Web }[debugSave[1]];
+    return dir ? [path.join(dir, 'debug-save.' + debugSave[2]), debugSave[2] === 'json' ? portTypes['.json'] : 'application/octet-stream'] : null;
+  }
   for (const [prefix, dir, exts] of PORT_PREFIXES) {
     if (!url.startsWith(prefix) || !dir) continue;
     let rest;
@@ -88,7 +94,8 @@ function portRoute(url) {
     // Owner-only files never go out through the open data paths. Lower-cased: Windows file names ignore case.
     const base = path.basename(file).toLowerCase();
     if (prefix === '/kamaitachi-ps1-kor/port-data/' && (base === 'ko-editor.json' || base === 'debug-card.bin' || base === 'debug-scenes.json')) return null;
-    if (prefix.startsWith('/kamaitachi-gba-kor/') && (base === 'debug-scenes.json' || base === 'debug-save.json')) return null;
+    if (prefix.startsWith('/kamaitachi-gba-kor/') && base === 'debug-scenes.json') return null;
+    if (/^debug-save\./.test(base)) return null; // owner-only, through /edit/<port>/ above
     if (!file.startsWith(dir + path.sep) || !exts.includes(ext) || /(^|[\\/])(tests?|tools|server)[\\/]/.test(file.slice(dir.length))) return null;
     return [file, portTypes[ext]];
   }
