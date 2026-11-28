@@ -344,3 +344,12 @@ body.playing .top .hub-sound { display: none }
 .front-sound svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round }
 .front-sound[aria-pressed="true"] .off { display: none }
 @media (prefers-reduced-motion: reduce) { .front-picture { animation: none } }
+
+/* 업데이트 안내 (shared/front/updates.js) */
+#updates { border: 1px solid var(--line-strong); background: var(--surface); color: inherit; border-radius: 10px; padding: 22px 22px 18px; width: min(420px, calc(100vw - 32px)); max-height: calc(100vh - 48px); overflow: auto; font: inherit }
+#updates::backdrop { background: rgba(0, 0, 0, .65) }
+#updates h2 { margin: 0 0 14px; font-size: 18px }
+#updates h3 { margin: 14px 0 6px; font-size: 14px; color: var(--accent); font-weight: 500 }
+#updates ul { margin: 0; padding-left: 18px; line-height: 1.6 }
+#updates li + li { margin-top: 6px }
+#updates button { display: block; width: 100%; min-height: 44px; margin-top: 18px; border-radius: 8px; border: 1px solid var(--accent); background: transparent; color: var(--accent); font: inherit; cursor: pointer }
