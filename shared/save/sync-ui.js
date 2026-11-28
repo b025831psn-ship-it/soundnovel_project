@@ -52,6 +52,10 @@ export async function mountSyncUi({ api = ready(), fetchImpl, initialTimeoutMs =
   button.style.position = "relative";
   const anchor = document.querySelector("#fullscreen");
   anchor?.parentNode ? anchor.parentNode.insertBefore(button, anchor) : document.body.append(button);
+  // 태우 2026-11-28: the quick-save disk (4-digit code) replaces device linking in the UI. The cloud button
+  // stays only for ?devices=1 (and the tests' ?syncServer=); devices linked before keep syncing quietly.
+  const params = new URLSearchParams(location.search);
+  if (!params.has("devices") && !params.has("syncServer")) button.hidden = true;
   document.body.append(dialog);
 
   let client = null;
