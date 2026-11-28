@@ -7,6 +7,7 @@
 // Data: ?data=URL (default ../../zakuro-sfc-kor/port-data/) with
 //   sound/ipl.bin, sound/boot-dsp.bin, sound/dsp-gauss.bin, program/manifest.json + ranges.
 import { createAudioOut } from './sound/output.js';
+import { fetchDebugSave } from '../../shared/player/debug-save.js';
 import { startGate } from '../../shared/player/start-gate.js';
 import { ProgramImage, ZakuroVM, createApuLink } from './vm/browser.js';
 import { InputQueue, PAD } from './input-queue.js';
@@ -62,7 +63,10 @@ async function load() {
   const replay = params.has('replay')
     ? (await get('trace/input.tsv').then((r) => r.text())).trimEnd().split(/\r?\n/).slice(1).map((l) => parseInt(l.split('\t')[1], 16))
     : null;
-  return { ipl, dsp, gauss: new Int16Array(gauss.buffer, gauss.byteOffset, 512), program, replay };
+  const response = !replay && await fetchDebugSave('zakuro-sfc', 'srm');
+  const debugSram = response ? new Uint8Array(await response.arrayBuffer()) : null;
+  if (debugSram && debugSram.length !== program.sram.size) throw new Error('디버그 SRAM 크기가 다릅니다.');
+  return { debugSram, ipl, dsp, gauss: new Int16Array(gauss.buffer, gauss.byteOffset, 512), program, replay };
 }
 
 function startGame(data, out) {
@@ -82,9 +86,11 @@ function startGame(data, out) {
       saveTimer = setTimeout(saveSram, 800);
     },
   });
-  function saveSram() { clearTimeout(saveTimer); store.set(SRAM_KEY, toBase64(vm.exportSram())); }
+  const key = data.debugSram ? SRAM_KEY + ".debug" : SRAM_KEY;
+  function saveSram() { clearTimeout(saveTimer); if (!data.replay) store.set(key, toBase64(vm.exportSram())); }
   addEventListener('pagehide', saveSram);
-  const saved = data.replay ? null : store.get(SRAM_KEY);
+  const saved = data.replay || data.debugSram ? null : store.get(key);
+  if (data.debugSram) vm.importSram(data.debugSram);
   if (saved) { try { vm.importSram(fromBase64(saved)); } catch { /* size changed: start fresh */ } }
   // The VM renders only when asked (once per display frame, below), so catching up after a stall
   // costs CPU time only. Input is fed once per field from the field counter instead.

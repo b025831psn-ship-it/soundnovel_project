@@ -8,7 +8,7 @@
 const TITLES = [
   { id: "kamaitachi", title: "카마이타치의 밤", editions: [{ id: "kamaitachi-ps1", name: "PS1", adapter: true }, { id: "kamaitachi-gba", name: "GBA", runUrl: "/ports/kamaitachi-gba/?debug=1" }, { id: "kamaitachi-sfc", name: "SFC", runUrl: "/ports/kamaitachi-sfc/?debug=1" }] },
   { id: "kamaitachi2", title: "카마이타치의 밤 2", editions: [{ id: "kamaitachi2-ps2", name: "PS2" }] },
-  { id: "zakuro", title: "석류의 맛", editions: [{ id: "zakuro-sfc", name: "SFC" }] },
+  { id: "zakuro", title: "석류의 맛", editions: [{ id: "zakuro-sfc", name: "SFC", runUrl: "/ports/zakuro-sfc/?debug=1" }] },
   { id: "428", title: "428 ~봉쇄된 시부야에서~", editions: [{ id: "428-psp", name: "PSP" }] },
 ];
 const $ = (id) => document.getElementById(id);
