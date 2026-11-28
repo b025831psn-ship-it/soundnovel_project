@@ -100,6 +100,32 @@ export class SfcMachine {
 
   setButtons(mask) { this.buttons = mask & 0xffff; }
 
+  reset() {
+    const link = this.bus.masterLink, apu = link?.apu;
+    if (apu?.softReset) apu.softReset();
+    else if (apu?.reset) apu.reset();
+    this.bus.softReset();
+    if (link) {
+      link.master = 0; link.rem = 0;
+      link.target = apu.cpu.clock - (apu.coreDelay ?? 0);
+      link.pending.length = 0;
+    }
+    this.cpu.reset();
+    this.cpu.executed = 0; this.cpu.trace.length = 0;
+    this.frame = 0; this.nmiCount = 0; this.end = null;
+    this.buttons = null; this.physicalButtons = 0; this.inVblank = false;
+    this.pendingNmiAt = Infinity;
+    this.nextFrame = 1_368; this.nextNmi = 306_912;
+    this.frameLength = 357_368; this.nmiFrameLength = 357_368;
+    this.framebuffer = null; this.rasterFramebuffer.fill(0);
+    this.nextRenderLine = 512; this.nextHdma = 1_106; this.nextHdmaInit = 20;
+    this.rasterLine = 0; this.rasterField = 0;
+    this.nextIrq = Infinity; this.pendingIrq = false; this.pendingNmi = false;
+    this.nextJoypadComplete = Infinity;
+    this.renderedLineRevision.fill(-1);
+    return this;
+  }
+
   enterNmi() {
     this.nmiCount++;
     const mask = this.buttons ?? this.physicalButtons;

@@ -1,11 +1,13 @@
 // Adapts the 65c816 VM (sfc-vm/machine.js) to runRealtime: after each run it syncs the
 // APU to the VM's master clock so audio keeps flowing between the game's port accesses.
 export class VmSound {
-  constructor(machine) { this.m = machine; this.link = machine.bus.masterLink; }
-  get time() { return this.m.time; }
+  constructor(machine) { this.m = machine; this.link = machine.bus.masterLink; this.base = 0; }
+  get time() { return this.base + this.m.time; }
   get end() { return this.m.end; }
   get frame() { return this.m.frame; }
-  runTo(sec) { this.m.runTo(sec); this.link?.sync(this.m.master); }
+  runTo(sec) { this.m.runTo(sec - this.base); this.link?.sync(this.m.master); }
+  // Console Reset: the machine's clock starts again from 0, the player's clock carries on.
+  reset() { this.base += this.m.time; this.m.reset(); }
 }
 
 // Controller bits as the VM latches them: $4218 in the low byte, $4219 in the high byte.
