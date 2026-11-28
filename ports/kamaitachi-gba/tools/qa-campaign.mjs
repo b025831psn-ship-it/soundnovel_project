@@ -1,7 +1,7 @@
 // Replays the original's 100% campaign (qa/kamaitachi-gba-beta: mGBA, pad input only) on the port
 // without a screen, and compares what the original recorded.
 //
-//   node tools/qa-campaign.mjs <port-data> <out.json> <campaign.json>... [--names names.json]
+//   node tools/qa-campaign.mjs <port-data> <out.json> <campaign.json>... [--names names.json] [--debug-save private-file.json]
 //
 // The campaign files are the original's runs in order (original-campaign.json, then the later
 // stages). Each round's next_route is played from where the previous round ended, the way the
@@ -23,10 +23,13 @@ import { Assets, SceneLoader } from "../src/scene.js";
 import { Boot, KEY } from "../src/boot.js";
 
 const args = process.argv.slice(2);
+const saveAt = args.indexOf("--debug-save");
+const savePath = saveAt >= 0 ? args.splice(saveAt, 2)[1] : null;
+if (saveAt >= 0 && !savePath) throw new Error("--debug-save needs an output path");
 const namesAt = args.indexOf("--names");
 const nameKeys = namesAt >= 0 ? JSON.parse(fs.readFileSync(args.splice(namesAt, 2)[1])) : {};
 const [dataPath, outPath, ...campaignPaths] = args;
-if (!campaignPaths.length) throw new Error("usage: qa-campaign.mjs <port-data> <out.json> <campaign.json>... [--names names.json]");
+if (!campaignPaths.length) throw new Error("usage: qa-campaign.mjs <port-data> <out.json> <campaign.json>... [--names names.json] [--debug-save private-file.json]");
 const SITE_BASE = 0x7f4;
 const SHELF_BANK = 0x27, ENDING_BANK = 0x1f, STORY_MIN = 0x1a, SYSTEM_BANK = 0x19;
 
@@ -290,3 +293,13 @@ const final = bookRecords();
 Object.assign(report, { finished: new Date().toISOString(), frames, varsUsed: [...varsUsed].sort((a, b) => a - b), flagsUsed: [...flagsUsed].sort((a, b) => a - b), bookRecords: final, f52: Boolean(vm.ram.flags[52]), f54: Boolean(vm.ram.flags[54]) });
 fs.writeFileSync(outPath, JSON.stringify(report, null, 1));
 console.log(JSON.stringify({ rounds: report.rounds.length, mismatches: report.mismatches.length, book: final.length, f52: report.f52, f54: report.f54 }));
+
+if (savePath) {
+  // The original campaign (62ade96) ended with 49 records in book 1,
+  // including every ending plus the pink and gold bookmarks.
+  if (report.mismatches.length || final.length !== 49 || !final.includes(0x34) ||
+      !final.includes(0x36) || !Array.from({ length: 43 }, (_, i) => i + 1).every(n => final.includes(n))) {
+    throw new Error("The replay did not reproduce the original completed book");
+  }
+  fs.writeFileSync(savePath, JSON.stringify({ ja: books.read(0) }), { flag: "wx" });
+}

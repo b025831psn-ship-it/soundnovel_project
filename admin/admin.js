@@ -6,9 +6,9 @@
 //
 // 작품 → 판본 → 장면 → 대사. An edition without an adapter is listed as 준비 중.
 const TITLES = [
-  { id: "kamaitachi", title: "카마이타치의 밤", editions: [{ id: "kamaitachi-ps1", name: "PS1", adapter: true }, { id: "kamaitachi-gba", name: "GBA" }, { id: "kamaitachi-sfc", name: "SFC" }] },
-  { id: "kamaitachi2", title: "카마이타치의 밤 2", editions: [{ id: "kamaitachi2-ps2", name: "PS2" }] },
-  { id: "zakuro", title: "석류의 맛", editions: [{ id: "zakuro-sfc", name: "SFC" }] },
+  { id: "kamaitachi", title: "카마이타치의 밤", editions: [{ id: "kamaitachi-ps1", name: "PS1", adapter: true }, { id: "kamaitachi-gba", name: "GBA", runUrl: "/ports/kamaitachi-gba/?debug=1" }, { id: "kamaitachi-sfc", name: "SFC", runUrl: "/ports/kamaitachi-sfc/?debug=1" }] },
+  { id: "kamaitachi2", title: "카마이타치의 밤 2", editions: [{ id: "kamaitachi2-ps2", name: "PS2", runUrl: "/kamaitachi2-ps2/?debug=1" }] },
+  { id: "zakuro", title: "석류의 맛", editions: [{ id: "zakuro-sfc", name: "SFC", runUrl: "/ports/zakuro-sfc/?debug=1" }] },
   { id: "428", title: "428 ~봉쇄된 시부야에서~", editions: [{ id: "428-psp", name: "PSP" }] },
 ];
 const $ = (id) => document.getElementById(id);
@@ -137,6 +137,12 @@ async function start() {
   const e = edition(); game = null; open = null; found = [];
   $("edit").hidden = true; $("empty").hidden = false; $("list").replaceChildren(); $("screen").querySelector("iframe")?.remove(); $("idle").hidden = false; onScreen = []; chips();
   $("run").hidden = true; $("count").textContent = "자료를 불러오는 중…";
+  if (!e?.adapter && e?.runUrl) {
+    $("count").textContent = "대사 편집 준비 중";
+    $("idle-text").textContent = "디버그로 실행하면 완료 세이브로 게임을 엽니다.";
+    $("run").hidden = false;
+    return;
+  }
   if (!e?.adapter) { $("count").textContent = "준비 중"; $("idle-text").textContent = "이 판본은 아직 관리자 페이지에 연결되지 않았습니다."; return; }
   try { const adapter = (await import(`./adapters/${e.id}.js`)).default; game = Object.assign(await adapter.load(), { id: adapter.id }); }
   catch (error) { console.error(error); $("count").textContent = `자료를 불러오지 못했습니다: ${error.message}`; return; }
@@ -147,7 +153,7 @@ async function start() {
 }
 function editions() {
   const t = TITLES.find((x) => x.id === $("title").value);
-  $("edition").replaceChildren(...t.editions.map((e) => el("option", { value: e.id, textContent: e.adapter ? e.name : `${e.name} · 준비 중` })));
+  $("edition").replaceChildren(...t.editions.map((e) => el("option", { value: e.id, textContent: (e.adapter || e.runUrl) ? e.name : `${e.name} · 준비 중` })));
   $("edition").value = (t.editions.find((e) => e.adapter) ?? t.editions[0]).id;
 }
 
@@ -169,7 +175,7 @@ $("next").addEventListener("click", () => step(1));
 $("save").addEventListener("click", () => { const { text, errors } = review(); if (!errors.length) store({ ko: text, base: open.ko, at: new Date().toISOString() }); });
 $("revert").addEventListener("click", () => store(null));
 $("jump").addEventListener("click", () => { play(game.jumpUrl(open.id)); wanted = open.id; $("stage").scrollIntoView({ block: "start", behavior: "smooth" }); });
-$("run").addEventListener("click", () => { wanted = null; play(game.runUrl); });
+$("run").addEventListener("click", () => { wanted = null; play(game?.runUrl ?? edition().runUrl); });
 $("drawer").addEventListener("click", () => $("drawer").setAttribute("aria-expanded", document.body.classList.toggle("drawer")));
 $("stage").addEventListener("click", () => document.body.classList.remove("drawer"));
 $("panel").addEventListener("click", () => document.body.classList.remove("drawer"));

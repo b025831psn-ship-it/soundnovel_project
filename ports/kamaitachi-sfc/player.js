@@ -8,6 +8,7 @@
 //   program/manifest.json + program/NN.bin, sound/dsp-gauss.bin.
 import { fitScale } from "../../shared/player/fit-scale.js";
 import { createAudioOut } from './sound/output.js';
+import { fetchDebugSave } from '../../shared/player/admin-run.js';
 import { startGate } from '../../shared/player/start-gate.js';
 import { PAD, DEFAULT_KEYS } from './sound/vm-sound.js';
 
@@ -58,15 +59,21 @@ async function load() {
     bin('sound/dsp-gauss.bin'),
   ]);
   if (hex(await crypto.subtle.digest('SHA-256', image)) !== manifest.sha256) throw new Error('프로그램 이미지가 기준 판본과 다릅니다');
-  return { game: image.buffer, gauss };
+  const response = await fetchDebugSave('kamaitachi-sfc', 'srm');
+  const debugSram = response && await response.arrayBuffer();
+  if (debugSram && (debugSram.byteLength !== 8192 || !(new Uint8Array(debugSram)[0x805] & 4))) {
+    throw new Error('금책갈피 SRAM을 확인할 수 없습니다.');
+  }
+  return { game: image.buffer, gauss, debugSram };
 }
 
 function startGame(data, out) {
   // The VM and APU run in a Worker; samples go from there straight to the worklet.
   const worker = new Worker(new URL('./sound/vm-worker.js', import.meta.url), { type: 'module' });
   const port = out.connectPort();
-  const saved = store.get(SRAM_KEY);
-  let sram = null;
+  const key = data.debugSram ? SRAM_KEY + ".debug" : SRAM_KEY;
+  const saved = data.debugSram ? null : store.get(key);
+  let sram = data.debugSram;
   if (saved) { try { sram = fromBase64(saved).buffer; } catch { /* unreadable: start fresh */ } }
   worker.postMessage({ type: 'start', game: data.game, gauss: data.gauss, port, sram }, [data.game, data.gauss, port, ...(sram ? [sram] : [])]);
   const ctx = canvas.getContext('2d', { alpha: false });
@@ -78,7 +85,7 @@ function startGame(data, out) {
       // The menu button sits over 終り on the name keyboards; it steps aside there.
       $('menu').classList.toggle('unavailable', m.keyboard); if (m.keyboard) { $('sheet').hidden = true; }
       window.kamaitachi && (window.kamaitachi.status = m);
-    } else if (m.type === 'sram') store.set(SRAM_KEY, toBase64(new Uint8Array(m.bytes)));
+    } else if (m.type === 'sram') store.set(key, toBase64(new Uint8Array(m.bytes)));
     else if (m.type === 'error') { $('error').hidden = false; $('error').textContent = `게임 실행이 멈췄습니다.\n${m.message}`; }
   };
   worker.onerror = (e) => { $('error').hidden = false; $('error').textContent = `게임 실행이 멈췄습니다.\n${e.message}`; };
