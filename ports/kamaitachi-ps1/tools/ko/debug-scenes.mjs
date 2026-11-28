@@ -22,24 +22,41 @@ const turned = (z) => {
   if (!original.has(z)) { const st = new Uint8Array(inflateRawSync(Buffer.from(z, "base64"))); original.set(z, turnBookState(st, (res, off) => map(res)?.toOld(off) ?? off) ? deflateRawSync(st, { level: 9 }).toString("base64") : null); if (!original.get(z)) unfit++; }
   return original.get(z);
 };
-const byResource = new Map(); // resource -> [[id, hex of the piece and its end]]
+const byResource = new Map(); // resource -> [[id, hex of the piece and its end, where its command is in the original resource]]
 for (const [res, list] of Object.entries(script.resources)) {
-  byResource.set(+res, list.map(([rec, off, t]) => [`${String(res).padStart(3, "0")}-${String(rec).padStart(3, "0")}-${String(off).padStart(4, "0")}`, Buffer.concat([Buffer.from(t, "base64"), Buffer.from([0])]).subarray(0, 16).toString("hex")]));
+  const bytes = raw.get(+res), start = (rec) => (bytes ? bytes[2 * rec] | bytes[2 * rec + 1] << 8 : 0);
+  byResource.set(+res, list.map(([rec, off, t]) => [`${String(res).padStart(3, "0")}-${String(rec).padStart(3, "0")}-${String(off).padStart(4, "0")}`, Buffer.concat([Buffer.from(t, "base64"), Buffer.from([0])]).subarray(0, 16).toString("hex"), start(rec) + off]));
 }
+// Lines that begin alike (a bare page break, the same words) are told apart by the state itself:
+// the line meant is the one nearest to where the state's cursor stands, in the cursor's resource.
+const cursor = (z) => { const st = inflateRawSync(Buffer.from(z, "base64")), S = 0x1c78; return { res: st.readUInt16LE(S + 0x20), at: st.readUInt32LE(S + 0x44) }; };
 const pieces = {}, snaps = [], index = new Map(); let unknown = 0, shared = 0;
 for (const file of captures) {
   for (const line of readFileSync(file, "utf8").split("\n")) {
     if (!line) continue;
     const { z: taken, p } = JSON.parse(line), z = turned(taken);
     if (!z) continue;
+    const page = []; // the lines of this page, in the order typed: [id, where its command is]
     for (const { r, h } of p) {
-      const ids = (byResource.get(r) ?? []).filter(([, hex]) => h.startsWith(hex)).map(([id]) => id);
-      if (!ids.length) { unknown++; continue; }
-      if (ids.length > 1) shared++;
-      for (const id of ids) { if (id in pieces) continue; if (!index.has(z)) { index.set(z, snaps.length); snaps.push(z); } pieces[id] = index.get(z); }
+      let hits = (byResource.get(r) ?? []).filter(([, hex]) => h.startsWith(hex));
+      if (!hits.length) { unknown++; continue; }
+      if (hits.length > 1) {
+        shared++; const c = cursor(z);
+        if (c.res !== r) continue; // no telling which
+        hits = [hits.reduce((best, x) => (Math.abs(x[2] - c.at) < Math.abs(best[2] - c.at) ? x : best))];
+        if (Math.abs(hits[0][2] - c.at) > 0x400) continue;
+      }
+      page.push([hits[0][0], hits[0][2], r]);
     }
+    if (!page.length || page.every(([id]) => id in pieces)) continue;
+    // The interpreter's cursor at a page wait stands inside the text being typed; a book resumes at
+    // a command. The state is made to resume at the text command of the first line of its page.
+    const c = cursor(z); if (c.res !== page[0][2]) continue;
+    const st = inflateRawSync(Buffer.from(z, "base64")); st.writeUInt32LE(page[0][1], 0x1c78 + 0x44);
+    const made = deflateRawSync(st, { level: 9 }).toString("base64");
+    for (const [id] of page) { if (id in pieces) continue; if (!index.has(made)) { index.set(made, snaps.length); snaps.push(made); } pieces[id] = index.get(made); }
   }
 }
 writeFileSync(outPath, JSON.stringify({ schema: "kamaitachi.ps1.debug-scenes.v1", pieces, snaps }));
 const total = [...byResource.values()].reduce((n, l) => n + l.length, 0);
-console.log(JSON.stringify({ pieces: Object.keys(pieces).length, ofScript: total, snaps: snaps.length, captureLinesWithoutId: unknown, sharedOpenings: shared, statesLeftOut: unfit }));
+console.log(JSON.stringify({ pieces: Object.keys(pieces).length, ofScript: total, snaps: snaps.length, captureLinesWithoutId: unknown, alikeOpenings: shared, statesLeftOut: unfit }));

@@ -4,9 +4,16 @@ The owner's page, apart from the hub and the players (issue #44). It is served u
 (serve.cjs), so from outside it asks for the same password as every `/edit/` write; the browser
 keeps it for the device. Nothing in the hub or a player links to it.
 
-What it does now: dialogue editing for 카마이타치의 밤 (PS1). Find a line by id, Japanese or
-Korean; edit the Korean as the screen shows it; see the game's page drawn with the game font;
-save. The game lays the saved edits over the translation when it starts, so a reload shows them.
+One frame for every title (admin.js, admin.css): the top bar picks 작품 and 판본 and searches; the
+left column lists the lines under their scenes; the centre runs the game itself as a debug run; the
+right column edits the line (the original, the Korean as the screen shows it, the game's page drawn
+with the game font, save). On a phone the game is on top, the editor below and the list a drawer.
+The game tells the frame which lines are on its screen, so the editor follows the reading; 「이
+장면으로」 opens the game at the page of a line, and a save opens that page again with the change.
+The look is the hub's (style.css tokens: dark theatre, one red accent, Noto Serif KR) and every
+part (button, field, list row, badge, locked chip) is defined once in admin.css; an adapter adds
+no styles of its own. Titles and editions are listed in `TITLES` (admin.js); an edition without
+an adapter shows as 준비 중. Connected now: 카마이타치의 밤 PS1.
 
 ## Editing without codes
 
@@ -25,7 +32,7 @@ turn, the names, colours ...) are grey locked chips. An edit that loses a chip i
 
 ## Adapter (`adapters/<game>.js`)
 
-`export default { id, title, async load() }`. `load()` returns the game object the page uses:
+`export default { id, async load() }` (id = the edition's id in `TITLES`). `load()` returns the game object the page uses:
 
 | member | meaning |
 | --- | --- |
@@ -38,8 +45,10 @@ turn, the names, colours ...) are grey locked chips. An edit that loses a chip i
 | `readable(text)` | plain text for lists and search |
 | `check(id, text)` | `{ errors, warnings }`: an error refuses the save, a warning is shown |
 | `preview(id, text)` | canvases: the screen page(s) with this line, drawn by the game's rules |
-| `save(id, entry \| null)` | stores or removes one edit; returns "" or the failure to show |
-| `jumpUrl(id)` (optional) | the address that opens the game at the page with this line |
+| `scene(id)`, `sceneName(scene)` | the scene a line belongs to and its heading in the list |
+| `save(id, entry)` | stores an edit (`null` removes it); returns "" or the failure in words |
+| `runUrl`, `jumpUrl(id)` | optional: the game's debug run, and the same opened at the page of a line |
+| `onScreen(message)` | optional: the ids on the game's screen from a `postMessage` of the game, else null |
 
 To add a title: write its adapter, add its id to `ADAPTERS` in `admin.js`, give serve.cjs a
 `PUT /edit/<game>/text-edits.json`, and make the game read its `text-edits.json` at start.
@@ -53,7 +62,7 @@ nothing for anyone but the owner. "이 장면으로" on a line opens the game at
 PS1: the entry state of a page is the game's own bookmark state (what a save from the menu
 writes), taken at every page of the replay of every ending, so the flags are those of the original
 route. `debug-scenes.json` (tools/ko/debug-scenes.mjs) maps a line to its state; the game puts the
-state into the debug card's book and presses through to the page. A line no replayed route passes
-has no entry state yet.
+state into the debug card's book and presses through to the page. A line no replayed route stops at opens
+at the nearest line before it in its record; a record no route passes has no entry state yet.
 
 Still to come (issue #44): the other titles.

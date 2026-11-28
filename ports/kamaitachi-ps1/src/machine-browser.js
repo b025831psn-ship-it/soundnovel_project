@@ -8,7 +8,7 @@
 // holds it), kept in localStorage after every write; runtime.exportCard() / importCard(bytes)
 // hand the image to and from the shell (e.g. the save server).
 import { applyEdits } from "./ko-text.js";
-import { patchScePac, sceMembers, resourceOffsets, turnBookState } from "./ko.js";
+import { patchScePac, sceMembers, resourceOffsets, turnBookState, pieceSpans } from "./ko.js";
 import { Machine } from "./machine.js";
 import { current } from "./touch.js";
 import { machineSound } from "./machine-sound.js";
@@ -122,7 +122,9 @@ export async function startMachine({ canvas, dataRoot, audio = true, onProgress 
     // would write it; the frame loop then presses through the card, the book and the greeting.
     if (debugCard && scene) {
       try {
-        const r = await fetch("/edit/kamaitachi-ps1/debug-scenes.json", { headers: { "X-Quiet-Auth": "1" } }), list = r.ok ? await r.json() : null, at = list?.pieces?.[scene];
+        const r = await fetch("/edit/kamaitachi-ps1/debug-scenes.json", { headers: { "X-Quiet-Auth": "1" } }), list = r.ok ? await r.json() : null;
+        // a line no route of the replay stopped at: the nearest line before it in its record (else the first after it) that has a state
+        const near = Object.keys(list?.pieces ?? {}).filter((id) => id.startsWith(scene.slice(0, 8))).sort(), from = near.findLast((id) => id <= scene) ?? near[0], at = list?.pieces?.[from];
         if (at === undefined) console.warn("[kamaitachi-ps1 machine] no entry state for", scene);
         else {
           const st = new Uint8Array(await new Response(new Blob([fromBase64(list.snaps[at])]).stream().pipeThrough(new DecompressionStream("deflate-raw"))).arrayBuffer());
@@ -137,7 +139,18 @@ export async function startMachine({ canvas, dataRoot, audio = true, onProgress 
       } catch (e) { console.warn("[kamaitachi-ps1 machine] no jump", e); }
     }
   }
-  const card = new MemoryCard(debugCard ?? loadCard());
+  // A book saved by the Japanese build keeps the default names as 透 and 真理. The Korean build shows
+  // them as its own default names (토오루, 마리); a name the player made is left as it is. The names
+  // are the first two 16-byte fields of a book's state (0x200 into its block).
+  const cardBytes = debugCard ?? loadCard();
+  if (ko && cardBytes) {
+    const name = (addr) => ko.script.patches?.find(([a]) => a === addr)?.[1], fields = [[[0x93, 0xa7], name(0x8000c010)], [[0x90, 0x5e, 0x97, 0x9d], name(0x8000c000)]];
+    for (let block = 1; block < 16; block++) fields.forEach(([ja, to], i) => {
+      const o = block * 0x2000 + 0x200 + 16 * i, now = cardBytes.subarray(o, o + 16), korean = to ? fromBase64(to).subarray(0, 15) : null;
+      if (korean && cardBytes[block * 0x2000] === 0x53 && cardBytes[block * 0x2000 + 1] === 0x43 && now.every((v, k) => v === (ja[k] ?? 0))) { now.fill(0); now.set(korean.subarray(0, korean.indexOf(0) < 0 ? korean.length : korean.indexOf(0))); }
+    });
+  }
+  const card = new MemoryCard(cardBytes);
   // The STR movies, converted to <NAME>.mp4 next to the PACs (tools/convert-str.sh), shown over the
   // screen while the game waits for them. Before the first tap or key the browser only lets a
   // muted video start; the sound comes on with the next tap or key.
@@ -259,6 +272,25 @@ export async function startMachine({ canvas, dataRoot, audio = true, onProgress 
   // coming when the display refreshes slowly (a phone in low power mode draws 30 times a second,
   // a hidden tab not at all). The picture is drawn on the display's own frames.
   let dirty = false;
+  // A debug run inside the admin page: the lines of the page on screen are told to the page around
+  // the game (admin/), so its editor follows the reading. A line is known by where the text
+  // pointer is in the running script; the list starts again when the text goes back up the screen.
+  const follow = debugCard && ko && window.parent !== window ? (() => {
+    const raw = sceMembers(pacs.SCE), spans = new Map(); let ids = [], y = 0, told = "";
+    return () => {
+      const res = machine.read(0x8007929c, 2), ptr = machine.read(0x800794c0, 4) >>> 0, at = ptr - (machine.read(0x8007948c, 4) >>> 0), line = machine.read(0x800794bc, 2);
+      if (line < y) ids = [];
+      y = line;
+      if (jump) return;
+      if (ptr && !machine.read(0x80079500, 1) && raw.has(res)) { // a text being typed
+        const list = spans.get(res) ?? spans.set(res, pieceSpans(raw.get(res), ko.script.resources[res], res)).get(res);
+        const hit = list.find(([a, e]) => at >= a && at <= e);
+        if (hit && !ids.includes(hit[2])) ids.push(hit[2]);
+      }
+      const now = ids.join(" ");
+      if (now !== told) { told = now; window.parent.postMessage({ type: "kamaitachi-ps1-page", ids: [...ids] }, location.origin); }
+    };
+  })() : null;
   const tick = () => {
     if (stopped) return;
     const t = now(); acc = Math.min(acc + t - last, STEP * 8); last = t;
@@ -272,7 +304,7 @@ export async function startMachine({ canvas, dataRoot, audio = true, onProgress 
         machine.frame(jump.frames % 40 < 3 ? 0x2000 : 0);
         if (machine.read(0x8007929c, 2) === jump.resource || ++jump.frames > 30000) jump = null;
       }
-      machine.frame(held()); soundFrame();
+      machine.frame(held()); soundFrame(); follow?.();
       for (const [k, n] of keys) { if (n !== Infinity) { if (n <= 1) keys.delete(k); else keys.set(k, n - 1); } }
       acc -= STEP; dirty = true;
     }

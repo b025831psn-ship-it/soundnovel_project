@@ -86,6 +86,12 @@ export function resourceOffsets(bytes, texts) {
   const map = (v, from, to) => { let shift = 0; for (const s of spans) { if (v >= s[from + 1]) shift = s[to + 1] - s[from + 1]; else { if (v > s[from]) return -1; break; } } return v + shift; };
   return { toNew: (old) => map(old, 0, 2), toOld: (now) => map(now, 2, 0) };
 }
+// Where each replaced text of a resource sits after the replacement: [[start, end, id]] in order
+// (id "resource-record-offset"), for telling which line is being typed (the debug panel).
+export function pieceSpans(bytes, texts, res) {
+  const n = u16(bytes, 0) / 2, offs = Array.from({ length: n }, (_, i) => u16(bytes, 2 * i)), map = resourceOffsets(bytes, texts), pad = (v, k) => String(v).padStart(k, "0");
+  return (texts ?? []).map(([rec, off, t]) => { const a = map.toNew(offs[rec] + off) + 1; return [a, a + fromBase64(t).length, `${pad(res, 3)}-${pad(rec, 3)}-${pad(off, 4)}`]; }).sort((x, y) => x[0] - y[0]);
+}
 // The members of SCE.PAC, unpacked: id -> bytes.
 export function sceMembers(pac) {
   const rows = []; for (let i = 0; ; i += 4) { const id = u16(pac, i), s = u16(pac, i + 2); rows.push({ id, s }); if (id === 0xffff) break; }

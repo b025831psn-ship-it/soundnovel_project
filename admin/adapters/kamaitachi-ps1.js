@@ -18,7 +18,6 @@ const ending = (text) => (plain(text).trim().match(/[.!?…~」』)]+$/) ?? [""]
 
 export default {
   id: "kamaitachi-ps1",
-  title: "카마이타치의 밤 (PS1)",
   async load() {
     const get = async (name, fresh) => { const r = await fetch((name === "ko-editor.json" ? EDITOR : DATA) + name + (fresh ? `?v=${Date.now()}` : ""), fresh ? { cache: "no-store" } : {}); if (!r.ok) throw new Error(`${name} ${r.status}`); return r; };
     const [script, editor, font] = await Promise.all([get("ko-script.json").then((r) => r.json()), get("ko-editor.json").then((r) => r.json()), get("ko-font.bin").then((r) => r.arrayBuffer()).then((b) => new Uint8Array(b))]);
@@ -43,6 +42,10 @@ export default {
       label,
       current: now,
       scene: (id) => id.slice(0, 7),
+      sceneName: (scene) => `장면 ${scene}`,
+      // the game as a debug run in the frame, and the lines it says are on its screen
+      runUrl: "/ports/kamaitachi-ps1/?debug=1",
+      onScreen: (data) => (data?.type === "kamaitachi-ps1-page" ? data.ids : null),
       // the text as the screen shows it, with the codes that keep their place as chips
       parts: (id, text) => toParts(text, stateAt(id)),
       text: (id, parts) => fromParts(parts, stateAt(id)),
