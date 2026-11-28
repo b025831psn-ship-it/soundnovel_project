@@ -1,0 +1,14 @@
+:root { color-scheme: dark; font-family: system-ui, sans-serif; background: #08090b; }
+* { box-sizing: border-box; }
+body { margin: 0; min-height: 100svh; display: grid; place-items: center; background: radial-gradient(circle, #242830, #08090b 70%); }
+.sn-shell { width: min(100vw, 1120px); min-height: 100svh; display: grid; grid-template-rows: 1fr auto; }
+.sn-stage { min-height: 0; display: grid; place-items: center; position: relative; overflow: hidden; }
+.sn-screen-box { position: relative; line-height: 0; }
+.sn-screen { width: min(960px, 100vw, calc(100svh * 4 / 3)); height: auto; image-rendering: pixelated; background: #000; box-shadow: 0 18px 70px #000; touch-action: none; }
+.sn-overlay { position: absolute; inset: 0; display: grid; place-items: center; line-height: 1.4; background: #0008; }
+.sn-panel { width: min(82%, 28rem); padding: 1rem; border: 1px solid #ffffff55; background: #101216ed; display: grid; gap: .6rem; }
+.sn-panel button, .sn-panel input { font: inherit; min-height: 2.65rem; }
+.sn-toolbar { min-height: 3.5rem; display: flex; justify-content: flex-end; gap: .45rem; padding: .5rem max(.5rem, env(safe-area-inset-right)); background: #111318; }
+.sn-toolbar button { width: 2.7rem; height: 2.7rem; border: 1px solid #ffffff33; border-radius: .65rem; color: #eee; background: #242832; }
+.sn-status { margin-right: auto; align-self: center; padding-left: .5rem; color: #b8becb; font-size: .85rem; }
+[hidden] { display: none !important; }

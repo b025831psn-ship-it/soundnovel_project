@@ -38,7 +38,24 @@ const sceneName = (n) => {
   return (s && (s.name || s.label)) || (typeof n.scene === 'object' ? n.scene.name : n.scene);
 };
 // A sentence is a string or { ko | text | target, ja? }.
-const ko = (s) => (typeof s === 'string' ? s : s.ko ?? s.text ?? s.target);
+const rawKo = (s) => (typeof s === 'string' ? s : s.ko ?? s.text ?? s.target);
+const nameTokens = story.names && typeof story.names === 'object' && !Array.isArray(story.names)
+  ? story.names
+  : {};
+const hasFinal = (value) => {
+  const code = Array.from(String(value).trim()).at(-1)?.codePointAt(0);
+  return code >= 0xac00 && code <= 0xd7a3 && (code - 0xac00) % 28 !== 0;
+};
+const particle = {
+  '은(는)': ['은', '는'], '이(가)': ['이', '가'], '을(를)': ['을', '를'],
+  '과(와)': ['과', '와'], '(이)라고': ['이라고', '라고'],
+};
+const ko = (s) => String(rawKo(s))
+  .replace(/\[n\]([A-Za-z0-9_-]+)(은\(는\)|이\(가\)|을\(를\)|과\(와\)|\(이\)라고)/g,
+    (whole, id, marker) => nameTokens[id]
+      ? nameTokens[id] + particle[marker][hasFinal(nameTokens[id]) ? 0 : 1]
+      : whole)
+  .replace(/\[n\]([A-Za-z0-9_-]+)/g, (whole, id) => nameTokens[id] || whole);
 const ja = (s) => (typeof s === 'string' ? null : s.ja ?? s.source ?? s.original ?? null);
 const isSentence = (p) => typeof p === 'string' || (p && !Array.isArray(p) && !p.lines && !p.sentences && typeof ko(p) === 'string');
 // The sentences that appear one per input, in reading order across pages.
@@ -59,7 +76,9 @@ const logItems = () => page.locator('.wp-log-list li').allTextContents();
 let failures = 0;
 const check = (ok, msg) => { console.log(`${ok ? 'PASS' : 'FAIL'} ${msg}`); if (!ok) failures++; };
 
-const browser = await chromium.launch();
+const browser = await chromium.launch(process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH
+  ? { executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH }
+  : {});
 const page = await browser.newPage();
 const texts = () => page.locator('.wp-text p').allTextContents();
 const scene = () => page.locator('.wp-scene').textContent();
