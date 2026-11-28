@@ -100,9 +100,20 @@ export function toolButton({ index = 0, label, svg }) {
     const right = parent.clientWidth - (menu.offsetLeft + menu.offsetWidth);
     const bottom = parent.clientHeight - (menu.offsetTop + menu.offsetHeight);
     const step = menu.offsetWidth + 8;
+    // A phone held sideways lays the player's bottom bar over the screen's lower right corner: lift the
+    // whole row above any bar button it would sit on, so neither covers the other (2026-11-28).
+    let lift = 0;
+    const box = parent.getBoundingClientRect();
+    const rowBottom = box.top + menu.offsetTop + menu.offsetHeight;
+    const rowRight = box.left + menu.offsetLeft + menu.offsetWidth, rowLeft = rowRight - (tools.size + 1) * step;
+    for (const b of document.querySelectorAll("#bar button, .bar button")) {
+      if (!b.offsetWidth || b.closest(".sn-tool")) continue;
+      const r = b.getBoundingClientRect();
+      if (r.right > rowLeft && r.left < rowRight && r.top < rowBottom && r.bottom > rowBottom - menu.offsetHeight) lift = Math.max(lift, rowBottom - r.top + 6);
+    }
     button.style.right = `${right + index * step}px`;
-    button.style.bottom = `${bottom}px`;
-    menu.style.translate = `${-tools.size * step}px 0`;
+    button.style.bottom = `${bottom + lift}px`;
+    menu.style.translate = `${-tools.size * step}px ${-lift}px`;
   };
   place();
   new ResizeObserver(place).observe(menu.offsetParent ?? menu.parentNode);

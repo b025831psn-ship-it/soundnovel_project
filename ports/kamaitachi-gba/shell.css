@@ -320,7 +320,10 @@ kbd {
 @media (pointer: coarse) and (orientation: landscape) {
   html:not(.upright) .shell:not(.pad-on) .stage { grid-column: 1 / 4; grid-row: 1 / 4; width: auto; }
 
-  html:not(.upright) .shell:not(.pad-on) .bar { position: relative; z-index: 1; }
+  /* the bar is an empty strip over the screen corner: only its own buttons take taps, so the menu,
+     save and report buttons under it stay reachable (phone sideways, 2026-11-28) */
+  html:not(.upright) .shell:not(.pad-on) .bar { position: relative; z-index: 1; pointer-events: none; }
+  html:not(.upright) .shell:not(.pad-on) .bar button, html:not(.upright) .shell:not(.pad-on) .bar input { pointer-events: auto; }
 }
 @media (pointer: coarse) and (max-width: 360px) {
   .dpad { --cell: 42px; }
