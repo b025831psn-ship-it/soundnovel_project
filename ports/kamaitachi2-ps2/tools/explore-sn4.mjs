@@ -1,7 +1,7 @@
 // Exhaustive SN4 explorer: runs the browser VM over every reachable path and
 // collects problems in one report instead of checking scenes one at a time.
 //
-//   node ports/kamaitachi2-ps2/tools/explore-sn4.mjs <web-dir> [out-dir] [--disc-files list.txt]
+//   node ports/kamaitachi2-ps2/tools/explore-sn4.mjs <web-dir> [out-dir] [--program sn4-ko.json] [--disc-files list.txt]
 //
 // With --disc-files (one disc path per line, tab-separated extras allowed),
 // ScenePack media are checked against the disc instead of the built web
@@ -17,16 +17,17 @@ import { pathToFileURL } from 'node:url';
 const argv = process.argv.slice(2);
 const discAt = argv.indexOf('--disc-files');
 const discList = discAt >= 0 ? argv.splice(discAt, 2)[1] : null;
+const programAt = argv.indexOf('--program');
+const programFile = programAt >= 0 ? argv.splice(programAt, 2)[1] : 'sn4.json';
 const web = path.resolve(argv[0] || '.');
 const out = argv[1] ? path.resolve(argv[1]) : null;
 const { Sn4Vm } = await import(pathToFileURL(path.join(web, 'sn4.js')).href);
 const { JAPANESE_NO_START, KOREAN_NO_START, NO_END, originalStoryBox, wordWidth } =
   await import(pathToFileURL(path.join(web, 'text-layout.js')).href);
-const program = JSON.parse(await readFile(path.join(web, 'assets/sn4.json'), 'utf8'));
+const program = JSON.parse(await readFile(path.join(web, 'assets', programFile), 'utf8'));
 const opening = JSON.parse(await readFile(path.join(web, 'assets/opening.json'), 'utf8'));
 const scenePack = opening.scenePack ?? {};
 const glyphs = new Set(Object.keys(opening.font ?? {}));
-const localizedGlyph = ch => program.language === 'ko' && ch !== '\n';
 const NAMES = ['名前一', '名前二'];
 const hex = n => '0x' + n.toString(16);
 
@@ -175,12 +176,11 @@ function checkLayout(vm, raw) {
   const L = originalStoryBox(vm.label, rawLayout);
   const at = where(vm);
   const x = L.marginLeft, y = L.marginTop, right = 640 - L.marginRight, bottom = 448;
-  let px = x, py = y, offset = 0, lineStart = true, overRight = false, glyphBottom = 0;
+  let px = x, py = y, offset = 0, overRight = false, glyphTop = Infinity, glyphBottom = -Infinity;
   const styleAt = o => L.styles.findLast(mark => mark.offset <= o) ?? L;
   const advance = (ch, o) => {
     const s = styleAt(o), ratio = s.fontSize / 33;
-    const localized = localizedGlyph(ch) ? [0, 0, ch === ' ' ? 16 : /^[\x21-\x7e]$/.test(ch) ? 18 : 33] : null;
-    return ((opening.font?.[ch] ?? localized ?? opening.font?.['�'] ?? [0, 0, 32])[2]
+    return ((opening.font?.[ch] ?? opening.font?.['�'] ?? [0, 0, 32])[2]
       + s.letterSpacing) * ratio;
   };
   const centerAt = o => {
@@ -212,21 +212,30 @@ function checkLayout(vm, raw) {
     const keepPair = (NO_END.has(ch) || noStart.has(next)) && next && px + a + nextA > right;
     if (ch === '\n' || wordWrap || wrap || keepPair) { px = centerAt(offset); py += leading; }
     if (ch === '\n') { offset += ch.length; px = centerAt(offset); continue; }
-    glyphBottom = Math.max(glyphBottom, localizedGlyph(ch) ? Math.min(bottom, py + style.fontSize) : py + style.fontSize);
+    const ratio = style.fontSize / 33;
+    const metric = opening.font?.[ch] ?? opening.font?.['�'] ?? [0, 0, 32, 33, 0];
+    if (metric[3] > 0) {
+      glyphTop = Math.min(glyphTop, py + metric[4] * ratio);
+      glyphBottom = Math.max(glyphBottom, py + (metric[4] + metric[3]) * ratio);
+    }
     if (px + a > right + 1 && !noStart.has(ch) && !overRight) {
       overRight = true; report('layout-positioned-past-right', `${vm.label} (${Math.round(px + a)}px)`, at);
     }
     px += a; offset += ch.length;
   }
-  // Flowing message text scrolls upward at the physical bottom. Only authored
-  // absolute layouts can genuinely place a glyph outside the framebuffer.
-  if (L.moves.some(move => move.absolute) && glyphBottom > bottom)
-    report('layout-past-bottom', `${vm.label} (${Math.round(glyphBottom)}px)`, at);
+  const absolute = L.moves.some(move => move.absolute);
+  if (absolute && (glyphTop < 0 || glyphBottom > bottom))
+    report('layout-positioned-past-viewport', `${vm.label} (${Math.floor(glyphTop)}..${Math.ceil(glyphBottom)}px)`, at);
+  if (!absolute && glyphBottom > -Infinity) {
+    const scrollY = Math.max(0, glyphBottom - (bottom - L.marginBottom));
+    if (glyphTop - scrollY < 0)
+      report('layout-flow-past-top', `${vm.label} (${Math.floor(glyphTop - scrollY)}px)`, at);
+  }
 }
 
 function checkText(vm, text) {
   checkLayout(vm, text);
-  for (const ch of text) if (ch !== '\n' && !glyphs.has(ch) && !localizedGlyph(ch) && !NAMES.join('').includes(ch))
+  for (const ch of text) if (ch !== '\n' && !glyphs.has(ch) && !NAMES.join('').includes(ch))
     report(glyphs.has('�') ? 'fallback-char' : 'unsupported-char', ch, where(vm));
 }
 
