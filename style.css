@@ -117,8 +117,8 @@ kbd {
 /* every logo gets the same visual area: width grows with the square root of its (trimmed)
    aspect ratio, capped by the card width and a common height */
 .logo img { --ar: 2.5; display: block; height: auto;
-  width: min(calc(clamp(250px, 46cqw, 540px) * sqrt(var(--ar) / 2.5)), 86cqw, 680px, calc(min(26vh, 30cqw, 220px) * var(--ar))) }
-.marquee.long .logo img { width: min(calc(clamp(220px, 38cqw, 440px) * sqrt(var(--ar) / 2.5)), 86cqw, 600px, calc(min(20vh, 24cqw, 170px) * var(--ar))) }
+  width: min(calc(clamp(250px, 46cqw, 540px) * pow(var(--ar) / 2.5, .36)), 86cqw, 640px, calc(min(30vh, 34cqw, 250px) * var(--ar))) }
+.marquee.long .logo img { width: min(calc(clamp(220px, 38cqw, 440px) * pow(var(--ar) / 2.5, .36)), 86cqw, 560px, calc(min(24vh, 28cqw, 200px) * var(--ar))) }
 .logo:not(.text) .jp, .logo:not(.text) .adv { display: none }
 .logo.text img { display: none }
 .logo .jp {
@@ -140,7 +140,8 @@ kbd {
 .marquee .ko { margin: 0; color: var(--text); font: 500 clamp(15px, 2cqw, 21px)/1.4 "Noto Serif KR", serif }
 .marquee .ko .name { word-break: keep-all }
 .subt { display: inline-block; word-break: keep-all }
-.marquee .ko .name::after { content: ""; display: inline-block; width: 48px; height: 1px; margin-left: 14px; vertical-align: .35em; background: var(--accent) }
+.tail { white-space: nowrap }
+.marquee .ko .tail::after { content: ""; display: inline-block; width: 48px; height: 1px; margin-left: 14px; vertical-align: .35em; background: var(--accent) }
 .lede .para, .lede .line { display: block }
 .lede .para + .para { margin-top: .6em }
 .lede .warning { display: inline-block; margin-bottom: 4px; color: var(--text); font-weight: 600; letter-spacing: .02em }

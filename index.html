@@ -125,9 +125,12 @@
   const card = document.querySelector('#marquee .card');
   const story = card.querySelector('.lede').innerHTML;
   let chosen = DEFAULT_CARD;
+  // the last word is kept with what follows it (the card title's rule), so that never wraps alone
   function titled(el, name, subt) {
-    el.textContent = name;
-    if (subt) el.append(' ', Object.assign(document.createElement('span'), { className: 'subt', textContent: subt }));
+    const tail = (text) => { const i = text.lastIndexOf(' '); return [text.slice(0, i + 1), Object.assign(document.createElement('span'), { className: 'tail', textContent: text.slice(i + 1) })]; };
+    if (!subt) return el.replaceChildren(...tail(name));
+    const s = Object.assign(document.createElement('span'), { className: 'subt' }); s.append(...tail(subt));
+    el.replaceChildren(name + ' ', s);
   }
   document.querySelectorAll('.entry .title, .edition .title').forEach(t => {
     const [name, subt] = t.textContent.split(/ (?=~)/);
