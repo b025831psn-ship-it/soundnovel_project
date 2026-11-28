@@ -2,3 +2,16 @@
 /kamaitachi-analysis/
 /gba-cloud-inputs.zip
 /web-player/data/local/
+/ports/majo-ps1/port-data/
+/ports/majo-ps1/private/
+/ports/majo-ps1/**/*.bin
+/ports/majo-ps1/**/*.cue
+/ports/majo-ps1/**/*.iso
+/ports/majo-ps1/**/*.str
+/ports/majo-ps1/**/*.vab
+/ports/majo-ps1/**/*.va
+/ports/majo-ps1/**/*.kf1
+/ports/majo-ps1/**/*.mcr
+/ports/majo-ps1/**/*.ttf
+/ports/majo-ps1/**/*.otf
+/ports/majo-ps1/**/__pycache__/

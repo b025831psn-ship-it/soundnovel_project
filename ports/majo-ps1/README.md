@@ -73,3 +73,9 @@ python -B tools/render_ko_sample.py /private/port-data/font/ko /private/ko-sampl
 ```sh
 python -B tools/check_translation_lock.py /private/majo-tachi-ps1-kor
 ```
+
+공개/비공개 경계는 [공개 데이터 정책](docs/public-data-policy.md)에 적었다. 공개 브랜치 전체 이력 검사는 다음과 같다.
+
+```sh
+python -B tools/check_public_tree.py
+```
