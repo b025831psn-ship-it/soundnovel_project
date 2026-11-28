@@ -41,6 +41,8 @@ for (const [prefix, dir] of PORT_PREFIXES) {
     add(url, portRoute(url)); // serve.cjs decides: extensions, owner-only files, tests/tools/server folders
   }
 }
+// serve.cjs's special owner path for the GBA debug scene lists (portRoute's first rule)
+for (const lang of ["ja", "ko"]) { const url = `/edit/kamaitachi-gba/debug-scenes-${lang}.json`; add(url, portRoute(url)); }
 const bg = path.join(root, "kamaitachi-gba-kor", "assets", "bg");
 for (const file of walk(bg)) if (/^\d{3}(-[1-3])?\.png$/.test(path.basename(file))) add("/kamaitachi-gba-kor/assets/bg/" + path.basename(file), [file, "image/png"]);
 
