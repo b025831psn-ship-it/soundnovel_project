@@ -12,7 +12,8 @@ const front = document.querySelector("#front");
 const picture = front.querySelector(".front-picture");
 const sky = front.querySelector(".front-sky");
 const snow = front.querySelector(".front-snow");
-const sound = front.querySelector(".front-sound");
+// the song's buttons: on the front page and in the hub's top bar
+const sounds = Array.from(document.querySelectorAll(".front-sound"));
 const enter = front.querySelector(".front-enter");
 
 // Night only, as the game shows the pension (태우 2026-11-28: day and dusk pictures dropped).
@@ -104,47 +105,59 @@ drawSharp().catch(() => pictureModule.then(({ drawPicture }) => drawPicture(pict
   new ResizeObserver(resize).observe(snow); requestAnimationFrame(tick);
 })();
 
-// The song: browsers sound only after a press, so the first tap or key anywhere starts it.
+// The song: it is asked for as soon as it loads (태우: from the start); a browser that allows sound only
+// after a press starts it at the first tap or key anywhere. It plays on the front page and in the hub, not
+// in a game.
 let music = null, wanted = (() => { try { return localStorage.getItem("front-music") !== "off"; } catch { return true; } })();
 const loading = musicModule.then(({ songPlayer }) => songPlayer(DATA, { song: 8, volume: .45 })).then((m) => (music = m)).catch((e) => { fail("불러오기", e); return null; });
 function showProblem() {
-  let note = front.querySelector(".front-note");
-  if (!note) { note = document.createElement("p"); note.className = "front-note"; front.append(note); }
+  let note = document.querySelector(".front-note");
+  if (!note) { note = document.createElement("p"); note.className = "front-note"; document.body.append(note); }
   note.textContent = problem || "음악을 불러오는 중입니다";
 }
-function showSound() { sound.setAttribute("aria-pressed", String(Boolean(music?.sounding))); if (!problem) sound.title = music?.sounding ? "음악 끄기" : "음악 켜기"; }
+function showSound() { for (const b of sounds) { b.setAttribute("aria-pressed", String(Boolean(music?.sounding))); if (!problem) b.title = music?.sounding ? "음악 끄기" : "음악 켜기"; } }
 // When the song cannot sound, the button says why (shown on a press of it), so the reason can be told back.
 let problem = "";
-function fail(step, e) { console.error("front music", step, e); problem = `음악 ${step} 실패: ${e?.name ?? ""} ${e?.message ?? e}`.trim(); sound.title = problem; sound.dataset.error = ""; }
+function fail(step, e) { console.error("front music", step, e); problem = `음악 ${step} 실패: ${e?.name ?? ""} ${e?.message ?? e}`.trim(); for (const b of sounds) { b.title = problem; b.dataset.error = ""; } }
 async function begin() { try { await music.start(); } catch (e) { fail("재생", e); } }
 async function play() { await loading; if (!music || music.sounding) return; await begin(); showSound(); return music.sounding; }
 // Only a tap, click or key counts as a press for the browser (a swipe does not), so the song is asked for on
 // each of them until it really sounds; the sound button does its own work.
 const presses = ["pointerup", "touchend", "click", "keydown"];
 async function wake(e) {
-  if (e?.target?.closest?.(".front-sound") || !wanted || front.hidden) return;
+  if (e?.target?.closest?.(".front-sound") || !wanted || location.hash) return;
   if (await play()) presses.forEach((t) => removeEventListener(t, wake, true));
 }
 presses.forEach((t) => addEventListener(t, wake, true));
-sound.addEventListener("click", async (e) => {
+for (const sound of sounds) sound.addEventListener("click", async (e) => {
   e.stopPropagation(); if (!music || problem) showProblem(); await loading;
-  if (!music || problem) { showProblem(); if (!music) return; } else front.querySelector(".front-note")?.remove();
+  if (!music || problem) { showProblem(); if (!music) return; } else document.querySelector(".front-note")?.remove();
   if (music.sounding) { music.stop(); wanted = false; } else {
     wanted = true;
     // a browser that never answers: after 2 seconds the button says what the browser's sound is doing
     const slow = setTimeout(() => { if (!music.sounding) { problem ||= `음악이 시작되지 않습니다 (브라우저 소리 상태: ${music.state})`; showProblem(); } }, 2000);
-    await begin(); clearTimeout(slow); if (problem && !music.sounding) showProblem(); else if (music.sounding) { problem = ""; front.querySelector(".front-note")?.remove(); }
+    await begin(); clearTimeout(slow); if (problem && !music.sounding) showProblem(); else if (music.sounding) { problem = ""; document.querySelector(".front-note")?.remove(); }
   }
   try { localStorage.setItem("front-music", wanted ? "on" : "off"); } catch {}
   showSound();
+// From the start, where the browser lets it.
+if (wanted && !location.hash) loading.then(() => { if (music) { begin().then(showSound); } });
 });
 
 // Into the hub: the front fades away; the song goes on until a game starts.
 function leave() { front.classList.add("leaving"); setTimeout(() => { front.hidden = true; document.body.classList.remove("front-on"); }, 700); try { sessionStorage.setItem("front-seen", "1"); } catch {} }
 enter.addEventListener("click", (e) => { e.preventDefault(); wake(); leave(); });
 export function stopFrontMusic() { if (music?.playing) music.stop(); }
-window.addEventListener("hashchange", () => { if (location.hash) { stopFrontMusic(); if (!front.hidden) { front.hidden = true; document.body.classList.remove("front-on"); } } });
+window.addEventListener("hashchange", () => {
+  if (location.hash) { stopFrontMusic(); if (!front.hidden) { front.hidden = true; document.body.classList.remove("front-on"); } }
+  else if (wanted) play(); // back in the hub from a game: the song again
+  showSound();
+// From the start, where the browser lets it.
+if (wanted && !location.hash) loading.then(() => { if (music) { begin().then(showSound); } });
+});
 front.addEventListener("dragstart", (e) => e.preventDefault());
 // A link straight to a game skips the front page.
 if (location.hash) { front.hidden = true; document.body.classList.remove("front-on"); }
 showSound();
+// From the start, where the browser lets it.
+if (wanted && !location.hash) loading.then(() => { if (music) { begin().then(showSound); } });

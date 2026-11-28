@@ -13,7 +13,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+KR:wght@400;500;600&family=Noto+Serif+KR:wght@500;700&family=Noto+Serif+JP:wght@500;700&family=Yusei+Magic&family=Potta+One&family=Anton&display=swap">
-<link rel="stylesheet" href="/style.css?v=12">
+<link rel="stylesheet" href="/style.css?v=13">
 </head>
 <body class="front-on">
 <section id="front" class="front" aria-label="펜션 슈프르">
@@ -36,7 +36,9 @@
     <span>펜션 슈프르</span>
   </a>
   <p class="now" id="now" hidden><span class="dot" aria-hidden="true"></span><span id="now-title"></span></p>
-  <span class="platform">원작 엔진 이식 · 브라우저에서 바로</span>
+  <button class="front-sound hub-sound" type="button" aria-pressed="false" aria-label="음악">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><path class="on" d="M9 18V6l10-2v12"/><circle class="on" cx="6.5" cy="18" r="2.5"/><circle class="on" cx="16.5" cy="16" r="2.5"/><path class="off" d="M4 4l16 16"/></svg>
+  </button>
 </header>
 
 <main class="hub">
@@ -60,11 +62,6 @@
           </a>
           <span class="hint">일본어 원문 · 헤드폰 권장</span>
         </div>
-        <ul class="facts" aria-label="이식 방식">
-          <li><b>240×160</b>원본 해상도, 정수 배율</li>
-          <li><b>MP2K</b>원작 사운드 드라이버</li>
-          <li><b>VM</b>원작 스크립트 그대로 실행</li>
-        </ul>
       </div>
     </div>
     <iframe hidden title="게임 실행기" allow="autoplay; fullscreen; gamepad" allowfullscreen></iframe>
@@ -74,7 +71,7 @@
     <nav class="library" aria-label="작품 선택">
       <h2 class="label">작품 <span>9</span></h2>
       <details class="series" name="series" data-has="kamaitachi">
-        <summary class="entry"><span class="cover" style="--tint:#1c2538"><img src="/art/kamaitachi-still.png" alt="" onerror="this.remove()"><span class="cover-text" lang="ja">かまいたちの夜</span></span><span class="info"><span class="title">카마이타치의 밤</span><span class="sub">판본 6 · 1994–2006</span><span class="status ready">GBA판 플레이 가능</span></span><svg class="chev" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg></summary>
+        <summary class="entry"><span class="cover" style="--tint:#1c2538"><img src="/art/kamaitachi-still.png" alt="" onerror="this.remove()"><span class="cover-text" lang="ja">かまいたちの夜</span></span><span class="info"><span class="title">카마이타치의 밤</span><span class="sub">1994–2006</span><span class="status ready">GBA판 플레이 가능</span></span><svg class="chev" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg></summary>
         <ul class="editions">
             <li><a class="work edition" href="#kamaitachi-sfc" data-src="/ports/kamaitachi-sfc/index.html" aria-label="카마이타치의 밤 SFC판 실행 (시험판)" data-title="카마이타치의 밤"><span class="title">카마이타치의 밤</span><span class="sub">SFC · 1994 · 춘소프트</span><span class="status">시험판</span></a></li>
             <li><a class="work edition" href="#kamaitachi-ps1" data-src="/ports/kamaitachi-ps1/index.html" aria-label="카마이타치의 밤 특별편 실행 (시험판)" data-title="카마이타치의 밤 특별편"><span class="title">카마이타치의 밤 특별편</span><span class="sub">PS · 1998 · 춘소프트</span><span class="status">시험판</span></a></li>
@@ -85,9 +82,9 @@
         </ul>
       </details>
       <div class="entry"><span class="cover" style="--tint:#4a1218"><img src="/art/covers/higanbana.jpg" alt="" onerror="this.remove()"><span class="cover-text" lang="ja">彼岸花</span></span><span class="info"><span class="title">피안화</span><span class="sub">GBA · 2002</span><span class="status">준비 중</span></span></div>
-      <div class="entry"><span class="cover" style="--tint:#3a2412"><img src="/art/covers/otogirisou.jpg" alt="" onerror="this.remove()"><span class="cover-text" lang="ja">弟切草</span></span><span class="info"><span class="title">제절초</span><span class="sub">SFC · PS · 판본 2</span><span class="status">준비 중</span></span></div>
-      <div class="entry"><span class="cover" style="--tint:#2a2a2a"><img src="/art/covers/machi.jpg" alt="" onerror="this.remove()"><span class="cover-text" lang="ja">街</span></span><span class="info"><span class="title">거리 ~운명의 교차로~</span><span class="sub">SS · PS · PSP · 판본 3</span><span class="status">준비 중</span></span></div>
-      <div class="entry"><span class="cover" style="--tint:#2e1840"><img src="/art/covers/majo.jpg" alt="" onerror="this.remove()"><span class="cover-text" lang="ja">魔女たちの眠り</span></span><span class="info"><span class="title">마녀들의 잠</span><span class="sub">SFC · PS · 판본 2</span><span class="status">준비 중</span></span></div>
+      <div class="entry"><span class="cover" style="--tint:#3a2412"><img src="/art/covers/otogirisou.jpg" alt="" onerror="this.remove()"><span class="cover-text" lang="ja">弟切草</span></span><span class="info"><span class="title">제절초</span><span class="sub">SFC · PS</span><span class="status">준비 중</span></span></div>
+      <div class="entry"><span class="cover" style="--tint:#2a2a2a"><img src="/art/covers/machi.jpg" alt="" onerror="this.remove()"><span class="cover-text" lang="ja">街</span></span><span class="info"><span class="title">거리 ~운명의 교차로~</span><span class="sub">SS · PS · PSP</span><span class="status">준비 중</span></span></div>
+      <div class="entry"><span class="cover" style="--tint:#2e1840"><img src="/art/covers/majo.jpg" alt="" onerror="this.remove()"><span class="cover-text" lang="ja">魔女たちの眠り</span></span><span class="info"><span class="title">마녀들의 잠</span><span class="sub">SFC · PS</span><span class="status">준비 중</span></span></div>
       <div class="entry"><span class="cover" style="--tint:#0f2a38"><img src="/art/covers/yakouchuu.jpg" alt="" onerror="this.remove()"><span class="cover-text" lang="ja">夜光虫</span></span><span class="info"><span class="title">야광충</span><span class="sub">SFC · 1995 · 아테나</span><span class="status">준비 중</span></span></div>
       <div class="entry"><span class="cover" style="--tint:#0f3030"><img src="/art/covers/yakouchuu2.jpg" alt="" onerror="this.remove()"><span class="cover-text" lang="ja">夜光虫Ⅱ</span></span><span class="info"><span class="title">야광충 Ⅱ 살인항로</span><span class="sub">N64 · 1999 · 아테나</span><span class="status">준비 중</span></span></div>
       <a class="entry work" href="#zakuro-sfc" data-src="/ports/zakuro-sfc/index.html" aria-label="석류의 맛 실행 (시험판)" data-title="석류의 맛"><span class="cover" style="--tint:#3d1220"><img src="/art/covers/zakuro.jpg" alt="" onerror="this.remove()"><span class="cover-text" lang="ja">ざくろの味</span></span><span class="info"><span class="title">석류의 맛</span><span class="sub">SFC · 1995 · 이매지니어</span><span class="status">시험판</span></span></a>
@@ -107,11 +104,9 @@
   // until one is chosen). A logo is shown only as the work's own picture, never drawn in a font.
   const CARDS = {
     '#kamaitachi-ps1': { kicker: ['PLAYSTATION', '1998', '춘소프트'], logo: '/kamaitachi-ps1-kor/port-data/machine/hub-logo.png', tall: true, ko: '카마이타치의 밤 특별편',
-      still: '/kamaitachi-ps1-kor/port-data/machine/front-pension.png', story: true, hint: '시험판 · 헤드폰 권장',
-      facts: [['320×240', '원본 해상도, 정수 배율'], ['libsnd', '원작 사운드 모듈'], ['R3000', '원작 프로그램 루틴 이식']] },
+      still: '/kamaitachi-ps1-kor/port-data/machine/front-pension.png', story: true, hint: '시험판 · 헤드폰 권장', },
     '#kamaitachi': { kicker: ['GAME BOY ADVANCE', '2002', '춘소프트'], logo: '/art/kamaitachi-logo.svg', ko: '카마이타치의 밤 어드밴스',
-      still: '/art/kamaitachi-still.png', story: true, hint: '일본어 원문 · 헤드폰 권장',
-      facts: [['240×160', '원본 해상도, 정수 배율'], ['MP2K', '원작 사운드 드라이버'], ['VM', '원작 스크립트 그대로 실행']] },
+      still: '/art/kamaitachi-still.png', story: true, hint: '일본어 원문 · 헤드폰 권장', },
     '#kamaitachi-sfc': { kicker: ['SUPER FAMICOM', '1994', '춘소프트'], ko: '카마이타치의 밤', still: '/art/kamaitachi-still.png', story: true, hint: '시험판 · 헤드폰 권장' },
     '#kamaitachi2-ps2': { kicker: ['PLAYSTATION 2', '2002', '춘소프트'], ko: '카마이타치의 밤 2', hint: '시험판 · 헤드폰 권장' },
     '#zakuro-sfc': { kicker: ['SUPER FAMICOM', '1995', '이매지니어'], ko: '석류의 맛', still: '/art/covers/zakuro.jpg', hint: '시험판 · 헤드폰 권장' },
@@ -132,8 +127,6 @@
     const lede = card.querySelector('.lede'); lede.hidden = !c.story; if (c.story) lede.innerHTML = story;
     card.querySelector('.start').href = chosen;
     card.querySelector('.hint').textContent = c.hint ?? '';
-    const facts = card.querySelector('.facts'); facts.hidden = !c.facts;
-    if (c.facts) facts.replaceChildren(...c.facts.map(([b, t]) => { const li = document.createElement('li'); li.append(Object.assign(document.createElement('b'), { textContent: b }), t); return li; }));
     const stillBox = document.querySelector('#marquee .still');
     let still = stillBox.querySelector('img');
     if (!c.still) still?.remove();
@@ -264,6 +257,6 @@
   showCard(CARDS[location.hash] ? location.hash : DEFAULT_CARD);
   showSelection();
 </script>
-<script type="module" src="/shared/front/front.js?v=12"></script>
+<script type="module" src="/shared/front/front.js?v=13"></script>
 </body>
 </html>
