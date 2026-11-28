@@ -62,11 +62,11 @@ for (const p of [pc, phone]) { p.on("pageerror", (e) => { console.log("pageerror
 check(await pc.evaluate(() => !globalThis.started), "the game waits for 새로하기 / 이어하기");
 await pc.click("#start-choice >> text=새로하기");
 await pc.waitForFunction(() => globalThis.started);
-const box = await pc.evaluate(() => { const a = document.querySelector(".sn-tool").getBoundingClientRect(), m = document.querySelector("#menu").getBoundingClientRect(); return { gap: m.left - a.right, top: a.top - m.top, w: a.width }; });
-check(box.gap === 8 && box.top === 0 && box.w === 44, `disk button sits left of the menu button (${JSON.stringify(box)})`);
+const box = await pc.evaluate(() => { const [menu, disk, report] = ["#menu", '[title="저장 / 불러오기"]', '[title="오류 신고"]'].map((q) => document.querySelector(q).getBoundingClientRect()); return { a: disk.left - menu.right, b: report.left - disk.right, corner: document.getElementById("stage").getBoundingClientRect().right - 12 - report.right, top: disk.top - menu.top, w: disk.width }; });
+check(box.a === 8 && box.b === 8 && box.corner === 0 && box.top === 0 && box.w === 44, `left to right: menu, disk, report in the corner (${JSON.stringify(box)})`);
 await pc.evaluate(async () => { store.write("kamaitachi-gba", "suspend", { schema: 1, payload: { page: 42 } }); store.write("kamaitachi-gba", "manual-0", { schema: 1, payload: { page: 7 } }); });
 await pc.waitForFunction(() => /^\d{6}$/.test(localStorage.getItem("sn-save-code") ?? ""), null, { timeout: 15000 });
-await pc.click(".sn-tool"); 
+await pc.click('[title="저장 / 불러오기"]');
 const code = await pc.waitForSelector("#quick-save .code").then((e) => e.textContent());
 check(/^\d{6}$/.test(code), `a save made the player's 6-digit code by itself (${code})`);
 await pc.evaluate(async () => { store.write("kamaitachi-gba", "suspend", { schema: 1, payload: { page: 43 } }); });
@@ -93,8 +93,7 @@ await again.click("#start-choice >> text=이어하기");
 await again.waitForFunction(() => globalThis.continued !== null, null, { timeout: 10000 });
 check(await again.evaluate(() => globalThis.continued) === 43 && !(await again.$("#start-choice input")), "이어하기 on the same device goes straight on without the code");
 
-await pc.click(".sn-tool >> nth=1");
-check(await pc.evaluate(() => { const [a, b] = [...document.querySelectorAll(".sn-tool")].map((x) => x.getBoundingClientRect()); return Math.round(a.left - b.right); }) === 8, "report button sits left of the disk");
+await pc.click('[title="오류 신고"]');
 await pc.click("#report-dialog button >> text=버그");
 await pc.fill("#report-dialog textarea", "글자가 겹쳐요 @someone");
 await pc.click("#report-dialog button.primary");

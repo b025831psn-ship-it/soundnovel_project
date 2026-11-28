@@ -1,4 +1,4 @@
-// Report button (warning sign), left of the quick-save disk: a beta tester reports a typo or a bug on the page
+// Report button (warning sign), in the corner right of the quick-save disk: a beta tester reports a typo or a bug on the page
 // they are on, and it becomes an issue in that game's private GitHub repository (POST /report,
 // cloudflare/functions/_lib/report.js). Mounted with the save dialog (shared/save/sync-ui.js); PS2 calls it.
 // What the port knows about the page goes along when it offers one of these (all optional):
@@ -37,7 +37,7 @@ function context(boot) {
 
 export function mountReport({ gameId, boot, fetchImpl = (...a) => fetch(...a) } = {}) {
   if (!gameId || document.getElementById("report-dialog")) return null;
-  const button = toolButton({ index: 1, label: "오류 신고", svg: SIGN });
+  const button = toolButton({ index: 0, label: "오류 신고", svg: SIGN });
   if (!button) return null;
   if (!document.getElementById("report-css")) document.head.append(el("style", { id: "report-css", textContent: css }));
   const dialog = el("dialog", { id: "report-dialog" });

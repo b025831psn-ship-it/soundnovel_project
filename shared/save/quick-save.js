@@ -75,7 +75,10 @@ async function applyBackup(store, gameId, backup, overwrite) {
 // The on-screen menu button of each player (GBA/PS1/SFC/석류: .menu-button, PS2: #menu-button).
 const menuButton = () => document.querySelector("#menu-button, .menu-button");
 
-// A button that sits left of the menu button, styled and shown like it. `index` 0 is next to it.
+// A button in the menu button's corner, styled and shown like it (태우 2026-11-28: left to right
+// 플로우차트 / 저장 / 신고). `index` counts from the corner: 0 takes the menu button's own place, and the menu
+// button moves left past all of them (CSS translate, so the port's own transform and hit tests stay).
+const tools = new Set();
 export function toolButton({ index = 0, label, svg }) {
   const menu = menuButton();
   if (!menu?.parentNode) return null;
@@ -83,6 +86,7 @@ export function toolButton({ index = 0, label, svg }) {
   const button = el("button", { type: "button", className: "sn-tool", title: label, ariaLabel: label });
   button.innerHTML = svg;
   menu.parentNode.insertBefore(button, menu);
+  tools.add(button);
   const copy = ["width", "height", "background-color", "border-top-width", "border-top-style", "border-top-color", "border-radius", "color", "backdrop-filter", "box-shadow", "opacity", "transition"];
   const place = () => {
     const shown = menu.offsetWidth > 0 && getComputedStyle(menu).display !== "none";
@@ -95,8 +99,10 @@ export function toolButton({ index = 0, label, svg }) {
     const parent = menu.offsetParent ?? menu.parentNode;
     const right = parent.clientWidth - (menu.offsetLeft + menu.offsetWidth);
     const bottom = parent.clientHeight - (menu.offsetTop + menu.offsetHeight);
-    button.style.right = `${right + (index + 1) * (menu.offsetWidth + 8)}px`;
+    const step = menu.offsetWidth + 8;
+    button.style.right = `${right + index * step}px`;
     button.style.bottom = `${bottom}px`;
+    menu.style.translate = `${-tools.size * step}px 0`;
   };
   place();
   new ResizeObserver(place).observe(menu.offsetParent ?? menu.parentNode);
@@ -155,7 +161,7 @@ export function mountQuickSave({ store, gameId, boot, fetchImpl } = {}) {
   document.addEventListener("visibilitychange", () => { if (document.visibilityState === "hidden" && timer) { clearTimeout(timer); timer = 0; upload({ keepalive: true }); } });
 
   // --- the disk button ---------------------------------------------------------------------------
-  const button = toolButton({ index: 0, label: "저장 / 불러오기", svg: DISK });
+  const button = toolButton({ index: 1, label: "저장 / 불러오기", svg: DISK });
   const dialog = el("dialog", { id: "quick-save" });
   document.body.append(dialog);
   let view = "menu", message = "", busy = false;
