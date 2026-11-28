@@ -1,6 +1,6 @@
 [submodule "majo-tach-sfc-kor"]
 	path = majo-tach-sfc-kor
-	url = https://github.com/b025831psn-ship-it/majo-tach-sfc-kor.git
+	url = https://github.com/b025831psn-ship-it/majo-tachi-sfc-kor.git
 	branch = feature/sfc-localization
 [submodule "zakuro-sfc-kor"]
 	path = zakuro-sfc-kor
@@ -23,3 +23,15 @@
 [submodule "kamaitachi-ps1-kor"]
 	path = kamaitachi-ps1-kor
 	url = https://github.com/b025831psn-ship-it/kamaitachi-ps1-kor.git
+[submodule "majo-tachi-ps1-kor"]
+	path = majo-tachi-ps1-kor
+	url = https://github.com/b025831psn-ship-it/majo-tachi-ps1-kor.git
+[submodule "yasoukyoku-ps1-kor"]
+	path = yasoukyoku-ps1-kor
+	url = https://github.com/b025831psn-ship-it/yasoukyoku-ps1-kor.git
+[submodule "yasoukyoku2-ps1-kor"]
+	path = yasoukyoku2-ps1-kor
+	url = https://github.com/b025831psn-ship-it/yasoukyoku2-ps1-kor.git
+[submodule "tsuki-no-hikari-ps1-kor"]
+	path = tsuki-no-hikari-ps1-kor
+	url = https://github.com/b025831psn-ship-it/tsuki-no-hikari-ps1-kor.git
