@@ -32,7 +32,16 @@ front.dataset.weather = weather;
 const forcedHour = new URLSearchParams(location.search).get("hour");
 if (["day", "dusk", "night"].includes(forcedHour)) { front.dataset.hour = forcedHour; }
 
-pictureModule.then(({ drawPicture }) => drawPicture(picture, DATA, PICTURE)).then(() => front.classList.add("ready")).catch((e) => { console.error("front picture", e); front.classList.add("ready", "no-picture"); });
+// A sharper copy of the same picture (AI 4x with the original texture laid back, made on the PC, kept with
+// the port data) is used when the server has it; otherwise the port draws the original 320x240.
+function drawSharp() {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => { picture.width = img.naturalWidth; picture.height = img.naturalHeight; picture.getContext("2d").drawImage(img, 0, 0); picture.classList.add("sharp"); resolve(); };
+    img.onerror = reject; img.src = DATA + "front-pension.png";
+  });
+}
+drawSharp().catch(() => pictureModule.then(({ drawPicture }) => drawPicture(picture, DATA, PICTURE))).then(() => front.classList.add("ready")).catch((e) => { console.error("front picture", e); front.classList.add("ready", "no-picture"); });
 
 // Snow in three depths; how much and how hard the wind blows depends on the weather.
 (function snowfall() {

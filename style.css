@@ -288,6 +288,7 @@ body.front-on { overflow: hidden }
   animation: front-drift 60s ease-in-out infinite alternate;
 }
 .front.ready .front-picture { opacity: 1 }
+.front-picture.sharp { image-rendering: auto }
 @keyframes front-drift { from { transform: scale(1) } to { transform: scale(1.08) translate(-1%, -1%) } }
 .front-sky { position: absolute; inset: 0; z-index: -2; pointer-events: none; transition: background 30s linear }
 .front-snow { position: absolute; inset: 0; z-index: -1; width: 100%; height: 100%; pointer-events: none }
