@@ -1,0 +1,14 @@
+{
+  "schema": "majo.ps1.checkpoints.v1",
+  "edition": "SLPS-01863 standard edition",
+  "checkpoints": [
+    {"name": "title", "frame": 7313, "resource": "TITLE.P"},
+    {"name": "afterword", "frame": 9448, "resource": "ATOGAKI.P"},
+    {"name": "office", "frame": 9977, "resource": "OFFICE.P"},
+    {"name": "telephone", "frame": 12987, "resource": "TEL.P"},
+    {"name": "black-transition", "frame": 13026, "resource": "BK.P"},
+    {"name": "office-return", "frame": 13349, "resource": "OFFICE.P"}
+  ],
+  "textWindow": {"firstFrame": 9977, "frameCount": 70, "script": "A10.BIN", "offset": 1682},
+  "endingScreens": ["END1.P", "END2.P", "END3.P", "ENDE.P"]
+}

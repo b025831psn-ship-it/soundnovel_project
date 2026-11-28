@@ -1,7 +1,8 @@
 """Run an original disc headlessly with the PCSX-ReARMed libretro core.
 
-Write one JSON line per frame to a new trace file. Input frame
-numbers start at one and --press FRAME:BUTTON holds a button for one frame.
+Write one JSON line per frame to a new trace file. Input frame numbers start at
+one and --press FRAME:BUTTON holds a button for one frame. Selected checkpoints
+also include the libretro serialized-state SHA-256.
 """
 
 import argparse
@@ -28,7 +29,7 @@ UINT = c.c_uint
 SIZE = c.c_size_t
 
 
-def run(core_path, cue, frames, presses, scratch, trace):
+def run(core_path, cue, frames, presses, checkpoints, scratch, trace):
     core = c.CDLL(str(core_path))
     directory = os.fsencode(scratch)
     options = {}
@@ -111,6 +112,9 @@ def run(core_path, cue, frames, presses, scratch, trace):
     core.retro_get_memory_data.restype = PTR
     core.retro_get_memory_size.argtypes = [UINT]
     core.retro_get_memory_size.restype = SIZE
+    core.retro_serialize_size.restype = SIZE
+    core.retro_serialize.argtypes = [PTR, SIZE]
+    core.retro_serialize.restype = c.c_bool
     core.retro_init()
     try:
         game = GameInfo(os.fsencode(cue), None, 0, None)
@@ -123,6 +127,12 @@ def run(core_path, cue, frames, presses, scratch, trace):
                 core.retro_run()
                 row = dict(frame=frame, video=frame_hash, geometry=dimensions,
                            audio=audio_hash.hexdigest())
+                if frame in checkpoints:
+                    size = core.retro_serialize_size()
+                    state = (c.c_ubyte * size)()
+                    if not size or not core.retro_serialize(state, size):
+                        raise RuntimeError("core could not serialize checkpoint state")
+                    row["state"] = hashlib.sha256(state).hexdigest()
                 if frame == frames:
                     ram = core.retro_get_memory_data(2)
                     size = core.retro_get_memory_size(2)
@@ -143,6 +153,7 @@ def main():
     parser.add_argument("trace", type=Path)
     parser.add_argument("--frames", type=int, default=600)
     parser.add_argument("--press", action="append", default=[], metavar="FRAME:BUTTON")
+    parser.add_argument("--checkpoint", action="append", default=[], type=int, metavar="FRAME")
     args = parser.parse_args()
     if args.frames < 1:
         parser.error("--frames must be positive")
@@ -152,12 +163,15 @@ def main():
         if not number.isdecimal() or not 1 <= int(number) <= args.frames or button not in BUTTONS:
             parser.error("invalid --press " + value)
         presses.setdefault(int(number), set()).add(BUTTONS.index(button))
+    checkpoints = set(args.checkpoint)
+    if any(frame < 1 or frame > args.frames for frame in checkpoints):
+        parser.error("checkpoint frame is outside the run")
     core, cue = args.core.resolve(strict=True), args.cue.resolve(strict=True)
     with args.trace.open("x", encoding="utf-8") as trace, TemporaryDirectory() as scratch:
         previous = Path.cwd()
         os.chdir(scratch)
         try:
-            run(core, cue, args.frames, presses, scratch, trace)
+            run(core, cue, args.frames, presses, checkpoints, scratch, trace)
         finally:
             os.chdir(previous)
 

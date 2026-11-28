@@ -135,7 +135,8 @@ def audit(exe: bytes, scrp: bytes) -> dict:
     issues: list[dict] = []
     opcode_counts = collections.Counter()
     totals = collections.Counter()
-    picture_refs, movie_refs, music_refs, sound_refs = set(), set(), set(), set()
+    picture_refs, movie_refs, music_refs, sound_refs, ending_refs = set(), set(), set(), set(), set()
+    disabled_endings = 0
     resource_summaries = []
 
     def issue(kind: str, location: str, detail: str) -> None:
@@ -285,6 +286,12 @@ def audit(exe: bytes, scrp: bytes) -> dict:
                     sound_refs.add(value)
                     if not 0 <= value <= 0x67 or f"SE{value:02X}.VAB" not in available:
                         issue("missingSound", location, f"SE{value:02X}.VAB")
+                elif opcode == 0x10 and cursor + 4 <= next_offset:
+                    value = int.from_bytes(data[cursor + 2:cursor + 4], "big")
+                    if value >> 8 == 0x20:
+                        disabled_endings += 1
+                    else:
+                        ending_refs.add(value)
                 if next_offset <= cursor or next_offset > end:
                     issue("invalidOperand", location, f"next offset 0x{next_offset:x}")
                     next_offset = cursor + 2
@@ -326,6 +333,8 @@ def audit(exe: bytes, scrp: bytes) -> dict:
             "movies": len(movie_refs),
             "musicIds": sorted(music_refs),
             "soundIds": len(sound_refs),
+            "endingIds": sorted(ending_refs),
+            "disabledEndingSlots": disabled_endings,
         },
         "resources": resource_summaries,
         "issueCount": len(issues),

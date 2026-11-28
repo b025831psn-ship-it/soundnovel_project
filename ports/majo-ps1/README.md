@@ -11,7 +11,8 @@ Python 3과 PCSX-ReARMed libretro 코어로 두 트랙을 참조하는 원본 CU
 
 ```sh
 python -B tools/boot_oracle.py /path/to/core /path/to/disc.cue /private/idle.jsonl --frames 6000
-python -B tools/boot_oracle.py /path/to/core /path/to/disc.cue /private/input.jsonl --frames 15000 --press 9000:start
+python -B tools/boot_oracle.py /path/to/core /path/to/disc.cue /private/input.jsonl --frames 15000 --press 9000:start --checkpoint 7313
+python -B tools/compare_checkpoints.py qa/checkpoints.json /private/run-a.jsonl /private/run-b.jsonl
 ```
 
 SLPS-01863 Track 1과 Windows x64 코어(SHA-256 `7f39419a7d085ffaf3f89f74b5e5084929687ab8b0895a4b41a31702af1fc8cd`)에서 무입력 6,000프레임 두 번의 기록이 일치했다. 영상 파일 36개의 SHA-1도 디스크 추출 manifest와 일치했다.
@@ -47,3 +48,5 @@ python -B tools/compare_background.py $files $trace 7313=TITLE.P 9448=ATOGAKI.P 
 ```
 
 배경은 압축된 그림에서 직접 팔레트와 픽셀을 해독한다. 본문 검사는 지정한 시나리오 오프셋에서 VM을 한 번 실행하고 원본 KF1 글꼴·글꼴 색인·웹 텍스트 렌더러로 매 VSync의 화면을 만든다. 캔버스에서 다시 읽은 320×240 픽셀을 RGB565로 변환해 원본 기록과 비교한다. 이 명령으로 정지 화면 5개와 본문이 두 번째 줄로 넘어가는 연속 70프레임(9,977~10,046)을 검증했다. 이는 장면 위치를 지정한 검증이며, 타이틀부터 동일한 입력으로 장면에 도달하는 전체 플레이와 오디오 동기는 이후 검증 범위다.
+
+`qa/walkthroughs.json`은 공략 두 곳과 원본 분기 감사를 대조한 0-base 선택 입력 및 완결·번외·후기·예고편·숨김 시나리오 해금 조건이다. 특히 숨김 대기 조건은 60 Hz 기준 18,000프레임이며, 자동 진행 입력을 넣어서는 안 된다. `qa/checkpoints.json`은 원본에서 확인한 대표 화면과 연속 본문 구간을 고정한다. 같은 코어·디스크·입력으로 두 번 기록해 화면·오디오·직렬화 상태 해시를 비교한다.

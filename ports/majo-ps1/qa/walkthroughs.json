@@ -1,0 +1,28 @@
+{
+  "schema": "majo.ps1.walkthroughs.v1",
+  "choiceIndexBase": 0,
+  "expectedEndingIds": {"first": 2, "last": 45, "count": 44},
+  "sources": [
+    "https://majotachinonemuri.kouryaku.red/entry1.html",
+    "https://majotachinonemuri.kouryaku.red/entry3.html",
+    "https://majotachinonemuri.kouryaku.red/entry4.html",
+    "https://majotachinonemuri.kouryaku.red/entry5.html",
+    "https://majotachinonemuri.kouryaku.red/entry6.html",
+    "https://majotachinonemuri.kouryaku.red/entry7.html",
+    "https://majotachinonemuri.kouryaku.red/entry8.html",
+    "https://tokyomad.jpn.org/db.htm"
+  ],
+  "firstActRoutes": [
+    {"id": "resurrection", "choices": [0, 1]},
+    {"id": "gold", "choices": [1, 0]},
+    {"id": "immortality", "choices": [0, 0]},
+    {"id": "forgotten-valley", "choices": [1, 1]}
+  ],
+  "unlockChecks": [
+    {"id": "final", "requires": ["resurrection-long-sleep-ending"]},
+    {"id": "side-story", "requires": ["character-table-complete", "all-endings-through-final"]},
+    {"id": "afterword", "requires": ["character-table-complete", "all-endings-through-side-story"]},
+    {"id": "trailer", "requires": ["protagonist-name-akagawa-jirou", "partner-name-yasou-kyoku", "continue"]},
+    {"id": "mystery", "requires": ["all-endings-through-afterword", "read-any-story", "wait-18000-frames-at-newline", "return-to-log", "continue"]}
+  ]
+}
