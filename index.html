@@ -194,7 +194,7 @@
       if (link.hash === chosen) link.setAttribute('aria-current', 'true'); else link.removeAttribute('aria-current');
     }
     for (const s of soons) { if (s.dataset.card === chosen) s.setAttribute('aria-current', 'true'); else s.removeAttribute('aria-current'); }
-    const series = [...links, ...soons].find(l => (l.hash || l.dataset.card) === chosen)?.closest('.series'); if (series) series.open = true;
+    // the series groups stay closed until opened (태우 2026-11-28: "목록은 기본적으로 닫혀있게")
   }
   const links = Array.from(document.querySelectorAll('.work'));
   // Works not playable yet: a press (or Enter) shows their card.
