@@ -142,7 +142,7 @@ kbd {
 .marquee .ko .name { word-break: keep-all }
 .subt { display: inline-block; word-break: keep-all }
 .marquee .ko .name::after { content: ""; display: inline-block; width: 48px; height: 1px; margin-left: 14px; vertical-align: .35em; background: var(--accent) }
-.lede .para { display: block }
+.lede .para, .lede .line { display: block }
 .lede .para + .para { margin-top: .6em }
 .lede .warning { display: inline-block; margin-bottom: 4px; color: var(--text); font-weight: 600; letter-spacing: .02em }
 .lede { margin: 6px 0 12px; max-width: 38em; word-break: keep-all; text-wrap: pretty; font-size: clamp(13px, 1.45cqw, 15px); line-height: 1.8; color: #bdbbb5 }
