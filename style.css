@@ -178,7 +178,7 @@ div.entry { grid-template-columns: 84px minmax(0, 1fr); cursor: default }
 /* works not playable yet still show their card on a press */
 .entry.soon, .edition.soon { cursor: pointer }
 .entry.soon[aria-current] .cover { filter: none }
-.edition.soon[aria-current] { background: var(--raised); box-shadow: inset 2px 0 0 var(--accent) }
+.edition.soon[aria-current] { background: var(--raised) }
 .start.soon { background: rgba(255,255,255,.08); color: var(--muted); box-shadow: none; cursor: default; pointer-events: auto }
 .start.soon:hover { background: rgba(255,255,255,.08); transform: none; box-shadow: none }
 .start.soon svg { display: none }
@@ -207,7 +207,7 @@ div.entry .cover, a.entry:not([aria-current]) .cover { filter: saturate(.75) }
 .edition .sub { font-size: 11px }
 a.edition .title { color: var(--text) }
 a.edition:hover { background: var(--hover) }
-a.edition[aria-current] { background: var(--raised); box-shadow: inset 2px 0 0 var(--accent) }
+a.edition[aria-current] { background: var(--raised) }
 .editions li:has(a.edition)::before { background: var(--accent) }
 .edition .status { font-size: 11px; margin-top: 1px }
 
@@ -231,6 +231,7 @@ a.edition[aria-current] { background: var(--raised); box-shadow: inset 2px 0 0 v
 .status { display: inline-flex; align-items: center; gap: 6px; margin-top: 3px; color: var(--muted); font-size: 12px }
 .status::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: var(--line-strong) }
 .status.ready { color: var(--text) }
+.status .ver { color: var(--muted); font-variant-numeric: tabular-nums; letter-spacing: .02em }
 .status.ready::before { background: var(--accent); box-shadow: 0 0 8px var(--accent) }
 /* Part of the original runs (the sound so far): a hollow accent dot. */
 .status.partial::before { background: transparent; box-shadow: inset 0 0 0 1.5px var(--accent) }
