@@ -95,6 +95,13 @@ onmessage = ({ data }) => {
   }
 };
 
+// The script reader's position (bit in the ROM file), as $00:9A1D reads it: pointer at D+8..10
+// (D = $0400 throughout the story), bit buffer at D+11..12.
+const scriptBit = (w) => {
+  const ptr = (w[0x40a] & 127) * 0x8000 + ((w[0x408] | (w[0x409] << 8)) & 0x7fff);
+  let buffer = w[0x40b] | (w[0x40c] << 8), left = 0; while ((buffer >>= 1)) left++;
+  return ptr * 8 - left;
+};
 let setSram = () => {};
 // The state without the SRAM: the bookmarks are kept and synced block by block, so carrying on
 // from a suspend never rolls them back.
@@ -168,7 +175,7 @@ function start({ game, gauss, port, sram }) {
       watchSram(now);
       if (now < reportAt) return; reportAt = now + 250;
       const w = machine.bus.wram;
-      postMessage({ type: 'status', frame: vm.frame, time: vm.time, cost, keyboard: isKeyboard(w), cursor: w[0x1020], title: w[0x3c3], item: w[0x2482], typed: w[0x1024], choice: storyChoice(w), picked });
+      postMessage({ type: 'status', frame: vm.frame, time: vm.time, cost, keyboard: isKeyboard(w), cursor: w[0x1020], title: w[0x3c3], item: w[0x2482], typed: w[0x1024], choice: storyChoice(w), picked, script: scriptBit(w) });
     },
   });
 }
