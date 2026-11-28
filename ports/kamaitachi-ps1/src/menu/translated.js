@@ -418,7 +418,7 @@ export function* menu(ctx, a0 = 0, a1 = 0, a2 = 0, a3 = 0) {
   case 0x80019300:
      [v0, v1] = yield* call(ctx, sp, 0x80039288, a0, a1, a2, a3);
   case 0x80019308:
-    offer(ctx, Array.from({ length: m.read(0x800792aa, 1) === 1 ? 4 : 3 }, (_, i) => box(i, 0xe8, 0x29 + 17 * i, 0x50, 17)), () => s4 & 0xff, ["up", "down"]);
+    offer(ctx, Array.from({ length: m.read(0x800792aa, 1) === 1 ? 4 : 3 }, (_, i) => box(i, 0xe8, 0x30 + 17 * i, 0x50, 17)), () => s4 & 0xff, ["up", "down"]);
      [v0, v1] = yield* call(ctx, sp, 0x80013f34, a0, a1, a2, a3);
   case 0x80019310:
     v0 = 0x801f0000 | 0; pc = 0x80018e38; continue;
@@ -3976,7 +3976,7 @@ export function* options(ctx, a0 = 0, a1 = 0, a2 = 0, a3 = 0) {
   case 0x80018c80:
      [v0, v1] = yield* call(ctx, sp, 0x80039288, a0, a1, a2, a3);
   case 0x80018c88:
-    offer(ctx, Array.from({ length: m.read(0x8007913c + 0x17, 1) + 1 }, (_, i) => box(i, 0x4c, 0x3f + 20 * i, 0xb4, 20)), () => s4 & 0xff, ["up", "down"]);
+    offer(ctx, Array.from({ length: m.read(0x8007913c + 0x17, 1) + 1 }, (_, i) => box(i, 0x4c, 0x45 + 20 * i, 0xb4, 20)), () => s4 & 0xff, ["up", "down"]);
      [v0, v1] = yield* call(ctx, sp, 0x80013f34, a0, a1, a2, a3);
   case 0x80018c90:
     v0 = 0x801f0000 | 0; pc = 0x800186e0; continue;
@@ -4487,7 +4487,7 @@ export function* f800145b0(ctx, a0 = 0, a1 = 0, a2 = 0, a3 = 0) {
   case 0x80014d0c:
      [v0, v1] = yield* call(ctx, sp, 0x80039288, a0, a1, a2, a3);
   case 0x80014d14:
-    offer(ctx, Array.from({ length: 5 }, (_, i) => box(i, 0x4c, 0x3c + 20 * i, 0xb4, 20)), () => s4 & 0xff, ["up", "down"]);
+    offer(ctx, Array.from({ length: 5 }, (_, i) => box(i, 0x4c, 0x44 + 20 * i, 0xb4, 20)), () => s4 & 0xff, ["up", "down"]);
      [v0, v1] = yield* call(ctx, sp, 0x80013f34, a0, a1, a2, a3);
   case 0x80014d1c:
     v0 = 0x801f0000 | 0; pc = 0x80014620; continue;

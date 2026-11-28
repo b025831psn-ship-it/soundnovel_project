@@ -145,6 +145,8 @@ export function* call(ctx, sp, addr, a0, a1, a2, a3) {
     if (op === undefined) unported(addr);
     yield* runOp({ ...ctx, sp }, op); return [0, 0];
   }
+  // Korean: the name the culprit judge stores on a match may have moved (a longer string)
+  if (addr === 0x8003a744 && ctx.m.ko) a1 = ctx.m.ko.moved.get(a1 >>> 0) ?? a1;
   let r = f({ ...ctx, sp }, a0 | 0, a1 | 0, a2 | 0, a3 | 0);
   if (r && typeof r.next === "function") r = yield* r;
   // Korean: the flowchart has just copied its title section (0x210c bytes) to its buffer (gp[0x328]);
@@ -152,6 +154,12 @@ export function* call(ctx, sp, addr, a0, a1, a2, a3) {
   if (addr === 0x80044904 && a2 === 0x210c && ctx.m.ko?.chart && (a1 >>> 0) === (ctx.m.read(0x80079464, 4) >>> 0)) {
     const { m } = ctx, c = m.ko.chart;
     m.setBytes(c.addr, c.bytes); m.write(0x80079464, c.addr, 4);
+  }
+  // Korean: the culprit judge compares name a0 with a name of its table; the Korean names of that entry match too
+  if (addr === 0x8003a8d0 && ctx.m.ko?.culprit.has(a1 >>> 0) && (Array.isArray(r) ? r[0] : r) !== 1) {
+    const { m } = ctx, p = m.read(0x8006b030 + 4 * (a0 & 0xffff), 4) >>> 0;
+    const same = (b) => { for (let i = 0; i < b.length; i++) if (m.read(p + i, 1) !== b[i]) return false; return m.read(p + b.length, 1) === 0; };
+    if (m.ko.culprit.get(a1 >>> 0).some(same)) r = [1, Array.isArray(r) ? r[1] : 0];
   }
   // Korean: the ending list (table and strings) has just been copied from the EXE to a1
   if (addr === 0x80044904 && ctx.m.ko?.endings && (a0 >>> 0) === ctx.m.ko.endings.addr) ctx.m.setBytes(a1 >>> 0, ctx.m.ko.endings.bytes);

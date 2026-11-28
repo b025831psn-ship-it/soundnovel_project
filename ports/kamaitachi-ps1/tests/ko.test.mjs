@@ -63,3 +63,16 @@ test("ko: an operand that holds an offset into the resource follows the bytes it
   assert.equal(out[target], 0x07);
   assert.throws(() => { b[9] = 4 + r0.length + 4; patchResource(b, [[1, 2, b64([0xa0, 0x83, 0xa0, 0x84, 0xa0, 0x85])]], 1, [[0, 5]]); }, /points into a text/);
 });
+
+// The Korean name board (src/name-entry.js): a pressed consonant or vowel joins the last character
+import { koCompose, koAlone } from "../src/name-entry.js";
+test("ko: the name board composes syllables from consonants and vowels", () => {
+  const type = (keys) => { let s = []; for (const k of keys) { const made = koCompose(s.at(-1) ?? "", k); if (made) s.splice(-1, 1, ...made); else s.push(koAlone(k)); } return s.join(""); };
+  assert.equal(type("ㅁㅣㅋㅣㅁㅗㅌㅗ"), "미키모토");
+  assert.equal(type("ㅅㅠㄴㅅㅡㅋㅔ"), "슌스케"); // a final consonant, then a new syllable
+  assert.equal(type("ㅁㅣㄴㅏ"), "미나");       // the final consonant moves to the next syllable
+  assert.equal(type("ㅇㅏㅋㅣ"), "아키");
+  assert.equal(type("ㅏㅋㅣ"), "아키");         // a vowel alone takes ㅇ
+  assert.equal(type("ㄲㅗㅊ"), "꽃");
+  assert.equal(type("ㄱㄱ"), "ㄱㄱ");           // nothing to join
+});

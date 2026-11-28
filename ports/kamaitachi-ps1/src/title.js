@@ -18,7 +18,7 @@ import { fadeOut, fadeIn, fadeLevel } from "./screen/fader.js";
 import { addBox } from "./screen/sprites.js";
 import { tick, ticks } from "./tick.js";
 import { textTask, fillText } from "./text/text.js";
-import { drawGlyph } from "./text/glyph.js";
+import { drawGlyph, glyphWidth } from "./text/glyph.js";
 import { josa, lastGlyph } from "./text/josa.js";
 import { cdLoadAsync } from "./cd-load.js";
 import { titlePicture, animInit, textSlotsReset, systemReset, routeReset } from "./init.js";
@@ -69,7 +69,9 @@ export function drawString(ctx, x, y, str, step) { // 0x80038658
     if (c === 0x7373) { x += 0x10; str += 2; continue; }
     if (c === 0x7272) { x = left; y += 0x10; str += 2; continue; }
     ctx.gs.DrawSync(0);
-    str += 2; drawGlyph(sub, x, y, c); advance();
+    // Korean: a glyph past the right edge of the screen is left out (a translated line longer than
+    // the original's; drawn there it would land in the next page's place and show up later)
+    str += 2; if (!m.ko || x + glyphWidth(m, c) <= 320) drawGlyph(sub, x, y, c); advance();
   }
   ctx.gs.DrawSync(0);
   m.write(0x80079610, x, 2); m.write(0x80079612, y, 2);

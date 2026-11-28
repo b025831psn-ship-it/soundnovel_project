@@ -138,6 +138,29 @@ whenReady(({ runtime }) => {
     runtime.input.pulse(input);
   });
 
+  // A game pad (Gamepad API, standard layout): the buttons are the PlayStation pad's own, held for as
+  // long as they are held (0 ×, 1 ○, 2 □, 3 △, 8 SELECT, 9 START, the d-pad and the left stick), as in
+  // the PS2 player. A pad without the standard layout is read the same way by button number.
+  const PAD_BUTTONS = { 0: "cross", 1: "circle", 2: "square", 3: "triangle", 8: "select", 9: "start", 12: "up", 13: "down", 14: "left", 15: "right" };
+  let padHeld = new Set();
+  const padRelease = () => { for (const key of padHeld) runtime.input.release(key); padHeld = new Set(); };
+  (function pollPad() {
+    const pads = Array.from(navigator.getGamepads?.() ?? []).filter((p) => p?.connected);
+    const pad = pads.find((p) => p.mapping === "standard") ?? pads[0];
+    const now = new Set();
+    if (pad && !document.hidden) {
+      for (const [i, key] of Object.entries(PAD_BUTTONS)) if (pad.buttons[i]?.pressed) now.add(key);
+      const [ax = 0, ay = 0] = pad.axes;
+      if (ax < -0.5) now.add("left"); if (ax > 0.5) now.add("right");
+      if (ay < -0.5) now.add("up"); if (ay > 0.5) now.add("down");
+    }
+    for (const key of now) if (!padHeld.has(key)) { resume(); runtime.input.press(key); }
+    for (const key of padHeld) if (!now.has(key)) runtime.input.release(key);
+    padHeld = now;
+    requestAnimationFrame(pollPad);
+  })();
+  addEventListener("blur", padRelease);
+
   // The blurred scene behind the screen (the sides of a wide window), eased toward each picture.
   const glow = $("glow").getContext("2d");
   glow.imageSmoothingEnabled = true;
