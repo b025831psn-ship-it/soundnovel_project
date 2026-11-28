@@ -72,6 +72,7 @@ const sn4Style = {speed:1, letterSpacing:0, lineSpacing:7, fontType:0, fontSize:
   sceneCommands:[], unknown:[], sceneFx:{layers:new Map(), filters:new Map(), models:new Map(), resources:new Map(),
     screen:null, staffRoll:null, trigger:null}};
 let scene = 'loading', index = 0, role = 0, page = 0, revealed = 0;
+const KOREAN_DEFAULT_NAMES = ['토오루', '마리'];
 let names = [], autosave = false, slot = 0, entered = 0, lastFrame, userNotice = '';
 let idleMovie = 'opening';
 // The player's volume (shell.js slider, 0..1) over every sound of the game.
@@ -323,7 +324,8 @@ function title(animate) {
 
 function newGame() {
   stopMovie(); stopMusic();
-  names = [...data.defaults];
+  // The ELF's defaults are 透 / 真理; the Korean build (data.language 'ko') starts with their Korean names.
+  names = data.language === 'ko' ? [...KOREAN_DEFAULT_NAMES] : [...data.defaults];
   editor = null;
   enter('autosave');
 }
