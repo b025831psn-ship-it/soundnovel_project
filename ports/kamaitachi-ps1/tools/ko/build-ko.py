@@ -47,6 +47,7 @@ HASH = 0x8006b754
 ENDINGS = 0x80067914
 JOIN = 0x800118e4    # the と between the two names of a bookmark: its particle follows the hero's name (src/text/josa.js)
 SPECIAL = {'デュアルショック': 0x8440, '○': 0x8485, '△': 0x8486, '×': 0x8487, '□': 0x8488, 'メモリーカード': 0x848f, 'オプション': 0x8490, 'R1:スクロール': 0x8491}
+FLOW_X = [(0, 2, [71, 78, 85]), (0, 70, [39, 46, 53]), (0, 98, [39, 46, 53])]
 CHART_POOL, CHART_ROOM = 0x80009000, 0x3000   # spare kernel RAM for the flowchart title section (263 big-endian offsets, then the strings)
 # The default names: the pointers the game copies string 1 (the hero, [n1]) and string 2 (the
 # companion, [n2]) from (0x8003ab98). The original fields hold one and two glyphs; the Korean
@@ -418,13 +419,29 @@ def main():
         if len(sec) > CHART_ROOM: raise SystemExit('the flowchart titles are %d bytes, over %d' % (len(sec), CHART_ROOM))
         chart_patch = {'addr': CHART_POOL, 'bytes': base64.b64encode(sec).decode()}
     report['exeStrings'] = {'listed': len(exe_list), 'translated': done, 'moved': len(moved), 'profileLineWidth': intro_w, 'profilesRewrapped': rewrapped, 'widerThanOriginal': wider, 'flowchartBytes': len(base64.b64decode(chart_patch['bytes'])) if chart_patch else None}
+    # Lines whose first pieces the original types at fixed x places (script command 0x18, x = v * 5/4)
+    # and that the Korean text starts at the left edge instead: each piece goes where the pieces
+    # before it end, as plain text would. [resource, record, offsets of the pieces]: the memo's second line.
+    operands = collections.defaultdict(list)
+    for rid, rec, offs in FLOW_X:
+        texts = {o: base64.b64decode(t) for r, o, t in res[rid] if r == rec}
+        x = 8
+        for o in offs:
+            v = next(v for v in range(x + 1) if v + (v >> 2) >= x)
+            operands[str(rid)].append([rec, o - 2, v])
+            b, i = texts[o], 0
+            while i < len(b):
+                if b[i] == 0x20: x += 6; i += 1
+                elif b[i] < 0x78: i += 2 if chr(b[i]) in 'cChsvnw' else 1
+                else: x += width(b[i] << 8 | b[i + 1]) + 1; i += 2
+    report['flowX'] = dict(operands)
     os.makedirs(out, exist_ok=True)
     open(os.path.join(out, 'ko-font.bin'), 'wb').write(blob)
     json.dump({'schema': 'kamaitachi.ps1.ko-script.v1', 'source': ja.get('source'), 'offsets': json.load(open(opt['--offsets'])), 'culprit': [[int(a, 16), [base64.b64encode(b''.join(struct.pack('>H', code[c]) for c in v)).decode() for v in vs]] for a, vs in culprit['names'].items()], 'glyphs': len(new), 'chars': ''.join(new), 'josaJoin': [JOIN], 'space': SPACE, 'hang': [code[c] for c in HANG if c in code],
                'patches': patches, 'moved': moved, 'chart': chart_patch, 'endings': endings_patch,
                'resources': {str(r): v for r, v in sorted(res.items())},
                # the original font's characters and codes: the owner's edits are encoded in the browser (src/ko-text.js)
-               'orig': {'chars': ''.join(orig), 'codes': list(orig.values())}, 'names': NAME_W}, open(os.path.join(out, 'ko-script.json'), 'w'), separators=(',', ':'))
+               'orig': {'chars': ''.join(orig), 'codes': list(orig.values())}, 'names': NAME_W, 'operands': dict(operands)}, open(os.path.join(out, 'ko-script.json'), 'w'), separators=(',', ':'))
     json.dump(report, open(os.path.join(out, 'ko-report.json'), 'w'), ensure_ascii=False, indent=1)
     if '--editor' in opt:   # the dialogue editor's data (tools/text-editor): game text, so it stays out of this repository
         json.dump({'schema': 'kamaitachi.ps1.ko-editor.v1', 'widths': {str(c): w for c, w in sorted(owidth.items())},

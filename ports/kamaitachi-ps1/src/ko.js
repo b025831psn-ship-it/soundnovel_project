@@ -114,7 +114,10 @@ export function patchScePac(pac, koScript) {
   if (!koScript.offsets) throw new Error("ko: ko-script.json has no offsets (tools/ko/offset-operands.mjs, build-ko.py --offsets)");
   const rows = []; for (let i = 0; ; i += 4) { const id = u16(pac, i), s = u16(pac, i + 2); rows.push({ id, s }); if (id === 0xffff) break; }
   const members = rows.slice(0, -1).map((r, i) => {
-    const raw = unpackMember(pac.subarray(r.s * 2048, rows[i + 1].s * 2048)), texts = koScript.resources[r.id];
+    let raw = unpackMember(pac.subarray(r.s * 2048, rows[i + 1].s * 2048)); const texts = koScript.resources[r.id];
+    // operands the Korean build sets itself ([record, offset in it, u16]: the x places of a line typed piece by piece)
+    const set = koScript.operands?.[r.id];
+    if (set?.length) { raw = raw.slice(); for (const [rec, at, v] of set) { const o = u16(raw, 2 * rec) + at; raw[o] = v & 0xff; raw[o + 1] = v >> 8; } }
     return { id: r.id, bytes: texts?.length ? patchResource(raw, texts, r.id, koScript.offsets[r.id] ?? []) : raw };
   });
   let sector = rows[0].s; const place = members.map((x) => { const s = sector; sector += Math.ceil(x.bytes.length / 2048); return s; });
