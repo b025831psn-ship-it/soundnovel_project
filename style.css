@@ -350,6 +350,6 @@ body.playing .top .hub-sound { display: none }
 #updates::backdrop { background: rgba(0, 0, 0, .65) }
 #updates h2 { margin: 0 0 14px; font-size: 18px }
 #updates h3 { margin: 14px 0 6px; font-size: 14px; color: var(--accent); font-weight: 500 }
-#updates ul { margin: 0; padding-left: 18px; line-height: 1.6 }
+#updates ul { margin: 0; padding-left: 18px; line-height: 1.6; word-break: keep-all }
 #updates li + li { margin-top: 6px }
 #updates button { display: block; width: 100%; min-height: 44px; margin-top: 18px; border-radius: 8px; border: 1px solid var(--accent); background: transparent; color: var(--accent); font: inherit; cursor: pointer }
