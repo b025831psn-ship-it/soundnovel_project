@@ -1,0 +1,6 @@
+{
+  "private": true,
+  "type": "module",
+  "scripts": { "build": "node build.mjs", "deploy": "node deploy.mjs", "test": "cd ../shared/save && node --import ../../cloudflare/tests/swap.mjs --test tests/pair.test.mjs tests/concurrent.test.mjs tests/store.test.mjs" },
+  "devDependencies": { "wrangler": "^4.20.0" }
+}

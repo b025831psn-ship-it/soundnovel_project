@@ -40,12 +40,8 @@ const portTypes = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript
 // in a local, uncommitted serve.ps2web (one line). Disc images are never among the served types.
 const ps1Data = (() => { try { return path.resolve(__dirname, fs.readFileSync(path.join(__dirname, 'serve.ps1data'), 'utf8').trim()); } catch { return path.resolve(__dirname, '..', '..', '_claude-work', 'ps1-web'); } })();
 const ps2Web = (() => { try { return path.resolve(__dirname, fs.readFileSync(path.join(__dirname, 'serve.ps2web'), 'utf8').trim()); } catch { return ''; } })();
-function portRoute(url) {
-  // The GBA debug scene list (ports/kamaitachi-gba/main.js ?debug=1) holds script text: it is read only
-  // through /edit/ (the password from outside), never through the open data paths below.
-  const debugScenes = /^\/edit\/kamaitachi-gba\/debug-scenes-(ja|ko)\.json$/.exec(url);
-  if (debugScenes) return [path.join(__dirname, 'kamaitachi-gba-kor', debugScenes[1] === 'ko' ? 'port-data-ko' : 'port-data', 'debug-scenes.json'), portTypes['.json']];
-  for (const [prefix, dir, exts] of [
+// Served folders: [url prefix, folder, allowed extensions] (also read by tools/cloudflare/build.mjs).
+const PORT_PREFIXES = [
     ['/ports/kamaitachi-gba/', path.join(__dirname, 'ports', 'kamaitachi-gba'), ['.html', '.js', '.css']],
     ['/kamaitachi-gba-kor/port-data/', path.join(__dirname, 'kamaitachi-gba-kor', 'port-data'), ['.json', '.bin']],
     ['/kamaitachi-gba-kor/port-data-ko/', path.join(__dirname, 'kamaitachi-gba-kor', 'port-data-ko'), ['.json', '.bin']],
@@ -75,7 +71,13 @@ function portRoute(url) {
     // debug-card.bin: the memory card of a debug run (ports/kamaitachi-ps1/src/machine-browser.js ?debug=1).
     ['/edit/kamaitachi-ps1/', path.join(ps1Data, 'machine', 'ko'), ['.json', '.bin']],
     ['/kamaitachi2-ps2/', ps2Web, ['.html', '.js', '.mjs', '.css', '.json', '.bin', '.pac', '.wd', '.png', '.jpg', '.webp', '.svg', '.wasm', '.ogg', '.mp3', '.wav', '.mp4', '.woff2', '.txt']],
-  ]) {
+];
+function portRoute(url) {
+  // The GBA debug scene list (ports/kamaitachi-gba/main.js ?debug=1) holds script text: it is read only
+  // through /edit/ (the password from outside), never through the open data paths below.
+  const debugScenes = /^\/edit\/kamaitachi-gba\/debug-scenes-(ja|ko)\.json$/.exec(url);
+  if (debugScenes) return [path.join(__dirname, 'kamaitachi-gba-kor', debugScenes[1] === 'ko' ? 'port-data-ko' : 'port-data', 'debug-scenes.json'), portTypes['.json']];
+  for (const [prefix, dir, exts] of PORT_PREFIXES) {
     if (!url.startsWith(prefix) || !dir) continue;
     let rest;
     try { rest = decodeURIComponent(url.slice(prefix.length)); } catch { return null; } // a malformed %-escape is a 404, never a crash
@@ -192,7 +194,7 @@ function gzipped(file, etag, done) {
   });
 }
 
-http.createServer((request, response) => {
+const server = http.createServer((request, response) => {
   const url = request.url.split('?')[0];
   if (url === '/sync' || url.startsWith('/sync/')) { if (syncAllowedFromOutside(request, response)) proxySync(request, response); return; }
   if (!allowedFromOutside(request, response, url)) return;
@@ -295,4 +297,7 @@ http.createServer((request, response) => {
     response.on('close', () => stream.destroy());
     stream.pipe(response);
   });
-}).listen(8770, '127.0.0.1', () => console.log('http://127.0.0.1:8770/'));
+});
+// Required as a module (tools/cloudflare/build.mjs), it only hands over its route tables.
+if (require.main === module) server.listen(8770, '127.0.0.1', () => console.log('http://127.0.0.1:8770/'));
+module.exports = { routes, portRoute, PORT_PREFIXES, cartridges, ps1Data, ps2Web };

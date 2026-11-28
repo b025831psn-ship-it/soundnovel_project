@@ -1,0 +1,14 @@
+# Cloudflare Pages project for 펜션 슈프르 (deploy with: node cloudflare/deploy.mjs, run on the PC).
+name = "pension-spur"
+pages_build_output_dir = "out/dist"
+compatibility_date = "2025-06-01"
+
+[[r2_buckets]]
+binding = "DATA"
+bucket_name = "pension-spur-data"
+
+[[d1_databases]]
+binding = "SAVES"
+database_name = "pension-spur-saves"
+database_id = "SET-BY-deploy.mjs"
+# EDIT_PASSWORD is a secret: npx wrangler pages secret put EDIT_PASSWORD --project-name pension-spur
