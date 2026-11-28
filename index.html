@@ -133,22 +133,48 @@
     const [name, subt] = t.textContent.split(/ (?=~)/);
     if (subt) titled(t, name, subt);
   });
+  // Logos come with uneven transparent margins and shapes: crop the margins, then size every
+  // logo to the same visual area (see .logo img in style.css).
+  const trimmed = new Map();
+  function trim(src) {
+    if (!trimmed.has(src)) trimmed.set(src, new Promise(done => {
+      const im = new Image();
+      im.onload = () => {
+        try {
+          const cv = document.createElement('canvas'); cv.width = im.naturalWidth; cv.height = im.naturalHeight;
+          const g = cv.getContext('2d'); g.drawImage(im, 0, 0);
+          const d = g.getImageData(0, 0, cv.width, cv.height).data;
+          let x0 = cv.width, y0 = cv.height, x1 = -1, y1 = -1;
+          for (let y = 0; y < cv.height; y++) for (let x = 0; x < cv.width; x++) if (d[(y * cv.width + x) * 4 + 3] > 16) { if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; }
+          if (x1 < 0 || (x0 === 0 && y0 === 0 && x1 === cv.width - 1 && y1 === cv.height - 1)) return done({ src, ar: im.naturalWidth / im.naturalHeight });
+          const w = x1 - x0 + 1, h = y1 - y0 + 1, out = document.createElement('canvas'); out.width = w; out.height = h;
+          out.getContext('2d').drawImage(cv, x0, y0, w, h, 0, 0, w, h);
+          done({ src: out.toDataURL(), ar: w / h });
+        } catch { done({ src, ar: im.naturalWidth / im.naturalHeight }); }
+      };
+      im.onerror = () => done({ src, ar: 2.5 });
+      im.src = src;
+    }));
+    return trimmed.get(src);
+  }
+  function showLogo(img, src) {
+    img.dataset.logo = src;
+    trim(src).then(t => { if (img.dataset.logo !== src) return; img.style.setProperty('--ar', t.ar.toFixed(3)); img.src = t.src; });
+  }
   function showCard(hash) {
     const c = CARDS[hash] ?? CARDS[DEFAULT_CARD];
     chosen = CARDS[hash] ? hash : DEFAULT_CARD;
     card.querySelector('.kicker').replaceChildren(...c.kicker.map(t => Object.assign(document.createElement('span'), { textContent: t })));
     const logo = card.querySelector('.logo'), img = logo.querySelector('img');
     logo.hidden = !c.logo; logo.classList.remove('text');
-    img.classList.toggle('tall', Boolean(c.tall));
-    img.onload = () => { img.classList.toggle('tall', img.naturalHeight > img.naturalWidth * .6); img.classList.toggle('wide', img.naturalWidth > img.naturalHeight * 3.5); };
-    if (c.logo) { img.alt = c.ko; img.onerror = () => { logo.hidden = true; }; if (img.getAttribute('src') !== c.logo) img.src = c.logo; }
+    if (c.logo) { img.alt = c.ko; img.onerror = () => { logo.hidden = true; }; if (img.dataset.logo !== c.logo) showLogo(img, c.logo); }
     const [name, subt] = c.ko.split(/ (?=~)/);
     card.querySelector('.ko').replaceChildren(Object.assign(document.createElement('span'), { className: 'name' }));
     titled(card.querySelector('.ko .name'), name, subt);
     document.querySelector('#snow').hidden = !c.snow;
     marquee.classList.toggle('light', Boolean(c.light));
     marquee.classList.toggle('dim', Boolean(c.dim));
-    marquee.classList.toggle('long', (c.text ?? '').length > 200); // a long intro: the logo gives way // snow only for the snowbound pension
+    marquee.classList.toggle('long', (c.text ?? '').replace(/<[^>]+>/g, '').length > 200); // a long intro: the logo gives way // snow only for the snowbound pension
     const lede = card.querySelector('.lede'); lede.hidden = !(c.story || c.text); lede.innerHTML = c.text ?? (c.story ? story : '');
     const start = card.querySelector('.start');
     start.href = c.soon ? '#' : chosen; start.classList.toggle('soon', Boolean(c.soon));
