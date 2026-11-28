@@ -68,7 +68,10 @@ export class SaveStore {
   }
 
   // Stores a new local version of a slot. `fields`: { schema, dataVersion, edition, label, payload, original? }.
-  write(gameId, slot, fields) {
+  // `baseRevision` (optional): the server revision this version was made from, when the caller knows
+  // it is older than the slot's (a game that kept running on content another device has since
+  // replaced): the push then comes back as a conflict instead of silently overwriting.
+  write(gameId, slot, fields, { baseRevision } = {}) {
     checkIds(gameId, slot);
     const key = keyOf(gameId, slot);
     const prev = this.saves.get(key);
@@ -85,7 +88,7 @@ export class SaveStore {
     if (bad) throw new TypeError(`invalid save: ${bad}`);
     this.saves.set(key, env);
     this.#persist("saves", key, env);
-    this.#queue(key, { op: "put", gameId, slot });
+    this.#queue(key, { op: "put", gameId, slot, ...(baseRevision !== undefined ? { baseRevision } : {}) });
     return env;
   }
 

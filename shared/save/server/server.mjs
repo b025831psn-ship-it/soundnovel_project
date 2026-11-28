@@ -17,7 +17,8 @@ const PAIR = /^[0-9A-HJKMNP-TV-Z]{4}$/;
 // Pairing: a one-time, short-lived 4-character code hands a wrapped secret from one device to another.
 // It is never an account password; failed claims are rate limited per client and globally.
 export function createServer({ dir, maxBody = MAX_BODY, maxSlots = MAX_SLOTS, now = Date.now,
-  maxVaults = 200, maxVaultBytes = MAX_VAULT_BYTES, maxPairBlob = 2048, maxRequestsPerMinute = 300, maxVaultsPerClientPerHour = 10, pairTtlMs = null, pairSingleUse = false, maxPairs = 1000, maxFailsPerClient = 10, maxFailsGlobal = 200, failWindowMs = 10 * 60 * 1000 } = {}) {
+  maxVaults = 200, maxVaultBytes = MAX_VAULT_BYTES, maxPairBlob = 2048, maxRequestsPerMinute = 300, maxVaultsPerClientPerHour = 10, pairTtlMs = null, pairSingleUse = false, maxPairs = 1000, maxFailsPerClient = 10, maxFailsGlobal = 200, failWindowMs = 10 * 60 * 1000,
+  snapTtlMs = 90 * 24 * 3600 * 1000, maxSnapsPerGame = 9000, maxSnapsPerClientPerHour = 20 } = {}) {
   fs.mkdirSync(dir, { recursive: true });
   const pairFile = path.join(dir, "pairs.json");
   // code -> { blob, auth, expires|null }. Persistent by default (beta: a few dozen users); a short TTL and
@@ -37,11 +38,13 @@ export function createServer({ dir, maxBody = MAX_BODY, maxSlots = MAX_SLOTS, no
   const vaultFile = (id) => path.join(dir, `${id}.json`);
   const load = (id) => { try { return JSON.parse(fs.readFileSync(vaultFile(id), "utf8")); } catch { return null; } };
   const store = (id, v) => { const f = vaultFile(id); fs.writeFileSync(f + ".tmp", JSON.stringify(v)); fs.renameSync(f + ".tmp", f); };
-  const send = (res, code, body) => { res.writeHead(code, { "content-type": "application/json", "access-control-allow-origin": "*", "access-control-allow-headers": "authorization,content-type,if-match,x-vault-id", "access-control-allow-methods": "GET,PUT,DELETE,OPTIONS" }); res.end(body === undefined ? "" : JSON.stringify(body)); };
+  const send = (res, code, body) => { res.writeHead(code, { "content-type": "application/json", "access-control-allow-origin": "*", "access-control-allow-headers": "authorization,content-type,if-match,x-vault-id", "access-control-allow-methods": "GET,PUT,POST,DELETE,OPTIONS" }); res.end(body === undefined ? "" : JSON.stringify(body)); };
   const readBody = (req) => new Promise((resolve, reject) => {
+    // Past the limit the rest is read and dropped, so the 413 reaches the client (destroying the
+    // socket left the client's fetch waiting forever).
     let n = 0; const chunks = [];
-    req.on("data", (c) => { n += c.length; if (n > maxBody) { reject(Object.assign(new Error("too large"), { code: 413 })); req.destroy(); } else chunks.push(c); });
-    req.on("end", () => resolve(Buffer.concat(chunks).toString("utf8")));
+    req.on("data", (c) => { n += c.length; if (n <= maxBody) chunks.push(c); });
+    req.on("end", () => (n > maxBody ? reject(Object.assign(new Error("too large"), { code: 413 })) : resolve(Buffer.concat(chunks).toString("utf8"))));
     req.on("error", reject);
   });
 
@@ -93,6 +96,45 @@ export function createServer({ dir, maxBody = MAX_BODY, maxSlots = MAX_SLOTS, no
           if (!p) { mine.push(now()); globalFails.push(now()); return send(res, 404, { error: "no such code" }); }
           if (pairSingleUse) { pairs.delete(code); savePairs(); }
           return send(res, 200, { blob: p.blob });
+        }
+        return send(res, 405, { error: "method" });
+      }
+      const sm = /^\/v1\/snap\/([a-z0-9][a-z0-9:_-]{0,63})(?:\/(\d{4}))?$/.exec(new URL(req.url, "http://x").pathname);
+      if (sm) {
+        // Quick save: see cloudflare/functions/_lib/sync.js snap() for the API; one file per code.
+        const [, game, code] = sm, gdir = path.join(dir, "snaps", game.replace(/:/g, "_"));
+        fs.mkdirSync(gdir, { recursive: true });
+        const codes = () => fs.readdirSync(gdir).filter((f) => /^\d{4}\.json$/.test(f)).map((f) => f.slice(0, 4));
+        const read = (c) => { try { return JSON.parse(fs.readFileSync(path.join(gdir, c + ".json"), "utf8")); } catch { return null; } };
+        const write = (c, v) => { const f = path.join(gdir, c + ".json"); fs.writeFileSync(f + ".tmp", JSON.stringify(v)); fs.renameSync(f + ".tmp", f); };
+        for (const c of codes()) if ((read(c)?.used ?? 0) <= now() - snapTtlMs) fs.rmSync(path.join(gdir, c + ".json"), { force: true });
+        if (req.method === "PUT" && !code) {
+          let body;
+          try { body = JSON.parse(await readBody(req)); } catch (e) { return send(res, e.code === 413 ? 413 : 400, { error: "bad body" }); }
+          if (typeof body?.data !== "string" || !body.data) return send(res, 400, { error: "bad body" });
+          if (typeof body.code === "string" && /^\d{4}$/.test(body.code) && typeof body.token === "string") {
+            const row = read(body.code);
+            if (row && row.token === shaOf(body.token)) { write(body.code, { ...row, data: body.data, used: now() }); return send(res, 200, { code: body.code, token: body.token }); }
+          }
+          const who = clientOf(req);
+          const all = codes().map(read).filter(Boolean);
+          if (all.filter((r) => r.client === who && r.created > now() - 3600_000).length >= maxSnapsPerClientPerHour) return send(res, 429, { error: "too many codes" });
+          if (all.length >= maxSnapsPerGame) return send(res, 429, { error: "server full" });
+          const taken = new Set(codes());
+          const free = Array.from({ length: 10000 }, (_, i) => String(i).padStart(4, "0")).filter((c) => !taken.has(c));
+          const c = free[crypto.randomInt(free.length)], token = crypto.randomBytes(16).toString("hex");
+          write(c, { token: shaOf(token), data: body.data, used: now(), created: now(), client: who });
+          return send(res, 201, { code: c, token });
+        }
+        if (req.method === "POST" && code) {
+          const who = clientOf(req);
+          const mine = recent(fails.get(who) ?? []); fails.set(who, mine);
+          globalFails = recent(globalFails);
+          if (mine.length >= maxFailsPerClient || globalFails.length >= maxFailsGlobal) return send(res, 429, { error: "too many attempts" });
+          const row = read(code);
+          if (!row) { mine.push(now()); globalFails.push(now()); return send(res, 404, { error: "no such code" }); }
+          write(code, { ...row, used: now() });
+          return send(res, 200, { data: row.data });
         }
         return send(res, 405, { error: "method" });
       }

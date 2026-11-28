@@ -32,8 +32,9 @@ export function decodeCode(text) {
   return out;
 }
 
-// In chunks: spreading a large array (a VM-state save of ~180 KB) into one call overflows the stack.
-const b64 = (u8) => { let s = ""; for (let i = 0; i < u8.length; i += 0x8000) s += String.fromCharCode(...u8.subarray(i, i + 0x8000)); return btoa(s).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, ""); };
+// Chunked: a spread of a few hundred KB overflows the call stack (SFC suspend states).
+const binary = (u8) => { let s = ""; for (let i = 0; i < u8.length; i += 0x8000) s += String.fromCharCode(...u8.subarray(i, i + 0x8000)); return s; };
+const b64 = (u8) => btoa(binary(u8)).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
 const unb64 = (s) => Uint8Array.from(atob(s.replace(/-/g, "+").replace(/_/g, "/")), (c) => c.charCodeAt(0));
 const hex = (u8) => [...u8].map((x) => x.toString(16).padStart(2, "0")).join("");
 

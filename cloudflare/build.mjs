@@ -24,7 +24,7 @@ const RANGED = /\.(PAC|pac|ch0|mp4)$/;
 // The dialogue edits the owner saves from /edit/: they change after a deploy, so they live in R2.
 const LIVE = /(^|\/)text-edits\.json$/;
 // Not part of the site: verification traces, old hub-art tries in sub-folders, old PS1 test captures.
-const SKIP = /\/trace\/|^\/art\/hub\/[^/]+\/|^\/kamaitachi-ps1-kor\/port-data\/machine-[^/]*\.png$/;
+const SKIP = /^\/edit\/reports\/|\/trace\/|^\/art\/hub\/[^/]+\/|^\/kamaitachi-ps1-kor\/port-data\/machine-[^/]*\.png$/;
 
 const files = new Map(); // url -> [file, type]
 const add = (url, route) => { if (route && fs.existsSync(route[0]) && !cartridges.has(url) && !SKIP.test(decodeURIComponent(url))) files.set(url, route); };
@@ -71,8 +71,8 @@ if (staticCount > 20000) throw new Error(`${staticCount} static files: over the 
 // the dialogue edits are read through the Function even before the first one is saved
 const LIVE_PATHS = ["/kamaitachi-gba-kor/port-data/text-edits.json", "/kamaitachi-gba-kor/port-data-ko/text-edits.json", "/kamaitachi-ps1-kor/port-data/machine/ko/text-edits.json"];
 for (const p of LIVE_PATHS) if (!fnPaths.includes(p)) fnPaths.push(p);
-let include = ["/sync/*", "/edit/*", ...fnPaths];
-if (include.length > 100) include = ["/sync/*", "/edit/*", ...new Set(fnPaths.map((p) => p.slice(0, p.lastIndexOf("/") + 1) + "*"))];
+let include = ["/sync/*", "/edit/*", "/report", ...fnPaths];
+if (include.length > 100) include = ["/sync/*", "/edit/*", "/report", ...new Set(fnPaths.map((p) => p.slice(0, p.lastIndexOf("/") + 1) + "*"))];
 if (include.length > 100) throw new Error(`${include.length} function routes: over 100`);
 fs.writeFileSync(path.join(dist, "_routes.json"), JSON.stringify({ version: 1, include, exclude: [] }, null, 1));
 // a real 404 for unknown paths (without it Pages answers them with the hub page)

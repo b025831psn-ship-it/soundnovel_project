@@ -3,7 +3,11 @@
 //   { type: 'buttons', mask }  held keys    { type: 'pause', on }
 //   { type: 'tap', x, y }      screen pixels; pressed as planTap() decides
 //   { type: 'press', name }    one button press (menu icon actions)
-//   { type: 'reset' }          the console Reset button
+//   { type: 'reset', sram? }   the console Reset button (sram: bookmarks to load first, e.g. from
+//                              another device)
+//   { type: 'snapshot', id }   web suspend: answers { type: 'snapshot', id, data } (packed state,
+//                              save/state-pack.js, without the SRAM)
+//   { type: 'restore', id, data, sram? } web suspend: carry on from a packed state; the bookmarks stay as they are
 // Messages out: { type: 'status', frame, time, cost, keyboard, cursor, title } about four
 //               times a second (keyboard: a name keyboard is up, so the menu button hides),
 //               { type: 'frame', frame, pixels } (256x224 RGBA) when the picture changed,
@@ -15,6 +19,7 @@ import { createPcmSink } from './pcm-sink.js';
 import { VmSound, PAD } from './vm-sound.js';
 import { tapTarget, storyChoice, PressQueue, isKeyboard, keyboardTarget, keyboardStep } from './touch.js';
 import { SfcMachine } from '../../../sfc-vm/machine.js';
+import { packState, unpackState } from '../save/state-pack.js';
 
 let machine = null, vm = null, run = null, held = 0, seek = null;
 // The option the game last took from a story choice (its cursor when the choice closed), for status.
@@ -74,7 +79,13 @@ onmessage = ({ data }) => {
   }
   else if (data.type === 'press' && PAD[data.name]) queue.push(PAD[data.name]);
   // The console's Reset button (陰謀編 is entered with it, as on the original).
-  else if (data.type === 'reset' && vm) { seek = null; queue.clear?.(); vm.reset(); choiceCursor = null; }
+  else if (data.type === 'reset' && vm) {
+    seek = null; queue.clear?.(); choiceCursor = null;
+    if (data.sram?.byteLength === machine.bus.sram.length) setSram(new Uint8Array(data.sram));
+    vm.reset();
+  }
+  else if (data.type === 'snapshot' && vm) snapshot(data.id);
+  else if (data.type === 'restore' && vm) restore(data);
   // A vertical drag or the wheel: on a name keyboard it pages the kanji list; on the story it
   // goes back a sentence (X) when dragged down / wheeled up.
   else if (data.type === 'scroll' && machine && !queue.busy && !seek) {
@@ -83,6 +94,36 @@ onmessage = ({ data }) => {
     else if (data.dir < 0 && tapTarget(w, machine.bus.io, 128, 112) === 'A') queue.push(PAD.X);
   }
 };
+
+let setSram = () => {};
+// The state without the SRAM: the bookmarks are kept and synced block by block, so carrying on
+// from a suspend never rolls them back.
+async function snapshot(id) {
+  try {
+    const state = machine.saveState();
+    state.bus.sram = null; state.bus.dmaStats = {}; state.bus.readStats = {};
+    // The pictures are drawn again on the next frame; leaving them out keeps the slot under the
+    // server's 256 KB per save (after base64 and encryption).
+    state.framebuffer = null; state.rasterFramebuffer = null;
+    const data = await packState(state);
+    postMessage({ type: 'snapshot', id, data }, [data.buffer]);
+  } catch (e) { postMessage({ type: 'snapshot', id, error: String(e?.message ?? e) }); }
+}
+async function restore({ data, id, sram }) {
+  try {
+    if (sram?.byteLength === machine.bus.sram.length) setSram(new Uint8Array(sram));
+    const state = await unpackState(new Uint8Array(data));
+    const now = vm.time;
+    state.bus.sram = machine.bus.sram.slice();
+    if (!state.rasterFramebuffer) state.rasterFramebuffer = machine.rasterFramebuffer;
+    if (!state.framebuffer) state.framebuffer = machine.framebuffer;
+    for (const k of ['dmaStats', 'readStats']) if (!state.bus[k] || !Object.keys(state.bus[k]).length) state.bus[k] = machine.bus[k];
+    machine.loadState(state);
+    vm.base = now - machine.time; // the player's clock carries on
+    seek = null; queue.clear?.(); choiceCursor = null; picked = null;
+    postMessage({ type: 'restored', id });
+  } catch (e) { postMessage({ type: 'restored', id, error: String(e?.message ?? e) }); }
+}
 
 function start({ game, gauss, port, sram }) {
   const sink = createPcmSink(port);
@@ -99,6 +140,7 @@ function start({ game, gauss, port, sram }) {
   const live = machine.bus.sram;
   if (sram && sram.byteLength === live.length) live.set(new Uint8Array(sram));
   let kept = live.slice(), dirty = false, sramAt = 0;
+  setSram = (bytes) => { live.set(bytes); kept = live.slice(); dirty = false; };
   const watchSram = (now) => {
     if (now < sramAt) return; sramAt = now + 500;
     let same = true; for (let i = 0; i < live.length; i++) if (live[i] !== kept[i]) { same = false; break; }

@@ -66,6 +66,8 @@ const PORT_PREFIXES = [
     ['/kamaitachi-ps1-kor/port-data/', ps1Data, ['.json', '.bin', '.PAC', '.pac', '.ch0', '.mp4', '.png']],
     // 펜션 슈프르 관리자 (admin/): the owner's page, under /edit/ so that it asks for the password from outside.
     ['/edit/admin/', path.join(__dirname, 'admin'), ['.html', '.js', '.css']],
+    // screenshots of the testers' reports on this PC (report() below)
+    ['/edit/reports/', path.join(__dirname, 'reports'), ['.png']],
     // The admin page's data of the PS1 script (ko-editor.json: the whole Japanese and Korean script side by
     // side). It is read only through /edit/, never through the open data path above.
     // debug-card.bin: the memory card of a debug run (ports/kamaitachi-ps1/src/machine-browser.js ?debug=1).
@@ -186,6 +188,41 @@ function proxySync(request, response) {
   request.on('end', () => upstream.end());
 }
 
+// Beta testers' reports (shared/player/report-button.js). With GITHUB_REPORT_TOKEN set they become issues in
+// the game's private repository like on Cloudflare (cloudflare/functions/_lib/report.js); without it (a test PC)
+// they are kept in reports/ next to this file. Screenshots: reports/<id>.png, read at /edit/reports/ (password).
+const reportsDir = path.join(__dirname, 'reports');
+const reportTimes = new Map();
+function report(request, response) {
+  const chunks = []; let size = 0, over = false;
+  request.on('data', (c) => { size += c.length; if (size > 1_500_000) { over = true; request.destroy(); } else chunks.push(c); });
+  request.on('end', async () => {
+    if (over) return;
+    const body = Buffer.concat(chunks);
+    const client = request.headers['cf-connecting-ip'] ?? request.socket.remoteAddress ?? '?';
+    const allow = async (who) => {
+      const now = Date.now(), list = (reportTimes.get(who) ?? []).filter((t) => now - t < 3_600_000);
+      if (list.length >= 10) return false;
+      list.push(now); reportTimes.set(who, list); return true;
+    };
+    const putShot = async (id, bytes) => { fs.mkdirSync(reportsDir, { recursive: true }); fs.writeFileSync(path.join(reportsDir, id + '.png'), bytes); return `/edit/reports/${id}.png`; };
+    const headers = new Headers({ 'cf-connecting-ip': client });
+    const req = new Request('http://local/report', { method: request.method, headers, body: request.method === 'POST' ? body : undefined });
+    let res;
+    try {
+      const { handleReport } = await import('./cloudflare/functions/_lib/report.js');
+      const token = process.env.GITHUB_REPORT_TOKEN;
+      const local = Object.assign(async (repo, issue, id) => {
+        fs.mkdirSync(reportsDir, { recursive: true });
+        fs.writeFileSync(path.join(reportsDir, id + '.json'), JSON.stringify({ repo, ...issue }, null, 1));
+        return true;
+      }, { local: true });
+      res = await handleReport(req, token ? { token, allow, putShot } : { allow, putShot, fileIssue: local });
+    } catch { res = new Response('{"error":"server error"}', { status: 500 }); }
+    response.writeHead(res.status, { 'Content-Type': 'application/json' }).end(Buffer.from(await res.arrayBuffer()));
+  });
+}
+
 const zlib = require('node:zlib');
 const gzipCache = new Map(); // file -> {etag, body | pending callbacks}
 function gzipped(file, etag, done) {
@@ -206,6 +243,7 @@ function gzipped(file, etag, done) {
 const server = http.createServer((request, response) => {
   const url = request.url.split('?')[0];
   if (url === '/sync' || url.startsWith('/sync/')) { if (syncAllowedFromOutside(request, response)) proxySync(request, response); return; }
+  if (url === '/report') { report(request, response); return; }
   if (!allowedFromOutside(request, response, url)) return;
   // Dialogue edits (ports/kamaitachi-gba/src/text-editor.js): game data in kamaitachi-gba-kor
   // (port-data/text-edits.json for ja, port-data-ko/text-edits.json for ko), read through the usual

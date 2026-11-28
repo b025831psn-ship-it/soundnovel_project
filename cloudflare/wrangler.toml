@@ -12,3 +12,4 @@ binding = "SAVES"
 database_name = "pension-spur-saves"
 database_id = "b8049d5c-e36a-4d6b-a388-a9995078bb2c"
 # EDIT_PASSWORD is a secret: npx wrangler pages secret put EDIT_PASSWORD --project-name pension-spur
+# GITHUB_REPORT_TOKEN is a secret (beta testers' reports -> issues): npx wrangler pages secret put GITHUB_REPORT_TOKEN --project-name pension-spur
