@@ -96,41 +96,49 @@ def extend_korean_font(out, metrics, strings, font_path):
     both take the original ``font[ch]`` sprite path, dimensions and tinting.
     """
     cell, columns = 36, 64
+    font = ImageFont.truetype(str(font_path), 30)
+    # U+0020 is not present in the Japanese SN4 font.  It is advance-only,
+    # exactly like the original full-width U+3000 record; falling back to �
+    # turns every Korean word separator and empty keyboard cell into a box.
+    if " " not in metrics:
+        metrics[" "] = [0, 0, max(1, round(font.getlength(" "))), 0, 0]
     chars = sorted({ch for text in strings for ch in text
                     if not ch.isspace() and ch not in metrics})
     if not chars:
         return
-    font = ImageFont.truetype(str(font_path), 30)
     source = Image.open(out / "font.png").convert("RGBA")
     used = 1 + max((value[1] // cell) * columns + value[0] // cell
                    for value in metrics.values() if value[2] and value[3])
     rows = (used + len(chars) + columns - 1) // columns
     atlas = Image.new("RGBA", (columns * cell, rows * cell))
     atlas.alpha_composite(source)
-    probe = Image.new("L", (cell * 2, cell * 2))
+    # The EE draws each bitmap at line_y + top.  Keep a common baseline and
+    # derive top from the font's baseline-relative ink box; punctuation then
+    # sits at the bottom of the line instead of being pinned to y=0.
+    baseline = 29
     for index, ch in enumerate(chars, used):
-        mask = Image.new("L", probe.size)
+        bbox = font.getbbox(ch, stroke_width=1, anchor="ls")
+        width = bbox[2] - bbox[0]
+        height = bbox[3] - bbox[1]
+        top = baseline + bbox[1]
+        if width <= 0 or height <= 0 or width > cell or top < 0 or top + height > cell:
+            raise ValueError(f"Korean glyph {ch!r} exceeds the SN4 cell: {bbox}, top={top}")
+        mask = Image.new("L", (width, height))
         draw = ImageDraw.Draw(mask)
-        bbox = draw.textbbox((0, 0), ch, font=font, stroke_width=1)
-        width = min(cell, max(1, bbox[2] - bbox[0]))
-        height = min(cell, max(1, bbox[3] - bbox[1]))
-        x0 = max(0, (cell - width) // 2 - bbox[0])
-        y0 = -bbox[1]
-        draw.text((x0, y0), ch, font=font, fill=255,
-                  stroke_width=1, stroke_fill=255)
-        fill = Image.new("L", probe.size)
-        ImageDraw.Draw(fill).text((x0, y0), ch, font=font, fill=255)
-        crop = mask.crop((0, 0, cell, height))
-        fill = fill.crop((0, 0, cell, height))
-        rgba = Image.new("RGBA", crop.size)
+        origin = (-bbox[0], -bbox[1])
+        draw.text(origin, ch, font=font, fill=255, stroke_width=1,
+                  stroke_fill=255, anchor="ls")
+        fill = Image.new("L", (width, height))
+        ImageDraw.Draw(fill).text(origin, ch, font=font, fill=255, anchor="ls")
+        rgba = Image.new("RGBA", (width, height))
         rgba.putdata([(value, value, value, alpha)
-                      for value, alpha in zip(fill.getdata(), crop.getdata())])
+                      for value, alpha in zip(fill.getdata(), mask.getdata())])
         x, y = (index % columns) * cell, (index // columns) * cell
         atlas.alpha_composite(rgba, (x, y))
-        # Korean full-width text uses the original 33px advance; ASCII keeps
-        # its raster width so debug labels and numbers remain compact.
-        advance = 33 if ord(ch) >= 0x80 else min(33, width + 1)
-        metrics[ch] = [x, y, advance, height, 0]
+        # SN4's metric width is both source-bitmap width and cursor advance.
+        # Store the exact stroked ink box; the normal 1px letter spacing makes
+        # a 32px Hangul cell advance by the original 33px.
+        metrics[ch] = [x, y, width, height, top]
     atlas.save(out / "font.png")
 
 
