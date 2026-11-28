@@ -33,6 +33,7 @@ input[type=search] { width: 100%; }
 #preview canvas { width: 100%; max-width: 480px; height: auto; image-rendering: pixelated; border: 1px solid var(--line); border-radius: 4px; background: #000; }
 #run { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; font-size: 13px; }
 #run a { color: var(--text); background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 6px 10px; text-decoration: none; }
+#jump { color: var(--text); background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 8px 10px; text-decoration: none; }
 button { cursor: pointer; }
 button.main { background: var(--accent); border-color: var(--accent); }
 button:disabled { opacity: .5; cursor: default; }

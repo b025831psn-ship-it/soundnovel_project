@@ -45,3 +45,15 @@ test("layout: a space counts only after a glyph, a word that does not fit goes t
   const long = layout([encode("가".repeat(17) + " " + "나".repeat(4)).bytes], env)[0].lines;
   assert.equal(long.length, 2); assert.equal(long[1].length, 4);
 });
+
+test("offsets of a resource follow its replaced texts, both ways", async () => {
+  const { resourceOffsets, patchResource } = await import("../src/ko.js");
+  // two records: [0x00 text "AB" 0] [op 5] | [0x00 text "C" 0] [op 6, op 7]
+  const res = Uint8Array.from([4, 0, 9, 0, 0, 0x82, 0xa0, 0, 5, 0, 0x82, 0xa2, 0, 6, 7]);
+  const texts = [[0, 0, btoa("\x82\xa0\x82\xa0\x82\xa0")], [1, 0, btoa("")]];
+  const map = resourceOffsets(res, texts), out = patchResource(res, texts);
+  assert.equal(map.toNew(4), 4); assert.equal(map.toNew(7), 11); assert.equal(map.toNew(8), 12); assert.equal(map.toNew(13), 15);
+  assert.equal(map.toNew(6), -1);                                   // inside the first text
+  for (const old of [4, 5, 7, 8, 9, 12, 13, 14]) assert.equal(map.toOld(map.toNew(old)), old);
+  assert.equal(out[map.toNew(8)], 5); assert.equal(out[map.toNew(13)], 6);
+});

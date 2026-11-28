@@ -65,6 +65,7 @@ function show(id) {
   fill($("ko"), game.parts(id, game.current(open)));
   $("status").textContent = "";
   $("revert").disabled = !e;
+  const jump = game.jumpUrl?.(id); $("jump").hidden = !jump; if (jump) $("jump").href = jump;
   review();
   history.replaceState(null, "", `#${game.id}/${id}`);
   scrollTo(0, 0);

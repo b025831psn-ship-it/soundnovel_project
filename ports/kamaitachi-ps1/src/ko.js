@@ -68,6 +68,41 @@ export function patchResource(bytes, texts, id = "?", offsets = []) {
   return res;
 }
 
+// Where a byte offset of a resource is after its texts were replaced, and back: for state that
+// holds offsets (the bookmark's cursor and history) made with one build and used with another
+// (the debug jump, src/machine-browser.js). An offset inside a replaced text has no counterpart.
+export function resourceOffsets(bytes, texts) {
+  const n = u16(bytes, 0) / 2, offs = Array.from({ length: n }, (_, i) => u16(bytes, 2 * i));
+  const byRecord = new Map();
+  for (const [rec, off, t] of texts ?? []) (byRecord.get(rec) ?? byRecord.set(rec, []).get(rec)).push([off, fromBase64(t).length]);
+  const spans = []; let d = 0; // [old start, old end, new start, new end] of each replaced text, in order
+  for (let i = 0; i < n; i++) {
+    const b = bytes.subarray(offs[i], i + 1 < n ? offs[i + 1] : bytes.length);
+    for (const [off, len] of (byRecord.get(i) ?? []).sort((x, y) => x[0] - y[0])) {
+      const a = offs[i] + off + 1, e = offs[i] + textEnd(b, off + 1);
+      spans.push([a, e, a + d, a + d + len]); d += len - (e - a);
+    }
+  }
+  const map = (v, from, to) => { let shift = 0; for (const s of spans) { if (v >= s[from + 1]) shift = s[to + 1] - s[from + 1]; else { if (v > s[from]) return -1; break; } } return v + shift; };
+  return { toNew: (old) => map(old, 0, 2), toOld: (now) => map(now, 2, 0) };
+}
+// The members of SCE.PAC, unpacked: id -> bytes.
+export function sceMembers(pac) {
+  const rows = []; for (let i = 0; ; i += 4) { const id = u16(pac, i), s = u16(pac, i + 2); rows.push({ id, s }); if (id === 0xffff) break; }
+  return new Map(rows.slice(0, -1).map((r, i) => [r.id, unpackMember(pac.subarray(r.s * 2048, rows[i + 1].s * 2048))]));
+}
+// The offsets a bookmark state holds (work copy 0x1c78 bytes, then slot 0): the history of passed
+// points (count at 0x1c68, offsets at 0x868, their resources at 0x1068) and the slot's cursor
+// (+0x44, resource +0x20), each turned by turn(resource, offset). False when one has no counterpart.
+export function turnBookState(st, turn) {
+  const S = 0x1c78, r16 = (o) => st[o] | st[o + 1] << 8, w16 = (o, v) => { st[o] = v & 0xff; st[o + 1] = v >> 8 & 0xff; };
+  let ok = true;
+  for (let i = 0, n = Math.min(r16(0x1c68), 0x400); i < n; i++) { const v = turn(st[0x1068 + i], r16(0x868 + 2 * i)); if (v < 0 || v > 0xffff) ok = false; else w16(0x868 + 2 * i, v); }
+  const cur = (st[S + 0x44] | st[S + 0x45] << 8 | st[S + 0x46] << 16 | st[S + 0x47] << 24) >>> 0, v = turn(r16(S + 0x20), cur);
+  if (v < 0) ok = false; else { st[S + 0x44] = v & 0xff; st[S + 0x45] = v >> 8 & 0xff; st[S + 0x46] = v >> 16 & 0xff; st[S + 0x47] = v >>> 24; }
+  return ok;
+}
+
 // SCE.PAC with the Korean text. PAC: rows {id u16, sector u16} up to id 0xffff; 2048-byte sectors.
 export function patchScePac(pac, koScript) {
   if (!koScript.offsets) throw new Error("ko: ko-script.json has no offsets (tools/ko/offset-operands.mjs, build-ko.py --offsets)");

@@ -39,8 +39,21 @@ turn, the names, colours ...) are grey locked chips. An edit that loses a chip i
 | `check(id, text)` | `{ errors, warnings }`: an error refuses the save, a warning is shown |
 | `preview(id, text)` | canvases: the screen page(s) with this line, drawn by the game's rules |
 | `save(id, entry \| null)` | stores or removes one edit; returns "" or the failure to show |
+| `jumpUrl(id)` (optional) | the address that opens the game at the page with this line |
 
 To add a title: write its adapter, add its id to `ADAPTERS` in `admin.js`, give serve.cjs a
 `PUT /edit/<game>/text-edits.json`, and make the game read its `text-edits.json` at start.
 
-Still to come (issue #44): scene jump ("디버그로 실행") from this page, and the other titles.
+## Debug runs and the scene jump
+
+"디버그로 실행" opens a game with `?debug=1`. A game reads its debug data only under `/edit/`
+(with the header `X-Quiet-Auth: 1`, so nobody else gets a password prompt), so the parameter does
+nothing for anyone but the owner. "이 장면으로" on a line opens the game at the page with that line.
+
+PS1: the entry state of a page is the game's own bookmark state (what a save from the menu
+writes), taken at every page of the replay of every ending, so the flags are those of the original
+route. `debug-scenes.json` (tools/ko/debug-scenes.mjs) maps a line to its state; the game puts the
+state into the debug card's book and presses through to the page. A line no replayed route passes
+has no entry state yet.
+
+Still to come (issue #44): the other titles.

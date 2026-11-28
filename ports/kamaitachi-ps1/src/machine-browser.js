@@ -8,7 +8,7 @@
 // holds it), kept in localStorage after every write; runtime.exportCard() / importCard(bytes)
 // hand the image to and from the shell (e.g. the save server).
 import { applyEdits } from "./ko-text.js";
-import { patchScePac } from "./ko.js";
+import { patchScePac, sceMembers, resourceOffsets, turnBookState } from "./ko.js";
 import { Machine } from "./machine.js";
 import { current } from "./touch.js";
 import { machineSound } from "./machine-sound.js";
@@ -73,7 +73,7 @@ async function audioOut() {
   } catch (e) { console.warn("[kamaitachi-ps1 machine] no audio output", e); return null; }
 }
 
-export async function startMachine({ canvas, dataRoot, audio = true, onProgress = null, requestFrame = requestAnimationFrame, now = () => performance.now(), timer = requestFrame === requestAnimationFrame, gate = null, lang = "ko", displayShift = 4, debug = false }) {
+export async function startMachine({ canvas, dataRoot, audio = true, onProgress = null, requestFrame = requestAnimationFrame, now = () => performance.now(), timer = requestFrame === requestAnimationFrame, gate = null, lang = "ko", displayShift = 4, debug = false, scene = "" }) {
   const base = new URL(dataRoot, location.href);
   let loaded = 0;
   const progress = (n) => { loaded += n; onProgress?.(loaded); };
@@ -110,11 +110,32 @@ export async function startMachine({ canvas, dataRoot, audio = true, onProgress 
   // the game's own flowchart (△ in the story, 이동) reaches every scene with the flags of the original
   // route. The card is read only behind the /edit/ password (serve.cjs), so for anyone else ?debug=1
   // does nothing; it is kept apart from the player's own card.
-  let debugCard = null;
+  let debugCard = null, jump = null;
+  const BOOK_AT = 0x2200, BOOK_STATE = 0x1c78; // book 1 of the card: the bookmark work copy (0x8009eeb8), then slot 0 (0x8008cdc0)
   if (debug) {
     try { const r = await fetch("/edit/kamaitachi-ps1/debug-card.bin", { cache: "no-store", headers: { "X-Quiet-Auth": "1" } }); const b = r.ok ? new Uint8Array(await r.arrayBuffer()) : null; if (b?.length === CARD_BYTES) debugCard = b; }
     catch (e) { console.warn("[kamaitachi-ps1 machine] no debug card", e); }
     if (debugCard) cardKey += ".debug";
+    // A jump to one line (?scene=<id>, the admin page's "이 장면으로"): the bookmark state of the page
+    // with that line, taken on the original route by the replay of every ending (debug-scenes.json,
+    // read behind the password like the card), is put into the card's book as a save from the menu
+    // would write it; the frame loop then presses through the card, the book and the greeting.
+    if (debugCard && scene) {
+      try {
+        const r = await fetch("/edit/kamaitachi-ps1/debug-scenes.json", { headers: { "X-Quiet-Auth": "1" } }), list = r.ok ? await r.json() : null, at = list?.pieces?.[scene];
+        if (at === undefined) console.warn("[kamaitachi-ps1 machine] no entry state for", scene);
+        else {
+          const st = new Uint8Array(await new Response(new Blob([fromBase64(list.snaps[at])]).stream().pipeThrough(new DecompressionStream("deflate-raw"))).arrayBuffer());
+          if (st.length !== BOOK_STATE + 100) throw new Error("entry state of another size");
+          // the state holds offsets of the original script: turned to this build's (the translation and the owner's edits move the text)
+          const raw = sceMembers(pacs.SCE), maps = new Map(), map = (res) => maps.get(res) ?? maps.set(res, raw.has(res) ? resourceOffsets(raw.get(res), ko?.script.resources[res]) : null).get(res);
+          if (!turnBookState(st, (res, off) => map(res)?.toNew(off) ?? off)) throw new Error("the entry state does not fit this script");
+          debugCard.set(st.subarray(0, BOOK_STATE), BOOK_AT); debugCard.set(st.subarray(BOOK_STATE), BOOK_AT + BOOK_STATE);
+          debugCard.set([0x4b, 0x41, 0x4d, 0x41, 0x49, 0x54], BOOK_AT + BOOK_STATE + 0x5c); // "KAMAIT": the mark of a written slot
+          jump = { resource: st[BOOK_STATE + 0x20] | st[BOOK_STATE + 0x21] << 8, frames: 0 };
+        }
+      } catch (e) { console.warn("[kamaitachi-ps1 machine] no jump", e); }
+    }
   }
   const card = new MemoryCard(debugCard ?? loadCard());
   // The STR movies, converted to <NAME>.mp4 next to the PACs (tools/convert-str.sh), shown over the
@@ -246,6 +267,11 @@ export async function startMachine({ canvas, dataRoot, audio = true, onProgress 
       // a tap on another row: the frames in which the original's cursor walks there are run at once,
       // unseen and unheard (no picture between them, no sound frame), so the row is simply chosen
       for (let n = 0; seek && n < 400 && !machine.error; n++) machine.frame(held());
+      // a debug jump: ○ every 40 frames, unseen and unheard, until the script of the wanted scene is the one running
+      for (let n = 0; jump && n < 400 && !machine.error; n++) {
+        machine.frame(jump.frames % 40 < 3 ? 0x2000 : 0);
+        if (machine.read(0x8007929c, 2) === jump.resource || ++jump.frames > 30000) jump = null;
+      }
       machine.frame(held()); soundFrame();
       for (const [k, n] of keys) { if (n !== Infinity) { if (n <= 1) keys.delete(k); else keys.set(k, n - 1); } }
       acc -= STEP; dirty = true;

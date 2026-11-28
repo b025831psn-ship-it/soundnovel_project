@@ -88,6 +88,8 @@ export default {
           return canvas;
         });
       },
+      // the game opened at the page with this line (a debug run: src/machine-browser.js ?debug=1&scene=)
+      jumpUrl: (id) => `/ports/kamaitachi-ps1/?debug=1&scene=${id}`,
       // true when the server took it; the edits of other devices are read first and kept
       async save(id, entry) {
         const all = await loadEdits();

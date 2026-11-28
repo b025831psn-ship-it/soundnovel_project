@@ -80,7 +80,7 @@ function portRoute(url) {
     const ext = path.extname(file);
     // Owner-only files never go out through the open data paths. Lower-cased: Windows file names ignore case.
     const base = path.basename(file).toLowerCase();
-    if (prefix === '/kamaitachi-ps1-kor/port-data/' && (base === 'ko-editor.json' || base === 'debug-card.bin')) return null;
+    if (prefix === '/kamaitachi-ps1-kor/port-data/' && (base === 'ko-editor.json' || base === 'debug-card.bin' || base === 'debug-scenes.json')) return null;
     if (prefix.startsWith('/kamaitachi-gba-kor/') && base === 'debug-scenes.json') return null;
     if (!file.startsWith(dir + path.sep) || !exts.includes(ext) || /(^|[\\/])(tests?|tools|server)[\\/]/.test(file.slice(dir.length))) return null;
     return [file, portTypes[ext]];
