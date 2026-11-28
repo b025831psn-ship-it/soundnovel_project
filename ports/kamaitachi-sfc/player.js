@@ -10,6 +10,8 @@ import { fitScale } from "../../shared/player/fit-scale.js";
 import { createAudioOut } from './sound/output.js';
 import { startGate } from '../../shared/player/start-gate.js';
 import { PAD, DEFAULT_KEYS } from './sound/vm-sound.js';
+import { openSaves, GAME_ID, BLOCK_SLOTS, fromBase64 } from './save/sfc-save.js';
+import { mountSyncUi } from '../../shared/save/sync-ui.js';
 
 const $ = (id) => document.getElementById(id);
 const shell = $('shell'), stage = $('stage'), canvas = $('screen');
@@ -19,7 +21,6 @@ const store = {
   get(key, fallback = null) { try { return localStorage.getItem(key) ?? fallback; } catch { return fallback; } },
   set(key, value) { try { localStorage.setItem(key, value); } catch { /* private mode */ } },
 };
-const SRAM_KEY = 'kamaitachi-sfc.sram';
 if (params.has('embed') || window.self !== window.top) document.documentElement.classList.add('embedded');
 
 // Whole-number scale in device pixels, so every SFC pixel is the same size.
@@ -36,8 +37,6 @@ fit();
 const get = (p) => fetch(new URL(p, base)).then((r) => { if (!r.ok) throw new Error(`${p}: HTTP ${r.status}`); return r; });
 const bin = (p) => get(p).then((r) => r.arrayBuffer());
 const hex = (buf) => [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, '0')).join('');
-const toBase64 = (bytes) => { let s = ''; for (const b of bytes) s += String.fromCharCode(b); return btoa(s); };
-const fromBase64 = (text) => Uint8Array.from(atob(text), (c) => c.charCodeAt(0));
 
 function fail(error) {
   $('loading').hidden = true; $('start')?.remove();
@@ -61,14 +60,76 @@ async function load() {
   return { game: image.buffer, gauss };
 }
 
+// Saves (docs/save/README.md): the four SRAM blocks (working copy + bookmarks 1-3) and the web-only
+// suspend slot live in the shared SaveStore (IndexedDB) and sync with the save server under /sync.
+// Bookmarks the game writes go up block by block; bookmarks from another device are loaded when
+// the game starts (after the first sync) or at the next Reset. The suspend slot is the whole VM
+// state, written when the page is hidden and every 90 s of play, and loaded from the save dialog.
+const SUSPEND_LIMIT = 190000; // base64 characters: the server takes 256 KB per slot after encryption
+const saves = { api: null, ui: null, last: null, remoteBooks: false, played: false, worker: null, waits: new Map(), next: 0 };
+const savesReady = openSaves().then(async (api) => {
+  saves.api = api;
+  globalThis.soundnovelSave = { store: api.store, gameId: GAME_ID };
+  api.store.subscribe((ev) => { if (ev.type === 'conflict') queueMicrotask(() => { if (api.settleEmptyConflicts().length) saves.ui?.paint(); }); });
+  api.store.subscribe((ev) => {
+    if (ev.type !== 'remote' || ev.gameId !== GAME_ID) return;
+    if (BLOCK_SLOTS.includes(ev.slot) && saves.worker) { saves.remoteBooks = true; saves.ui?.paint(); }
+    // Another device's suspend: offer to carry on from it (docs/save/README.md, 충돌).
+    if (ev.slot === 'suspend' && api.store.read(GAME_ID, 'suspend')?.deviceId !== api.store.deviceId) offerSuspend();
+  });
+  saves.ui = await mountSyncUi({ api: { store: api.store, gameId: GAME_ID, boot: suspendBoot } });
+  await saves.ui.initial;
+}).catch((e) => { console.warn('saves unavailable', e); });
+
+function offerSuspend() {
+  if (!saves.worker || !saves.ui) { saves.offer = true; return; }
+  saves.offer = false; saves.ui.open();
+}
+const ask = (msg) => new Promise((resolve) => {
+  const id = ++saves.next; saves.waits.set(id, resolve); saves.worker.postMessage({ ...msg, id });
+});
+async function writeSuspend({ now = false } = {}) {
+  if (!saves.api || !saves.worker || !saves.played) return;
+  saves.played = false;
+  const r = await ask({ type: 'snapshot' });
+  if (!r.data) return;
+  if (Math.ceil(r.data.length / 3) * 4 > SUSPEND_LIMIT) { console.warn('suspend too large', r.data.length); return; }
+  saves.api.writeSuspend(r.data, { frame: window.kamaitachi?.status?.frame ?? 0 });
+  if (now) saves.ui?.sync();
+}
+const suspendBoot = {
+  titleActive: true,
+  continueLabel: '중단한 곳에서 이어하기',
+  canContinue: () => !!(saves.worker && saves.api?.readSuspend()),
+  continueNote: () => {
+    const env = saves.api.store.read(GAME_ID, 'suspend');
+    const when = new Date(env.savedAt).toLocaleString('ko-KR', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+    return `${when}, ${env.deviceId === saves.api.store.deviceId ? '이 기기' : '다른 기기'}에서 저장`;
+  },
+  continueSuspended: async () => {
+    const p = saves.api.readSuspend(); if (!p) return false;
+    const sram = saves.remoteBooks ? saves.api.sram() : null;
+    if (sram) { saves.last = sram.slice(); saves.remoteBooks = false; }
+    const r = await ask({ type: 'restore', data: fromBase64(p.state).buffer, sram: sram?.buffer });
+    return !r.error;
+  },
+  notice: () => (saves.remoteBooks ? '다른 기기에서 저장한 책갈피를 받았습니다. 게임 메뉴의 리셋을 누르면 반영됩니다.' : ''),
+};
+function resetWithBooks(worker) {
+  // Bookmarks that came from another device go in at the Reset (the game reads SRAM at power-on).
+  let sram = null;
+  if (saves.remoteBooks && saves.api) { sram = saves.api.sram(); saves.last = sram.slice(); saves.remoteBooks = false; saves.ui?.paint(); }
+  worker.postMessage({ type: 'reset', ...(sram ? { sram: sram.buffer } : {}) }, sram ? [sram.buffer] : []);
+}
+
 function startGame(data, out) {
   // The VM and APU run in a Worker; samples go from there straight to the worklet.
   const worker = new Worker(new URL('./sound/vm-worker.js', import.meta.url), { type: 'module' });
   const port = out.connectPort();
-  const saved = store.get(SRAM_KEY);
-  let sram = null;
-  if (saved) { try { sram = fromBase64(saved).buffer; } catch { /* unreadable: start fresh */ } }
-  worker.postMessage({ type: 'start', game: data.game, gauss: data.gauss, port, sram }, [data.game, data.gauss, port, ...(sram ? [sram] : [])]);
+  const sram = saves.api ? saves.api.sram() : null;
+  saves.last = sram?.slice() ?? null;
+  worker.postMessage({ type: 'start', game: data.game, gauss: data.gauss, port, sram: sram?.buffer }, [data.game, data.gauss, port, ...(sram ? [sram.buffer] : [])]);
+  saves.worker = worker;
   const ctx = canvas.getContext('2d', { alpha: false });
   const glow = $('glow').getContext('2d');
   let picture = null, tick = 0;
@@ -78,8 +139,13 @@ function startGame(data, out) {
       // The menu button sits over 終り on the name keyboards; it steps aside there.
       $('menu').classList.toggle('unavailable', m.keyboard); if (m.keyboard) { $('sheet').hidden = true; }
       window.kamaitachi && (window.kamaitachi.status = m);
-    } else if (m.type === 'sram') store.set(SRAM_KEY, toBase64(new Uint8Array(m.bytes)));
-    else if (m.type === 'error') { $('error').hidden = false; $('error').textContent = `게임 실행이 멈췄습니다.\n${m.message}`; }
+    } else if (m.type === 'sram') {
+      const bytes = new Uint8Array(m.bytes);
+      if (saves.api) { try { saves.api.writeSram(bytes, saves.last); } catch (e) { console.warn('bookmark save failed', e); } }
+      saves.last = bytes;
+    } else if (m.type === 'snapshot' || m.type === 'restored') {
+      const done = saves.waits.get(m.id); saves.waits.delete(m.id); done?.(m);
+    } else if (m.type === 'error') { $('error').hidden = false; $('error').textContent = `게임 실행이 멈췄습니다.\n${m.message}`; }
   };
   worker.onerror = (e) => { $('error').hidden = false; $('error').textContent = `게임 실행이 멈췄습니다.\n${e.message}`; };
   const show = () => {
@@ -91,7 +157,12 @@ function startGame(data, out) {
   };
   requestAnimationFrame(show);
   // A hidden tab stops the game and the sound together.
-  document.addEventListener('visibilitychange', () => worker.postMessage({ type: 'pause', on: document.hidden }));
+  document.addEventListener('visibilitychange', () => {
+    worker.postMessage({ type: 'pause', on: document.hidden });
+    if (document.hidden) writeSuspend({ now: true });
+  });
+  addEventListener('pagehide', () => writeSuspend({ now: true }));
+  setInterval(() => { if (!document.hidden) writeSuspend(); }, 90000);
   return worker;
 }
 
@@ -111,7 +182,7 @@ function wireControls(worker, out) {
   // name keyboards, or back a sentence when dragged down on the story).
   let down = null;
   canvas.addEventListener('pointerdown', (event) => {
-    event.preventDefault(); out.resume();
+    event.preventDefault(); out.resume(); saves.played = true;
     if (!sheet.hidden) { toggleSheet(false); down = null; return; }
     down = { ...point(event), id: event.pointerId };
     canvas.setPointerCapture?.(event.pointerId);
@@ -135,13 +206,13 @@ function wireControls(worker, out) {
     if (event.code !== 'KeyS' || event.repeat || event.ctrlKey || event.metaKey || event.altKey || menu.classList.contains('unavailable')) return;
     event.preventDefault(); toggleSheet(sheet.hidden); if (!sheet.hidden) sheet.querySelector('button').focus();
   });
-  for (const el of sheet.querySelectorAll('button')) el.addEventListener('click', () => { worker.postMessage(el.dataset.action === 'reset' ? { type: 'reset' } : { type: 'press', name: el.dataset.b }); toggleSheet(false); });
+  for (const el of sheet.querySelectorAll('button')) el.addEventListener('click', () => { saves.played = true; if (el.dataset.action === 'reset') resetWithBooks(worker); else worker.postMessage({ type: 'press', name: el.dataset.b }); toggleSheet(false); });
 
   let held = 0;
   const key = (down) => (event) => {
     const bit = PAD[DEFAULT_KEYS[event.code]];
     if (!bit || event.ctrlKey || event.metaKey || event.altKey) return;
-    event.preventDefault(); if (down) out.resume();
+    event.preventDefault(); if (down) { out.resume(); saves.played = true; }
     held = down ? held | bit : held & ~bit; worker.postMessage({ type: 'buttons', mask: held });
   };
   addEventListener('keydown', key(true)); addEventListener('keyup', key(false));
@@ -200,7 +271,7 @@ const wake = () => { shell.classList.remove('idle'); clearTimeout(idleTimer); id
 addEventListener('pointermove', wake); addEventListener('pointerdown', wake); wake();
 
 // The game starts at once; audio may only start inside a user gesture, so it is silent until the first tap or key.
-load().then((data) => {
+Promise.all([load(), savesReady]).then(([data]) => {
   let out = null;
   startGate(stage, { onPress: () => out?.resume() }).then(async () => {
     out = await createAudioOut();
@@ -208,6 +279,7 @@ load().then((data) => {
     const worker = startGame(data, out);
     wireControls(worker, out);
     stage.classList.add('ready');
-    window.kamaitachi = { worker, out };
+    window.kamaitachi = { worker, out, saves, writeSuspend };
+    if (saves.offer) offerSuspend();
   });
 }, fail);
