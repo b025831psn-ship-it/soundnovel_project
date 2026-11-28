@@ -281,6 +281,8 @@ body.front-on { overflow: hidden }
   transition: opacity .7s var(--ease), transform .7s var(--ease);
 }
 .front[hidden] { display: none }
+/* nothing on the front page is picked up or selected by a drag (태우 2026-11-28) */
+.front, .front * { user-select: none; -webkit-user-select: none; -webkit-user-drag: none; -webkit-touch-callout: none }
 .front.leaving { opacity: 0; transform: scale(1.03); pointer-events: none }
 .front-picture {
   position: absolute; inset: 5% -3% -11%; width: 106%; height: 106%; object-fit: cover; object-position: 50% 15%; z-index: -3;

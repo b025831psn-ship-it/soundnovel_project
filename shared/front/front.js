@@ -144,6 +144,7 @@ function leave() { front.classList.add("leaving"); setTimeout(() => { front.hidd
 enter.addEventListener("click", (e) => { e.preventDefault(); wake(); leave(); });
 export function stopFrontMusic() { if (music?.playing) music.stop(); }
 window.addEventListener("hashchange", () => { if (location.hash) { stopFrontMusic(); if (!front.hidden) { front.hidden = true; document.body.classList.remove("front-on"); } } });
+front.addEventListener("dragstart", (e) => e.preventDefault());
 // A link straight to a game skips the front page.
 if (location.hash) { front.hidden = true; document.body.classList.remove("front-on"); }
 showSound();
