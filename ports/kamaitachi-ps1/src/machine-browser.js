@@ -73,7 +73,7 @@ async function audioOut() {
   } catch (e) { console.warn("[kamaitachi-ps1 machine] no audio output", e); return null; }
 }
 
-export async function startMachine({ canvas, dataRoot, audio = true, onProgress = null, requestFrame = requestAnimationFrame, now = () => performance.now(), timer = requestFrame === requestAnimationFrame, gate = null, lang = "ko", displayShift = 4 }) {
+export async function startMachine({ canvas, dataRoot, audio = true, onProgress = null, requestFrame = requestAnimationFrame, now = () => performance.now(), timer = requestFrame === requestAnimationFrame, gate = null, lang = "ko", displayShift = 4, debug = false }) {
   const base = new URL(dataRoot, location.href);
   let loaded = 0;
   const progress = (n) => { loaded += n; onProgress?.(loaded); };
@@ -106,7 +106,17 @@ export async function startMachine({ canvas, dataRoot, audio = true, onProgress 
   const out = audio ? await audioOut() : null;
   // the shared start screen: the console is switched on by that press, so the boot sound and the opening movie play with sound
   if (gate) await gate(() => { if (out && out.ctx.state !== "running") out.ctx.resume(); });
-  const card = new MemoryCard(loadCard());
+  // Debug run (?debug=1, the admin page's "디버그로 실행"): the owner's card with every ending read, so
+  // the game's own flowchart (△ in the story, 이동) reaches every scene with the flags of the original
+  // route. The card is read only behind the /edit/ password (serve.cjs), so for anyone else ?debug=1
+  // does nothing; it is kept apart from the player's own card.
+  let debugCard = null;
+  if (debug) {
+    try { const r = await fetch("/edit/kamaitachi-ps1/debug-card.bin", { cache: "no-store" }); const b = r.ok ? new Uint8Array(await r.arrayBuffer()) : null; if (b?.length === CARD_BYTES) debugCard = b; }
+    catch (e) { console.warn("[kamaitachi-ps1 machine] no debug card", e); }
+    if (debugCard) cardKey += ".debug";
+  }
+  const card = new MemoryCard(debugCard ?? loadCard());
   // The STR movies, converted to <NAME>.mp4 next to the PACs (tools/convert-str.sh), shown over the
   // screen while the game waits for them. Before the first tap or key the browser only lets a
   // muted video start; the sound comes on with the next tap or key.

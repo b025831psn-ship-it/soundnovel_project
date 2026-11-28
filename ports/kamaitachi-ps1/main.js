@@ -13,7 +13,7 @@ try {
     const { startMachine } = await import("./src/machine-browser.js");
     const machineRoot = query.get("machineData") || new URL("machine/", privateRoot).href;
     const total = 77_000_000;
-    const player = await startMachine({ canvas: document.getElementById("screen"), dataRoot: machineRoot, lang: query.get("lang") === "ja" ? "ja" : "ko", displayShift: query.get("display") === "original" ? 0 : 4,
+    const player = await startMachine({ canvas: document.getElementById("screen"), dataRoot: machineRoot, lang: query.get("lang") === "ja" ? "ja" : "ko", displayShift: query.get("display") === "original" ? 0 : 4, debug: query.get("debug") === "1",
       gate: (onPress) => startGate(document.getElementById("stage"), { onPress }),
       onProgress: (n) => { const el = loading(); if (el) el.textContent = `원작 데이터를 불러오는 중 ${Math.min(99, Math.floor((100 * n) / total))}%`; } });
     window.kamaitachiPs1 = player;

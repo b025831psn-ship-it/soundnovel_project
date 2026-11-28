@@ -6,6 +6,10 @@ const ADAPTERS = ["kamaitachi-ps1"];
 const $ = (id) => document.getElementById(id);
 const el = (tag, props = {}, ...kids) => { const e = Object.assign(document.createElement(tag), props); e.append(...kids); return e; };
 const SHOWN = 200;
+// "디버그로 실행": the games open with their scene jump, which works only for the owner (the debug data
+// is read behind the /edit/ password). PS1: the flowchart of a card with every ending read.
+const DEBUG = [["카마이타치의 밤 PS1 디버그로 실행", "/ports/kamaitachi-ps1/?debug=1"], ["카마이타치의 밤 GBA 디버그로 실행", "/ports/kamaitachi-gba/?debug=1"]];
+$("run").replaceChildren(...DEBUG.map(([textContent, href]) => el("a", { textContent, href, target: "_blank", rel: "noopener" })));
 
 let game = null, open = null, found = [];
 

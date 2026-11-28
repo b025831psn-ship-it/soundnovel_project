@@ -218,8 +218,10 @@ addEventListener("keydown", (event) => {
   if (event.code !== "KeyE" || event.repeat || event.ctrlKey || event.metaKey || event.altKey) return;
   if (openDialogueEditor()) event.preventDefault(); // the E itself must not land in the box
 });
-// Debug mode (?debug=1, not shown to beta visitors): a list of every scene from the language's
-// debug-scenes.json (tools/scene-index.mjs, git-ignored) and a jump to any of them.
+// Debug mode (?debug=1): a list of every scene from the language's debug-scenes.json
+// (tools/scene-index.mjs, git-ignored) and a jump to any of them. It is the owner's: the list is read
+// only behind the /edit/ password (serve.cjs), so for anyone else ?debug=1 does nothing. The admin
+// page (admin/) opens the game this way.
 const debugMode = new URLSearchParams(location.search).get("debug") === "1";
 let debugScenes = null;
 function debugJump(target) {
@@ -235,10 +237,11 @@ function debugJump(target) {
   page.drawn = -1;
   return true;
 }
-if (debugMode) {
+const debugList = debugMode ? await fetch(`/edit/kamaitachi-gba/debug-scenes-${language}.json`).then((r) => (r.ok ? r.json() : null)).catch(() => null) : null;
+if (debugList) {
   const codec = new TextCodec(language, font);
   const japanese = new TextCodec("ja", { find: () => 0 });
-  debugScenes = (await languageAssets(language).json("debug-scenes.json").catch(() => null))?.scenes ?? [];
+  debugScenes = debugList.scenes ?? [];
   openScenePanel({
     scenes: debugScenes,
     decode: (hex) => {

@@ -41,6 +41,10 @@ const portTypes = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript
 const ps1Data = (() => { try { return path.resolve(__dirname, fs.readFileSync(path.join(__dirname, 'serve.ps1data'), 'utf8').trim()); } catch { return path.resolve(__dirname, '..', '..', '_claude-work', 'ps1-web'); } })();
 const ps2Web = (() => { try { return path.resolve(__dirname, fs.readFileSync(path.join(__dirname, 'serve.ps2web'), 'utf8').trim()); } catch { return ''; } })();
 function portRoute(url) {
+  // The GBA debug scene list (ports/kamaitachi-gba/main.js ?debug=1) holds script text: it is read only
+  // through /edit/ (the password from outside), never through the open data paths below.
+  const debugScenes = /^\/edit\/kamaitachi-gba\/debug-scenes-(ja|ko)\.json$/.exec(url);
+  if (debugScenes) return [path.join(__dirname, 'kamaitachi-gba-kor', debugScenes[1] === 'ko' ? 'port-data-ko' : 'port-data', 'debug-scenes.json'), portTypes['.json']];
   for (const [prefix, dir, exts] of [
     ['/ports/kamaitachi-gba/', path.join(__dirname, 'ports', 'kamaitachi-gba'), ['.html', '.js', '.css']],
     ['/kamaitachi-gba-kor/port-data/', path.join(__dirname, 'kamaitachi-gba-kor', 'port-data'), ['.json', '.bin']],
@@ -65,7 +69,8 @@ function portRoute(url) {
     ['/edit/admin/', path.join(__dirname, 'admin'), ['.html', '.js', '.css']],
     // The admin page's data of the PS1 script (ko-editor.json: the whole Japanese and Korean script side by
     // side). It is read only through /edit/, never through the open data path above.
-    ['/edit/kamaitachi-ps1/', path.join(ps1Data, 'machine', 'ko'), ['.json']],
+    // debug-card.bin: the memory card of a debug run (ports/kamaitachi-ps1/src/machine-browser.js ?debug=1).
+    ['/edit/kamaitachi-ps1/', path.join(ps1Data, 'machine', 'ko'), ['.json', '.bin']],
     ['/kamaitachi2-ps2/', ps2Web, ['.html', '.js', '.mjs', '.css', '.json', '.bin', '.pac', '.wd', '.png', '.jpg', '.webp', '.svg', '.wasm', '.ogg', '.mp3', '.wav', '.mp4', '.woff2', '.txt']],
   ]) {
     if (!url.startsWith(prefix) || !dir) continue;
@@ -74,6 +79,7 @@ function portRoute(url) {
     const file = path.join(dir, rest || 'index.html');
     const ext = path.extname(file);
     if (prefix === '/kamaitachi-ps1-kor/port-data/' && path.basename(file) === 'ko-editor.json') return null;
+    if (prefix.startsWith('/kamaitachi-gba-kor/') && path.basename(file) === 'debug-scenes.json') return null;
     if (!file.startsWith(dir + path.sep) || !exts.includes(ext) || /(^|[\\/])(tests?|tools|server)[\\/]/.test(file.slice(dir.length))) return null;
     return [file, portTypes[ext]];
   }
