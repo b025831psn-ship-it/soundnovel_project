@@ -28,13 +28,17 @@ const loopFrames = {
 const music = new LoopingMusic({
   asset, loopFrames, onBlocked: () => { status.textContent = '오디오를 재생하려면 화면을 눌러 주세요.'; },
 });
-let se = null, seStarting = null;
+let se = null, seStarting = null, seContext = null;
 const pendingSe = [];
+// Called on every tap / key (shared/player/start-gate.js). resume() is not awaited: a press that may not
+// start audio (iPhone pointerdown) would leave it pending forever and block the sound effects; the next
+// press simply asks again.
 async function unlockAudio() {
   music.unlock();
+  if (seContext && seContext.state !== 'running') seContext.resume().catch(() => {});
   if (!seStarting) seStarting = (async () => {
-    const context = new AudioContext({sampleRate:48000});
-    await context.resume();
+    const context = seContext = new AudioContext({sampleRate:48000});
+    context.resume().catch(() => {});
     se = await SePlayer.create(context, name => asset('se/' + name));
     for (const command of pendingSe.splice(0)) se.command(command);
     return se;
