@@ -59,3 +59,11 @@ test('the suspend slot packs the VM state without the SRAM and unpacks it', asyn
   assert.deepEqual([...back.set], [1]);
   assert.equal(saves.store.read(GAME_ID, 'suspend').payload.scene, 12);
 });
+
+test('a suspend slot marked empty offers nothing to carry on from', async () => {
+  const saves = await open();
+  await saves.writeSuspend({ bus: {} }, { scene: 3 });
+  saves.clearSuspend();
+  assert.equal(saves.hasSuspend(), false);
+  assert.equal(await saves.readSuspend(), null);
+});

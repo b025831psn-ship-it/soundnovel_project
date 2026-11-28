@@ -91,12 +91,13 @@ function startGame(data, out, saves) {
   }
   // Web only: the page being played is kept in the suspend slot when the page is left (and every
   // minute of play), so another device can carry on from the same moment.
+  const inStory = () => { const now = screenOf(vm.bus.wram, vm.getTouchState()); return vm.bus.wram[0x1000] === 0xf6 && (now === 'story' || now === 'choice'); };
   // The state is ~130 KB packed, so the minute timer writes it only after the scene has changed.
   let suspendedAt = -1, suspendedScene = -1;
   const suspend = async ({ always = true } = {}) => {
     if (!saves || vm.ppu.field === suspendedAt) return;
+    if (!inStory()) return; // logo, title, slots, name board: no page to carry on from
     const w = vm.bus.wram;
-    if (w[0x1000] !== 0xf6) return; // not in the story yet (logo, title, slots, name board)
     const scene = w[0x1002] | (w[0x1003] << 8);
     if (!always && scene === suspendedScene) return;
     suspendedAt = vm.ppu.field; suspendedScene = scene;
@@ -154,6 +155,34 @@ function startGame(data, out, saves) {
     if (!vm.cpu.stopped) requestAnimationFrame(step);
   };
   requestAnimationFrame(step);
+  // The quick-save button (shared/save/quick-save.js) writes the suspend slot at the moment it is pressed.
+  // Outside the story (title, slots, name board) there is no page to carry on from, so the suspend slot
+  // is marked empty and loading lands on the title with the saved slots.
+  const saveNow = async () => {
+    saveSram();
+    if (!saves) return;
+    if (!inStory()) { saves.clearSuspend(); return; }
+    suspendedAt = -1;
+    await suspend();
+  };
+
+  // What the report button sends: the scene, the fixed id of the line being read (the translation id,
+  // zakuro-sfc-kor translations/*.json) and the Japanese lines up to it (port-data script/ja.json).
+  let script = null;
+  const loadScript = () => { script ??= get('script/ja.json').then((r) => r.json()).catch(() => ({ scenes: {} })); return script; };
+  let scriptData = null;
+  setTimeout(() => loadScript().then((d) => { scriptData = d; }), 8000); // an idle callback can starve while the game runs
+  globalThis.soundnovelReport = () => {
+    if (!inStory()) return { scene: '타이틀·메뉴 화면' };
+    const w = vm.bus.wram;
+    const scene = w[0x1002] | (w[0x1003] << 8), cursor = w[0x34] | (w[0x35] << 8);
+    const p = 0x3836 + scene * 3, read = (o) => data.program.read(o);
+    const at = (read(p) & 0x7f) * 0x8000 + ((read(p + 1) | (read(p + 2) << 8)) & 0x7fff) + cursor;
+    const lines = (scriptData?.scenes?.[scene] ?? []).filter(([offset]) => offset < at).slice(-4);
+    const id = (offset) => `s${String(scene).padStart(4, '0')}-${offset.toString(16).padStart(6, '0')}`;
+    return { scene, line: lines.length ? id(lines.at(-1)[0]) : `${id(at)} 부근`, text: lines.map(([, t]) => t).join('\n') };
+  };
+
   const resume = async () => {
     const state = await saves?.readSuspend();
     if (!state) return false;
@@ -163,7 +192,7 @@ function startGame(data, out, saves) {
     return true;
   };
   window.zakuro = { vm, input, out, saveSram, suspend, resume };
-  return { vm, input, resume };
+  return { vm, input, resume, saveNow };
 }
 
 // Screen coordinates of a pointer event, in the game's 256x224 pixels.
@@ -284,6 +313,7 @@ const openStore = (data) => (data.replay ? Promise.resolve(null) : openSaves().c
       get titleActive() { return !!game; },
       canContinue: () => saves.hasSuspend(),
       continueSuspended: () => game?.resume() ?? false,
+      saveNow: () => game?.saveNow(),
       continueLabel: '마지막 장면에서 이어하기',
       continueNote: '게임 중 언제든 쓸 수 있습니다. 원작 저장 슬롯은 그대로 둡니다.',
     } };
