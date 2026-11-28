@@ -34,7 +34,16 @@ export class Screen {
   }
 
   width(str, scale = 1) {
-    return Array.from(str).reduce((w, ch) => w + ((this.data.font[ch] ?? this.data.font['�'])[2] + 1) * scale, 0);
+    return Array.from(str).reduce((w, ch) => w + (this.metric(ch)[2] + 1) * scale, 0);
+  }
+
+  metric(ch) {
+    if (this.data.font[ch]) return this.data.font[ch];
+    if (this.data.language === 'ko') {
+      if (ch === ' ') return [0, 0, 16, 0, 0, 'ko'];
+      return [0, 0, /^[\x21-\x7e]$/.test(ch) ? 18 : 30, 33, 0, 'ko'];
+    }
+    return this.data.font['�'];
   }
 
   tintedGlyph(ch, rgb, gx, gy, w, h) {
@@ -79,7 +88,7 @@ export class Screen {
       }
       const rgb = colors?.get(offset);
       if (rgb) tint = rgb.every(channel => channel === 128) ? undefined : rgb;
-      const glyph = this.data.font[ch] ?? this.data.font['�'];
+      const glyph = this.metric(ch);
       const style = styleAt?.(offset) ?? {scale, widthScale, spacing, leading};
       const glyphScale = style.scale ?? scale;
       const glyphWidthScale = style.widthScale ?? widthScale;
@@ -87,7 +96,7 @@ export class Screen {
       const lineHeight = style.leading ?? leading;
       const advance = (glyph[2] + glyphSpacing) * glyphWidthScale;
       const next = chars[at + 1];
-      const nextGlyph = next ? this.data.font[next] ?? this.data.font['�'] : null;
+      const nextGlyph = next ? this.metric(next) : null;
       const nextAdvance = nextGlyph ? (nextGlyph[2] + glyphSpacing) * glyphWidthScale : 0;
       const wrap = px + advance > x + max && !noStart.has(ch);
       const pushOpening = noEnd.has(ch) && next && px + advance + nextAdvance > x + max;
@@ -96,7 +105,16 @@ export class Screen {
       offset += ch.length;
       if (ch === '\n') { px = lineStart?.(offset) ?? px; continue; }
       if (reading && !measureOnly) this.centered(reading, px + advance / 2, py - 10, .38);
-      if (glyph && !measureOnly) {
+      if (glyph && !measureOnly && glyph[5] === 'ko') {
+        const x = Math.round(px), baseline = Math.min(this.c.canvas.height - 1, Math.round(py + 29 * glyphScale));
+        this.c.save();
+        this.c.font = `${Math.round(31 * glyphScale)}px "Noto Sans KR", "Noto Sans CJK KR", sans-serif`;
+        this.c.lineWidth = Math.max(1, 2 * glyphScale);
+        this.c.strokeStyle = '#000';
+        this.c.fillStyle = tint ? `rgb(${tint.join(',')})` : '#fff';
+        this.c.strokeText(ch, x, baseline); this.c.fillText(ch, x, baseline);
+        this.c.restore();
+      } else if (glyph && !measureOnly) {
         const [gx, gy, w, h, top] = glyph;
         const x = Math.round(px), y = Math.round(py + top * glyphScale);
         if (tint && w && h) this.c.drawImage(this.tintedGlyph(ch, tint, gx, gy, w, h), x, y, w * glyphWidthScale, h * glyphScale);

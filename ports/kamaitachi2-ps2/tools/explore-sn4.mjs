@@ -24,6 +24,7 @@ const program = JSON.parse(await readFile(path.join(web, 'assets/sn4.json'), 'ut
 const opening = JSON.parse(await readFile(path.join(web, 'assets/opening.json'), 'utf8'));
 const scenePack = opening.scenePack ?? {};
 const glyphs = new Set(Object.keys(opening.font ?? {}));
+const localizedGlyph = ch => program.language === 'ko' && ch !== '\n';
 const NAMES = ['名前一', '名前二'];
 const hex = n => '0x' + n.toString(16);
 
@@ -161,11 +162,13 @@ function checkLayout(vm, raw) {
     marginLeft:32, marginRight:32, marginTop:32, marginBottom:32, moves:[], lines:[], styles:[], centers:[]};
   const at = where(vm);
   const x = L.marginLeft, y = L.marginTop, right = 640 - L.marginRight, bottom = 448;
-  let px = x, py = y, offset = 0, lineStart = true, overRight = false;
+  let px = x, py = y, offset = 0, lineStart = true, overRight = false, glyphBottom = 0;
   const styleAt = o => L.styles.findLast(mark => mark.offset <= o) ?? L;
   const advance = (ch, o) => {
     const s = styleAt(o), ratio = s.fontSize / 33;
-    return ((opening.font?.[ch] ?? opening.font?.['�'] ?? [0, 0, 32])[2] + s.letterSpacing) * ratio;
+    const localized = localizedGlyph(ch) ? [0, 0, ch === ' ' ? 16 : /^[\x21-\x7e]$/.test(ch) ? 18 : 30] : null;
+    return ((opening.font?.[ch] ?? localized ?? opening.font?.['�'] ?? [0, 0, 32])[2]
+      + s.letterSpacing) * ratio;
   };
   const centerAt = o => {
     if (!L.centers.includes(o)) return x;
@@ -191,6 +194,7 @@ function checkLayout(vm, raw) {
     const pushOpening = NO_END.has(ch) && next && px + a + nextA > right;
     if (ch === '\n' || wrap || pushOpening) { px = centerAt(offset); py += leading; }
     if (ch === '\n') { offset += ch.length; px = centerAt(offset); continue; }
+    glyphBottom = Math.max(glyphBottom, localizedGlyph(ch) ? Math.min(bottom, py + style.fontSize) : py + style.fontSize);
     if (px + a > right + 1 && !NO_START.has(ch) && !overRight) {
       overRight = true; report('layout-positioned-past-right', `${vm.label} (${Math.round(px + a)}px)`, at);
     }
@@ -198,13 +202,13 @@ function checkLayout(vm, raw) {
   }
   // Flowing message text scrolls upward at the physical bottom. Only authored
   // absolute layouts can genuinely place a glyph outside the framebuffer.
-  if (L.moves.some(move => move.absolute) && py + styleAt(offset).fontSize > bottom)
-    report('layout-past-bottom', `${vm.label} (${Math.round(py)}px)`, at);
+  if (L.moves.some(move => move.absolute) && glyphBottom > bottom)
+    report('layout-past-bottom', `${vm.label} (${Math.round(glyphBottom)}px)`, at);
 }
 
 function checkText(vm, text) {
   checkLayout(vm, text);
-  for (const ch of text) if (ch !== '\n' && !glyphs.has(ch) && !NAMES.join('').includes(ch))
+  for (const ch of text) if (ch !== '\n' && !glyphs.has(ch) && !localizedGlyph(ch) && !NAMES.join('').includes(ch))
     report(glyphs.has('�') ? 'fallback-char' : 'unsupported-char', ch, where(vm));
 }
 

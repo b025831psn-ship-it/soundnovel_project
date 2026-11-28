@@ -13,6 +13,7 @@ const shell = document.querySelector('main');
 const menuButton = document.querySelector('#menu-button');
 const gameMenu = document.querySelector('#game-menu');
 const asset = name => new URL('assets/' + name, import.meta.url).href;
+const requestedLanguage = new URLSearchParams(location.search).get('lang') === 'ja' ? 'ja' : 'ko';
 // L= comments in the Special Box Vorbis tracks, in 48 kHz PCM frames.
 const loopFrames = {
   'k1a001.ogg': 1017889, 'k1a004.ogg': 36359, 'k2h002.ogg': 461348,
@@ -706,7 +707,7 @@ function drawStory(time) {
     const line = full.slice(offset).split('\n')[0];
     const width = Array.from(line).reduce((w, ch, index) => {
       const style = styleAt(offset + index);
-      return w + ((data.font[ch] ?? data.font['�'])[2] + style.spacing) * style.widthScale;
+      return w + (screen.metric(ch)[2] + style.spacing) * style.widthScale;
     }, 0);
     return width < max ? x + (max - width) / 2 : x;
   } : undefined;
@@ -959,10 +960,13 @@ start.addEventListener('click', () => {
   else intro();
 });
 try {
-  const [response, sn4Response] = await Promise.all([fetch(asset('opening.json')), fetch(asset('sn4.json'))]);
+  const localized = await fetch(asset(`sn4-${requestedLanguage}.json`));
+  const sn4Request = localized.ok ? localized : await fetch(asset('sn4.json'));
+  const [response, sn4Response] = await Promise.all([fetch(asset('opening.json')), sn4Request]);
   if (!response.ok || !sn4Response.ok) throw new Error('Missing opening or SN4 data');
   data = await response.json();
   const sn4Program = await sn4Response.json();
+  data.language = sn4Program.language ?? 'ja';
   await Promise.all(['font','copyrigh','g_start','title_00','my0000','my0002','my0007','my0011','my0016b','my0021','my0645','mo0000','name_e01','mark','sys_fc01','sys_cd01','sys_cd02','sys_jo01','sys_jo02','sys_jo03','sys_save','sys_wa01'].map(async name => {
     const image = new Image(); image.src = asset(name + '.png'); await image.decode(); images[name] = image;
   }));

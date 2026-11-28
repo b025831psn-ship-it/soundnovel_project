@@ -130,7 +130,7 @@ def summer_movies(disc, stage):
             video(source, source.with_suffix(".mp4"))
 
 
-def prepare(image, output):
+def prepare(image, output, translation=None):
     disc = Disc(image).open_index()
     disc.verify()
     assets = output / "assets"
@@ -177,6 +177,15 @@ def prepare(image, output):
         tools = Path(__file__).with_name("tools")
         subprocess.run([sys.executable, str(tools / "sn4dump.py"), str(scenario),
                         str(stage / "sn4.json"), str(opcode_table)], check=True)
+        if translation:
+            ja, ko = translation / "ja" / "scenario", translation / "ko" / "scenario"
+            subprocess.run([sys.executable, str(tools / "sn4text.py"), "check", str(ja), str(ko)], check=True)
+            shutil.copyfile(stage / "sn4.json", stage / "sn4-ja.json")
+            subprocess.run([sys.executable, str(tools / "localize-sn4.py"), str(stage / "sn4.json"),
+                            str(ja), str(ko), str(stage / "sn4-ko.json")], check=True)
+        else:
+            shutil.copyfile(stage / "sn4.json", stage / "sn4-ja.json")
+            shutil.copyfile(stage / "sn4.json", stage / "sn4-ko.json")
         subprocess.run([sys.executable, str(tools / "spkdump.py"), str(scene_pack),
                         str(full_pack)], check=True)
         opening = json.loads((stage / "opening.json").read_text(encoding="utf-8"))
@@ -197,7 +206,9 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("iso", type=Path)
     parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--translation", type=Path,
+                        help="kamaitachi2-ps2-kor/translation directory; builds Korean default plus ?lang=ja")
     args = parser.parse_args()
     if not all(shutil.which(tool) for tool in ("ffmpeg", "ffprobe")):
         parser.error("Install FFmpeg with its IPU decoder and libx264 encoder")
-    prepare(args.iso, args.output)
+    prepare(args.iso, args.output, args.translation)

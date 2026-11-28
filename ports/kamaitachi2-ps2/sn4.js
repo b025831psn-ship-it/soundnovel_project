@@ -4,6 +4,7 @@ export class Sn4Vm {
   constructor(program, hooks = {}) {
     this.labels = new Map(program.labels.map(label => [label.label, label]));
     this.hooks = hooks;
+    this.language = program.language ?? 'ja';
     this.names = ['', ''];
     this.reset(program.entry);
   }
@@ -15,6 +16,7 @@ export class Sn4Vm {
     this.text = '';
     this.pending = null;
     this.clearBeforeRun = false;
+    this.pendingName = null;
     this.variables = new Map();
   }
 
@@ -38,15 +40,31 @@ export class Sn4Vm {
   choiceText(label) {
     const block = this.labels.get(label);
     if (!block) return label;
-    let text = '';
+    let text = '', pendingName = null;
     for (const command of block.ops) {
-      if (command.op === 0x02) text += command.args?.[0] ?? '';
+      if (command.op === 0x02) {
+        const value = command.args?.[0] ?? '';
+        text += pendingName ? this.resolveParticle(value, pendingName) : value;
+        pendingName = null;
+      }
       else if (command.op === 0x04) text += '\n';
-      else if (command.op === 0x0d) text += this.names[0];
-      else if (command.op === 0x0e) text += this.names[1];
+      else if (command.op === 0x0d) { text += this.names[0]; pendingName = this.names[0]; }
+      else if (command.op === 0x0e) { text += this.names[1]; pendingName = this.names[1]; }
       else if ([0x09, 0x0b, 0x16].includes(command.op)) break;
     }
     return text.trim() || label;
+  }
+
+  resolveParticle(text, name) {
+    if (this.language !== 'ko') return text;
+    const code = name.normalize('NFC').codePointAt(name.length - 1) ?? 0;
+    const jong = code >= 0xac00 && code <= 0xd7a3 ? (code - 0xac00) % 28 : 0;
+    const pair = { '(은)는':['는','은'], '(이)가':['가','이'], '(을)를':['를','을'],
+      '(과)와':['와','과'], '(아)야':['야','아'] };
+    for (const [mark, forms] of Object.entries(pair)) if (text.startsWith(mark))
+      return forms[jong ? 1 : 0] + text.slice(mark.length);
+    if (text.startsWith('(으)로')) return (jong && jong !== 8 ? '으로' : '로') + text.slice(4);
+    return text;
   }
 
   jump(label) {
@@ -96,15 +114,18 @@ export class Sn4Vm {
         variables:this.variables, text:this.text,
       });
       switch (command.op) {
-        case 0x02: this.text += args[0]; break;
+        case 0x02:
+          this.text += this.pendingName ? this.resolveParticle(args[0], this.pendingName) : args[0];
+          this.pendingName = null;
+          break;
         case 0x04: this.text += '\n'; break;
         case 0x09:
           return {type:'pause', label:this.label, offset:command.offset, text:this.text};
         case 0x0b:
           this.clearBeforeRun = true;
           return {type:'pause', label:this.label, offset:command.offset, text:this.text};
-        case 0x0d: this.text += this.names[0]; break;
-        case 0x0e: this.text += this.names[1]; break;
+        case 0x0d: this.text += this.names[0]; this.pendingName = this.names[0]; break;
+        case 0x0e: this.text += this.names[1]; this.pendingName = this.names[1]; break;
         // CommandNoop16 has no EE-side visual call, but it terminates a choice
         // response record. Yield the accumulated response before continuing.
         case 0x16:
