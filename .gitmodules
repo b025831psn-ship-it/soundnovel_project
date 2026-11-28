@@ -32,6 +32,6 @@
 [submodule "yasoukyoku2-ps1-kor"]
 	path = yasoukyoku2-ps1-kor
 	url = https://github.com/b025831psn-ship-it/yasoukyoku2-ps1-kor.git
-[submodule "tsuki-no-hikari-ps1-kor"]
-	path = tsuki-no-hikari-ps1-kor
-	url = https://github.com/b025831psn-ship-it/tsuki-no-hikari-ps1-kor.git
+[submodule "tsuki-no-hikari-ps2-kor"]
+	path = tsuki-no-hikari-ps2-kor
+	url = https://github.com/b025831psn-ship-it/tsuki-no-hikari-ps2-kor.git
