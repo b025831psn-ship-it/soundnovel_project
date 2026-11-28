@@ -192,7 +192,10 @@ export class Sn4Vm {
   }
 
   run() {
-    if (this.clearBeforeRun) {
+    // MojiAllInOutParam fades the page that was just acknowledged. Preserve
+    // that page through 0x5c/0x15, then clear it when the wait resumes.
+    const next = this.labels.get(this.label)?.ops[this.pc];
+    if (this.clearBeforeRun && next?.op !== 0x5c) {
       this.text = '';
       this.hooks.clearText?.();
       this.clearBeforeRun = false;

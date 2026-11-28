@@ -17,4 +17,11 @@ for (const label of ['my02_0035','my02_0040','my02_0150','my02_0217','my02_0240'
   assert.equal(box.marginRight, 18, `${label} original right margin`);
   assert.equal(box.lineSpacing, 1, `${label} original line spacing`);
 }
+const player = await import('node:fs').then(fs => fs.readFileSync(new URL('../player.js', import.meta.url), 'utf8'));
+assert.match(player, /lineSpacing:7, fontType:0, fontSize:33/);
+assert.match(player, /marginLeft:32, marginRight:32, marginTop:32, marginBottom:32/);
+assert.match(player, /fontType:style\.fontType/);
+const renderer = await import('node:fs').then(fs => fs.readFileSync(new URL('../render.js', import.meta.url), 'utf8'));
+assert.match(renderer, /style\.fontType === 2/);
+assert.match(renderer, /'「':'『', '」':'』'/);
 console.log('Korean word wrapping and kinsoku tables OK');

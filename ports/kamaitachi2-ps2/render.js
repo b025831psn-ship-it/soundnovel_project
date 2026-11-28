@@ -100,8 +100,11 @@ export class Screen {
       }
       const rgb = colors?.get(offset);
       if (rgb) tint = rgb.every(channel => channel === 128) ? undefined : rgb;
-      const glyph = this.metric(ch);
       const style = styleAt?.(offset) ?? {scale, widthScale, spacing, leading};
+      // The retail Korean scenario face uses double corner brackets for the
+      // dialogue marks encoded as Japanese corner brackets in SN4.
+      const renderedCh = style.fontType === 2 ? ({'「':'『', '」':'』'}[ch] ?? ch) : ch;
+      const glyph = this.metric(renderedCh);
       const glyphScale = style.scale ?? scale;
       const glyphWidthScale = style.widthScale ?? widthScale;
       const glyphSpacing = style.spacing ?? spacing;
@@ -126,7 +129,7 @@ export class Screen {
       if (glyph && !measureOnly) {
         const [gx, gy, w, h, top] = glyph;
         const x = Math.round(px), y = Math.round(py + top * glyphScale);
-        if (tint && w && h) this.c.drawImage(this.tintedGlyph(ch, tint, gx, gy, w, h), x, y, w * glyphWidthScale, h * glyphScale);
+        if (tint && w && h) this.c.drawImage(this.tintedGlyph(renderedCh, tint, gx, gy, w, h), x, y, w * glyphWidthScale, h * glyphScale);
         else this.sprite('font', gx, gy, w, h, x, y, w * glyphWidthScale, h * glyphScale);
       }
       bottom = Math.max(bottom, py + Math.max(33, glyph?.[3] ?? 0) * glyphScale);

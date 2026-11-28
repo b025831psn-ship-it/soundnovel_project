@@ -69,8 +69,8 @@ let sn4Mode = false, sn4Event, sn4WaitUntil = 0;
 let specialInput = null;
 // EE 0x112610: one character every max(1, speed) frames; CommandSpeed stores speed at +0x2a4.
 let sn4SpeedMarks = [], sn4Shown = '';
-const sn4Style = {speed:1, letterSpacing:0, lineSpacing:0, fontType:0, fontSize:33,
-  marginLeft:16, marginRight:16, marginTop:16, marginBottom:16,
+const sn4Style = {speed:1, letterSpacing:0, lineSpacing:7, fontType:0, fontSize:33,
+  marginLeft:32, marginRight:32, marginTop:32, marginBottom:32,
   moves:[], lines:[], styles:[], effects:[], centers:[], rubies:[], pageMarks:[], scene:null, scenePack:null, caption:null, retainMovie:false,
   sceneCommands:[], unknown:[], sceneFx:{layers:new Map(), filters:new Map(), models:new Map(), resources:new Map(),
     screen:null, staffRoll:null, trigger:null}};
@@ -886,7 +886,7 @@ function drawStory(time) {
     const ratio = style.fontSize / 33;
     const lineSpacing = style.lineSpacing === 7 ? storyBox.lineSpacing : style.lineSpacing;
     return {scale:scale * ratio, widthScale:ratio, spacing:style.letterSpacing,
-      leading:style.fontSize + lineSpacing};
+      fontType:style.fontType, leading:style.fontSize + lineSpacing};
   } : undefined;
   const lineStart = sn4Mode && sn4Style.centers.length ? offset => {
     if (!sn4Style.centers.includes(offset)) return undefined;
@@ -1288,7 +1288,7 @@ try {
     mojiSync:() => sn4Style.effects.at(-1)?.value ?? 0,
     clearText:() => {
       sn4Shown = ''; sn4Style.moves = []; sn4Style.lines = []; sn4Style.styles = []; sn4Style.effects = [];
-      sn4Style.fontType = 0; sn4Style.fontSize = 33; sn4Style.lineSpacing = 0;
+      sn4Style.fontType = 0; sn4Style.fontSize = 33; sn4Style.lineSpacing = 7;
       sn4Style.centers = []; sn4Style.rubies = []; sn4Style.pageMarks = []; markStyle(0);
     },
     scene:value => { sn4Style.scenePack = value; },
@@ -1300,7 +1300,7 @@ try {
       // EE 0x136f30: measure the rest of the line and move the cursor by half the free width.
       if (name === 'Center') sn4Style.centers.push(sn4.text.length);
       else if (name === 'Default') {
-        const value = args[0] ?? 16;
+        const value = args[0] ?? 32;
         if (context.op === 0x5e) sn4Style.marginLeft = value;
         else if (context.op === 0x60) sn4Style.marginRight = value;
         else if (context.op === 0x62) sn4Style.marginTop = value;
