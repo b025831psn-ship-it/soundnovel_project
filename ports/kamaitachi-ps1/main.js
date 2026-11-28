@@ -13,10 +13,19 @@ try {
     const { startMachine } = await import("./src/machine-browser.js");
     const machineRoot = query.get("machineData") || new URL("machine/", privateRoot).href;
     const total = 77_000_000;
-    const player = await startMachine({ canvas: document.getElementById("screen"), dataRoot: machineRoot, lang: query.get("lang") === "ja" ? "ja" : "ko", displayShift: query.get("display") === "original" ? 0 : 4, debug: query.get("debug") === "1", scene: query.get("scene") || "",
+    const player = await startMachine({ canvas: document.getElementById("screen"), dataRoot: machineRoot, lang: query.get("lang") === "ja" ? "ja" : "ko", displayShift: query.get("display") === "original" ? 0 : 4, debug: query.get("debug") === "1", scene: query.get("scene") || "", resume: query.get("resume") === "1",
       gate: (onPress) => startGate(document.getElementById("stage"), { onPress }),
       onProgress: (n) => { const el = loading(); if (el) el.textContent = `원작 데이터를 불러오는 중 ${Math.min(99, Math.floor((100 * n) / total))}%`; } });
     window.kamaitachiPs1 = player;
+    // The shell's save dialog (../kamaitachi-gba/sync-ui.js) reaches the store and "carry on" through this.
+    // Carrying on restarts the game with ?resume=1; the mark is taken off the address again, so a reload starts at the title.
+    if (query.get("resume") === "1") { const u = new URL(location.href); u.searchParams.delete("resume"); history.replaceState(null, "", u); }
+    const runtime = player.runtime ?? player;
+    if (runtime.saveStore) {
+      globalThis.soundnovelSave = { store: runtime.saveStore, gameId: "kamaitachi-ps1",
+        boot: { canContinue: () => runtime.canResume(), titleActive: true, continueSuspended: () => { const u = new URL(location.href); u.searchParams.set("resume", "1"); location.replace(u); return true; } } };
+      globalThis.dispatchEvent(new Event("soundnovel-save-ready"));
+    }
   } else {
     const player = await startBrowserRuntime({ canvas: document.getElementById("screen"), dataRoot, soundRoot });
     window.kamaitachiPs1 = player;
