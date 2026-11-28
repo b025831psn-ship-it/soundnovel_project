@@ -89,6 +89,8 @@ kbd {
     linear-gradient(0deg, rgba(5, 6, 10, .95) 0%, transparent 45%),
     radial-gradient(120% 90% at 50% 50%, transparent 55%, rgba(0, 0, 0, .7) 100%);
 }
+/* a bright title picture (the SFC paper) is dimmed more so the text over it stays readable */
+.marquee.light .still img { filter: saturate(.8) brightness(.55) }
 .marquee:not(:has(.still img)) { background: radial-gradient(120% 80% at 70% 0%, #1c2538, transparent 60%), radial-gradient(90% 70% at 10% 100%, #2a0f12, transparent 65%), linear-gradient(#0a0d14, #050608) }
 .snow { position: absolute; inset: 0; z-index: -1; width: 100%; height: 100%; pointer-events: none }
 @media (prefers-reduced-motion: reduce) { .still img { animation: none } }

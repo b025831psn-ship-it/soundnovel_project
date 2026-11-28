@@ -13,7 +13,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+KR:wght@400;500;600&family=Noto+Serif+KR:wght@500;700&family=Noto+Serif+JP:wght@500;700&family=Yusei+Magic&family=Potta+One&family=Anton&display=swap">
-<link rel="stylesheet" href="/style.css?v=13">
+<link rel="stylesheet" href="/style.css?v=14">
 </head>
 <body class="front-on">
 <section id="front" class="front" aria-label="펜션 슈프르">
@@ -107,7 +107,7 @@
       still: '/kamaitachi-ps1-kor/port-data/machine/front-pension.png', story: true, hint: '시험판 · 헤드폰 권장', },
     '#kamaitachi': { snow: true, kicker: ['GAME BOY ADVANCE', '2002', '춘소프트'], logo: '/art/hub/kamaitachi-gba-logo.png', ko: '카마이타치의 밤 어드밴스',
       still: '/art/kamaitachi-still.png', story: true, hint: '일본어 원문 · 헤드폰 권장', },
-    '#kamaitachi-sfc': { snow: true, kicker: ['SUPER FAMICOM', '1994', '춘소프트'], logo: '/art/hub/kamaitachi-sfc-logo.png', ko: '카마이타치의 밤', still: '/art/hub/kamaitachi-sfc.png', story: true, hint: '시험판 · 헤드폰 권장' },
+    '#kamaitachi-sfc': { snow: true, light: true, kicker: ['SUPER FAMICOM', '1994', '춘소프트'], logo: '/art/hub/kamaitachi-sfc-logo.png', ko: '카마이타치의 밤', still: '/art/hub/kamaitachi-sfc.png', story: true, hint: '시험판 · 헤드폰 권장' },
     '#kamaitachi2-ps2': { kicker: ['PLAYSTATION 2', '2002', '춘소프트'], logo: '/art/hub/kamaitachi2-ps2-logo.png', ko: '카마이타치의 밤 2', still: '/art/hub/kamaitachi2-ps2.png', hint: '시험판 · 헤드폰 권장' },
     '#zakuro-sfc': { kicker: ['SUPER FAMICOM', '1995', '이매지니어'], logo: '/art/hub/zakuro-sfc-logo.png', ko: '석류의 맛', still: '/art/hub/zakuro-sfc.png', hint: '시험판 · 헤드폰 권장' },
   };
@@ -125,7 +125,8 @@
     img.onload = () => img.classList.toggle('tall', img.naturalHeight > img.naturalWidth * .6);
     if (c.logo) { img.alt = c.ko; img.onerror = () => { logo.hidden = true; }; if (img.getAttribute('src') !== c.logo) img.src = c.logo; }
     card.querySelector('.ko').textContent = c.ko;
-    document.querySelector('#snow').hidden = !c.snow; // snow only for the snowbound pension
+    document.querySelector('#snow').hidden = !c.snow;
+    marquee.classList.toggle('light', Boolean(c.light)); // snow only for the snowbound pension
     const lede = card.querySelector('.lede'); lede.hidden = !c.story; if (c.story) lede.innerHTML = story;
     card.querySelector('.start').href = chosen;
     card.querySelector('.hint').textContent = c.hint ?? '';
