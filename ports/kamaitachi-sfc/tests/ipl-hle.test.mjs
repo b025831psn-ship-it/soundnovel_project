@@ -32,3 +32,18 @@ test('IPL stand-in shows AA/BB after the zero-page clear (2,394 + 10 clocks)', (
   while (seen.length < 2) apu.cpu.step();
   assert.deepEqual(seen, [[2394, 0, 0xaa], [2399, 1, 0xbb]]);
 });
+
+test('soft reset preserves ARAM and resets SMP, ports and S-DSP', () => {
+  const apu = new APU(); apu.powerOn();
+  apu.cpu.ram[0x4000] = 0x5a;
+  apu.cpu.a = 0x99; apu.cpu.clock = 1234;
+  apu.cpu.portIn[0] = 0xcc; apu.cpu.portOut[1] = 0xdd;
+  apu.dsp.write(0x0c, 0x7f);
+  apu.softReset();
+  assert.equal(apu.cpu.ram[0x4000], 0x5a);
+  assert.equal(apu.cpu.a, 0); assert.equal(apu.cpu.clock, 0);
+  assert.deepEqual([...apu.cpu.portIn], [0, 0, 0, 0]);
+  assert.deepEqual([...apu.cpu.portOut], [0, 0, 0, 0]);
+  assert.equal(apu.dsp.read(0x0c), 0);
+  assert.equal(apu.cpu.hle.label, 'reset');
+});

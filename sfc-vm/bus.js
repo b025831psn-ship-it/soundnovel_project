@@ -53,6 +53,33 @@ export class SfcBus {
     this.ppuRevision = 0;
   }
 
+  softReset() {
+    // S-CPU RESET preserves work RAM, save RAM and VRAM.  Snes9x's
+    // S9xSoftResetPPU clears the register file, CGRAM and OAM, then resets all
+    // PPU address/latch and DMA state.
+    this.io.fill(0);
+    this.apuPorts.set([0xaa, 0xbb, 0, 0]);
+    this.apuInputPorts.fill(0);
+    this.apuPhase = 'ipl';
+    this.cgram.fill(0);
+    this.oam.fill(0);
+    this.wramAddress = this.oamAddress = this.cgramAddress = this.vramAddress = 0;
+    this.vmain = this.vramReadBuffer = this.ppuScrollLatch = this.ppuMode7Latch = 0;
+    this.bgHofs.fill(0); this.bgVofs.fill(0); this.mode7.fill(0);
+    this.fixedColor = this.controller1 = 0;
+    this.events.length = 0; this.apuTrace.length = 0;
+    this.lastEvent = this.lastApuAccess = null;
+    this.currentMasterCycle = 0;
+    this.apuAccessCount = 0;
+    this.dmaStats = {}; this.readStats = {};
+    this.pendingDmaMasterCycles = 0; this.hdmaActive = 0;
+    this.hdma = Array.from({ length: 8 }, () => ({
+      table: 0, indirect: 0, lines: 0, repeat: false, transfer: false,
+    }));
+    this.pendingMath = null;
+    this.ppuRevision = 0;
+  }
+
   recordEvent(event) {
     this.lastEvent = event;
     if (this.events.length < this.eventLimit) this.events.push(event);

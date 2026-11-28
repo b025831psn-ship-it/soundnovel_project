@@ -12,8 +12,8 @@ function bgPixel(bus, bg, x, y, bpp) {
   const io = bus.io, screen = io[0x2107 + bg - 0x2000];
   const mapBase = ((screen >>> 2) * 0x800) & 0xffff;
   const mapWidth = screen & 1 ? 64 : 32, mapHeight = screen & 2 ? 64 : 32;
-  // BGMODE bits 4-7: 16x16 tiles for BG1-BG4. A map entry then covers four 8x8 characters
-  // (c, c+1, c+16, c+17), flipped as a whole.
+  // BGMODE bits 4-7 select 16x16 tiles for BG1-BG4. One map entry then
+  // covers characters c, c+1, c+16 and c+17; flips apply to the full tile.
   const big = io[0x2105 - 0x2000] & (0x10 << bg), shift = big ? 4 : 3, size = 1 << shift;
   const sx = (x + bus.bgHofs[bg]) & (mapWidth * size - 1);
   const sy = (y + bus.bgVofs[bg]) & (mapHeight * size - 1);

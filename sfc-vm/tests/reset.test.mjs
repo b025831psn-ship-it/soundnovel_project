@@ -492,6 +492,23 @@ test('decodes and composites mode 3 BG1 from PPU memory', () => {
   assert.deepEqual([...frame.slice((7 * 8) * 4, (7 * 8) * 4 + 4)], [255, 0, 0, 255]);
 });
 
+test('maps 16x16 BG entries to c, c+1, c+16 and c+17 characters', () => {
+  const bus = new SfcBus(new Uint8Array(0x8000));
+  bus.io[0x2100 - 0x2000] = 15;
+  bus.io[0x2105 - 0x2000] = 0x10; // mode 0, BG1 uses 16x16 tiles
+  bus.io[0x2107 - 0x2000] = 0; // tile map at VRAM $0000
+  bus.io[0x210b - 0x2000] = 1; // BG1 characters at VRAM $2000
+  bus.io[0x212c - 0x2000] = 1;
+  bus.vram[0] = 0; bus.vram[1] = 0;
+  // Character c+1, source row 1, plane 0, leftmost pixel. The visible-line
+  // compositor samples sourceY=y+1.
+  bus.vram[0x2000 + 16 + 2] = 0x80;
+  bus.cgram[2] = 0x1f;
+  const frame = renderFrame(bus, 16, 1);
+  assert.deepEqual([...frame.slice(8 * 4, 8 * 4 + 4)], [255, 0, 0, 255]);
+  assert.deepEqual([...frame.slice(0, 4)], [0, 0, 0, 255]);
+});
+
 test('composites the subscreen through CGWSEL and CGADSUB', () => {
   const bus = new SfcBus(new Uint8Array(0x8000));
   bus.io[0x2100 - 0x2000] = 15;
