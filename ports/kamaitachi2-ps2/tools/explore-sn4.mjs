@@ -1,7 +1,7 @@
 // Exhaustive SN4 explorer: runs the browser VM over every reachable path and
 // collects problems in one report instead of checking scenes one at a time.
 //
-//   node ports/kamaitachi2-ps2/tools/explore-sn4.mjs <web-dir> [out-dir] [--disc-files list.txt]
+//   node ports/kamaitachi2-ps2/tools/explore-sn4.mjs <web-dir> [out-dir] [--program sn4-ko.json] [--disc-files list.txt]
 //
 // With --disc-files (one disc path per line, tab-separated extras allowed),
 // ScenePack media are checked against the disc instead of the built web
@@ -17,10 +17,14 @@ import { pathToFileURL } from 'node:url';
 const argv = process.argv.slice(2);
 const discAt = argv.indexOf('--disc-files');
 const discList = discAt >= 0 ? argv.splice(discAt, 2)[1] : null;
+const programAt = argv.indexOf('--program');
+const programFile = programAt >= 0 ? argv.splice(programAt, 2)[1] : 'sn4.json';
 const web = path.resolve(argv[0] || '.');
 const out = argv[1] ? path.resolve(argv[1]) : null;
 const { Sn4Vm } = await import(pathToFileURL(path.join(web, 'sn4.js')).href);
-const program = JSON.parse(await readFile(path.join(web, 'assets/sn4.json'), 'utf8'));
+const { JAPANESE_NO_START, KOREAN_NO_START, NO_END, originalStoryBox, wordWidth } =
+  await import(pathToFileURL(path.join(web, 'text-layout.js')).href);
+const program = JSON.parse(await readFile(path.join(web, 'assets', programFile), 'utf8'));
 const opening = JSON.parse(await readFile(path.join(web, 'assets/opening.json'), 'utf8'));
 const scenePack = opening.scenePack ?? {};
 const glyphs = new Set(Object.keys(opening.font ?? {}));
@@ -164,20 +168,20 @@ function music(vm, name) {
 // Lay out a page like player.js drawStory()/render.text() and flag what the
 // original would not show: lines past the screen, automatic wraps that start a
 // line with a closing mark, centered lines wider than the text box.
-const NO_START = new Set([...'、。？！＿ヽヾゝゞ々仝〃ー’”）〕］〉」』】＞ぁぃぅぇぉっゃゅょゎァィゥェォッャュョヮ']);
-const NO_END = new Set([...'（〔［〈「『＜']);
 function checkLayout(vm, raw) {
   const text = raw.trimEnd();
   if (!text.trim()) return;
-  const L = vm.layout ?? {letterSpacing:0, lineSpacing:7, fontSize:33,
+  const rawLayout = vm.layout ?? {letterSpacing:0, lineSpacing:7, fontSize:33,
     marginLeft:32, marginRight:32, marginTop:32, marginBottom:32, moves:[], lines:[], styles:[], centers:[]};
+  const L = originalStoryBox(vm.label, rawLayout);
   const at = where(vm);
   const x = L.marginLeft, y = L.marginTop, right = 640 - L.marginRight, bottom = 448;
-  let px = x, py = y, offset = 0, lineStart = true, overRight = false;
+  let px = x, py = y, offset = 0, overRight = false, glyphTop = Infinity, glyphBottom = -Infinity;
   const styleAt = o => L.styles.findLast(mark => mark.offset <= o) ?? L;
   const advance = (ch, o) => {
     const s = styleAt(o), ratio = s.fontSize / 33;
-    return ((opening.font?.[ch] ?? opening.font?.['�'] ?? [0, 0, 32])[2] + s.letterSpacing) * ratio;
+    return ((opening.font?.[ch] ?? opening.font?.['�'] ?? [0, 0, 32])[2]
+      + s.letterSpacing) * ratio;
   };
   const centerAt = o => {
     if (!L.centers.includes(o)) return x;
@@ -189,8 +193,10 @@ function checkLayout(vm, raw) {
   };
   px = centerAt(0);
   const chars = Array.from(text);
+  const noStart = program.language === 'ko' ? KOREAN_NO_START : JAPANESE_NO_START;
   for (let i = 0; i < chars.length; i++) {
-    const ch = chars[i], style = styleAt(offset), leading = style.fontSize + style.lineSpacing;
+    const ch = chars[i], style = styleAt(offset);
+    const leading = style.fontSize + originalStoryBox(vm.label, style).lineSpacing;
     for (const move of L.moves.filter(item => item.offset === offset)) {
       if (move.absolute) { px = move.x; py = move.y; } else { px += move.x; py += move.y; }
     }
@@ -199,19 +205,32 @@ function checkLayout(vm, raw) {
       px += line.width;
     }
     const a = advance(ch, offset), next = chars[i + 1], nextA = next ? advance(next, offset + ch.length) : 0;
-    const wrap = px + a > right && !NO_START.has(ch);
-    const pushOpening = NO_END.has(ch) && next && px + a + nextA > right;
-    if (ch === '\n' || wrap || pushOpening) { px = centerAt(offset); py += leading; }
+    const beginsWord = program.language === 'ko' && i > 0 && !/\s/u.test(ch) && /\s/u.test(chars[i - 1]);
+    const tokenWidth = beginsWord ? wordWidth(chars, i, offset, advance) : 0;
+    const wordWrap = beginsWord && px > x && tokenWidth <= right - x && px + tokenWidth > right;
+    const wrap = px + a > right && !noStart.has(ch);
+    const keepPair = (NO_END.has(ch) || noStart.has(next)) && next && px + a + nextA > right;
+    if (ch === '\n' || wordWrap || wrap || keepPair) { px = centerAt(offset); py += leading; }
     if (ch === '\n') { offset += ch.length; px = centerAt(offset); continue; }
-    if (px + a > right + 1 && !NO_START.has(ch) && !overRight) {
+    const ratio = style.fontSize / 33;
+    const metric = opening.font?.[ch] ?? opening.font?.['�'] ?? [0, 0, 32, 33, 0];
+    if (metric[3] > 0) {
+      glyphTop = Math.min(glyphTop, py + metric[4] * ratio);
+      glyphBottom = Math.max(glyphBottom, py + (metric[4] + metric[3]) * ratio);
+    }
+    if (px + a > right + 1 && !noStart.has(ch) && !overRight) {
       overRight = true; report('layout-positioned-past-right', `${vm.label} (${Math.round(px + a)}px)`, at);
     }
     px += a; offset += ch.length;
   }
-  // Flowing message text scrolls upward at the physical bottom. Only authored
-  // absolute layouts can genuinely place a glyph outside the framebuffer.
-  if (L.moves.some(move => move.absolute) && py + styleAt(offset).fontSize > bottom)
-    report('layout-past-bottom', `${vm.label} (${Math.round(py)}px)`, at);
+  const absolute = L.moves.some(move => move.absolute);
+  if (absolute && (glyphTop < 0 || glyphBottom > bottom))
+    report('layout-positioned-past-viewport', `${vm.label} (${Math.floor(glyphTop)}..${Math.ceil(glyphBottom)}px)`, at);
+  if (!absolute && glyphBottom > -Infinity) {
+    const scrollY = Math.max(0, glyphBottom - (bottom - L.marginBottom));
+    if (glyphTop - scrollY < 0)
+      report('layout-flow-past-top', `${vm.label} (${Math.floor(glyphTop - scrollY)}px)`, at);
+  }
 }
 
 function checkText(vm, text) {

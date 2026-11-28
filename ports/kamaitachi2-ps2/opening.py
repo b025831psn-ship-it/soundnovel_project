@@ -4,7 +4,7 @@ import json
 import re
 import struct
 
-from PIL import Image
+from PIL import Image, ImageDraw, ImageFont
 
 
 # SLPS_251.32 command-constructor dispatch entries used by the opening path.
@@ -87,6 +87,64 @@ def font_atlas(data, out):
     metrics["　"] = [0, 0, 33, 0, 0]
     atlas.save(out / "font.png")
     return metrics
+
+
+def extend_korean_font(out, metrics, strings, font_path):
+    """Append Korean glyph bitmaps to the original 36px SN4 atlas.
+
+    The browser deliberately does not use Canvas text: Japanese and Korean
+    both take the original ``font[ch]`` sprite path, dimensions and tinting.
+    """
+    cell, columns = 36, 64
+    # 28px yields a 30px stroked Hangul cell (31px with the normal 1px
+    # spacing), close to the retail atlas' 28.75px mean kanji width.  The old
+    # 30px face made every Hangul metric 32px and visibly over-spaced prose.
+    font = ImageFont.truetype(str(font_path), 28)
+    # U+0020 is not present in the Japanese SN4 font.  It is advance-only,
+    # exactly like the original full-width U+3000 record; falling back to �
+    # turns every Korean word separator and empty keyboard cell into a box.
+    if " " not in metrics:
+        metrics[" "] = [0, 0, max(1, round(font.getlength(" "))), 0, 0]
+    chars = sorted({ch for text in strings for ch in text
+                    if not ch.isspace() and ch not in metrics})
+    if not chars:
+        return
+    source = Image.open(out / "font.png").convert("RGBA")
+    used = 1 + max((value[1] // cell) * columns + value[0] // cell
+                   for value in metrics.values() if value[2] and value[3])
+    rows = (used + len(chars) + columns - 1) // columns
+    atlas = Image.new("RGBA", (columns * cell, rows * cell))
+    atlas.alpha_composite(source)
+    # The EE draws each bitmap at line_y + top.  Keep a common baseline and
+    # derive top from the font's baseline-relative ink box; punctuation then
+    # sits at the bottom of the line instead of being pinned to y=0.
+    # 27 leaves room for Latin descenders (g/y) while Hangul still starts at
+    # y=2 and low punctuation remains on the baseline.
+    baseline = 27
+    for index, ch in enumerate(chars, used):
+        bbox = font.getbbox(ch, stroke_width=1, anchor="ls")
+        width = bbox[2] - bbox[0]
+        height = bbox[3] - bbox[1]
+        top = baseline + bbox[1]
+        if width <= 0 or height <= 0 or width > cell or top < 0 or top + height > cell:
+            raise ValueError(f"Korean glyph {ch!r} exceeds the SN4 cell: {bbox}, top={top}")
+        mask = Image.new("L", (width, height))
+        draw = ImageDraw.Draw(mask)
+        origin = (-bbox[0], -bbox[1])
+        draw.text(origin, ch, font=font, fill=255, stroke_width=1,
+                  stroke_fill=255, anchor="ls")
+        fill = Image.new("L", (width, height))
+        ImageDraw.Draw(fill).text(origin, ch, font=font, fill=255, anchor="ls")
+        rgba = Image.new("RGBA", (width, height))
+        rgba.putdata([(value, value, value, alpha)
+                      for value, alpha in zip(fill.getdata(), mask.getdata())])
+        x, y = (index % columns) * cell, (index // columns) * cell
+        atlas.alpha_composite(rgba, (x, y))
+        # SN4's metric width is both source-bitmap width and cursor advance.
+        # Store the exact stroked ink box; the normal 1px letter spacing makes
+        # a 32px Hangul cell advance by the original 33px.
+        metrics[ch] = [x, y, width, height, top]
+    atlas.save(out / "font.png")
 
 
 def texture(data):

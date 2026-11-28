@@ -321,7 +321,11 @@ kbd {
 @media (pointer: coarse) and (orientation: landscape) {
   html:not(.upright) .shell:not(.pad-on) .stage { grid-column: 1 / 4; grid-row: 1 / 4; width: auto; }
 
-  html:not(.upright) .shell:not(.pad-on) .bar { position: relative; z-index: 1; }
+  /* The bar is an empty strip over the screen corner: only its controls take
+     taps, so game controls under the rest of the strip stay reachable. */
+  html:not(.upright) .shell:not(.pad-on) .bar { position: relative; z-index: 1; pointer-events: none; }
+  html:not(.upright) .shell:not(.pad-on) .bar button,
+  html:not(.upright) .shell:not(.pad-on) .bar input { pointer-events: auto; }
 }
 @media (pointer: coarse) and (max-width: 360px) {
   .dpad { --cell: 42px; }
@@ -344,7 +348,13 @@ html.filled, html.filled body { overflow: hidden; }
 /* Kamaitachi 2 (PS2): the box is the PlayStation 2's 640x480 frame; the game draws 640x448 lines in its
    middle (black above and below, as on the console). The scene movies play in the same 448 lines. */
 .screen-box { background: #000; }
-.screen-box #movie { position: absolute; left: 0; width: 100%; object-fit: fill; background: #000; pointer-events: none; }
-.screen-box #movie[hidden] { display: none; }
+.screen-box .scene-movie { position: absolute; left: 0; width: 100%; object-fit: fill; background: #000; pointer-events: none; }
+.screen-box .scene-movie[hidden] { display: none; }
 #screen { image-rendering: auto; }
 #screen:focus { outline: none; }
+
+/* Scene movies stay below the transparent canvas, while menus and tools stay
+   above both.  This is the public-source equivalent of private cdb72de. */
+.screen-box .scene-movie { z-index: 0; }
+.screen-box #screen { position: relative; z-index: 1; }
+.screen-box .menu-button, .screen-box .sn-tool { z-index: 2; }

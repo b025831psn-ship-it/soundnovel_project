@@ -13,6 +13,18 @@ function run(ops, hooks = {}) {
 }
 const value = (ops, v = 1) => run(ops).vm.variables.get(v);
 
+// The opening/date cards are animation-driven, not input pauses: 0x32 only
+// selects the page-end mark and 0x15 waits for the active text effect duration.
+const marks = [];
+const animated = run([
+  {op:0x5a, offset:0, args:[90]}, {op:0x02, offset:1, args:['8월 15일\n정오']},
+  {op:0x32, offset:2, args:[]}, {op:0x15, offset:3, args:[]},
+], {command5a:() => {}, pageMark:offset => marks.push(offset), mojiSync:() => 90});
+assert.equal(animated.event.type, 'wait');
+assert.equal(animated.event.reason, 'text-effect');
+assert.equal(animated.event.ticks, 90);
+assert.deepEqual(marks, ['8월 15일\n정오'.length]);
+
 assert.equal(value([set(1, 6, 10), set(1, 2, 3)]), 7, '2 subtracts');
 assert.equal(value([set(1, 6, 10), set(1, 3, 3)]), 13, '3 adds');
 assert.equal(value([set(1, 6, 10), set(1, 4, 3)]), 30, '4 multiplies');
@@ -116,6 +128,20 @@ assert.deepEqual(pageBreak, {type:'pause', label:'a', offset:8, text:'new'},
   '0x0c continues without an empty input wait');
 const effectWait = run([{op:0x15, offset:5, args:[]}], {mojiSync:() => 3}).event;
 assert.deepEqual(effectWait, {type:'wait', reason:'text-effect', label:'a', offset:5, ticks:3, text:''});
+let fadeClears = 0;
+const fadeVm = new Sn4Vm({entry:'a', labels:[{label:'a', offset:0, ops:[
+  {op:0x02, offset:0, args:['남아 있을 글자']}, {op:0x0b, offset:1, args:[]},
+  {op:0x5c, offset:2, args:[30]}, {op:0x15, offset:3, args:[]},
+  {op:0x02, offset:4, args:['다음 페이지']}, {op:0x09, offset:5, args:[]},
+]}]}, {command5c:() => {}, mojiSync:() => 30, clearText:() => fadeClears++});
+assert.equal(fadeVm.run().text, '남아 있을 글자');
+const fadeWait = fadeVm.run();
+assert.equal(fadeWait.type, 'wait');
+assert.equal(fadeWait.reason, 'text-effect');
+assert.equal(fadeWait.text, '남아 있을 글자', '0x5c fades the acknowledged page before clearing it');
+assert.equal(fadeClears, 0);
+assert.equal(fadeVm.run().text, '다음 페이지');
+assert.equal(fadeClears, 1, 'the old page clears after MojiSync');
 const ruby = [];
 run([{op:0x02, offset:0, args:['底']}, {op:0x106, offset:1, args:['　',['そ']]}],
   {ruby:(word, readings, offset) => ruby.push({word,readings,offset})});

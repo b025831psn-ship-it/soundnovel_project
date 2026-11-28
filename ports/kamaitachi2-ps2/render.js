@@ -1,3 +1,5 @@
+import { JAPANESE_NO_START, KOREAN_NO_START, NO_END, wordWidth } from './text-layout.js';
+
 const blue = 'rgba(48,84,137,.80)';
 const editorInk = { tint: Array(3).fill(219 * 128 / 255) };
 const editorDimInk = { tint: Array(3).fill(109 * 128 / 255) };
@@ -34,7 +36,12 @@ export class Screen {
   }
 
   width(str, scale = 1) {
-    return Array.from(str).reduce((w, ch) => w + ((this.data.font[ch] ?? this.data.font['�'])[2] + 1) * scale, 0);
+    return Array.from(str).reduce((w, ch) => w + (this.metric(ch)[2] + 1) * scale, 0);
+  }
+
+  metric(ch) {
+    if (this.data.font[ch]) return this.data.font[ch];
+    return this.data.font['�'];
   }
 
   tintedGlyph(ch, rgb, gx, gy, w, h) {
@@ -55,17 +62,31 @@ export class Screen {
   }
 
   text(str, x, y, { scale = 1, max = Infinity, leading = 40, spacing = 1, widthScale = scale,
-    readings, colors, tint, lineStart, styleAt, moves = [], lines = [], measureOnly = false } = {}) {
+    readings, colors, tint, lineStart, styleAt, moves = [], lines = [], measureOnly = false,
+    maxBottom = this.c.canvas.height } = {}) {
     // lineStart(offset) may move the first glyph of a line (SN4 CommandCenter).
-    let px = lineStart?.(0) ?? x, py = y, offset = 0;
-    const noStart = new Set('、。？！＿ヽヾゝゞ々仝〃ー’”）〕］〉」』】＞ぁぃぅぇぉっゃゅょゎァィゥェォッャュョヮ');
-    const noEnd = new Set('（〔［〈「『＜');
+    let px = lineStart?.(0) ?? x, py = y, offset = 0, bottom = y;
+    const korean = this.data.language === 'ko';
+    const noStart = korean ? KOREAN_NO_START : JAPANESE_NO_START;
     const chars = Array.from(str);
     for (let at = 0; at < chars.length; at++) {
       const ch = chars[at];
-      for (const move of moves.filter(item => item.offset === offset)) {
+      const movesHere = moves.filter(item => item.offset === offset);
+      for (const move of movesHere) {
         if (move.absolute) { px = move.x; py = move.y; }
         else { px += move.x; py += move.y; }
+      }
+      if (korean && movesHere.some(move => move.absolute)) {
+        const nextMove = moves.find(move => move.offset > offset)?.offset ?? str.length;
+        let segmentWidth = 0, segmentOffset = offset;
+        for (const part of chars.slice(at, at + nextMove - offset).join('').split('\n')[0]) {
+          const partStyle = styleAt?.(segmentOffset) ?? {widthScale, spacing, scale};
+          segmentWidth += (this.metric(part)[2] + (partStyle.spacing ?? spacing)) *
+            (partStyle.widthScale ?? widthScale);
+          segmentOffset += part.length;
+        }
+        px = Math.max(x, Math.min(px, x + max - segmentWidth));
+        py = Math.min(py, maxBottom - 33 * (styleAt?.(offset)?.scale ?? scale));
       }
       for (const line of lines.filter(item => item.offset === offset)) {
         const width = Math.max(0, line.width ?? 0);
@@ -79,19 +100,28 @@ export class Screen {
       }
       const rgb = colors?.get(offset);
       if (rgb) tint = rgb.every(channel => channel === 128) ? undefined : rgb;
-      const glyph = this.data.font[ch] ?? this.data.font['�'];
       const style = styleAt?.(offset) ?? {scale, widthScale, spacing, leading};
+      // The retail Korean scenario face uses double corner brackets for the
+      // dialogue marks encoded as Japanese corner brackets in SN4.
+      const renderedCh = style.fontType === 2 ? ({'「':'『', '」':'』'}[ch] ?? ch) : ch;
+      const glyph = this.metric(renderedCh);
       const glyphScale = style.scale ?? scale;
       const glyphWidthScale = style.widthScale ?? widthScale;
       const glyphSpacing = style.spacing ?? spacing;
       const lineHeight = style.leading ?? leading;
       const advance = (glyph[2] + glyphSpacing) * glyphWidthScale;
       const next = chars[at + 1];
-      const nextGlyph = next ? this.data.font[next] ?? this.data.font['�'] : null;
+      const nextGlyph = next ? this.metric(next) : null;
       const nextAdvance = nextGlyph ? (nextGlyph[2] + glyphSpacing) * glyphWidthScale : 0;
+      const beginsWord = korean && at > 0 && !/\s/u.test(ch) && /\s/u.test(chars[at - 1]);
+      const tokenWidth = beginsWord ? wordWidth(chars, at, offset, (c, o) => {
+        const tokenStyle = styleAt?.(o) ?? {widthScale, spacing};
+        return (this.metric(c)[2] + (tokenStyle.spacing ?? spacing)) * (tokenStyle.widthScale ?? widthScale);
+      }) : 0;
+      const wordWrap = beginsWord && px > x && tokenWidth <= max && px + tokenWidth > x + max;
       const wrap = px + advance > x + max && !noStart.has(ch);
-      const pushOpening = noEnd.has(ch) && next && px + advance + nextAdvance > x + max;
-      if (ch === '\n' || wrap || pushOpening) { px = lineStart?.(offset) ?? x; py += lineHeight; }
+      const keepPair = (NO_END.has(ch) || noStart.has(next)) && next && px + advance + nextAdvance > x + max;
+      if (ch === '\n' || wordWrap || wrap || keepPair) { px = lineStart?.(offset) ?? x; py += lineHeight; }
       const reading = readings?.get(offset);
       offset += ch.length;
       if (ch === '\n') { px = lineStart?.(offset) ?? px; continue; }
@@ -99,12 +129,13 @@ export class Screen {
       if (glyph && !measureOnly) {
         const [gx, gy, w, h, top] = glyph;
         const x = Math.round(px), y = Math.round(py + top * glyphScale);
-        if (tint && w && h) this.c.drawImage(this.tintedGlyph(ch, tint, gx, gy, w, h), x, y, w * glyphWidthScale, h * glyphScale);
+        if (tint && w && h) this.c.drawImage(this.tintedGlyph(renderedCh, tint, gx, gy, w, h), x, y, w * glyphWidthScale, h * glyphScale);
         else this.sprite('font', gx, gy, w, h, x, y, w * glyphWidthScale, h * glyphScale);
       }
+      bottom = Math.max(bottom, py + Math.max(33, glyph?.[3] ?? 0) * glyphScale);
       px += advance;
     }
-    return {x:px, y:py};
+    return {x:px, y:py, bottom};
   }
 
   centered(str, mid, y, scale = 1) {
@@ -158,6 +189,12 @@ export class Screen {
     this.rect(0, 390, 640, 26);
     this.sprite('name_e01', 0, 66, 54, 22, nameScreen ? 40 : 38, lowRow ? 391 : 393);
     this.sprite('name_e01', 0, 114, 22, 22, 112, lowRow ? 391 : 392);
+    if (this.data.language === 'ko' && nameScreen) {
+      this.rect(34, 390, 525, 28);
+      this.text(state === 'name' ? '○ 결정  × 지우기  △ 완료  L1/R1 문자표' : '○ 결정  × 돌아가기',
+        45, 393, {scale:.55, widthScale:.55, spacing:0});
+      return;
+    }
     if (state === 'created' || state === 'save-note') {
       this.sprite('sys_fc01', 243, 0, 45, 24, 138, 390);
     } else if (state === 'name') {
@@ -268,8 +305,13 @@ export class Screen {
       this.text(ch, x + inset, y, dim ? editorDimInk : editorInk);
     };
     this.rect(0, 28, 640, 36);
-    this.sprite('name_e01', 0, role ? 33 : 0, role ? 183 : 94, 32, role ? 63 : 123, 29, role ? 150 : 91, 34);
-    this.sprite('name_e01', 160, 0, 93, 32, 215, 29, 96, 34);
+    if (this.data.language === 'ko') {
+      this.text(role ? '여자친구 이름' : '주인공 이름', role ? 73 : 119, 31,
+        {...editorInk, scale:.8, widthScale:.8, spacing:0});
+    } else {
+      this.sprite('name_e01', 0, role ? 33 : 0, role ? 183 : 94, 32, role ? 63 : 123, 29, role ? 150 : 91, 34);
+      this.sprite('name_e01', 160, 0, 93, 32, 215, 29, 96, 34);
+    }
     const insertionColumn = Math.min(5, editor.value.length);
     glyph('＿', 352 + 32 * insertionColumn, 33);
     for (let i = 0; i < 6; i++) {
@@ -317,18 +359,24 @@ export class Screen {
 
   confirm(name, role, selection) {
     this.rect(0, 28, 640, 36);
-    this.sprite('name_e01', 192, 0, 61, 32, 239, 29);
-    this.sprite('name_e01', 160, 0, 32, 32, 302, 29);
-    this.sprite('name_e01', 185, 32, 67, 32, 335, 29);
+    if (this.data.language === 'ko') this.text('이름 확인', 247, 31, {...editorInk, scale:.8, widthScale:.8});
+    else {
+      this.sprite('name_e01', 192, 0, 61, 32, 239, 29);
+      this.sprite('name_e01', 160, 0, 32, 32, 302, 29);
+      this.sprite('name_e01', 185, 32, 67, 32, 335, 29);
+    }
     const left = role ? 48 : 112;
     const promptStyle = {...editorInk, scale:.96, widthScale:1, spacing:0};
-    this.text(this.data.prompts[role] + name + '。', left, 143, promptStyle);
-    this.text(this.data.prompts[2], 176, 199, promptStyle);
+    const prompts = this.data.language === 'ko'
+      ? [role ? '여자친구 이름은 ' : '주인공 이름은 ', '이 이름으로 괜찮습니까?']
+      : [this.data.prompts[role], this.data.prompts[2]];
+    this.text(prompts[0] + name + (this.data.language === 'ko' ? '입니다.' : '。'), left, 143, promptStyle);
+    this.text(prompts[1], this.data.language === 'ko' ? 135 : 176, 199, promptStyle);
     this.rect(235, 252, 138, 72);
     this.c.save();
     this.c.filter = 'brightness(86%)'; // Peak label intensity is 219/255 in the PS2 capture.
-    this.text('はい', 272, 254, {spacing:0});
-    this.text('いいえ', 272, 286, {spacing:0});
+    this.text(this.data.language === 'ko' ? '예' : 'はい', 272, 254, {spacing:0});
+    this.text(this.data.language === 'ko' ? '아니오' : 'いいえ', 272, 286, {spacing:0});
     this.c.restore();
     this.c.save();
     this.c.globalAlpha = .73;

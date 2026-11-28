@@ -13,6 +13,45 @@ export function keyboardGroups(groups) {
   });
 }
 
+export const koreanKeyboardGroups = [
+  [['닿','ㄱ','ㄲ','ㄴ','ㄷ','ㄸ','ㄹ','ㅁ','ㅂ','ㅃ','ㅅ','ㅆ','ㅇ','ㅈ','ㅉ'],
+   [null,'ㅊ','ㅋ','ㅌ','ㅍ','ㅎ']],
+  [['홀','ㅏ','ㅐ','ㅑ','ㅒ','ㅓ','ㅔ','ㅕ','ㅖ','ㅗ','ㅘ','ㅙ','ㅚ','ㅛ','ㅜ'],
+   [null,'ㅝ','ㅞ','ㅟ','ㅠ','ㅡ','ㅢ','ㅣ']],
+];
+
+const LEADS = Array.from('ㄱㄲㄴㄷㄸㄹㅁㅂㅃㅅㅆㅇㅈㅉㅊㅋㅌㅍㅎ');
+const VOWELS = Array.from('ㅏㅐㅑㅒㅓㅔㅕㅖㅗㅘㅙㅚㅛㅜㅝㅞㅟㅠㅡㅢㅣ');
+const TAILS = ['', ...Array.from('ㄱㄲㄳㄴㄵㄶㄷㄹㄺㄻㄼㄽㄾㄿㅀㅁㅂㅄㅅㅆㅇㅈㅊㅋㅌㅍㅎ')];
+const TAIL_FROM_LEAD = new Set(Array.from('ㄱㄲㄴㄷㄹㅁㅂㅅㅆㅇㅈㅊㅋㅌㅍㅎ'));
+
+export function appendHangul(value, glyph) {
+  if (!LEADS.includes(glyph) && !VOWELS.includes(glyph)) return value + glyph;
+  const chars = Array.from(value), last = chars.at(-1);
+  if (VOWELS.includes(glyph) && LEADS.includes(last)) {
+    chars[chars.length - 1] = String.fromCharCode(0xac00 + LEADS.indexOf(last) * 588 + VOWELS.indexOf(glyph) * 28);
+    return chars.join('');
+  }
+  if (VOWELS.includes(glyph) && last) {
+    const code = last.charCodeAt(0) - 0xac00;
+    const tail = code >= 0 && code < 11172 ? code % 28 : 0;
+    const lead = TAILS[tail];
+    if (tail && LEADS.includes(lead)) {
+      chars[chars.length - 1] = String.fromCharCode(last.charCodeAt(0) - tail);
+      chars.push(String.fromCharCode(0xac00 + LEADS.indexOf(lead) * 588 + VOWELS.indexOf(glyph) * 28));
+      return chars.join('');
+    }
+  }
+  if (last && TAIL_FROM_LEAD.has(glyph)) {
+    const code = last.charCodeAt(0) - 0xac00;
+    if (code >= 0 && code < 11172 && code % 28 === 0) {
+      chars[chars.length - 1] = String.fromCharCode(last.charCodeAt(0) + TAILS.indexOf(glyph));
+      return chars.join('');
+    }
+  }
+  return value + glyph;
+}
+
 export class NameEditor {
   constructor(groups, initial) {
     this.groups = groups;
@@ -54,9 +93,11 @@ export class NameEditor {
     this.scroll = Math.min(this.row, Math.max(this.scroll, this.row - 7));
   }
 
-  add() {
-    const glyph = this.rows[this.row][this.column];
-    if (glyph) this.value = this.value.slice(0, 5) + glyph;
+  add(selected) {
+    const glyph = selected ?? this.rows[this.row][this.column];
+    if (!glyph) return;
+    const composed = appendHangul(this.value, glyph);
+    if (Array.from(composed).length <= 6) this.value = composed;
   }
 
   erase() { this.value = this.value.slice(0, -1); }
