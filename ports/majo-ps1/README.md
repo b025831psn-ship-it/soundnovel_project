@@ -16,10 +16,11 @@ python -B tools/boot_oracle.py /path/to/core /path/to/disc.cue /private/input.js
 
 SLPS-01863 Track 1과 Windows x64 코어(SHA-256 `7f39419a7d085ffaf3f89f74b5e5084929687ab8b0895a4b41a31702af1fc8cd`)에서 무입력 6,000프레임 두 번의 기록이 일치했다. 영상 파일 36개의 SHA-1도 디스크 추출 manifest와 일치했다.
 
-`src/scenario-vm.mjs`의 PC는 압축을 푼 시나리오 시작 기준 바이트 오프셋이다. 현재 명령 검색(00), 점프(02), 값·임계값에 따른 분기(03·04), 선택지 대상 설정(05), 플래그 비트 OR·바이트 대입(0E·0F)을 실행한다. 미구현 명령을 만나면 opcode와 위치를 표시하고 중단한다.
+`src/scenario-vm.mjs`의 PC는 압축을 푼 시나리오 시작 기준 바이트 오프셋이다. 00~14의 21개 명령을 해석한다. 점프·분기·플래그는 VM 상태에 반영하고, 본문·그림·영상·전환·진동·사운드·엔딩 명령은 표시 또는 장치 처리를 요청하는 이벤트를 반환한다. VM의 반환 시점과 실제 장치 처리 완료 시점은 별도로 검증한다.
 
 Node.js와 Python용 Unicorn 2.1.4가 있는 환경에서 아래 명령으로 JS를 원본 MIPS 디스패처와 대조한다. 합성 피연산자를 넣고 두 실행의 PC, 플래그, 난수 상태와 선택지 대상 목록을 비교한다.
 
 ```sh
 python -B tools/compare_scenario.py /path/to/SLPS_018.63
+python -B tools/compare_handlers.py /path/to/SLPS_018.63
 ```
