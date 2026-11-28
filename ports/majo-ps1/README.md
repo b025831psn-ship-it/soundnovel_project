@@ -56,3 +56,14 @@ python -B tools/compare_background.py $files $trace 7313=TITLE.P 9448=ATOGAKI.P 
 `GameSession`은 타이틀의 새로 시작/이어하기, 원본 순서의 네 이름 항목, 독서 중 메뉴, 저장과 불러오기를 한 상태로 유지한다. 빈 128 KiB 가상 메모리 카드로 시작하며 원본 제품 코드 `BISLPS-01863`의 한 블록에 이어하기 상태를 둔다. 일본어 기본값은 `津田 俊夫`·`中込 依子`, 한글 기본값은 `츠다 토시오`·`나카고메 요리코`다. 성과 이름은 각각 최대 네 글자이며 가나·한자·영숫자·기호, 웹 한글판에서는 한글도 입력할 수 있다.
 
 `AudioDirector`는 비공개 포트 데이터 manifest의 정확한 loopStart/loopEnd로 음악을 반복하고 같은 곡 재요청, 정지, 효과음 뱅크 초기화를 처리한다. `TransitionPlayer`는 VM의 전환 action을 VSync 단위의 그림·본문 명암으로 변환한다. 공개 저장소에는 음원이나 그림, 저장 데이터가 들어 있지 않다.
+
+## 한글 글꼴
+
+`tools/build_ko_font.py`는 비공개 번역 커밋의 문자를 16×13, 글리프당 원본 KF1과 같은 26바이트로 만든다. 원본과 한글 모두 `drawBitmapGlyph`를 지나므로 잉크·그림자·기준점이 같다. 한글 경로는 보통 글자 15px, 공백 6px로 전진하고 270px를 넘으면 줄을 바꾼다. 9줄을 넘는 페이지는 확인 입력이 필요한 자동 페이지로 나누며 그 ID 목록과 해결되지 않은 넘침을 비공개 `report.json`에 기록한다.
+
+```sh
+python -B tools/build_ko_font.py --translation-repo /private/majo-tachi-ps1-kor --commit b0f613d --font /path/to/NotoSansCJK-Regular.ttc --output /private/port-data/font/ko
+python -B tools/render_ko_sample.py /private/port-data/font/ko /private/ko-sample.png --browser /path/to/chromium
+```
+
+이름 조사는 `은(는)·이(가)·을(를)·과(와)·(으)로·(이)라고·(이)라는·(이)랑·(이)야·이었다(였다)`를 지원한다. `(으)로`는 ㄹ 받침 예외를 적용한다. `[wNN]`은 번역 데이터 순서 그대로 글자별 VSync 대기로 재생한다. TTF, 생성 KF1, 번역문과 검사 ID 목록은 공개 저장소에 커밋하지 않는다.

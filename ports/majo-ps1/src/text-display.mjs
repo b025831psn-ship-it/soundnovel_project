@@ -1,3 +1,16 @@
+export function drawBitmapGlyph(frame, font, glyph, x, y, palette) {
+  const {width, height, pixels} = frame;
+  const [ink, shadow] = palette;
+  for (const [dx, dy, color] of [[1, 1, shadow], [1, 0, shadow], [0, 1, shadow], [0, 0, ink]]) {
+    for (let row = 0; row < 13 && y + row + dy < height; row++) {
+      const mask = (font[glyph + 2*row] << 8) | font[glyph + 2*row + 1];
+      for (let col = 0; col < 16 && x + col + dx < width; col++) {
+        if (mask & (0x8000 >> col)) pixels[(y + row + dy) * width + x + col + dx] = color;
+      }
+    }
+  }
+}
+
 // Each KF1 glyph has thirteen big-endian rows. The caller supplies both
 // fonts and the two code-range tables from its private SLPS-01863 data.
 export class TextDisplay {
@@ -40,20 +53,11 @@ export class TextDisplay {
     const glyph = (range[1] + code - range[0]) * 26;
     const font = this.fonts[bank];
     if (glyph + 26 > font.length) throw new RangeError(`Glyph outside KF1: ${code.toString(16)}`);
-    const {width, height, pixels} = this.frame;
     const x = 21 + 15 * this.column;
     const y = 24 + 24 * this.line;
     const palette = this.palettes[this.colorIndex];
     if (!palette) throw new Error(`Missing text palette ${this.colorIndex}`);
-    const [ink, shadow] = palette;
-    for (const [dx, dy, color] of [[1, 1, shadow], [1, 0, shadow], [0, 1, shadow], [0, 0, ink]]) {
-      for (let row = 0; row < 13 && y + row + dy < height; row++) {
-        const mask = (font[glyph + 2*row] << 8) | font[glyph + 2*row + 1];
-        for (let col = 0; col < 16 && x + col + dx < width; col++) {
-          if (mask & (0x8000 >> col)) pixels[(y + row + dy) * width + x + col + dx] = color;
-        }
-      }
-    }
+    drawBitmapGlyph(this.frame, font, glyph, x, y, palette);
     this.column++;
     if (this.column === 18) {
       this.column = 0;
