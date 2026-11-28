@@ -39,6 +39,9 @@ function whenReady(callback) {
 }
 
 // Tap rows from the retail renderer in native coordinates; a tap elsewhere is ○.
+// The frame is shown 4 lines higher than the game draws it (src/machine-browser.js displayShift), so a
+// point of the page is that much lower in the game's own coordinates.
+const DISPLAY_SHIFT = new URLSearchParams(location.search).get("display") === "original" ? 0 : 4;
 function nativePoint(event) {
   const box = canvas.getBoundingClientRect();
   // Drawn a quarter turn round (iPhone full screen held upright): the box is the turned one, so the
@@ -49,7 +52,7 @@ function nativePoint(event) {
   const v = turned ? (box.right - event.clientX) / box.width : (event.clientY - box.top) / box.height;
   return {
     x: Math.max(0, Math.min(W - 1, Math.floor(u * W))),
-    y: Math.max(0, Math.min(H - 1, Math.floor(v * H))),
+    y: Math.max(0, Math.min(H - 1, Math.floor(v * H) + DISPLAY_SHIFT)),
   };
 }
 // While the screen offers rows, a tap goes to the nearest row within REACH native pixels (rows are
