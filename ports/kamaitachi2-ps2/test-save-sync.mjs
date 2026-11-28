@@ -7,9 +7,9 @@ import { createRequire } from 'node:module';
 const require = createRequire(import.meta.url);
 let chromium, devices;
 try { ({chromium, devices} = require('playwright')); } catch { ({chromium, devices} = require('/opt/node22/lib/node_modules/playwright')); }
-const base = process.argv[2] || 'http://127.0.0.1:8770/kamaitachi2-ps2/';
+const base = (process.argv[2] || 'http://127.0.0.1:8770/kamaitachi2-ps2/') + '?devices=1';
 const browser = await chromium.launch({args:['--autoplay-policy=no-user-gesture-required']});
-const scene = page => page.evaluate(() => document.querySelector('canvas').dataset.scene);
+const scene = page => page.evaluate(() => document.querySelector('#screen').dataset.scene);
 const status = page => page.evaluate(() => document.querySelector('#status').textContent);
 
 async function open(context, label) {
@@ -17,7 +17,7 @@ async function open(context, label) {
   const errors = [];
   page.on('pageerror', e => errors.push(`${label}: ${e.message} ${e.stack}`)); page.on('console', m => { if (m.type() === 'error' && !m.text().includes('409')) errors.push(`${label} console: ${m.text()}`); });
   await page.goto(base);
-  await page.waitForFunction(() => !['loading', 'ready', undefined].includes(document.querySelector('canvas')?.dataset.scene), null, {timeout:60000});
+  await page.waitForFunction(() => !['loading', 'ready', undefined].includes(document.querySelector('#screen')?.dataset.scene), null, {timeout:60000});
   return {page, errors};
 }
 
@@ -28,7 +28,7 @@ async function toTitle(page) {
 }
 
 // Enter through everything; names keep their defaults (△ then はい).
-async function playTo(page, want, limit = 600) {
+async function playTo(page, want, limit = 1500) {
   for (let i = 0; i < limit; i++) {
     const s = await scene(page);
     if (s === want) return;
@@ -40,9 +40,9 @@ async function playTo(page, want, limit = 600) {
   throw new Error(`did not reach ${want} (at ${await scene(page)})`);
 }
 
+// The device-linking dialog: the bar's cloud button, shown with ?devices=1 (shared/save/sync-ui.js).
 async function dialog(page) {
-  await page.click('#menu-button');
-  await page.click('[data-menu="saves"]');
+  await page.click('button.icon[title="저장 동기화"]');
   await page.waitForSelector('#save-dialog[open]');
 }
 const button = (page, text) => page.locator('#save-dialog button', {hasText:text}).first();
@@ -90,7 +90,7 @@ try {
   assert.equal(result.phoneChoice, result.pcChoice);
 
   // Suspend slot: back to the title, continue from the dialog.
-  await b.page.click('#menu-button'); await b.page.click('[data-menu="title"]');
+  await b.page.reload();
   await toTitle(b.page);
   await dialog(b.page);
   await button(b.page, '마지막 장면에서 이어하기').click();

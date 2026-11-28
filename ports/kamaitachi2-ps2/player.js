@@ -5,20 +5,23 @@ import { LoopingMusic } from './music.js';
 import { SePlayer } from './se-player.js';
 import { psychometryRegion } from './psychometry-grid.js';
 import { openSaves, varsToArray, arrayToVars, GAME_ID } from './save.js';
-import { startGate } from '/shared/player/start-gate.js';
 
-const canvas = document.querySelector('canvas');
+const canvas = document.querySelector('#screen');
 const movie = document.querySelector('#movie');
 const loading = document.querySelector('#loading');
 const status = document.querySelector('#status');
-const shell = document.querySelector('main');
 const menuButton = document.querySelector('#menu-button');
-const gameMenu = document.querySelector('#game-menu');
 const asset = name => new URL('assets/' + name, import.meta.url).href;
+// shared/player/start-gate.js: every port starts at once (새로하기 / 이어하기 first); each tap or key wakes
+// the sound. Without the hub's /shared/ the build starts straight away.
 async function startImmediately() {
-  // This port starts without a gate. The global gesture listeners below wake
-  // audio on the first real press, so the private build remains self-contained.
-  document.querySelector('#loading').hidden = true;
+  try {
+    const {startGate} = await import('/shared/player/start-gate.js');
+    await startGate(document.querySelector('#stage'), {onPress: () => { unlockAudio(); }});
+  } catch (error) {
+    console.warn('Start gate unavailable', error);
+    document.querySelector('#loading').hidden = true;
+  }
 }
 const SCENEPACK_EFFECT_HANDLER = Object.freeze({
   0x05:0x1abb18,0x08:0x1abc38,0x09:0x1abc88,0x0a:0x1abcd8,
@@ -34,18 +37,18 @@ const loopFrames = {
 const music = new LoopingMusic({
   asset, loopFrames, onBlocked: () => { status.textContent = '오디오를 재생하려면 화면을 눌러 주세요.'; },
 });
-let se = null, seStarting = null, seContext = null;
+let se = null, seStarting = null, seContext = null, seGain = null;
 const pendingSe = [];
-// Called on every tap / key (shared/player/start-gate.js). resume() is not awaited: a press that may not
-// start audio (iPhone pointerdown) would leave it pending forever and block the sound effects; the next
-// press simply asks again.
 async function unlockAudio() {
   music.unlock();
   if (seContext && seContext.state !== 'running') seContext.resume().catch(() => {});
   if (!seStarting) seStarting = (async () => {
-    const context = seContext = new AudioContext({sampleRate:48000});
-    context.resume().catch(() => {});
-    se = await SePlayer.create(context, name => asset('se/' + name));
+    seContext = new AudioContext({sampleRate:48000});
+    seContext.resume().catch(() => {});
+    seGain = seContext.createGain();
+    seGain.gain.value = masterVolume;
+    seGain.connect(seContext.destination);
+    se = await SePlayer.create(seContext, name => asset('se/' + name), seGain);
     for (const command of pendingSe.splice(0)) se.command(command);
     return se;
   })().catch(error => { console.warn('SE unavailable', error); seStarting = null; seContext = null; });
@@ -71,7 +74,8 @@ const sn4Style = {speed:1, letterSpacing:0, lineSpacing:7, fontType:0, fontSize:
 let scene = 'loading', index = 0, role = 0, page = 0, revealed = 0;
 let names = [], autosave = false, slot = 0, entered = 0, lastFrame, userNotice = '';
 let idleMovie = 'opening';
-let menuOpen = false, filled = false;
+// The player's volume (shell.js slider, 0..1) over every sound of the game.
+let masterVolume = 1;
 let textWaits = [];
 let textSpeeds = [];
 let textColors;
@@ -136,42 +140,16 @@ function enter(next, selected = 0) {
   entered = performance.now();
   canvas.dataset.scene = next;
   userNotice = '';
-  closeMenu();
+  // The corner button (the shared shell's, as in the PS1 port): × inside the game's own screens that
+  // go back with ×; elsewhere the original has no menu this build opens, so it rests unavailable.
+  // It is hidden during the logo and movies, and the quick-save and report buttons beside it with it.
   menuButton.hidden = !['title','story','complete','choice','choice-wait','autosave','slot',
-    'file-select','created','save-note','name','confirm'].includes(next);
+    'file-select','created','save-note','name','confirm','click-map','panel','criminal-name','cipher'].includes(next);
+  const back = ['autosave','slot','file-select','name','confirm'].includes(next) ||
+    (next === 'criminal-name') || (next === 'panel' && Boolean(specialInput?.fallback));
+  menuButton.classList.toggle('unavailable', !back);
+  menuButton.classList.toggle('is-back', back);
   announce();
-}
-
-function closeMenu() {
-  menuOpen = false;
-  gameMenu.hidden = true;
-  menuButton.classList.remove('is-back');
-}
-
-function openMenu() {
-  if (!['title','story','complete','choice','choice-wait'].includes(scene)) return;
-  menuOpen = true;
-  gameMenu.querySelector('[data-menu="title"]').hidden = scene === 'title';
-  gameMenu.hidden = false;
-  menuButton.classList.add('is-back');
-}
-
-async function toggleFullscreen() {
-  if (filled) {
-    filled = false;
-    document.documentElement.classList.remove('filled');
-    return;
-  }
-  if (document.fullscreenElement) return document.exitFullscreen();
-  if (document.fullscreenEnabled && shell.requestFullscreen) {
-    try {
-      await shell.requestFullscreen({navigationUI:'hide'});
-      await globalThis.screen.orientation?.lock?.('landscape').catch(() => {});
-      return;
-    } catch { /* iPhone and embedded browsers use the rotated fill fallback. */ }
-  }
-  filled = true;
-  document.documentElement.classList.add('filled');
 }
 
 function announce() {
@@ -282,7 +260,7 @@ function stopMusic(options) {
 function cue(name) {
   const sound = cues[name];
   sound.currentTime = 0;
-  sound.volume = .6;
+  sound.volume = .6 * masterVolume;
   sound.play().catch(() => {});
 }
 
@@ -302,13 +280,11 @@ function playMovie(file, next, loop = false) {
   movie.onended = next;
   movie.muted = false;
   movie.play().catch(error => {
-    // The game starts before any tap (shared/player/start-gate.js): the browser then only lets a muted
-    // movie play, so it plays muted and the sound comes on with the first tap or key.
     if (error.name === 'NotAllowedError') {
       movie.muted = true;
       movie.play().catch(() => {});
       const unmute = () => { movie.muted = false; };
-      for (const type of ['pointerdown', 'keydown']) addEventListener(type, unmute, { once: true, capture: true });
+      for (const type of ['pointerdown', 'keydown']) addEventListener(type, unmute, {once:true, capture:true});
       return;
     }
     if (error.name !== 'AbortError') fail('브라우저에서 영상을 재생할 수 없습니다.');
@@ -1085,9 +1061,9 @@ window.addEventListener('blur', () => {
 });
 function canvasPoint(event) {
   const box = canvas.getBoundingClientRect();
-  // Portrait "filled" mode rotates <main> by 90deg (player.css): the canvas x axis
+  // Portrait "filled" mode turns the player a quarter round (shell.css): the canvas x axis
   // then runs down the screen and its y axis runs right to left.
-  if (filled && matchMedia('(orientation: portrait)').matches)
+  if (document.documentElement.classList.contains('filled') && innerHeight > innerWidth)
     return {x:(event.clientY - box.top) * 640 / box.height,
       y:(box.right - event.clientX) * 448 / box.width};
   return {x:(event.clientX - box.left) * 640 / box.width,
@@ -1095,7 +1071,6 @@ function canvasPoint(event) {
 }
 
 function touchGame(event) {
-  if (menuOpen) return;
   const {x, y} = canvasPoint(event);
   // render.js footer(): ○ 決定 at 112..180 and × 戻る at 197..267 on the memory-card,
   // slot and name-confirm screens (the created/save-note screens show ○ only).
@@ -1183,29 +1158,19 @@ function touchGame(event) {
   step('circle');
 }
 canvas.addEventListener('click', touchGame);
-menuButton.addEventListener('click', event => {
-  event.stopPropagation();
-  if (menuOpen) closeMenu();
-  else if (['title','story','complete','choice','choice-wait'].includes(scene)) openMenu();
-  else step('cross');
+for (const type of ['pointerdown', 'pointerup', 'click']) menuButton.addEventListener(type, event => event.stopPropagation());
+menuButton.addEventListener('click', () => {
+  if (menuButton.classList.contains('is-back')) step('cross');
   canvas.focus();
-});
-gameMenu.addEventListener('click', event => {
-  const action = event.target.dataset.menu;
-  if (action === 'resume') closeMenu();
-  else if (action === 'fullscreen') { closeMenu(); toggleFullscreen(); }
-  else if (action === 'title') { closeMenu(); title(false); }
-  else if (action === 'saves') { closeMenu(); syncUi?.open(); }
 });
 // 오류 신고 (/shared/player/report-button.js): where the player is and the sentence on screen.
 globalThis.soundnovelReport = () => ({
   scene: sn4Mode ? `${sn4.label}+${sn4.pc}` : scene,
   text: scene === 'choice' && sn4Mode ? sn4Event.targets.map(t => sn4.choiceText(t)).join(' / ') : storyText(),
 });
-// 저장과 기기 연결 (sync-ui.js): only with the shared store, i.e. when the build is served by the hub.
-let syncUi = null;
+// Saves (shared/save/sync-ui.js, as every port): the quick-save disk and the report button beside the
+// corner button, background sync of a linked device. Only when the hub serves /shared/.
 if (saves.store) {
-  const savesButton = gameMenu.querySelector('[data-menu="saves"]');
   saves.store.subscribe(event => { if (event.type === 'remote') saved = saves.latest(); });
   const boot = {
     canContinue:() => Boolean(saves.suspended()),
@@ -1217,18 +1182,25 @@ if (saves.store) {
       resumeAt(point);
       return true;
     },
+    continueLabel:'마지막 장면에서 이어하기',
     // Quick save (/shared/save/quick-save.js) calls this just before it uploads: the current resume point.
     saveNow:() => suspend(),
   };
-  import('./sync-ui.js').then(({mountSyncUi}) => mountSyncUi({store:saves.store, gameId:GAME_ID, parent:document.querySelector('main'),
-    onPaint:bad => savesButton.classList.toggle('attention', bad), onClose:() => canvas.focus(), boot})).then(ui => { syncUi = ui; }).catch(error => console.warn('Sync dialog unavailable', error));
-  // 빠른 저장: the disk button left of the menu button (저장 → 4-digit code, 불러오기 → carry on).
-  import('/shared/save/quick-save.js').then(m => m.mountQuickSave({store:saves.store, gameId:GAME_ID, boot})).then(() => import('/shared/player/report-button.js')).then(m => m.mountReport({gameId:GAME_ID, boot}))
-    .catch(error => console.warn('Quick save unavailable', error));
-} else gameMenu.querySelector('[data-menu="saves"]').hidden = true;
-document.addEventListener('fullscreenchange', () => {
-  if (!document.fullscreenElement) globalThis.screen.orientation?.unlock?.();
-});
+  // 이어하기 before the game (start-choice.js) puts a typed code's saves straight into this store.
+  globalThis.soundnovelSave = {store:saves.store, gameId:GAME_ID, boot};
+  import('/shared/save/sync-ui.js').then(m => m.mountSyncUi({api:globalThis.soundnovelSave}))
+    .catch(error => console.warn('Save dialog unavailable', error));
+}
+// shell.js (the shared player bar): volume and the press that wakes the sound.
+globalThis.kamaitachi2Ps2 = {
+  setVolume(level) {
+    masterVolume = Math.max(0, Math.min(1, level));
+    music.setMaster(masterVolume);
+    if (seGain) seGain.gain.value = masterVolume;
+    movie.volume = masterVolume;
+  },
+  resume: () => unlockAudio(),
+};
 try {
   const [response, sn4Response] = await Promise.all([fetch(asset('opening.json')), fetch(asset('sn4.json'))]);
   if (!response.ok || !sn4Response.ok) throw new Error('Missing opening or SN4 data');
@@ -1294,7 +1266,6 @@ try {
   requestAnimationFrame(frame);
 } catch { fail('게임 데이터를 불러오지 못했습니다.'); }
 if (scene === 'ready') {
-  // shared/player/start-gate.js: every port starts at once; each tap or key wakes the sound.
-  await startGate(stage, { onPress: () => { unlockAudio(); } });
+  await startImmediately();
   intro();
 }
