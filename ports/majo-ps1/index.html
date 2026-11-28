@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>마녀들의 잠 ―부활제―</title>
+<link rel="stylesheet" href="../../shared/player/shell.css">
+<link rel="stylesheet" href="shell.css">
+</head>
+<body>
+<main class="sn-shell" id="shell">
+  <section class="sn-stage">
+    <div class="sn-screen-box">
+      <canvas class="sn-screen" id="screen" width="320" height="240" aria-label="게임 화면 320×240"></canvas>
+      <div class="sn-overlay" id="overlay"><div class="sn-panel" id="panel" role="dialog" aria-live="polite"></div></div>
+    </div>
+  </section>
+  <footer class="sn-toolbar">
+    <span class="sn-status" id="status">포트 데이터 확인 중</span>
+    <button id="menu" type="button" aria-label="독서 메뉴">☰</button>
+    <button id="save" type="button" aria-label="저장">▣</button>
+    <button id="report" type="button" aria-label="대사 신고">!</button>
+  </footer>
+</main>
+<script type="module" src="player.mjs"></script>
+</body>
+</html>
