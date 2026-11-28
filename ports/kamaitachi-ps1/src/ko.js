@@ -92,6 +92,22 @@ export function pieceSpans(bytes, texts, res) {
   const n = u16(bytes, 0) / 2, offs = Array.from({ length: n }, (_, i) => u16(bytes, 2 * i)), map = resourceOffsets(bytes, texts), pad = (v, k) => String(v).padStart(k, "0");
   return (texts ?? []).map(([rec, off, t]) => { const a = map.toNew(offs[rec] + off) + 1; return [a, a + fromBase64(t).length, `${pad(res, 3)}-${pad(rec, 3)}-${pad(off, 4)}`]; }).sort((x, y) => x[0] - y[0]);
 }
+// The lines of a page as text, for an error report (machine-browser.js): the Korean text of the
+// build and the Japanese text of the original resource, read back with the two character tables.
+export function pieceTexts(bytes, script, res, ids) {
+  const chars = new Map([[0x8140, " "]]), single = new Set([..."@rRLpPgko"].map((c) => c.charCodeAt(0)));
+  [...(script.chars ?? "")].forEach((ch, i) => chars.set(koCode(i), ch));
+  [...(script.orig?.chars ?? "")].forEach((ch, i) => chars.set(script.orig.codes[i], ch));
+  const read = (b) => { let t = ""; for (let i = 0; i < b.length;) { const c = b[i]; if (c >= 0x78) { t += chars.get(c << 8 | b[i + 1]) ?? "?"; i += 2; } else if (c === 0x20) { t += " "; i++; } else i += single.has(c) ? 1 : 2; } return t.trim(); };
+  const n = u16(bytes, 0) / 2, offs = Array.from({ length: n }, (_, i) => u16(bytes, 2 * i)), pad = (v, k) => String(v).padStart(k, "0");
+  const out = [];
+  for (const [rec, off, t] of script.resources?.[res] ?? []) {
+    const id = `${pad(res, 3)}-${pad(rec, 3)}-${pad(off, 4)}`; if (!ids.includes(id)) continue;
+    const b = bytes.subarray(offs[rec], rec + 1 < n ? offs[rec + 1] : bytes.length);
+    out.push({ id, ko: read(fromBase64(t)), ja: read(b.subarray(off + 1, textEnd(b, off + 1))) });
+  }
+  return out.sort((a, b) => ids.indexOf(a.id) - ids.indexOf(b.id));
+}
 // The members of SCE.PAC, unpacked: id -> bytes.
 export function sceMembers(pac) {
   const rows = []; for (let i = 0; ; i += 4) { const id = u16(pac, i), s = u16(pac, i + 2); rows.push({ id, s }); if (id === 0xffff) break; }
@@ -140,6 +156,8 @@ export function koBuild(pacs, ko) {
   return { pacs: { ...pacs, SCE: patchScePac(pacs.SCE, ko.script) }, text: { font: ko.font, glyphs: ko.script.glyphs, space: ko.script.space ?? 6, hang: new Set(ko.script.hang ?? []),
       // strings of the EXE that did not fit their place: old address -> new address (title.js drawString, scenario/lib.js textStart)
       moved: new Map(ko.script.moved ?? []),
+      // labels the original draws centred: address -> pixels to the right for the shorter translation (title.js drawString)
+      centre: new Map(ko.script.centre ?? []),
       // the title section of the flowchart table: kept in spare RAM; the flowchart's title pointer is turned to it (menu/calls.js)
       chart: ko.script.chart ? { addr: ko.script.chart.addr, bytes: fromBase64(ko.script.chart.bytes) } : null,
       // the culprit judge: address of a name of its table -> the Korean names taken as that name (menu/calls.js)

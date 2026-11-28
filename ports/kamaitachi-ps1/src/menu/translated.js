@@ -8,6 +8,8 @@
 // caller's sp). Generators: each frame the original waits (VSync through 0x80013f34) is a yield.
 import { call, mult, div } from "./calls.js";
 import { offerLive as offer, withdraw, box } from "../touch.js";
+// Korean: the box of the 「저장 중」 message (x, y, w, h); the original's is 100, 64, 120, 28 for its one short line
+const SAVING_BOX = [44, 64, 232, 56];
 
 // 0x80018cdc, translated instruction by instruction (434 instructions).
 export function* menu(ctx, a0 = 0, a1 = 0, a2 = 0, a3 = 0) {
@@ -7012,6 +7014,7 @@ export function* f80033648(ctx, a0 = 0, a1 = 0, a2 = 0, a3 = 0) {
     a3 = s1 | 0;
     s0 = 0x80010000 | 0;
     s0 = (s0 + 6348) | 0;
+    if (m.ko) a3 = SAVING_BOX[3]; // Korean: the lines of the taller 「저장 중」 message are cleared too
     m.write(((sp) + 16) >>> 0, 0 >>> 0, 4); [v0, v1] = yield* call(ctx, sp, 0x80037784, a0, a1, a2, a3);
   case 0x8003373c:
     a0 = (0 + 70) | 0;
@@ -7761,6 +7764,7 @@ export function* f8002afb8(ctx, a0 = 0, a1 = 0, a2 = 0, a3 = 0) {
     a3 = (0 + 28) | 0;
     s0 = 0x80010000 | 0;
     s0 = (s0 + 6244) | 0;
+    if (m.ko) a3 = SAVING_BOX[3]; // Korean: the three-line 「저장 중」 message (tools/ko/build-ko.py CENTRE_BOX)
     m.write(((sp) + 16) >>> 0, 0 >>> 0, 4); [v0, v1] = yield* call(ctx, sp, 0x80037784, a0, a1, a2, a3);
   case 0x8002b210:
     a0 = (0 + 106) | 0;
@@ -7781,7 +7785,8 @@ export function* f8002afb8(ctx, a0 = 0, a1 = 0, a2 = 0, a3 = 0) {
     m.write(((sp) + 20) >>> 0, s3 >>> 0, 4);
     m.write(((sp) + 24) >>> 0, s2 >>> 0, 4);
     m.write(((sp) + 28) >>> 0, s1 >>> 0, 4);
-    m.write(((sp) + 32) >>> 0, s0 >>> 0, 4); [v0, v1] = yield* call(ctx, sp, 0x8003c86c, a0, a1, a2, a3);
+    m.write(((sp) + 32) >>> 0, s0 >>> 0, 4); if (m.ko) [a0, a1, a2, a3] = SAVING_BOX;
+    [v0, v1] = yield* call(ctx, sp, 0x8003c86c, a0, a1, a2, a3);
   case 0x8002b260:
      [v0, v1] = yield* call(ctx, sp, 0x80039288, a0, a1, a2, a3);
   case 0x8002b268:
@@ -7795,7 +7800,8 @@ export function* f8002afb8(ctx, a0 = 0, a1 = 0, a2 = 0, a3 = 0) {
     m.write(((sp) + 20) >>> 0, s3 >>> 0, 4);
     m.write(((sp) + 24) >>> 0, s2 >>> 0, 4);
     m.write(((sp) + 28) >>> 0, s1 >>> 0, 4);
-    m.write(((sp) + 32) >>> 0, s0 >>> 0, 4); [v0, v1] = yield* call(ctx, sp, 0x8003c86c, a0, a1, a2, a3);
+    m.write(((sp) + 32) >>> 0, s0 >>> 0, 4); if (m.ko) [a0, a1, a2, a3] = SAVING_BOX;
+    [v0, v1] = yield* call(ctx, sp, 0x8003c86c, a0, a1, a2, a3);
   case 0x8002b298:
      [v0, v1] = yield* call(ctx, sp, 0x80039288, a0, a1, a2, a3);
   case 0x8002b2a0:

@@ -8,8 +8,9 @@
 // holds it), kept in localStorage after every write; runtime.exportCard() / importCard(bytes)
 // hand the image to and from the shell (e.g. the save server).
 import { applyEdits } from "./ko-text.js";
-import { patchScePac, sceMembers, resourceOffsets, turnBookState, pieceSpans } from "./ko.js";
+import { patchScePac, sceMembers, resourceOffsets, turnBookState, pieceSpans, pieceTexts } from "./ko.js";
 import { Machine } from "./machine.js";
+import { snapshot } from "./helpers.js";
 import { current } from "./touch.js";
 import { machineSound } from "./machine-sound.js";
 import { rangeSource, xaFileName } from "./xa.js";
@@ -166,7 +167,8 @@ export async function startMachine({ canvas, dataRoot, audio = true, onProgress 
   const offsetMaps = () => { const raw = sceMembers(pacs.SCE), maps = new Map(); return (res) => maps.get(res) ?? maps.set(res, raw.has(res) ? resourceOffsets(raw.get(res), ko?.script.resources[res]) : null).get(res); };
   if (resume && saves && !jump) {
     try {
-      const p = saves.suspend.read()?.payload, book = p?.book | 0, file = p && book < 3 ? bookFile(card, book) : null, st = p ? fromBase64(p.state) : null;
+      // a new story has no book on the card until the game first saves: the state alone is carried on then
+      const p = saves.suspend.read()?.payload, book = p?.book | 0, file = p && book < 3 ? bookFile(card, book) ?? new Uint8Array(0x2000) : null, st = p ? fromBase64(p.state) : null;
       if (!file || st.length !== BOOK_STATE + 100) throw new Error("nothing to carry on from");
       const map = offsetMaps(); if (!turnBookState(st, (res, off) => map(res)?.toNew(off) ?? off)) throw new Error("the state does not fit this script");
       const real = card.bytes.slice(), one = new MemoryCard(), data = file.slice(0, 0x2000);
@@ -192,19 +194,32 @@ export async function startMachine({ canvas, dataRoot, audio = true, onProgress 
   machine.onCardWrite = (c) => { if (jump?.done) return; storeCard(c.bytes); saves?.push(); runtime.onCardChange?.(); };
   // the store changed under the game (another device's save came in, a conflict was settled): the card follows
   saves?.store.subscribe((e) => { if (e.type === "remote" && !jump?.done && saves.pull()) { storeCard(card.bytes); runtime.onCardChange?.(); } });
-  // The suspend slot: the state of the last checkpoint (script command 0x20 keeps it in RAM: the work
-  // copy and slot 0), written when it has changed and the story waits for a press. Its offsets are
-  // turned to the original script's, so the Japanese and the Korean build read the same slot.
+  // The suspend slot: a bookmark state (the work copy and slot 0, as script command 0x20 keeps them
+  // in RAM), written when it has changed and the story waits for a press. It is taken for the page
+  // on screen: the game's own routine (0x80032120) with the start of the page (0x8007940c) as the
+  // place to carry on from, and the game's RAM put back as it was. A page that starts inside a
+  // translated line has no place in the other script; the last checkpoint is kept for it instead.
+  // The offsets are turned to the original script's, so the Japanese and the Korean build read the same slot.
   const keepPage = saves ? (() => {
-    let last = "", n = 0, map = null;
-    return () => {
-      if (++n % 30 || jump || !machine.read(0x8007929e, 1) || machine.read(0x800795e2, 1) || [0x19, 0x1f].includes(machine.read(0x8007929c, 2))) return;
-      const st = new Uint8Array(BOOK_STATE + 100);
-      for (let i = 0; i < 100; i++) st[BOOK_STATE + i] = machine.read(0x8008cdc0 + i, 1);
-      const key = st.subarray(BOOK_STATE).join(); if (key === last) return; last = key;
-      for (let i = 0; i < BOOK_STATE; i++) st[i] = machine.read(0x8009eeb8 + i, 1);
-      map ??= offsetMaps();
-      if (turnBookState(st, (res, off) => map(res)?.toOld(off) ?? off)) saves.suspend.write({ book: machine.read(0x800792c2, 1), state: toBase64(st) });
+    let last = "", n = 0, map = null, started = false;
+    const SNAP = 0x8009eeb8, SLOT = 0x8008cdc0, m = machine.m, grab = (a, k) => { const b = new Uint8Array(k); for (let i = 0; i < k; i++) b[i] = m.read(a + i, 1); return b; };
+    const put = (a, b) => { for (let i = 0; i < b.length; i++) m.write(a + i, b[i], 1); };
+    const write = (st) => { map ??= offsetMaps(); return turnBookState(st, (res, off) => map(res)?.toOld(off) ?? off) && saves.suspend.write({ book: machine.read(0x800792c2, 1), state: toBase64(st) }); };
+    const state = () => { const st = new Uint8Array(BOOK_STATE + 100); st.set(grab(SNAP, BOOK_STATE)); st.set(grab(SLOT, 100), BOOK_STATE); return st; };
+    // now: the quick save button (any moment once a story runs)
+    return (now = false) => {
+      const res = machine.read(0x8007929c, 2);
+      if (jump || [0x19, 0x1f].includes(res)) return;
+      if (now ? !started : ++n % 30 || !machine.read(0x8007929e, 1) || machine.read(0x800795e2, 1)) return;
+      started = true;
+      const at = ((machine.read(0x8007940c, 4) >>> 0) - (machine.read(0x8007948c, 4) >>> 0)) >>> 0, key = `${res} ${at}`;
+      if (key === last && !now) return; last = key;
+      const check = state(); // the game's last checkpoint
+      snapshot(m, 0);
+      const st = state(); put(SNAP, check.subarray(0, BOOK_STATE)); put(SLOT, check.subarray(BOOK_STATE));
+      st[BOOK_STATE + 0x20] = res & 0xff; st[BOOK_STATE + 0x21] = res >> 8;
+      for (let i = 0; i < 4; i++) st[BOOK_STATE + 0x44 + i] = at >>> 8 * i & 0xff;
+      if (!write(st) && (check[BOOK_STATE + 0x20] | check[BOOK_STATE + 0x21])) write(check);
     };
   })() : null;
 
@@ -266,7 +281,16 @@ export async function startMachine({ canvas, dataRoot, audio = true, onProgress 
     machine, soundModule: snd.mod, lang: ko ? "ko" : "ja",
     // the shared save store (null in a debug run) and whether the suspend slot can be carried on from here
     saveStore: saves?.store ?? null,
-    canResume: () => { const p = saves?.suspend.read()?.payload; return !!p && !!bookFile(card, p.book | 0); },
+    canResume: () => { const p = saves?.suspend.read()?.payload; return !!p && (p.book | 0) < 3; },
+    // the quick save button: the last checkpoint goes to the suspend slot now
+    saveNow: () => keepPage?.(true),
+    // an error report: the lines on screen (ids of the translation files, Korean and Japanese text)
+    report: () => {
+      const res = machine.read(0x8007929c, 2), ids = page?.ids() ?? [], at = page?.resource() ?? res;
+      const lines = ids.length && page.raw.has(at) ? pieceTexts(page.raw.get(at), ko.script, at, ids) : [];
+      return { scene: ids.length ? `${ids[0]}${ids.length > 1 ? ` ~ ${ids.at(-1)}` : ""}` : `resource ${res}`, lang: ko ? "ko" : "ja", resource: res,
+        text: lines.map((l) => `${l.id}\n${l.ko}\n${l.ja}`).join("\n\n").slice(0, 4000) };
+    },
     input: { pulse(name) { const k = PULSE[name]; if (k) keys.set(k, HOLD); }, press(k) { keys.set(k, Infinity); }, release(k) { keys.delete(k); } },
     // the corner button: × inside the in-game menu (0x800795e2 is set while it is open) and in the
     // backlog (0x800792a0), the menu (triangle) while the game allows it (0x8007929f), otherwise nothing
@@ -318,24 +342,26 @@ export async function startMachine({ canvas, dataRoot, audio = true, onProgress 
   // coming when the display refreshes slowly (a phone in low power mode draws 30 times a second,
   // a hidden tab not at all). The picture is drawn on the display's own frames.
   let dirty = false;
-  // A debug run inside the admin page: the lines of the page on screen are told to the page around
-  // the game (admin/), so its editor follows the reading. A line is known by where the text
-  // pointer is in the running script; the list starts again when the text goes back up the screen.
-  const follow = debugCard && ko && window.parent !== window ? (() => {
-    const raw = sceMembers(pacs.SCE), spans = new Map(); let ids = [], y = 0, told = "";
-    return () => {
-      const res = machine.read(0x8007929c, 2), ptr = machine.read(0x800794c0, 4) >>> 0, at = ptr - (machine.read(0x8007948c, 4) >>> 0), line = machine.read(0x800794bc, 2);
+  // The lines of the page on screen: a line is known by where the text pointer is in the running
+  // script; the list starts again when the text goes back up the screen. An error report carries
+  // them (runtime.report), and a debug run inside the admin page tells them to the page around the
+  // game (admin/), so its editor follows the reading.
+  const page = ko ? (() => {
+    const raw = sceMembers(pacs.SCE), spans = new Map(); let ids = [], y = 0, told = "", at = 0;
+    const tell = debugCard && window.parent !== window;
+    return { ids: () => [...ids], resource: () => at, raw, step() {
+      const res = machine.read(0x8007929c, 2), ptr = machine.read(0x800794c0, 4) >>> 0, off = ptr - (machine.read(0x8007948c, 4) >>> 0), line = machine.read(0x800794bc, 2);
       if (line < y) ids = [];
       y = line;
       if (jump) return;
       if (ptr && !machine.read(0x80079500, 1) && raw.has(res)) { // a text being typed
         const list = spans.get(res) ?? spans.set(res, pieceSpans(raw.get(res), ko.script.resources[res], res)).get(res);
-        const hit = list.find(([a, e]) => at >= a && at <= e);
-        if (hit && !ids.includes(hit[2])) ids.push(hit[2]);
+        const hit = list.find(([a, e]) => off >= a && off <= e);
+        if (hit && !ids.includes(hit[2])) { if (at !== res) ids = []; at = res; ids.push(hit[2]); }
       }
       const now = ids.join(" ");
-      if (now !== told) { told = now; window.parent.postMessage({ type: "kamaitachi-ps1-page", ids: [...ids] }, location.origin); }
-    };
+      if (tell && now !== told) { told = now; window.parent.postMessage({ type: "kamaitachi-ps1-page", ids: [...ids] }, location.origin); }
+    } };
   })() : null;
   const tick = () => {
     if (stopped) return;
@@ -348,6 +374,7 @@ export async function startMachine({ canvas, dataRoot, audio = true, onProgress 
       // while the original's cursor walks.
       // They are run a few milliseconds at a time: a long walk in one go would keep the page from
       // sending sound for that long (a gap). No picture is drawn until the walk is over.
+      if (seek) machine.sound.quiet = true; // the walk's cursor sounds: one, at the end (below)
       if (seek) { machine.sound.still = true; const t0 = performance.now(); for (let n = 0; seek && n < 400 && !machine.error && performance.now() - t0 < 6; n++) machine.frame(held()); machine.sound.still = false; }
       // a debug jump: ○ every 40 frames, unseen and unheard, until the script of the wanted scene is the one running
       for (let n = 0; jump && n < 400 && !machine.error; n++) {
@@ -355,7 +382,10 @@ export async function startMachine({ canvas, dataRoot, audio = true, onProgress 
         if (machine.read(0x8007929c, 2) === jump.resource || ++jump.frames > 30000) { jump.done?.(); jump = null; }
         snd.js.out.length = 0; // the driver's own waits on the way (music changes) made samples: they are not played
       }
-      machine.frame(held()); soundFrame(); follow?.(); keepPage?.();
+      machine.frame(held());
+      // the cursor is there: its sound once, unless the row is chosen now (the choice has its own sound)
+      if (!seek && machine.sound.quiet) { const f = machine.sound.missed; machine.sound.quiet = false; machine.sound.missed = null; if (f && !steps.length) f(); }
+      soundFrame(); page?.step(); keepPage?.();
       for (const [k, n] of keys) { if (n !== Infinity) { if (n <= 1) keys.delete(k); else keys.set(k, n - 1); } }
       acc -= STEP; if (!seek) dirty = true;
     }
