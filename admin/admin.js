@@ -85,6 +85,7 @@ function review() {
   return { text, errors };
 }
 function show(id, quiet) {
+  id = game.itemOf?.(id) ?? id;
   const it = game.items.find((x) => x.id === id); if (!it) return;
   open = it; $("empty").hidden = true; $("edit").hidden = false;
   $("id").textContent = it.id;
@@ -142,7 +143,7 @@ async function start() {
   $("idle-text").textContent = "대사를 고른 뒤 「이 장면으로」를 누르면 게임이 여기에서 그 쪽부터 열립니다."; $("run").hidden = !game.runUrl;
   const [, piece] = location.hash.slice(1).split("/");
   search();
-  if (piece && game.items.some((it) => it.id === piece)) show(piece); else history.replaceState(null, "", `#${game.id}`);
+  if (piece && game.items.some((it) => it.id === (game.itemOf?.(piece) ?? piece))) show(piece); else history.replaceState(null, "", `#${game.id}`);
 }
 function editions() {
   const t = TITLES.find((x) => x.id === $("title").value);

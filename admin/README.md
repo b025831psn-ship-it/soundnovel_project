@@ -66,3 +66,7 @@ state into the debug card's book and presses through to the page. A line no repl
 at the nearest line before it in its record; a record no route passes has no entry state yet.
 
 Still to come (issue #44): the other titles.
+
+## 한 글자씩 찍히는 줄
+
+원본이 한 글자씩 따로 찍는 조각(한 레코드 안에서 한 글자 조각이 둘 이상 이어지는 곳)과 그 줄을 끝내는 조각은 목록과 편집창에서 한 줄로 보인다. 저장할 때 조각마다 원래 ID로 다시 나뉜다(한 글자 조각은 앞 공백과 글자 하나, 나머지는 마지막 조각). 어댑터의 `itemOf(id)`가 조각 ID를 줄 ID로 바꾼다.

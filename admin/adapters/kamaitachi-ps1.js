@@ -25,40 +25,73 @@ export default {
     const loadEdits = async () => { try { return await (await get("text-edits.json", true)).json(); } catch { return {}; } };
     const codec = koCodec(script), width = widthOf(font, script.glyphs, editor.widths);
     const env = { width, space: script.space ?? 6, hang: new Set(script.hang ?? []), names: script.names ?? {} };
-    const items = editor.items.map(([id, ja, ko]) => ({ id, ja, ko })), index = new Map(items.map((it, i) => [it.id, i]));
-    const game = { items, edits: await loadEdits() };
-    const now = (it) => game.edits[it.id]?.ko ?? it.ko;
-    // the pieces of the record of `id`, and where `id` is among them
-    const record = (id) => { let a = index.get(id), b = a; const key = id.slice(0, 7); while (a > 0 && items[a - 1].id.startsWith(key)) a--; while (b + 1 < items.length && items[b + 1].id.startsWith(key)) b++; return { list: items.slice(a, b + 1), at: index.get(id) - a }; };
-    const stateAt = (id, text) => { const { list, at } = record(id), st = {}; for (let i = 0; i < at; i++) toParts(now(list[i]), st); return st; };
-    const lines = (id, texts) => { // the screen pages with this piece, from the record typed in order
-      const { list, at } = record(id);
-      const pages = layout(list.map((it, i) => codec.encode(texts(it, i === at)).bytes), env);
-      return { pages: pages.filter((p) => p.lines.some((l) => l.some((g) => g.piece === at))), at };
+    const raw = editor.items.map(([id, ja, ko]) => ({ id, ja, ko })), index = new Map(raw.map((it, i) => [it.id, i]));
+    // Letters the original types one by one (a record's run of one-glyph pieces) and the piece that ends their
+    // line are one line here: { id (the first piece's), members, n (the one-letter pieces) }. It is saved piece
+    // by piece again (split), under the pieces' own ids.
+    const letter = (it) => it.ja.length === 1 && !/[\[\s]/.test(it.ja);
+    const items = [], home = new Map();
+    for (let i = 0; i < raw.length;) {
+      const key = raw[i].id.slice(0, 7); let j = i;
+      while (j < raw.length && letter(raw[j]) && raw[j].id.startsWith(key)) j++;
+      if (j - i < 2) { items.push(raw[i]); i++; continue; }
+      const n = j - i; if (j < raw.length && raw[j].id.startsWith(key)) j++;
+      const members = raw.slice(i, j), it = { id: members[0].id, ja: members.map((m) => m.ja).join(""), ko: members.map((m) => m.ko).join(""), members, n };
+      items.push(it); for (const m of members) home.set(m.id, it); i = j;
+    }
+    const byId = new Map(items.map((it) => [it.id, it]));
+    let saved = await loadEdits(); // the owner's edits as stored: by piece
+    const now = (m) => saved[m.id]?.ko ?? m.ko;
+    const current = (it) => (it.members ? it.members.map(now).join("") : now(it));
+    // the edits by line, as the page marks them
+    const marks = () => { const out = {}; for (const it of items) { const ms = (it.members ?? [it]).filter((m) => saved[m.id]); if (ms.length) out[it.id] = { ko: current(it), base: ms.every((m) => saved[m.id].base === m.ko) ? it.ko : "", at: ms.map((m) => saved[m.id].at).sort().at(-1) }; } return out; };
+    // a line's text given back to its pieces: each one-letter piece takes the spaces before its letter and the letter
+    const split = (it, text) => {
+      if (!it.members) return [text];
+      const out = []; let p = 0;
+      for (let k = 0; k < it.n; k++) {
+        let q = p; while (text[q] === " ") q++;
+        if (q >= text.length || text[q] === "[" || text[q] === "\n") return null;
+        const rest = k === it.n - 1 && it.members.length === it.n; out.push(rest ? text.slice(p) : text.slice(p, q + 1)); p = q + 1;
+      }
+      if (it.members.length > it.n) out.push(text.slice(p));
+      return out;
     };
-    const count = (shown) => shown.pages.reduce((n, p) => n + p.lines.filter((l) => l.some((g) => g.piece === shown.at)).length, 0);
+    const texts = (it, text) => { const parts = split(it, text); return parts && new Map((it.members ?? [it]).map((m, k) => [m.id, parts[k]])); };
+    const game = { items, edits: marks() };
+    // the pieces of the record of `id`, and where `id` is among them
+    const record = (id) => { let a = index.get(id), b = a; const key = id.slice(0, 7); while (a > 0 && raw[a - 1].id.startsWith(key)) a--; while (b + 1 < raw.length && raw[b + 1].id.startsWith(key)) b++; return { list: raw.slice(a, b + 1), at: index.get(id) - a }; };
+    const stateAt = (id, text) => { const { list, at } = record(id), st = {}; for (let i = 0; i < at; i++) toParts(now(list[i]), st); return st; };
+    const lines = (it, textOf) => { // the screen pages with this line, from the record typed in order
+      const { list, at } = record(it.id), n = it.members?.length ?? 1, mine = (piece) => piece >= at && piece < at + n;
+      const pages = layout(list.map((m) => codec.encode(textOf(m)).bytes), env);
+      return { pages: pages.filter((p) => p.lines.some((l) => l.some((g) => mine(g.piece)))), mine };
+    };
+    const count = (shown) => shown.pages.reduce((n, p) => n + p.lines.filter((l) => l.some((g) => shown.mine(g.piece))).length, 0);
 
     Object.assign(game, {
       label,
-      current: now,
+      current,
+      itemOf: (id) => home.get(id)?.id ?? id,
       scene: (id) => id.slice(0, 7),
       sceneName: (scene) => `장면 ${scene}`,
       // the game as a debug run in the frame, and the lines it says are on its screen
       runUrl: "/ports/kamaitachi-ps1/?debug=1",
-      onScreen: (data) => (data?.type === "kamaitachi-ps1-page" ? data.ids : null),
+      onScreen: (data) => (data?.type === "kamaitachi-ps1-page" ? [...new Set(data.ids.map((id) => home.get(id)?.id ?? id))] : null),
       // the text as the screen shows it, with the codes that keep their place as chips
       parts: (id, text) => toParts(text, stateAt(id)),
       text: (id, parts) => fromParts(parts, stateAt(id)),
       readable: (text) => toParts(text, {}).map((p) => (p.br ? "\n" : p.chip ? (/^\[n[12]\]$/.test(p.chip) ? `(${label(p.chip)})` : "") : p.text)).join(""),
       check(id, text) {
-        const it = items[index.get(id)], errors = [], warnings = [];
+        const it = byId.get(id), errors = [], warnings = [], over = texts(it, text);
         const r = codec.encode(text);
         if (locked(text).join("") !== locked(it.ko).join("")) errors.push("회색 표시가 지워졌거나 순서가 바뀌었습니다. 「원래 번역으로」를 누른 뒤 다시 고쳐 주세요.");
         if (r.missing.length) errors.push(`게임 글꼴에 없는 글자: ${r.missing.join(" ")}`);
         if (r.bad.length) errors.push(`쓸 수 없는 표시: ${r.bad.join(" ")}`);
         if (!plain(text).trim() && plain(it.ko).trim()) errors.push("대사가 비어 있습니다.");
+        if (!over) errors.push(`이 줄의 앞 ${it.n}글자는 한 글자씩 찍힙니다. 표시(회색) 앞에 글자가 ${it.n}개 이상 있어야 합니다.`);
         if (errors.length) return { errors, warnings };
-        const shown = lines(id, (x, me) => (me ? text : now(x))), ja = lines(id, (x) => x.ja);
+        const shown = lines(it, (m) => over.get(m.id) ?? now(m)), ja = lines(it, (m) => m.ja);
         if (shown.pages.some((p) => p.lines.length > LINES)) warnings.push(`이 쪽이 화면(${LINES}줄)을 넘칠 수 있습니다. 미리보기의 붉은 줄을 확인하세요.`);
         const n = count(shown), j = count(ja);
         if (n > j) warnings.push(`일본어보다 ${n - j}줄 깁니다 (${n}줄, 일본어 ${j}줄).`);
@@ -69,7 +102,7 @@ export default {
       },
       // One canvas per screen page that holds the piece: this piece bright, the rest of the page dim.
       preview(id, text) {
-        const shown = lines(id, (x, me) => (me ? text : now(x)));
+        const it = byId.get(id), over = texts(it, text) ?? new Map(), shown = lines(it, (m) => over.get(m.id) ?? now(m));
         return shown.pages.map((page) => {
           const rows = Math.max(LINES, page.lines.length), canvas = Object.assign(document.createElement("canvas"), { width: 320, height: TOP + LINE * rows + 6 });
           const g = canvas.getContext("2d"); g.fillStyle = "#101820"; g.fillRect(0, 0, canvas.width, canvas.height);
@@ -81,7 +114,7 @@ export default {
           const later = [];
           const glyph = (code, x, y, bright) => { const k = koGlyphPixels(font, script.glyphs, code); if (!k) return false; for (let r = 0; r < k.h; r++) for (let c = 0; c < k.w; c++) { const v = k.px[r * k.w + c]; if (v) put(x + c, y + r, v, bright); } return k.w + 1; };
           page.lines.forEach((line, n) => line.forEach((cell) => {
-            const y = TOP + LINE * n, bright = cell.piece === shown.at;
+            const y = TOP + LINE * n, bright = shown.mine(cell.piece);
             if (cell.name) { let x = cell.x; for (const ch of NAMES[cell.name] ?? "") { const c = codec.encode(ch).bytes; x += glyph(c[0] << 8 | c[1], x, y, bright) || 15; } return; }
             if (!glyph(cell.code, cell.x, y, bright)) later.push([codec.char.get(cell.code) ?? "?", cell.x, y, bright]); // a glyph of the original font: drawn with the browser's
           }));
@@ -96,9 +129,11 @@ export default {
       // true when the server took it; the edits of other devices are read first and kept
       async save(id, entry) {
         const all = await loadEdits();
-        if (entry) all[id] = entry; else delete all[id];
+        const it = byId.get(id), parts = entry && split(it, entry.ko);
+        if (entry && !parts) return "저장하지 못했습니다 (글자 수 부족).";
+        (it.members ?? [it]).forEach((m, k) => { if (entry && parts[k] !== m.ko) all[m.id] = { ko: parts[k], base: m.ko, at: entry.at }; else delete all[m.id]; });
         const r = await fetch(SAVE, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(all) });
-        if (r.ok) game.edits = all;
+        if (r.ok) { saved = all; game.edits = marks(); }
         return r.ok ? "" : r.status === 401 ? "비밀번호가 필요합니다. 페이지를 다시 열어 로그인해 주세요." : `저장하지 못했습니다 (${r.status}).`;
       },
     });
