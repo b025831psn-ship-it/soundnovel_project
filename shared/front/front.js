@@ -1,5 +1,5 @@
-// The hub's front page: the pension at night, the weather of this visit, and the song of the
-// greeting / name screen. The picture and the song come from the PS1 port's own data, drawn and played by
+// The hub's front page: the pension at night, the weather of this visit, and the Requiem
+// (song 9, 태우's pick over the name-screen Introduction, song 8). The picture and the song come from the PS1 port's own data, drawn and played by
 // the port's code (picture-view.js, music-view.js); nothing is copied out of the game.
 // The picture and the song load apart: if one fails on a browser, the other still comes.
 const pictureModule = import("/ports/kamaitachi-ps1/src/picture-view.js?v=9");
@@ -109,7 +109,7 @@ drawSharp().catch(() => pictureModule.then(({ drawPicture }) => drawPicture(pict
 // after a press starts it at the first tap or key anywhere. It plays on the front page and in the hub, not
 // in a game.
 let music = null, wanted = (() => { try { return localStorage.getItem("front-music") !== "off"; } catch { return true; } })();
-const loading = musicModule.then(({ songPlayer }) => songPlayer(DATA, { song: 8, volume: .45 })).then((m) => (music = m)).catch((e) => { fail("불러오기", e); return null; });
+const loading = musicModule.then(({ songPlayer }) => songPlayer(DATA, { song: 9, volume: .45 })).then((m) => (music = m)).catch((e) => { fail("불러오기", e); return null; });
 function showProblem() {
   let note = document.querySelector(".front-note");
   if (!note) { note = document.createElement("p"); note.className = "front-note"; document.body.append(note); }
