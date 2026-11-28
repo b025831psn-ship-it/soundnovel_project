@@ -2,14 +2,14 @@
 
 usage: python3 sn4dump.py scenario.sn4 out.json [table.md]
 """
-import json, os, re, struct, sys, collections
+import json, re, struct, sys, collections
 
-NOARG = {0x04,0x09,0x0B,0x0C,0x0D,0x0E,0x0F,0x10,0x11,0x12,0x13,0x14,0x15,0x16,0x17,0x1A,0x1B,0x1E,0x22,0x23,
-         0x27,0x28,0x29,0x2D,0x2E,0x2F,0x31,0x32,0x34,0x35,0x37,0x38,0x39,0x3A,0x3B,0x3C,0x3D,0x3E}
+NOARG = {0x04,0x09,0x0B,0x0C,0x0D,0x0E,0x10,0x11,0x12,0x13,0x15,0x16,0x17,0x1A,0x1B,0x1E,0x22,0x23,
+         0x27,0x28,0x29,0x2D,0x2E,0x2F,0x31,0x32,0x34,0x35,0x3A,0x3B,0x3C,0x3D,0x3E}
 U8 = {0x1F,0x40,0x41,0x45,0x46,0x47,0x48}
-U8U8 = {0x4C,0x4D,0x4E}
-BE32 = {0x50,0x51,0x53,0x54,0x55,0x56,0x57,0x59,0x5A,0x5B,0x5C,0x5D,0x5E,0x5F,0x60,0x61,0x62,0x63,0x64,0x65,0x66}
-SIZED = {0x68,0x69,0x6A,0x6B,0x6C,0x6F,0x70,0x71,0x72,0x73,0x74,0x76,0x79,0x7A,0x7B,0x7C,0x7D,0x7E,0x7F,0x81,0x83,0x84,0x85,0x86}
+U8U8 = {0x4C,0x4D}
+BE32 = {0x50,0x51,0x53,0x54,0x55,0x56,0x57,0x59,0x5A,0x5B,0x5C,0x5D,0x5E,0x60,0x61,0x62,0x64,0x65,0x66}
+SIZED = {0x68,0x69,0x6A,0x6B,0x6C,0x6F,0x70,0x71,0x72,0x73,0x74,0x76,0x79,0x7A,0x7B,0x7C,0x7E,0x7F,0x81,0x83,0x84,0x85}
 LABEL = re.compile(rb"\x85([\x02-\x40])(.)([\x20-\x7e]+?)\x00", re.S)
 
 def cstr(b): return b.split(b"\0")[0].decode("ascii")
@@ -22,6 +22,19 @@ def flagged_names(payload):
         flags.append(payload[pos]); types.append(payload[pos + 1])
         names.append(payload[pos + 2:end].decode("ascii")); pos = end + 1
     return names, flags, types
+
+def packed_labels(payload, count=None):
+    """Decode <record-size u8><ascii label>\0 entries used by direct-input commands."""
+    labels, pos = [], 0
+    while pos < len(payload) and (count is None or len(labels) < count):
+        record_size = payload[pos]; pos += 1
+        end = payload.index(b"\0", pos)
+        label = payload[pos:end].decode("ascii")
+        # The EE reader consumes the size field separately from the C string.
+        if record_size < len(label) + 1: raise ValueError("short packed label")
+        labels.append(label); pos = end + 1
+    if count is not None and len(labels) != count: raise ValueError("packed label count")
+    return labels, pos
 
 def sized_args(op, p):
     if op in (0x6A, 0x6B): return [p[1:-1].decode("ascii")]
@@ -43,6 +56,27 @@ def sized_args(op, p):
     if op == 0x7B:
         e = p.index(b"\0", 1)
         return [{"kind": p[0], "name": p[1:e].decode("ascii"), "param": list(p[e + 1:])}]
+    if op == 0x7A:
+        targets, used = packed_labels(p[1:], p[0])
+        if used != len(p) - 1: raise ValueError("click-map trailing bytes")
+        return [{"targets": targets}]
+    if op == 0x7E:
+        count = p[0]; panels = list(p[1:1 + count]); pos = 1 + count
+        target_count = sum(kind != 0x4E for kind in panels)
+        targets, used = packed_labels(p[pos:], target_count); pos += used
+        fallback, used = packed_labels(p[pos:], 1); pos += used
+        if pos != len(p): raise ValueError("panel trailing bytes")
+        return [{"panels": panels, "targets": targets, "fallback": fallback[0]}]
+    if op == 0x7F:
+        count = p[0]
+        targets, used = packed_labels(p[1:], count); pos = 1 + used
+        fallback, used = packed_labels(p[pos:], 1); pos += used
+        if pos != len(p): raise ValueError("delusion-panel trailing bytes")
+        return [{"targets": targets, "fallback": fallback[0]}]
+    if op == 0x81:
+        targets, used = packed_labels(p)
+        if used != len(p): raise ValueError("general-name trailing bytes")
+        return [{"targets": targets}]
     return [p.hex()]
 
 def decode_block(blk, base, bi, stats):
@@ -91,7 +125,10 @@ def decode_block(blk, base, bi, stats):
         elif op == 0x75: args = list(blk[pos + 1:pos + 5]); pos += 5
         elif op == 0x82:
             size = int.from_bytes(blk[pos + 2:pos + 4], "big")
-            p = blk[pos + 4:pos + 4 + size]; args = [blk[pos + 1], p.hex()]; pos += 4 + size
+            p = blk[pos + 4:pos + 4 + size]
+            targets, used = packed_labels(p)
+            if used != len(p): raise ValueError("criminal-name trailing bytes")
+            args = [{"mode": blk[pos + 1], "targets": targets}]; pos += 4 + size
         elif op in SIZED:
             size = blk[pos + 1]
             # The single 0x71 at tab05_0370 has a size byte one short of its NUL.
@@ -130,9 +167,7 @@ def main():
         got, miss, nl = decode_block(data[b:b + s], b, bi, stats)
         labels += got; missing += miss; linked += nl
     names = collections.Counter(l["label"] for l in labels)
-    # ScenarioLink header: the entry label is the C string at +0x20 (my01_0000 / lo00_0000).
-    entry = data[0x20:0x40].split(b"\0")[0].decode("ascii")
-    program = {"entry": entry, "source": "SCENARIO/" + os.path.basename(sys.argv[1]).split("__")[-1], "labels": labels}
+    program = {"entry": "my01_0000", "source": "SCENARIO/scenario.sn4", "labels": labels}
     json.dump(program, open(sys.argv[2], "w", encoding="utf-8"), ensure_ascii=False, separators=(",", ":"))
     print(f"blocks {n} link entries {linked} VM labels {len(labels)} ops {sum(len(l['ops']) for l in labels)}")
     print("labels not on an op boundary:", missing[:20], len(missing))
