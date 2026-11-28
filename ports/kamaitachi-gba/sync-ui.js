@@ -36,7 +36,7 @@ function ready() {
 }
 
 export async function mountSyncUi({ api = ready(), fetchImpl } = {}) {
-  const { store, boot } = await api;
+  const { store, boot, gameId = GAME } = await api; // gameId: the port this page plays (the PS1 page loads this file too)
   document.head.append(el("style", { textContent: css }));
   const dialog = el("dialog", { id: "save-dialog" });
   const button = el("button", { className: "icon", type: "button", title: "저장 동기화", ariaLabel: "저장 동기화" });
@@ -155,8 +155,8 @@ export async function mountSyncUi({ api = ready(), fetchImpl } = {}) {
       later(); paint();
     } });
     form.append(section("백업 파일", el("button", { type: "button", textContent: "내보내기", onclick: () => {
-      const blob = new Blob([JSON.stringify(store.exportBackup(GAME))], { type: "application/json" });
-      const a = el("a", { href: URL.createObjectURL(blob), download: `soundnovel-${GAME}.snsave` }); a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+      const blob = new Blob([JSON.stringify(store.exportBackup(gameId))], { type: "application/json" });
+      const a = el("a", { href: URL.createObjectURL(blob), download: `soundnovel-${gameId}.snsave` }); a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 1000);
     } }), el("button", { type: "button", textContent: "가져오기", onclick: () => file.click() }), file));
     if (message) form.append(el("p", { className: "warn", role: "status", textContent: message }));
     form.append(el("button", { type: "submit", textContent: "닫기" }));

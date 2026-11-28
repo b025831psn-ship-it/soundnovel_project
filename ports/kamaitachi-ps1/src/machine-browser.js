@@ -16,6 +16,7 @@ import { rangeSource, xaFileName } from "./xa.js";
 import { PcmQueue } from "../sound/web/pcm-queue.js";
 import { unpack } from "./exe-data.js";
 import { MemoryCard, CARD_BYTES } from "./memory-card.js";
+import { openCardSaves, bookFile, fileName } from "./card-store.js";
 
 const CARD_KEY = "kamaitachi-ps1.card1";
 const toBase64 = (b) => { let s = ""; for (let i = 0; i < b.length; i += 0x8000) s += String.fromCharCode(...b.subarray(i, i + 0x8000)); return btoa(s); };
@@ -73,7 +74,7 @@ async function audioOut() {
   } catch (e) { console.warn("[kamaitachi-ps1 machine] no audio output", e); return null; }
 }
 
-export async function startMachine({ canvas, dataRoot, audio = true, onProgress = null, requestFrame = requestAnimationFrame, now = () => performance.now(), timer = requestFrame === requestAnimationFrame, gate = null, lang = "ko", displayShift = 4, debug = false, scene = "" }) {
+export async function startMachine({ canvas, dataRoot, audio = true, onProgress = null, requestFrame = requestAnimationFrame, now = () => performance.now(), timer = requestFrame === requestAnimationFrame, gate = null, lang = "ko", displayShift = 4, debug = false, scene = "", resume = false }) {
   const base = new URL(dataRoot, location.href);
   let loaded = 0;
   const progress = (n) => { loaded += n; onProgress?.(loaded); };
@@ -151,6 +152,29 @@ export async function startMachine({ canvas, dataRoot, audio = true, onProgress 
     });
   }
   const card = new MemoryCard(cardBytes);
+  // The books in the shared save store (card-store.js): what another device saved is put on the card
+  // before the game reads it. Not in a debug run: its card is the owner's test card.
+  let saves = null;
+  if (!debugCard) {
+    try { saves = await openCardSaves({ card, edition: ko ? "ko" : "ja" }); if (saves.start()) storeCard(card.bytes); }
+    catch (e) { console.warn("[kamaitachi-ps1 machine] no save store, the card stays on this device", e); saves = null; }
+  }
+  // Web only: carrying on from the suspend slot (?resume=1, the save dialog's 이어하기). The slot holds
+  // the bookmark state of the game's last checkpoint and its book. The game loads it as a book: for the
+  // time of the jump the card holds that book alone, as book 1, with the state in it; when the story
+  // is there, the real card is back and the game is told which book it reads.
+  const offsetMaps = () => { const raw = sceMembers(pacs.SCE), maps = new Map(); return (res) => maps.get(res) ?? maps.set(res, raw.has(res) ? resourceOffsets(raw.get(res), ko?.script.resources[res]) : null).get(res); };
+  if (resume && saves && !jump) {
+    try {
+      const p = saves.suspend.read()?.payload, book = p?.book | 0, file = p && book < 3 ? bookFile(card, book) : null, st = p ? fromBase64(p.state) : null;
+      if (!file || st.length !== BOOK_STATE + 100) throw new Error("nothing to carry on from");
+      const map = offsetMaps(); if (!turnBookState(st, (res, off) => map(res)?.toNew(off) ?? off)) throw new Error("the state does not fit this script");
+      const real = card.bytes.slice(), one = new MemoryCard(), data = file.slice(0, 0x2000);
+      data.set(st, 0x200); data.set([0x4b, 0x41, 0x4d, 0x41, 0x49, 0x54], 0x200 + BOOK_STATE + 0x5c);
+      one.create(fileName(0), 1); one.write(fileName(0), 0, data); card.bytes.set(one.bytes);
+      jump = { resource: st[BOOK_STATE + 0x20] | st[BOOK_STATE + 0x21] << 8, frames: 0, done: () => { card.bytes.set(real); machine.write(0x800792c2, book, 1); machine.write(0x8006aecc + 0x13, 0x30 + book, 1); } };
+    } catch (e) { console.warn("[kamaitachi-ps1 machine] not carried on", e); }
+  }
   // The STR movies, converted to <NAME>.mp4 next to the PACs (tools/convert-str.sh), shown over the
   // screen while the game waits for them. Before the first tap or key the browser only lets a
   // muted video start; the sound comes on with the next tap or key.
@@ -165,7 +189,24 @@ export async function startMachine({ canvas, dataRoot, audio = true, onProgress 
     return h;
   };
   const machine = new Machine({ exeData, pacs, sound: snd.bridge, card, xa: snd.xa, movie, ko, onError: (e) => console.error("[kamaitachi-ps1 machine]", e) });
-  machine.onCardWrite = (c) => { storeCard(c.bytes); runtime.onCardChange?.(); };
+  machine.onCardWrite = (c) => { if (jump?.done) return; storeCard(c.bytes); saves?.push(); runtime.onCardChange?.(); };
+  // the store changed under the game (another device's save came in, a conflict was settled): the card follows
+  saves?.store.subscribe((e) => { if (e.type === "remote" && !jump?.done && saves.pull()) { storeCard(card.bytes); runtime.onCardChange?.(); } });
+  // The suspend slot: the state of the last checkpoint (script command 0x20 keeps it in RAM: the work
+  // copy and slot 0), written when it has changed and the story waits for a press. Its offsets are
+  // turned to the original script's, so the Japanese and the Korean build read the same slot.
+  const keepPage = saves ? (() => {
+    let last = "", n = 0, map = null;
+    return () => {
+      if (++n % 30 || jump || !machine.read(0x8007929e, 1) || machine.read(0x800795e2, 1) || [0x19, 0x1f].includes(machine.read(0x8007929c, 2))) return;
+      const st = new Uint8Array(BOOK_STATE + 100);
+      for (let i = 0; i < 100; i++) st[BOOK_STATE + i] = machine.read(0x8008cdc0 + i, 1);
+      const key = st.subarray(BOOK_STATE).join(); if (key === last) return; last = key;
+      for (let i = 0; i < BOOK_STATE; i++) st[i] = machine.read(0x8009eeb8 + i, 1);
+      map ??= offsetMaps();
+      if (turnBookState(st, (res, off) => map(res)?.toOld(off) ?? off)) saves.suspend.write({ book: machine.read(0x800792c2, 1), state: toBase64(st) });
+    };
+  })() : null;
 
   const ctx2d = canvas.getContext("2d", { alpha: false });
   ctx2d.imageSmoothingEnabled = false;
@@ -223,6 +264,9 @@ export async function startMachine({ canvas, dataRoot, audio = true, onProgress 
   const menuNow = () => current(machine.touch);
   const runtime = {
     machine, soundModule: snd.mod, lang: ko ? "ko" : "ja",
+    // the shared save store (null in a debug run) and whether the suspend slot can be carried on from here
+    saveStore: saves?.store ?? null,
+    canResume: () => { const p = saves?.suspend.read()?.payload; return !!p && !!bookFile(card, p.book | 0); },
     input: { pulse(name) { const k = PULSE[name]; if (k) keys.set(k, HOLD); }, press(k) { keys.set(k, Infinity); }, release(k) { keys.delete(k); } },
     // the corner button: × inside the in-game menu (0x800795e2 is set while it is open) and in the
     // backlog (0x800792a0), the menu (triangle) while the game allows it (0x8007929f), otherwise nothing
@@ -257,7 +301,7 @@ export async function startMachine({ canvas, dataRoot, audio = true, onProgress 
     importCard(bytes) {
       bytes = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
       if (bytes.length !== CARD_BYTES) throw new Error(`memory card image: ${bytes.length} bytes, expected ${CARD_BYTES}`);
-      card.bytes.set(bytes); machine.cardSwapped(); storeCard(card.bytes);
+      card.bytes.set(bytes); machine.cardSwapped(); storeCard(card.bytes); saves?.push();
     },
     onCardChange: null, // set by the shell: called after the game writes the card
     get error() { return machine.error; },
@@ -308,10 +352,10 @@ export async function startMachine({ canvas, dataRoot, audio = true, onProgress 
       // a debug jump: ○ every 40 frames, unseen and unheard, until the script of the wanted scene is the one running
       for (let n = 0; jump && n < 400 && !machine.error; n++) {
         machine.frame(jump.frames % 40 < 3 ? 0x2000 : 0);
-        if (machine.read(0x8007929c, 2) === jump.resource || ++jump.frames > 30000) jump = null;
+        if (machine.read(0x8007929c, 2) === jump.resource || ++jump.frames > 30000) { jump.done?.(); jump = null; }
         snd.js.out.length = 0; // the driver's own waits on the way (music changes) made samples: they are not played
       }
-      machine.frame(held()); soundFrame(); follow?.();
+      machine.frame(held()); soundFrame(); follow?.(); keepPage?.();
       for (const [k, n] of keys) { if (n !== Infinity) { if (n <= 1) keys.delete(k); else keys.set(k, n - 1); } }
       acc -= STEP; if (!seek) dirty = true;
     }
