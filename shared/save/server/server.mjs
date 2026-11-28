@@ -18,7 +18,8 @@ const PAIR = /^[0-9A-HJKMNP-TV-Z]{4}$/;
 // It is never an account password; failed claims are rate limited per client and globally.
 export function createServer({ dir, maxBody = MAX_BODY, maxSlots = MAX_SLOTS, now = Date.now,
   maxVaults = 200, maxVaultBytes = MAX_VAULT_BYTES, maxPairBlob = 2048, maxRequestsPerMinute = 300, maxVaultsPerClientPerHour = 10, pairTtlMs = null, pairSingleUse = false, maxPairs = 1000, maxFailsPerClient = 10, maxFailsGlobal = 200, failWindowMs = 10 * 60 * 1000,
-  snapTtlMs = 90 * 24 * 3600 * 1000, maxSnapsPerGame = 9000, maxSnapsPerClientPerHour = 20 } = {}) {
+  snapTtlMs = 90 * 24 * 3600 * 1000, maxSnapsPerGame = 9000, maxSnapsPerClientPerHour = 20,
+  maxCodes = 500_000, maxCodesPerClientPerHour = 20, codeHistory = 5 } = {}) {
   fs.mkdirSync(dir, { recursive: true });
   const pairFile = path.join(dir, "pairs.json");
   // code -> { blob, auth, expires|null }. Persistent by default (beta: a few dozen users); a short TTL and
@@ -137,6 +138,49 @@ export function createServer({ dir, maxBody = MAX_BODY, maxSlots = MAX_SLOTS, no
           return send(res, 200, { data: row.data });
         }
         return send(res, 405, { error: "method" });
+      }
+      const cm = /^\/v1\/code(?:\/(\d{6})(?:\/([a-z0-9][a-z0-9:_-]{0,63}))?)?$/.exec(new URL(req.url, "http://x").pathname);
+      if (cm) {
+        // Save codes: see cloudflare/functions/_lib/sync.js saveCode() for the API. codes/<code>/ holds
+        // meta.json { used, created, client }, <game>.json { data, used } and hist/<game>-<at>.json.
+        const [, code, game] = cm, cdir = path.join(dir, "codes");
+        fs.mkdirSync(cdir, { recursive: true });
+        const readJson = (f) => { try { return JSON.parse(fs.readFileSync(f, "utf8")); } catch { return null; } };
+        const writeJson = (f, v) => { fs.mkdirSync(path.dirname(f), { recursive: true }); fs.writeFileSync(f + ".tmp", JSON.stringify(v)); fs.renameSync(f + ".tmp", f); };
+        const all = () => fs.readdirSync(cdir).filter((c) => /^\d{6}$/.test(c));
+        for (const c of all()) if ((readJson(path.join(cdir, c, "meta.json"))?.used ?? 0) <= now() - snapTtlMs) fs.rmSync(path.join(cdir, c), { recursive: true, force: true });
+        const who = clientOf(req);
+        if (!code) {
+          if (req.method !== "POST") return send(res, 405, { error: "method" });
+          const metas = all().map((c) => readJson(path.join(cdir, c, "meta.json"))).filter(Boolean);
+          if (metas.filter((m) => m.client === who && m.created > now() - 3600_000).length >= maxCodesPerClientPerHour) return send(res, 429, { error: "too many codes" });
+          if (metas.length >= maxCodes) return send(res, 429, { error: "server full" });
+          let c;
+          do c = String(crypto.randomInt(1_000_000)).padStart(6, "0"); while (fs.existsSync(path.join(cdir, c)));
+          writeJson(path.join(cdir, c, "meta.json"), { used: now(), created: now(), client: who });
+          return send(res, 201, { code: c });
+        }
+        if (!game || !["PUT", "POST"].includes(req.method)) return send(res, 405, { error: "method" });
+        const mine = recent(fails.get(who) ?? []); fails.set(who, mine);
+        globalFails = recent(globalFails);
+        if (mine.length >= maxFailsPerClient || globalFails.length >= maxFailsGlobal) return send(res, 429, { error: "too many attempts" });
+        const meta = readJson(path.join(cdir, code, "meta.json"));
+        if (!meta) { mine.push(now()); globalFails.push(now()); return send(res, 404, { error: "no such code" }); }
+        writeJson(path.join(cdir, code, "meta.json"), { ...meta, used: now() });
+        const file = path.join(cdir, code, game.replace(/:/g, "_") + ".json");
+        if (req.method === "POST") return send(res, 200, { data: readJson(file)?.data ?? null });
+        let body;
+        try { body = JSON.parse(await readBody(req)); } catch (e) { return send(res, e.code === 413 ? 413 : 400, { error: "bad body" }); }
+        if (typeof body?.data !== "string" || !body.data) return send(res, 400, { error: "bad body" });
+        const old = readJson(file);
+        if (old && old.data !== body.data) {
+          const hdir = path.join(cdir, code, "hist"), prefix = game.replace(/:/g, "_") + "-";
+          writeJson(path.join(hdir, `${prefix}${old.used}.json`), old);
+          const kept = fs.readdirSync(hdir).filter((f) => f.startsWith(prefix)).sort((a, b) => Number(b.slice(prefix.length, -5)) - Number(a.slice(prefix.length, -5)));
+          for (const f of kept.slice(codeHistory)) fs.rmSync(path.join(hdir, f), { force: true });
+        }
+        writeJson(file, { data: body.data, used: now() });
+        return send(res, 200, {});
       }
       const m = /^\/v1\/vaults\/([0-9a-f]{64})(\/saves(?:\/([^/]+)\/([^/]+))?)?$/.exec(new URL(req.url, "http://x").pathname);
       if (!m || !HEX.test(m[1])) return send(res, 404, { error: "not found" });

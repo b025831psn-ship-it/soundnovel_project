@@ -147,5 +147,27 @@ await dialog(phone).catch(() => {});
 await phone.tap('text=지금 동기화');
 await phone.waitForTimeout(1500);
 check(await phone.evaluate(() => window.kamaitachi.saves.api.sram()[0x1800 + 0x100]) === 0x44, "PC's 이 기기 것 쓰기 reached the phone");
+
+// Quick save (disk button): the PC saves the moment it is pressed; a new device loads the code,
+// reloads, and carries on from that very screen by itself.
+await pc.keyboard.press('Escape').catch(() => {});
+await key(pc, 'KeyZ', 4, 900); await pc.waitForTimeout(2500);
+await pc.click('.sn-tool >> nth=0'); await pc.click('#quick-save button.primary');
+const qcode = (await pc.waitForSelector('#quick-save .code').then((e) => e.textContent())).trim();
+check(/^\d{4}$/.test(qcode), `quick save code ${qcode}`);
+await pc.click('#quick-save .close');
+const fresh = await open({ ...devices['iPhone 13 landscape'], deviceScaleFactor: 1 });
+await fresh.tap('.sn-tool >> nth=0'); await fresh.tap('#quick-save button >> text=불러오기');
+await fresh.fill('#quick-save input', qcode);
+await Promise.all([fresh.waitForNavigation(), fresh.tap('#quick-save button.primary')]);
+await fresh.waitForFunction(() => window.kamaitachi?.status?.frame > 30, null, { timeout: 120000 });
+await fresh.waitForTimeout(5000);
+const q = differ(await screen(pc), await screen(fresh));
+check(q < 0.02, `after 불러오기 the new device carried on from the PC's screen by itself (${(q * 100).toFixed(2)}% differ)`);
+const report = await fresh.evaluate(() => globalThis.soundnovelReport());
+check(/^script 0x[0-9A-F]+\.[0-7]$/.test(report.scene ?? ''), `report context: ${JSON.stringify(report)}`);
+const pcReport = await pc.evaluate(() => globalThis.soundnovelReport());
+check(pcReport.scene === report.scene, `same script position on both (${pcReport.scene})`);
+
 await browser.close(); web.close(); sync.close();
 process.exit(failed ? 1 : 0);

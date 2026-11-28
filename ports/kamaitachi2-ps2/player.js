@@ -1202,19 +1202,24 @@ let syncUi = null;
 if (saves.store) {
   const savesButton = gameMenu.querySelector('[data-menu="saves"]');
   saves.store.subscribe(event => { if (event.type === 'remote') saved = saves.latest(); });
+  const boot = {
+    canContinue:() => Boolean(saves.suspended()),
+    get titleActive() { return scene === 'title'; },
+    continueSuspended:() => {
+      const point = saves.suspended();
+      if (!point || scene !== 'title') return false;
+      slot = point.card ?? 0; autosave = Boolean(point.autosave);
+      resumeAt(point);
+      return true;
+    },
+    // Quick save (/shared/save/quick-save.js) calls this just before it uploads: the current resume point.
+    saveNow:() => suspend(),
+  };
   import('./sync-ui.js').then(({mountSyncUi}) => mountSyncUi({store:saves.store, gameId:GAME_ID, parent:document.querySelector('main'),
-    onPaint:bad => savesButton.classList.toggle('attention', bad), onClose:() => canvas.focus(),
-    boot:{
-      canContinue:() => Boolean(saves.suspended()),
-      get titleActive() { return scene === 'title'; },
-      continueSuspended:() => {
-        const point = saves.suspended();
-        if (!point || scene !== 'title') return false;
-        slot = point.card ?? 0; autosave = Boolean(point.autosave);
-        resumeAt(point);
-        return true;
-      },
-    }})).then(ui => { syncUi = ui; }).catch(error => console.warn('Sync dialog unavailable', error));
+    onPaint:bad => savesButton.classList.toggle('attention', bad), onClose:() => canvas.focus(), boot})).then(ui => { syncUi = ui; }).catch(error => console.warn('Sync dialog unavailable', error));
+  // 빠른 저장: the disk button left of the menu button (저장 → 4-digit code, 불러오기 → carry on).
+  import('/shared/save/quick-save.js').then(m => m.mountQuickSave({store:saves.store, gameId:GAME_ID, boot})).then(() => import('/shared/player/report-button.js')).then(m => m.mountReport({gameId:GAME_ID, boot}))
+    .catch(error => console.warn('Quick save unavailable', error));
 } else gameMenu.querySelector('[data-menu="saves"]').hidden = true;
 document.addEventListener('fullscreenchange', () => {
   if (!document.fullscreenElement) globalThis.screen.orientation?.unlock?.();

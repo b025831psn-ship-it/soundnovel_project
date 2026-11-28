@@ -1,9 +1,11 @@
-// Quick save: a disk button beside the on-screen menu (flowchart) button. 「저장」 puts the whole game's
-// saves on the server and shows a 4-digit code; 「불러오기」 takes a code and carries on from that state
-// on any device. Mounted by sync-ui.js for every player (PS2 calls it itself); same api as that dialog:
-//   mountQuickSave({ store, gameId, boot })   boot: { canContinue(), titleActive, continueSuspended() }
-// Codes: shared/save/snap.js and /v1/snap on the save server (90 days unused -> deleted).
-import { saveSnap, loadSnap } from "./snap.js";
+// Save codes (태우 2026-11-28): every player has one 6-digit code for all games. Each game's saves (the
+// in-game memory card / bookmarks and the web suspend slot) go up to it by themselves after every save;
+// before the game starts, 「새로하기 / 이어하기」 (start-gate.js -> startChoice) lets a player on another
+// device type the code and carry on. A disk button beside the on-screen menu (flowchart) button shows the
+// code, saves right now, or loads another code. Mounted by sync-ui.js for every player (PS2 calls it itself):
+//   mountQuickSave({ store, gameId, boot })   boot: { canContinue(), titleActive, continueSuspended(), saveNow?() }
+// Server: /v1/code in shared/save/server/server.mjs and cloudflare/functions/_lib/sync.js (90 days unused -> deleted).
+import { newCode, putCode, getCode } from "./snap.js";
 
 const el = (tag, props = {}, ...kids) => {
   const e = Object.assign(document.createElement(tag), props);
@@ -22,12 +24,53 @@ const css = `
 #quick-save button,#quick-save input{min-height:44px;border-radius:8px;border:1px solid var(--qs-line);background:var(--qs-raised);color:var(--qs-text);font:inherit;padding:0 14px;flex:1}
 #quick-save button.primary{border-color:var(--qs-accent);color:var(--qs-accent)}
 #quick-save input{font:600 24px/1 "IBM Plex Mono",monospace;letter-spacing:.3em;text-align:center;min-width:0}
-#quick-save .code{font:600 40px/1 "IBM Plex Mono",monospace;letter-spacing:.25em;text-align:center;padding:12px 0 8px}
+#quick-save .code{font:600 34px/1 "IBM Plex Mono",monospace;letter-spacing:.25em;text-align:center;padding:12px 0 8px}
 #quick-save .note{color:var(--qs-muted);font-size:13px;margin:10px 0 0}
 #quick-save .warn{color:var(--qs-accent);font-size:13px;margin:10px 0 0}
 #quick-save .close{margin-top:14px;width:100%}
 `;
 const CONTINUE = "sn-quick-continue:";
+const PENDING = "sn-code-import:";
+const CODE_KEY = "sn-save-code";
+
+export const GAMES = ["kamaitachi-gba", "kamaitachi-ps1", "kamaitachi-sfc", "zakuro-sfc", "kamaitachi2-ps2"];
+export const gameFromPath = (p = location.pathname) => GAMES.find((g) => p.includes(`/${g}/`)) ?? null;
+export const serverBase = () => new URLSearchParams(location.search).get("syncServer")
+  ?? (/^https?:$/.test(location.protocol) ? `${location.origin}/sync` : "");
+export const myCode = () => { try { return localStorage.getItem(CODE_KEY); } catch { return null; } };
+const setMyCode = (c) => { try { c ? localStorage.setItem(CODE_KEY, c) : localStorage.removeItem(CODE_KEY); } catch { /* this tab only */ } };
+const session = {
+  get: (k) => { try { return sessionStorage.getItem(k); } catch { return null; } },
+  set: (k, v) => { try { sessionStorage.setItem(k, v); return true; } catch { return false; } },
+  del: (k) => { try { sessionStorage.removeItem(k); } catch { /* none */ } },
+};
+// The game should carry on from its suspend slot as soon as it can (set by 이어하기 or after a load's reload).
+export const wantContinue = (gameId) => { globalThis.__snContinue = gameId; globalThis.dispatchEvent?.(new Event("sn-continue")); };
+if (typeof sessionStorage !== "undefined") {
+  const g = gameFromPath?.();
+  if (g && session.get(CONTINUE + g) === "1") { session.del(CONTINUE + g); globalThis.__snContinue = g; globalThis.__snSkipChoice = true; }
+}
+
+// Loads a game's saves from a code. A code typed on this device replaces its saves (overwrite); this
+// device's own code only brings newer ones. With the store at hand the saves go in at once and the page
+// reloads to carry on; otherwise they wait in sessionStorage for mountQuickSave. Returns { ok, reason? }.
+export async function loadFromCode({ code, gameId, overwrite, fetchImpl }) {
+  const r = await getCode({ baseUrl: serverBase(), code, gameId, ...(fetchImpl ? { fetchImpl } : {}) });
+  if (!r.ok) return r;
+  setMyCode(code);
+  if (!r.backup) { wantContinue(gameId); return { ok: true, empty: true }; }
+  const store = globalThis.soundnovelSave?.gameId === gameId ? globalThis.soundnovelSave.store : null;
+  if (store) { await applyBackup(store, gameId, r.backup, overwrite); return { ok: true, reloading: true }; }
+  if (!session.set(PENDING + gameId, JSON.stringify({ backup: r.backup, overwrite }))) return { ok: false, reason: "server" };
+  return { ok: true, pending: true };
+}
+async function applyBackup(store, gameId, backup, overwrite) {
+  store.importBackup(backup, overwrite ? { shouldOverwrite: () => true } : undefined);
+  await store.flush();
+  session.set(CONTINUE + gameId, "1");
+  location.reload();
+}
+
 
 // The on-screen menu button of each player (GBA/PS1/SFC/석류: .menu-button, PS2: #menu-button).
 const menuButton = () => document.querySelector("#menu-button, .menu-button");
@@ -67,83 +110,107 @@ export function toolButton({ index = 0, label, svg }) {
 
 export function mountQuickSave({ store, gameId, boot, fetchImpl } = {}) {
   if (!store || !gameId || document.getElementById("quick-save")) return null;
-  const server = () => new URLSearchParams(location.search).get("syncServer") ?? store.getMeta("syncServer")
-    ?? (/^https?:$/.test(location.protocol) ? `${location.origin}/sync` : "");
+  const fx = fetchImpl ? { fetchImpl } : {};
+  // saves fetched before the store was open (이어하기 on a page that opens it late, e.g. PS1)
+  const pending = session.get(PENDING + gameId);
+  if (pending) {
+    session.del(PENDING + gameId);
+    try { const { backup, overwrite } = JSON.parse(pending); applyBackup(store, gameId, backup, overwrite); return null; } catch { /* a broken stash: play on */ }
+  }
+
+  // --- every save goes up to this player's code by itself ---------------------------------------
+  let timer = 0, last = 0, uploading = null, again = false, failed = "";
+  async function upload({ keepalive = false } = {}) {
+    if (uploading) { again = true; return uploading; }
+    uploading = (async () => {
+      do {
+        again = false;
+        let code = myCode();
+        try { if (!code) { code = await newCode({ baseUrl: serverBase(), ...fx }); setMyCode(code); } }
+        catch (e) { failed = e.reason ?? "server"; break; }
+        await store.flush();
+        const r = await putCode({ baseUrl: serverBase(), code, gameId, backup: store.exportBackup(gameId), keepalive, ...fx });
+        if (!r.ok && r.reason === "code") { setMyCode(null); again = true; continue; } // expired: a new code next round
+        failed = r.ok ? "" : r.reason; last = Date.now();
+      } while (again);
+      uploading = null;
+      if (dialog.open) render();
+    })();
+    return uploading;
+  }
+  const schedule = () => {
+    if (timer) return;
+    timer = setTimeout(() => { timer = 0; upload(); }, Math.max(5000, 20000 - (Date.now() - last)));
+  };
+  store.subscribe((ev) => { if (ev.type === "dirty" && ev.gameId === gameId) schedule(); });
+  addEventListener("pagehide", () => { if (timer) { clearTimeout(timer); timer = 0; upload({ keepalive: true }); } });
+  document.addEventListener("visibilitychange", () => { if (document.visibilityState === "hidden" && timer) { clearTimeout(timer); timer = 0; upload({ keepalive: true }); } });
+
+  // --- the disk button ---------------------------------------------------------------------------
   const button = toolButton({ index: 0, label: "저장 / 불러오기", svg: DISK });
-  if (!button) return null;
   const dialog = el("dialog", { id: "quick-save" });
   document.body.append(dialog);
-  const fx = fetchImpl ? { fetchImpl } : {};
-  let view = "menu", code = "", message = "", busy = false;
+  let view = "menu", message = "", busy = false;
 
-  const metaKey = `snap:${gameId}`;
-  async function save() {
+  async function saveNow() {
     busy = true; message = ""; render();
-    try {
-      await boot?.saveNow?.();
-      await store.flush();
-      const got = await saveSnap({ baseUrl: server(), gameId, backup: store.exportBackup(gameId), last: store.getMeta(metaKey), ...fx });
-      store.setMeta(metaKey, got);
-      code = got.code; view = "saved";
-    } catch (e) {
-      message = e.status === 413 ? "저장 데이터가 너무 커서 올리지 못했습니다." : e.status === 429 ? "코드를 너무 많이 만들었습니다. 잠시 뒤 다시 해 주세요." : "서버에 연결하지 못했습니다.";
-    }
-    busy = false; render();
+    try { await boot?.saveNow?.(); } catch { /* the slots as they are */ }
+    await upload();
+    busy = false;
+    message = failed ? (failed === "large" ? "저장 데이터가 너무 커서 올리지 못했습니다." : failed === "limited" ? "잠시 뒤 다시 해 주세요." : "서버에 연결하지 못했습니다. 이 기기에는 저장되어 있습니다.") : "저장했습니다.";
+    render();
   }
   async function load(value) {
     busy = true; message = ""; render();
-    const r = await loadSnap({ baseUrl: server(), gameId, code: value, ...fx });
-    if (!r.ok) {
-      message = r.reason === "code" ? "없는 코드입니다. 4자리 숫자를 확인해 주세요." : r.reason === "limited" ? "시도가 너무 많습니다. 잠시 뒤 다시 해 주세요." : "서버에 연결하지 못했습니다.";
-      busy = false; render(); return;
-    }
-    try { store.importBackup(r.backup, { shouldOverwrite: () => true }); }
-    catch { message = "저장 데이터를 읽지 못했습니다."; busy = false; render(); return; }
-    await store.flush();
-    try { sessionStorage.setItem(CONTINUE + gameId, "1"); } catch { /* the page still reloads with the saves */ }
-    location.reload();
+    const r = await loadFromCode({ code: value, gameId, overwrite: true, ...fx });
+    busy = false;
+    if (!r.ok) message = r.reason === "code" ? "없는 코드입니다. 6자리 숫자를 확인해 주세요." : r.reason === "limited" ? "시도가 너무 많습니다. 잠시 뒤 다시 해 주세요." : "서버에 연결하지 못했습니다.";
+    else if (r.empty) message = "이 코드에는 아직 이 작품의 저장이 없습니다. 앞으로 이 코드에 저장됩니다.";
+    render();
   }
 
   function render() {
     const kids = [el("h2", { textContent: "저장 / 불러오기" })];
+    const code = myCode();
     if (view === "menu") {
+      kids.push(el("p", { className: "note", textContent: "내 세이브 코드" }),
+        el("div", { className: "code", textContent: code ?? "------" }),
+        el("p", { className: "note", textContent: code
+          ? "게임 안에서 저장하면 이 코드에 자동으로 올라갑니다. 다른 기기에서 이어하기를 누르고 이 코드를 넣으면 이어서 할 수 있습니다. 90일 동안 쓰지 않으면 지워집니다."
+          : "처음 저장할 때 코드가 만들어집니다." }));
       kids.push(el("div", { className: "row" },
-        el("button", { type: "button", className: "primary", textContent: busy ? "저장 중…" : "저장", disabled: busy, onclick: save }),
-        el("button", { type: "button", textContent: "불러오기", disabled: busy, onclick: () => { view = "load"; message = ""; render(); } })));
-      kids.push(el("p", { className: "note", textContent: "저장하면 지금 상황이 서버에 올라가고 4자리 코드가 나옵니다." }));
-    } else if (view === "saved") {
-      kids.push(el("div", { className: "code", textContent: code }),
-        el("p", { className: "note", textContent: "다른 기기에서도 불러오기에 이 4자리를 넣으면 이 상황에서 이어집니다. 이 기기에서 다시 저장하면 같은 코드에 덮어씁니다. 90일 동안 쓰지 않으면 지워집니다." }));
+        el("button", { type: "button", className: "primary", textContent: busy ? "저장 중…" : "지금 저장", disabled: busy, onclick: saveNow }),
+        el("button", { type: "button", textContent: "다른 코드 불러오기", disabled: busy, onclick: () => { view = "load"; message = ""; render(); } })));
     } else {
-      const input = el("input", { inputMode: "numeric", maxLength: 4, autocomplete: "off", placeholder: "0000", ariaLabel: "4자리 코드" });
-      input.addEventListener("input", () => { input.value = input.value.replace(/\D/g, "").slice(0, 4); });
+      const input = el("input", { inputMode: "numeric", maxLength: 6, autocomplete: "off", placeholder: "000000", ariaLabel: "6자리 코드" });
+      input.addEventListener("input", () => { input.value = input.value.replace(/\D/g, "").slice(0, 6); });
       input.addEventListener("keydown", (e) => { e.stopPropagation(); if (e.key === "Enter") { e.preventDefault(); load(input.value); } });
       kids.push(el("div", { className: "row" }, input,
         el("button", { type: "button", className: "primary", textContent: busy ? "불러오는 중…" : "불러오기", disabled: busy, onclick: () => load(input.value) })));
-      kids.push(el("p", { className: "note", textContent: "불러오면 이 기기의 저장이 그 코드의 저장으로 바뀌고 그 상황에서 이어집니다." }));
+      kids.push(el("p", { className: "note", textContent: "불러오면 이 기기의 이 작품 저장이 그 코드의 저장으로 바뀌고, 앞으로 그 코드에 저장됩니다." }));
       setTimeout(() => input.focus(), 0);
     }
     if (message) kids.push(el("p", { className: "warn", role: "status", textContent: message }));
-    kids.push(el("button", { type: "button", className: "close", textContent: "닫기", onclick: () => dialog.close() }));
+    kids.push(el("button", { type: "button", className: "close", textContent: view === "load" ? "뒤로" : "닫기", onclick: () => { if (view === "load") { view = "menu"; message = ""; render(); } else dialog.close(); } }));
     dialog.replaceChildren(...kids);
   }
 
-  // keys typed in the dialog must not reach the game
   dialog.addEventListener("keydown", (e) => { if (e.key !== "Escape") e.stopPropagation(); });
-  button.addEventListener("click", (e) => { e.stopPropagation(); view = "menu"; message = ""; render(); dialog.showModal(); });
-  button.addEventListener("pointerdown", (e) => e.stopPropagation());
-
-  // After 불러오기 the page reloads; carry on from the loaded state as soon as the game can.
-  let pending = false;
-  try { pending = sessionStorage.getItem(CONTINUE + gameId) === "1"; sessionStorage.removeItem(CONTINUE + gameId); } catch { /* none */ }
-  if (pending && boot) {
-    const until = Date.now() + 60_000;
-    const tryContinue = async () => {
-      if (Date.now() > until) return;
-      if (boot.titleActive && boot.canContinue?.() && await boot.continueSuspended()) return;
-      setTimeout(tryContinue, 300);
-    };
-    tryContinue();
+  if (button) {
+    button.addEventListener("click", (e) => { e.stopPropagation(); view = "menu"; message = ""; render(); dialog.showModal(); });
+    button.addEventListener("pointerdown", (e) => e.stopPropagation());
   }
-  return { button, dialog };
+
+  // carry on from the suspend slot as soon as the game can, when 이어하기 or a load asked for it
+  const until = Date.now() + 30 * 60_000; // the title may come only after a logo and an opening movie (PS2)
+  const tryContinue = async () => {
+    if (Date.now() > until) return;
+    if (globalThis.__snContinue === gameId && boot?.titleActive && boot.canContinue?.()) {
+      if (await boot.continueSuspended()) { globalThis.__snContinue = null; return; }
+    }
+    if (globalThis.__snContinue === gameId) setTimeout(tryContinue, 300);
+  };
+  if (globalThis.__snContinue === gameId) tryContinue();
+  addEventListener("sn-continue", () => tryContinue());
+  return { button, dialog, upload };
 }

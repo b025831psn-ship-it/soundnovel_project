@@ -80,7 +80,7 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); ou
 .menu-button svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 1.75; stroke-linecap: round; stroke-linejoin: round; }
 .menu-button:hover, .menu-button:focus-visible { opacity: 1; background: rgba(8, 9, 11, .8); }
 .menu-button:active { transform: scale(.94); }
-.menu-button.unavailable { opacity: 0; pointer-events: none; }
+.menu-button.unavailable { display: none; } /* the quick-save and report buttons beside it step aside too */
 .menu-button .back, .menu-button.is-back .open { display: none; }
 .menu-button.is-back .back { display: block; }
 .stage:not(.ready) .menu-button { display: none; }
