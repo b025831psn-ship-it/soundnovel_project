@@ -41,6 +41,20 @@ export class APU {
     for (const t of this.cpu.timers) t.phase = (APU.CORE_DELAY - 1) % t.period;
     this.coreDelay = APU.CORE_DELAY;
   }
+
+  // Console RESET preserves ARAM but resets the SMP and S-DSP cores.
+  softReset() {
+    const onDspWrite = this.cpu.onDspWrite, onPortWrite = this.cpu.onPortWrite;
+    const onSample = this.dsp.onSample, gauss = this.dsp.gauss;
+    this.cpu.hle = this.cpu.ipl ? null : new IplHle();
+    this.cpu.reset();
+    this.cpu.portIn.fill(0); this.cpu.portOut.fill(0);
+    this.cpu.dspDone = 0; this.cpu.curOp = 0; this.cpu.dspAccessOffset = 0;
+    this.cpu.onDspWrite = onDspWrite; this.cpu.onPortWrite = onPortWrite;
+    this.dsp = new SDSP(this.cpu.ram, { gauss });
+    this.dsp.onSample = onSample; this.cpu.dsp = this.dsp;
+    this.coreDelay = 0;
+  }
   static CORE_DELAY = 3;
 
   cpuWrite(port, value) { this.cpu.portIn[port & 3] = value & 0xff; }

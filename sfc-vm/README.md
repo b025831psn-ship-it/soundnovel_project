@@ -50,6 +50,14 @@ scheduler, PPU latch와 framebuffer, MasterLink 시각·대기 port write가 포
 그 결과를 `state.apu`에 넣고, 복원할 때 `apu.loadState(state.apu)`를 먼저 호출합니다.
 APU 상태가 들어 있는데 호환 APU가 없으면 조용히 불완전 복원하지 않고 예외를 냅니다.
 
+### 콘솔 리셋
+
+`machine.reset()`은 Snes9x의 `S9xSoftReset` 범위에 맞춰 CPU, SMP/S-DSP,
+PPU 레지스터와 latch, CGRAM/OAM, DMA/HDMA, math, joypad 및 raster scheduler를
+초기화합니다. WRAM, SRAM, VRAM은 보존하므로 리셋을 요구하는 원작 분기와
+웹 메뉴의 RESET이 같은 API를 사용할 수 있습니다. APU는 `softReset()` 계약을
+사용하며 MasterLink의 시각과 대기 중인 CPU→APU 쓰기도 새 reset epoch로 돌립니다.
+
 ## Master-clock/APU 연결
 
 `Cpu65816.masterCycle`은 Snes9x와 같은 master-clock 단위로 opcode fetch,

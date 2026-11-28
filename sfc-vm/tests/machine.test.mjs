@@ -116,3 +116,40 @@ test('saveState restores a deterministic 1000-frame continuation', () => {
   assert.deepEqual(second.masterLink, first.masterLink);
   assert.deepEqual(second.apu, first.apu);
 });
+
+test('soft reset preserves WRAM, SRAM and VRAM while resetting machine state', () => {
+  let apuResets = 0;
+  const apu = {
+    coreDelay: 3,
+    cpu: { clock: 99, step() { this.clock++; } },
+    cpuRead: () => 0, cpuWrite: () => {},
+    softReset() { apuResets++; this.cpu.clock = 0; this.coreDelay = 0; },
+  };
+  const machine = new SfcMachine({ rom: loopingRom(), apu, onFrame: () => {} });
+  machine.bus.wram[0x1234] = 0x12;
+  machine.bus.sram[0x123] = 0x34;
+  machine.bus.vram[0x4567] = 0x56;
+  machine.bus.cgram[7] = 0x78;
+  machine.bus.oam[9] = 0x9a;
+  machine.bus.write8(0x2105, 0x49, machine.master);
+  machine.bus.pendingMath = { ready: 123, product: 42 };
+  machine.frame = 20; machine.nmiCount = 19; machine.rasterLine = 100;
+  machine.cpu.a = 0xbeef; machine.cpu.masterCycle = 999_999;
+  machine.bus.masterLink.pending.push([1, 0, 0xcc]);
+
+  assert.equal(machine.reset(), machine);
+  assert.equal(apuResets, 1);
+  assert.equal(machine.bus.wram[0x1234], 0x12);
+  assert.equal(machine.bus.sram[0x123], 0x34);
+  assert.equal(machine.bus.vram[0x4567], 0x56);
+  assert.equal(machine.bus.cgram[7], 0);
+  assert.equal(machine.bus.oam[9], 0);
+  assert.equal(machine.bus.io[0x105], 0);
+  assert.equal(machine.bus.pendingMath, null);
+  assert.equal(machine.frame, 0); assert.equal(machine.nmiCount, 0);
+  assert.equal(machine.rasterLine, 0); assert.equal(machine.master, 198);
+  assert.equal(machine.cpu.a, 0); assert.equal(machine.cpu.pc, 0x8000);
+  assert.equal(machine.bus.masterLink.master, 0);
+  assert.equal(machine.bus.masterLink.target, 0);
+  assert.deepEqual(machine.bus.masterLink.pending, []);
+});

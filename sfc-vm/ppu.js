@@ -12,18 +12,22 @@ function bgPixel(bus, bg, x, y, bpp) {
   const io = bus.io, screen = io[0x2107 + bg - 0x2000];
   const mapBase = ((screen >>> 2) * 0x800) & 0xffff;
   const mapWidth = screen & 1 ? 64 : 32, mapHeight = screen & 2 ? 64 : 32;
-  const sx = (x + bus.bgHofs[bg]) & (mapWidth * 8 - 1);
-  const sy = (y + bus.bgVofs[bg]) & (mapHeight * 8 - 1);
-  const tileX = sx >>> 3, tileY = sy >>> 3;
+  // BGMODE bits 4-7 select 16x16 tiles for BG1-BG4. One map entry then
+  // covers characters c, c+1, c+16 and c+17; flips apply to the full tile.
+  const big = io[0x2105 - 0x2000] & (0x10 << bg), shift = big ? 4 : 3, size = 1 << shift;
+  const sx = (x + bus.bgHofs[bg]) & (mapWidth * size - 1);
+  const sy = (y + bus.bgVofs[bg]) & (mapHeight * size - 1);
+  const tileX = sx >>> shift, tileY = sy >>> shift;
   const quadrant = (tileX >>> 5) + (tileY >>> 5) * (mapWidth >>> 5);
   const entryAt = mapBase + quadrant * 0x800 + (((tileY & 31) * 32 + (tileX & 31)) << 1);
   const entry = bus.vram[entryAt & 0xffff] | (bus.vram[(entryAt + 1) & 0xffff] << 8);
   const baseReg = io[(bg < 2 ? 0x210b : 0x210c) - 0x2000];
   const nibble = bg & 1 ? baseReg >>> 4 : baseReg;
   const tileBase = (nibble & 0x0f) * 0x2000;
-  const px = entry & 0x4000 ? 7 - (sx & 7) : sx & 7;
-  const py = entry & 0x8000 ? 7 - (sy & 7) : sy & 7;
-  const value = decodeTilePixel(bus.vram, tileBase + (entry & 0x3ff) * (8 * bpp), px, py, bpp);
+  const fx = entry & 0x4000 ? size - 1 - (sx & (size - 1)) : sx & (size - 1);
+  const fy = entry & 0x8000 ? size - 1 - (sy & (size - 1)) : sy & (size - 1);
+  const char = ((entry & 0x3ff) + (fx >>> 3) + (fy >>> 3) * 16) & 0x3ff;
+  const value = decodeTilePixel(bus.vram, (tileBase + char * (8 * bpp)) & 0xffff, fx & 7, fy & 7, bpp);
   if (!value) return null;
   const palette = (entry >>> 10) & 7;
   const paletteBase = bpp === 8 ? 0 : bpp === 4 ? palette * 16
