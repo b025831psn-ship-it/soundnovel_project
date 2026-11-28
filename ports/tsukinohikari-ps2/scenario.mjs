@@ -11,6 +11,21 @@ function flagKey(bank, index) {
   return (bank >> 4 ? 256 : 0) + index;
 }
 
+// eveComBranch reads the table in order. The first matching comparison
+// replaces the number of selectable rows, while the cursor consumes them all.
+function visibleChoiceCount(bytes, flags, count) {
+  const conditions = bytes[3] & 15;
+  const value = flags[flagKey(bytes[4], bytes[5])] ?? 0;
+  let visible = 0;
+  for (let i = 0; i < conditions; i++) {
+    const rule = bytes[6 + 2 * i];
+    visible = rule & 15;
+    if (compare[rule >> 4](value, bytes[7 + 2 * i])) break;
+  }
+  if (visible < 1 || visible > count) throw new Error("Invalid conditional choice count");
+  return visible;
+}
+
 export class Scenario {
   constructor(rows, state) {
     this.rows = rows;
@@ -50,7 +65,11 @@ export class Scenario {
       }
       s.item += count;
       s.menu = {kind:"choice", key:flagKey(bytes[1],bytes[2]), options};
-      if (type === 8) s.menu.condition = Array.from(bytes.slice(3,10));
+      if (type === 8) {
+        const visible = visibleChoiceCount(bytes, s.flags, count);
+        s.menu.options = options.slice(0, visible);
+        s.menu.condition = Array.from(bytes.slice(3, 6 + 2 * (bytes[3] & 15)));
+      }
       return s.menu;
     }
     if (type === 1 || type === 9) {
@@ -73,6 +92,7 @@ export class Scenario {
 
   next() {
     const s = this.state;
+    if (s.ending) return s.ending;
     if (s.menu) return s.menu;
     for (let steps=0; steps<10000; steps++) {
       const items = this.rows[s.page].items;
@@ -93,6 +113,17 @@ export class Scenario {
         s.marks[bytes[1]] = true;
       } else if (item.opcode === 5 && bytes[0] === 0) {
         s.flags[flagKey(bytes[1],bytes[2])] = 1;
+      } else if (item.opcode === 1 && bytes[0] === 2) {
+        s.textRow = bytes[1] >> 4;
+        s.textColumn = bytes[1] & 15;
+        return {kind: "textPosition", id: item.id, row: s.textRow, column: s.textColumn};
+      } else if (item.opcode === 6) {
+        // eveComEnding unpacks the same fields consumed by eveExeBookFinish.
+        s.ending = {kind: "ending", id: item.id, type: bytes[0],
+          number: bytes[1] >> 4, sound: bytes[1] & 15};
+        return s.ending;
+      } else if (item.opcode === 8 && bytes[0] === 3 && bytes[1] === 1) {
+        return {kind: "movie", id: item.id, index: bytes[2]};
       } else return {...item, bytes};
     }
     throw new Error("Scenario did not reach an input or presentation event");
