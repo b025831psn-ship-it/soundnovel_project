@@ -37,13 +37,26 @@ export function decodePicture(member) {
   return { width, height, rgba };
 }
 
+// One member of the PAC at `url`, fetched by itself: the table at the head of the archive, then the member's
+// sectors (two range requests). A server without range requests sends the whole archive, once per URL.
+const heads = new Map(), wholes = new Map();
+export async function fetchPacMember(url, id) {
+  const range = async (from, to) => {
+    if (wholes.has(url)) return (await wholes.get(url)).subarray(from, to);
+    const r = await fetch(url, { headers: { Range: `bytes=${from}-${to - 1}` } }); if (!r.ok) throw new Error(`${url}: ${r.status}`);
+    const b = new Uint8Array(await r.arrayBuffer());
+    if (r.status !== 200) return b;
+    wholes.set(url, Promise.resolve(b)); return b.subarray(from, to);
+  };
+  if (!heads.has(url)) heads.set(url, (async () => { for (let n = 0x4000; ; n *= 2) { const h = await range(0, n); for (let i = 0; i + 3 < h.length; i += 4) if (u16(h, i) === 0xffff) return h; if (h.length < n) throw new Error(`${url}: no archive table`); } })());
+  const h = await heads.get(url);
+  for (let i = 0; ; i += 4) { const k = u16(h, i); if (k === 0xffff) return null; if (k === id) return range(u16(h, i + 2) * 2048, u16(h, i + 6) * 2048); }
+}
+
 // Draws picture `id` of the BGD.PAC at `dataRoot` on `canvas`, at the picture's own size (320x240;
-// scale it with CSS and image-rendering: pixelated). The archive is fetched once per root.
-const archives = new Map();
+// scale it with CSS and image-rendering: pixelated). Only that picture is fetched.
 export async function drawPicture(canvas, dataRoot, id) {
-  const url = new URL("BGD.PAC", new URL(dataRoot, location.href)).href;
-  if (!archives.has(url)) archives.set(url, fetch(url).then(async (r) => { if (!r.ok) throw new Error(`${url}: ${r.status}`); return new Uint8Array(await r.arrayBuffer()); }));
-  const member = pacMember(await archives.get(url), id); if (!member) throw new Error(`picture ${id}: no such member`);
+  const member = await fetchPacMember(new URL("BGD.PAC", new URL(dataRoot, location.href)).href, id); if (!member) throw new Error(`picture ${id}: no such member`);
   const p = decodePicture(member);
   canvas.width = p.width; canvas.height = p.height; canvas.getContext("2d").putImageData(new ImageData(p.rgba, p.width, p.height), 0, 0);
   return p;
