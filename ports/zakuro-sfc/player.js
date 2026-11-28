@@ -11,6 +11,7 @@ import { createAudioOut } from './sound/output.js';
 import { startGate } from '../../shared/player/start-gate.js';
 import { ProgramImage, ZakuroVM, createApuLink } from './vm/browser.js';
 import { InputQueue, PAD } from './input-queue.js';
+import { GAME_ID, openSaves } from './save-store.js';
 import { itemAt, planFor, planForLateTap, screenOf } from './screens.js';
 
 const $ = (id) => document.getElementById(id);
@@ -24,7 +25,6 @@ const store = {
 
 const MASTER_HZ = 21477272.727, DSP_HZ = 32000, SLICE = 35791; // ~1/600 s of master clock
 const LEAD = 0.12, BUDGET_MS = 30;
-const SRAM_KEY = 'zakuro-sfc.sram';
 
 // Whole-number scale in device pixels, so every SFC pixel is the same size.
 function fit() {
@@ -40,8 +40,6 @@ fit();
 const get = (p) => fetch(new URL(p, base)).then((r) => { if (!r.ok) throw new Error(`${p}: HTTP ${r.status}`); return r; });
 const bin = (p) => get(p).then((r) => r.arrayBuffer()).then((b) => new Uint8Array(b));
 const hex = (buf) => [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, '0')).join('');
-const toBase64 = (bytes) => { let s = ''; for (const b of bytes) s += String.fromCharCode(b); return btoa(s); };
-const fromBase64 = (text) => Uint8Array.from(atob(text), (c) => c.charCodeAt(0));
 
 function fail(error) {
   $('loading').hidden = true; $('start')?.remove();
@@ -65,7 +63,7 @@ async function load() {
   return { ipl, dsp, gauss: new Int16Array(gauss.buffer, gauss.byteOffset, 512), program, replay };
 }
 
-function startGame(data, out) {
+function startGame(data, out, saves) {
   const { apu, link } = createApuLink({ ipl: data.ipl, gauss: data.gauss, powerOnDsp: data.dsp });
   let produced = 0;
   apu.dsp.onSample = (l, r) => { produced++; out.sample(l, r); };
@@ -82,10 +80,31 @@ function startGame(data, out) {
       saveTimer = setTimeout(saveSram, 800);
     },
   });
-  function saveSram() { clearTimeout(saveTimer); store.set(SRAM_KEY, toBase64(vm.exportSram())); }
-  addEventListener('pagehide', saveSram);
-  const saved = data.replay ? null : store.get(SRAM_KEY);
-  if (saved) { try { vm.importSram(fromBase64(saved)); } catch { /* size changed: start fresh */ } }
+  // Saves (save-store.js): the cartridge's three SRAM slots live in the shared save store, which syncs
+  // them with the save server; a verification run (?replay) never touches them.
+  function saveSram() { clearTimeout(saveTimer); if (saves) saves.takeSram(vm.exportSram()); }
+  if (saves) {
+    vm.importSram(saves.fillSram(vm.exportSram()));
+    saves.store.subscribe((event) => {
+      if (event.type === 'remote' && event.gameId === GAME_ID) saves.applyRemote(vm.bus.sram, event.slot);
+    });
+  }
+  // Web only: the page being played is kept in the suspend slot when the page is left (and every
+  // minute of play), so another device can carry on from the same moment.
+  // The state is ~130 KB packed, so the minute timer writes it only after the scene has changed.
+  let suspendedAt = -1, suspendedScene = -1;
+  const suspend = async ({ always = true } = {}) => {
+    if (!saves || vm.ppu.field === suspendedAt) return;
+    const w = vm.bus.wram;
+    if (w[0x1000] !== 0xf6) return; // not in the story yet (logo, title, slots, name board)
+    const scene = w[0x1002] | (w[0x1003] << 8);
+    if (!always && scene === suspendedScene) return;
+    suspendedAt = vm.ppu.field; suspendedScene = scene;
+    try { await saves.writeSuspend(vm.saveState(), { scene }); } catch { /* keep playing */ }
+  };
+  addEventListener('pagehide', () => { saveSram(); suspend(); });
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') { saveSram(); suspend(); } });
+  setInterval(() => suspend({ always: false }), 60000);
   // The VM renders only when asked (once per display frame, below), so catching up after a stall
   // costs CPU time only. Input is fed once per field from the field counter instead.
   vm.skipRender = true;
@@ -135,8 +154,16 @@ function startGame(data, out) {
     if (!vm.cpu.stopped) requestAnimationFrame(step);
   };
   requestAnimationFrame(step);
-  window.zakuro = { vm, input, out, saveSram };
-  return { vm, input };
+  const resume = async () => {
+    const state = await saves?.readSuspend();
+    if (!state) return false;
+    vm.loadState(state);
+    vm.importSram(saves.fillSram(vm.exportSram()));
+    input.clear(); lastField = -1; shown = null;
+    return true;
+  };
+  window.zakuro = { vm, input, out, saveSram, suspend, resume };
+  return { vm, input, resume };
 }
 
 // Screen coordinates of a pointer event, in the game's 256x224 pixels.
@@ -249,13 +276,30 @@ const wake = () => { shell.classList.remove('idle'); clearTimeout(idleTimer); id
 addEventListener('pointermove', wake); addEventListener('pointerdown', wake); wake();
 
 // The game starts at once; audio may only start inside a user gesture, so it is silent until the first tap or key.
-load().then((data) => {
+// The save dialog (shared/save/sync-ui.js) reaches the store and the suspend slot through this.
+let game = null;
+const openStore = (data) => (data.replay ? Promise.resolve(null) : openSaves().catch(() => null)).then((saves) => {
+  if (saves) {
+    globalThis.soundnovelSave = { store: saves.store, gameId: GAME_ID, boot: {
+      get titleActive() { return !!game; },
+      canContinue: () => saves.hasSuspend(),
+      continueSuspended: () => game?.resume() ?? false,
+      continueLabel: '마지막 장면에서 이어하기',
+      continueNote: '게임 중 언제든 쓸 수 있습니다. 원작 저장 슬롯은 그대로 둡니다.',
+    } };
+    dispatchEvent(new Event('soundnovel-save-ready'));
+  }
+  return saves;
+});
+
+load().then(async (data) => {
+  const saves = await openStore(data);
   let out = null;
   startGate(stage, { onPress: () => out?.resume() }).then(async () => {
     try {
       out = await createAudioOut();
       out.resume(); // silent until the first tap or key (startGate's onPress)
-      const game = startGame(data, out);
+      game = startGame(data, out, saves);
       wireControls(game, out);
       stage.classList.add('ready');
     } catch (error) { fail(error); } // no audio or a failed start: say so instead of leaving a blank page

@@ -104,7 +104,12 @@ own WRAM (`$1FFD`/`$1FFA`, the return address of the routine waiting for input) 
 A tap away from every item does nothing. Menu presses are held 6 fields (these screens ignore
 presses under 4) and the cursor is read back after each press. The corner button = B.
 Keyboard: Z/Enter confirm (START on the logo and title), X B, arrows, Space START, A Y, S X, Q L, W R; F full screen.
-SRAM is kept in localStorage (`zakuro-sfc.sram`) through the VM's SRAM hooks.
+Saves go through the shared save store (`save-store.js`, docs/save/README.md): the cartridge's three
+SRAM slots are `manual-0..2`, the web-only `suspend` slot is the packed VM state (`state-pack.js`, no
+SRAM, program or IPL inside). The shared dialog (`shared/save/sync-ui.js`, the cloud button) gives the
+passcode, PC↔phone sync, the 409 choice, backup files and 「마지막 장면에서 이어하기」. The old
+localStorage SRAM (`zakuro-sfc.sram`) moves into the store once. Browser check on two devices:
+`tests/two-devices-browser.mjs` (reference server, or `D1=1` for the Pages API double).
 `?replay` (verification only) plays the recorded native input first, then hands over to the player.
 
 The VM runs with `skipRender`; the player renders once per display frame and feeds input once per
