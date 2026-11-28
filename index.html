@@ -60,7 +60,6 @@
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5l11 7-11 7z"/></svg>
             플레이
           </a>
-          <span class="hint">일본어 원문 · 헤드폰 권장</span>
         </div>
       </div>
     </div>
@@ -104,12 +103,12 @@
   // until one is chosen). A logo is shown only as the work's own picture, never drawn in a font.
   const CARDS = {
     '#kamaitachi-ps1': { snow: true, kicker: ['PLAYSTATION', '1998', '춘소프트'], logo: '/kamaitachi-ps1-kor/port-data/machine/hub-logo.png', tall: true, ko: '카마이타치의 밤 특별편',
-      still: '/kamaitachi-ps1-kor/port-data/machine/front-pension.png', story: true, hint: '시험판 · 헤드폰 권장', },
+      still: '/kamaitachi-ps1-kor/port-data/machine/front-pension.png', story: true, },
     '#kamaitachi': { snow: true, kicker: ['GAME BOY ADVANCE', '2002', '춘소프트'], logo: '/art/hub/kamaitachi-gba-logo.png', ko: '카마이타치의 밤 어드밴스',
-      still: '/art/kamaitachi-still.png', story: true, hint: '일본어 원문 · 헤드폰 권장', },
-    '#kamaitachi-sfc': { snow: true, light: true, kicker: ['SUPER FAMICOM', '1994', '춘소프트'], logo: '/art/hub/kamaitachi-sfc-logo.png', ko: '카마이타치의 밤', still: '/art/hub/kamaitachi-sfc.png', story: true, hint: '시험판 · 헤드폰 권장' },
-    '#kamaitachi2-ps2': { kicker: ['PLAYSTATION 2', '2002', '춘소프트'], logo: '/art/hub/kamaitachi2-ps2-logo.png', ko: '카마이타치의 밤 2', still: '/art/hub/kamaitachi2-ps2.png', hint: '시험판 · 헤드폰 권장' },
-    '#zakuro-sfc': { kicker: ['SUPER FAMICOM', '1995', '이매지니어'], logo: '/art/hub/zakuro-sfc-logo.png', ko: '석류의 맛', still: '/art/hub/zakuro-sfc.png', hint: '시험판 · 헤드폰 권장' },
+      still: '/art/kamaitachi-still.png', story: true, },
+    '#kamaitachi-sfc': { snow: true, light: true, kicker: ['SUPER FAMICOM', '1994', '춘소프트'], logo: '/art/hub/kamaitachi-sfc-logo.png', ko: '카마이타치의 밤', still: '/art/hub/kamaitachi-sfc.png', story: true },
+    '#kamaitachi2-ps2': { kicker: ['PLAYSTATION 2', '2002', '춘소프트'], logo: '/art/hub/kamaitachi2-ps2-logo.png', ko: '카마이타치의 밤 2', still: '/art/hub/kamaitachi2-ps2.png' },
+    '#zakuro-sfc': { kicker: ['SUPER FAMICOM', '1995', '이매지니어'], logo: '/art/hub/zakuro-sfc-logo.png', ko: '석류의 맛', still: '/art/hub/zakuro-sfc.png' },
   };
   const DEFAULT_CARD = '#kamaitachi-ps1';
   const card = document.querySelector('#marquee .card');
@@ -129,7 +128,6 @@
     marquee.classList.toggle('light', Boolean(c.light)); // snow only for the snowbound pension
     const lede = card.querySelector('.lede'); lede.hidden = !c.story; if (c.story) lede.innerHTML = story;
     card.querySelector('.start').href = chosen;
-    card.querySelector('.hint').textContent = c.hint ?? '';
     const stillBox = document.querySelector('#marquee .still');
     let still = stillBox.querySelector('img');
     if (!c.still) still?.remove();
