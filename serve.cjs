@@ -12,15 +12,294 @@ const routes = new Map([
     const types = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.json': 'application/json' };
     return ['/web-player/' + file, [path.join(__dirname, 'web-player', file), types[path.extname(file)] + '; charset=utf-8']];
   }),
-  ['/kamaitachi-gba-kor/data/first-choice.ko.json', [path.join(__dirname, 'kamaitachi-gba-kor/data/first-choice.ko.json'), 'application/json; charset=utf-8']],
+  ['/kamaitachi-gba-kor/data/kamaitachi.ja.json', [path.join(__dirname, 'kamaitachi-gba-kor/data/kamaitachi.ja.json'), 'application/json; charset=utf-8']],
+  // MP2K sound module and the cartridge's sound data (kamaitachi-gba-kor/tools/extract_sound.py)
+  ...['index.html', 'm4a.js', 'output.js', 'worklet.js'].map(file => ['/ports/kamaitachi-gba/sound/' + file,
+    [path.join(__dirname, 'ports/kamaitachi-gba/sound', file), (file.endsWith('.html') ? 'text/html' : 'text/javascript') + '; charset=utf-8']]),
+  ['/kamaitachi-gba-kor/port-data/sound/m4a.json', [path.join(__dirname, 'kamaitachi-gba-kor/port-data/sound/m4a.json'), 'application/json; charset=utf-8']],
+  ['/kamaitachi-gba-kor/port-data/sound/m4a.bin', [path.join(__dirname, 'kamaitachi-gba-kor/port-data/sound/m4a.bin'), 'application/octet-stream']],
+  // Title-card still: the pension at night (scene picture 002 from kamaitachi-gba-kor).
+  ['/art/kamaitachi-still.png', [path.join(__dirname, 'kamaitachi-gba-kor/assets/bg/002.png'), 'image/png']],
+  // Title logo: the official clear logo traced to vector paths and laid out on one line (kamaitachi-gba-kor/assets/hub).
+  ['/art/kamaitachi-logo.svg', [path.join(__dirname, 'kamaitachi-gba-kor/assets/hub/logo-row.svg'), 'image/svg+xml']],
+  // Cover art for the works list: each work's package front, cropped to 3:2 (kamaitachi-gba-kor/assets/hub/covers).
+  ...['higanbana', 'otogirisou', 'machi', 'majo', 'yakouchuu', 'yakouchuu2', 'zakuro', 'anubis', '428'].map(slug =>
+    ['/art/covers/' + slug + '.jpg', [path.join(__dirname, 'kamaitachi-gba-kor', 'assets', 'hub', 'covers', slug + '.jpg'), 'image/jpeg']]),
   ['/style.css', [path.join(__dirname, 'style.css'), 'text/css; charset=utf-8']],
   ['/games.js', [path.join(__dirname, 'games.js'), 'text/javascript; charset=utf-8']],
   ['/AGB-AHZJ.gba', [path.join(__dirname, '..', 'AGB-AHZJ.gba'), 'application/octet-stream']],
   ['/AGB-AKZJ.gba', [path.join(__dirname, '..', 'AGB-AKZJ.gba'), 'application/octet-stream']]
 ]);
 
-http.createServer((request, response) => {
-  const route = routes.get(request.url.split('?')[0]);
+// The native-bytecode port (ports/kamaitachi-gba) and its extracted cartridge data (port-data).
+const portTypes = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8',
+  '.css': 'text/css; charset=utf-8', '.json': 'application/json; charset=utf-8', '.bin': 'application/octet-stream', '.tsv': 'text/tab-separated-values; charset=utf-8',
+  '.mjs': 'text/javascript; charset=utf-8', '.png': 'image/png', '.jpg': 'image/jpeg', '.webp': 'image/webp', '.svg': 'image/svg+xml',
+  '.wasm': 'application/wasm', '.ogg': 'audio/ogg', '.mp3': 'audio/mpeg', '.wav': 'audio/wav', '.woff2': 'font/woff2', '.mp4': 'video/mp4', '.txt': 'text/plain; charset=utf-8', '.PAC': 'application/octet-stream', '.ch0': 'application/octet-stream', '.pac': 'application/octet-stream', '.wd': 'application/octet-stream' };
+// Kamaitachi 2 (PS2) web build lives in the private kamaitachi2-ps2-kor checkout on this PC; its web/ folder path is
+// in a local, uncommitted serve.ps2web (one line). Disc images are never among the served types.
+const ps1Data = (() => { try { return path.resolve(__dirname, fs.readFileSync(path.join(__dirname, 'serve.ps1data'), 'utf8').trim()); } catch { return path.resolve(__dirname, '..', '..', '_claude-work', 'ps1-web'); } })();
+const ps2Web = (() => { try { return path.resolve(__dirname, fs.readFileSync(path.join(__dirname, 'serve.ps2web'), 'utf8').trim()); } catch { return ''; } })();
+// Served folders: [url prefix, folder, allowed extensions] (also read by tools/cloudflare/build.mjs).
+const PORT_PREFIXES = [
+    ['/ports/kamaitachi-gba/', path.join(__dirname, 'ports', 'kamaitachi-gba'), ['.html', '.js', '.css']],
+    ['/kamaitachi-gba-kor/port-data/', path.join(__dirname, 'kamaitachi-gba-kor', 'port-data'), ['.json', '.bin']],
+    ['/kamaitachi-gba-kor/port-data-ko/', path.join(__dirname, 'kamaitachi-gba-kor', 'port-data-ko'), ['.json', '.bin']],
+    // SFC port: its ROM-less player (index.html: the program ranges in port-data/program, no cartridge),
+    // the sound test pages, and the private data.
+    ['/ports/kamaitachi-sfc/', path.join(__dirname, 'ports', 'kamaitachi-sfc'), ['.html', '.js', '.css']],
+    ['/kamaitachi-sfc-kor/port-data/', path.join(__dirname, 'kamaitachi-sfc-kor', 'port-data'), ['.json', '.bin', '.tsv']],
+    // The SFC screen VM (Codex, feat/20): the machine the SFC port's VM page imports; its tests stay out.
+    ['/sfc-vm/', path.join(__dirname, 'sfc-vm'), ['.js']],
+    // Code shared by every port (save store and sync client); its tests and the reference server stay out.
+    ['/shared/', path.join(__dirname, 'shared'), ['.js']],
+    // PS1 port: its page, and the private data made on this PC from the user's disc (PACs, exe data, the
+    // XA voice channel and converted movies; folder in serve.ps1data, default ../../_claude-work/ps1-web). Open-beta paths
+    // since 2026-11-28 (태우: "아이디랑 비밀번호 없이 오픈").
+    ['/ports/kamaitachi-ps1/', path.join(__dirname, 'ports', 'kamaitachi-ps1'), ['.html', '.js', '.css']],
+    // 석류의 맛 SFC port: its page and the private data (program, sound) from zakuro-sfc-kor.
+    ['/ports/zakuro-sfc/', path.join(__dirname, 'ports', 'zakuro-sfc'), ['.html', '.js', '.css']],
+    ['/zakuro-sfc-kor/port-data/', path.join(__dirname, 'zakuro-sfc-kor', 'port-data'), ['.json', '.bin']],
+    // The hub's title-card pictures (each game's own title background and logo, made on this PC from the
+    // ports' data; kept outside git in ../../_claude-work/hub-art).
+    ['/art/hub/', path.resolve(__dirname, '..', '..', '_claude-work', 'hub-art'), ['.png', '.jpg']],
+    ['/kamaitachi-ps1-kor/port-data/', ps1Data, ['.json', '.bin', '.PAC', '.pac', '.ch0', '.mp4', '.png']],
+    // 펜션 슈프르 관리자 (admin/): the owner's page, under /edit/ so that it asks for the password from outside.
+    ['/edit/admin/', path.join(__dirname, 'admin'), ['.html', '.js', '.css']],
+    // screenshots of the testers' reports on this PC (report() below)
+    ['/edit/reports/', path.join(__dirname, 'reports'), ['.png']],
+    // The admin page's data of the PS1 script (ko-editor.json: the whole Japanese and Korean script side by
+    // side). It is read only through /edit/, never through the open data path above.
+    // debug-card.bin: the memory card of a debug run (ports/kamaitachi-ps1/src/machine-browser.js ?debug=1).
+    ['/edit/kamaitachi-ps1/', path.join(ps1Data, 'machine', 'ko'), ['.json', '.bin']],
+    ['/kamaitachi2-ps2/', ps2Web, ['.html', '.js', '.mjs', '.css', '.json', '.bin', '.pac', '.wd', '.png', '.jpg', '.webp', '.svg', '.wasm', '.ogg', '.mp3', '.wav', '.mp4', '.woff2', '.txt']],
+];
+function portRoute(url) {
+  // The GBA debug scene list (ports/kamaitachi-gba/main.js ?debug=1) holds script text: it is read only
+  // through /edit/ (the password from outside), never through the open data paths below.
+  const debugScenes = /^\/edit\/kamaitachi-gba\/debug-scenes-(ja|ko)\.json$/.exec(url);
+  if (debugScenes) return [path.join(__dirname, 'kamaitachi-gba-kor', debugScenes[1] === 'ko' ? 'port-data-ko' : 'port-data', 'debug-scenes.json'), portTypes['.json']];
+  // The owner's debug saves (every ending seen, gold bookmark), one per port, read by its debug run like
+  // PS1's debug-card.bin: /edit/<port>/debug-save.<json|bin|srm> -> debug-save.* in that port's private data.
+  const debugSave = /^\/edit\/(kamaitachi-gba|kamaitachi-sfc|zakuro-sfc|kamaitachi2-ps2)\/debug-save\.(json|bin|srm)$/.exec(url);
+  if (debugSave) {
+    const dir = { 'kamaitachi-gba': path.join(__dirname, 'kamaitachi-gba-kor', 'port-data'), 'kamaitachi-sfc': path.join(__dirname, 'kamaitachi-sfc-kor', 'port-data'),
+      'zakuro-sfc': path.join(__dirname, 'zakuro-sfc-kor', 'port-data'), 'kamaitachi2-ps2': ps2Web }[debugSave[1]];
+    return dir ? [path.join(dir, 'debug-save.' + debugSave[2]), debugSave[2] === 'json' ? portTypes['.json'] : 'application/octet-stream'] : null;
+  }
+  for (const [prefix, dir, exts] of PORT_PREFIXES) {
+    if (!url.startsWith(prefix) || !dir) continue;
+    let rest;
+    try { rest = decodeURIComponent(url.slice(prefix.length)); } catch { return null; } // a malformed %-escape is a 404, never a crash
+    const file = path.join(dir, rest || 'index.html');
+    const ext = path.extname(file);
+    // Owner-only files never go out through the open data paths. Lower-cased: Windows file names ignore case.
+    const base = path.basename(file).toLowerCase();
+    if (prefix === '/kamaitachi-ps1-kor/port-data/' && (base === 'ko-editor.json' || base === 'debug-card.bin' || base === 'debug-scenes.json')) return null;
+    if (prefix.startsWith('/kamaitachi-gba-kor/') && base === 'debug-scenes.json') return null;
+    if (/^debug-save\./.test(base)) return null; // owner-only, through /edit/<port>/ above
+    if (!file.startsWith(dir + path.sep) || !exts.includes(ext) || /(^|[\\/])(tests?|tools|server)[\\/]/.test(file.slice(dir.length))) return null;
+    return [file, portTypes[ext]];
+  }
+  return null;
+}
+
+// Outside testing goes through a tunnel (cloudflared, ngrok): those requests carry a forwarding header.
+// They need the test password (env SOUNDNOVEL_PASSWORD or a local, uncommitted serve.password file)
+// and never get the cartridge files. Direct requests on this PC are unchanged.
+const password = (process.env.SOUNDNOVEL_PASSWORD ?? (() => {
+  try { return fs.readFileSync(path.join(__dirname, 'serve.password'), 'utf8'); } catch { return ''; }
+})()).trim();
+// The SFC VM page reads the cartridge at this address; the file's location on this PC is in a local,
+// uncommitted serve.sfcrom (one line, a path). Like the GBA cartridges it is never served through a tunnel.
+const SFC_GAME = '/kamaitachi-sfc-kor/port-data/game/kamaitachi.sfc';
+const sfcRom = (() => { try { return fs.readFileSync(path.join(__dirname, 'serve.sfcrom'), 'utf8').trim(); } catch { return ''; } })();
+if (sfcRom) routes.set(SFC_GAME, [path.resolve(__dirname, sfcRom), 'application/octet-stream']);
+const cartridges = new Set(['/AGB-AHZJ.gba', '/AGB-AKZJ.gba', SFC_GAME]);
+// Open beta: while a local, uncommitted serve.open file exists (or SOUNDNOVEL_OPEN=1), tunnel visitors
+// need no password for anything they can read (태우 2026-11-28: "비밀번호 하지마"). Writes (/edit/) keep
+// the password, cartridges stay blocked, and pages ask search engines not to index them.
+const openBeta = () => process.env.SOUNDNOVEL_OPEN === '1' || fs.existsSync(path.join(__dirname, 'serve.open'));
+const openPath = (url) => !url.startsWith('/edit/');
+function allowedFromOutside(request, response, url) {
+  if (!['cf-connecting-ip', 'x-forwarded-for', 'x-forwarded-host'].some(name => name in request.headers)) return true;
+  if (openBeta() && openPath(url)) {
+    if (cartridges.has(url)) { response.writeHead(404).end(); return false; }
+    response.setHeader('X-Robots-Tag', 'noindex, nofollow');
+    return true;
+  }
+  if (!password) { response.writeHead(503).end('No test password is set on this server.'); return false; }
+  const [scheme, token] = (request.headers.authorization ?? '').split(' ');
+  const given = scheme === 'Basic' && token ? Buffer.from(token, 'base64').toString().split(':').slice(1).join(':') : '';
+  const a = Buffer.from(given), b = Buffer.from(password);
+  if (a.length !== b.length || !require('node:crypto').timingSafeEqual(a, b)) {
+    // The password cookie (left by a page opened with the password, e.g. the admin page) also lets in
+    // the owner's quiet data reads, such as a debug run's scene list or card.
+    if (gateCookieOk(request)) return true;
+    // A quiet read (X-Quiet-Auth: 1, the debug runs' own fetches) is refused without the browser's
+    // password prompt, so that ?debug=1 simply does nothing for anyone else.
+    const quiet = request.headers['x-quiet-auth'] === '1';
+    response.writeHead(401, quiet ? {} : {'WWW-Authenticate': 'Basic realm="soundnovel test", charset="UTF-8"'}).end();
+    return false;
+  }
+  if (cartridges.has(url)) { response.writeHead(404).end(); return false; }
+  // A page opened with the password leaves this cookie, so the save API (which sends its own
+  // Authorization: Bearer) stays behind the same password without a second prompt.
+  response.setHeader('Set-Cookie', `sn_gate=${gateCookie}; Path=/; HttpOnly; Secure; SameSite=Strict; Max-Age=2592000`);
+  return true;
+}
+const gateCookie = require('node:crypto').createHash('sha256').update('soundnovel-gate:' + password).digest('hex');
+function gateCookieOk(request) {
+  const given = /(?:^|;\s*)sn_gate=([0-9a-f]{64})/.exec(request.headers.cookie ?? '')?.[1] ?? '';
+  const a = Buffer.from(given), b = Buffer.from(gateCookie);
+  return Boolean(password) && a.length === b.length && require('node:crypto').timingSafeEqual(a, b);
+}
+function syncAllowedFromOutside(request, response) {
+  if (!['cf-connecting-ip', 'x-forwarded-for', 'x-forwarded-host'].some(name => name in request.headers)) return true;
+  if (openBeta()) return true;
+  const given = /(?:^|;\s*)sn_gate=([0-9a-f]{64})/.exec(request.headers.cookie ?? '')?.[1] ?? '';
+  const a = Buffer.from(given), b = Buffer.from(gateCookie);
+  if (password && a.length === b.length && require('node:crypto').timingSafeEqual(a, b)) return true;
+  response.writeHead(401, {'Content-Type': 'application/json'}).end('{"error":"open the site with the test password first"}');
+  return false;
+}
+
+// Save sync (shared/save): /sync/* goes to the save server on 127.0.0.1:SYNC_PORT with /sync stripped.
+// Through a tunnel it needs the password cookie that the site sets once the test password is given
+// (the save API sends its own Authorization: Bearer, so a Basic prompt can't guard it). Bodies over 256 KB are refused here.
+const SYNC_PORT = Number(process.env.SOUNDNOVEL_SYNC_PORT ?? 8780);
+const SYNC_MAX_BODY = 256 * 1024;
+function proxySync(request, response) {
+  const headers = { ...request.headers, host: `127.0.0.1:${SYNC_PORT}` };
+  delete headers.cookie;
+  if (Number(request.headers['content-length'] ?? 0) > SYNC_MAX_BODY) { response.writeHead(413).end(); request.resume(); return; }
+  const upstream = http.request({ host: '127.0.0.1', port: SYNC_PORT, method: request.method,
+    path: request.url.slice('/sync'.length) || '/', headers }, (reply) => {
+    response.writeHead(reply.statusCode, reply.headers);
+    reply.pipe(response);
+  });
+  upstream.on('error', () => { if (!response.headersSent) response.writeHead(502).end('Save server is not running.'); else response.destroy(); });
+  let size = 0;
+  request.on('data', (chunk) => {
+    size += chunk.length;
+    if (size > SYNC_MAX_BODY) { upstream.destroy(); if (!response.headersSent) response.writeHead(413).end(); request.destroy(); return; }
+    upstream.write(chunk);
+  });
+  request.on('end', () => upstream.end());
+}
+
+// Beta testers' reports (shared/player/report-button.js). With GITHUB_REPORT_TOKEN set they become issues in
+// the game's private repository like on Cloudflare (cloudflare/functions/_lib/report.js); without it (a test PC)
+// they are kept in reports/ next to this file. Screenshots: reports/<id>.png, read at /edit/reports/ (password).
+const reportsDir = path.join(__dirname, 'reports');
+const reportTimes = new Map();
+function report(request, response) {
+  const chunks = []; let size = 0, over = false;
+  request.on('data', (c) => { size += c.length; if (size > 1_500_000) { over = true; request.destroy(); } else chunks.push(c); });
+  request.on('end', async () => {
+    if (over) return;
+    const body = Buffer.concat(chunks);
+    const client = request.headers['cf-connecting-ip'] ?? request.socket.remoteAddress ?? '?';
+    const allow = async (who) => {
+      const now = Date.now(), list = (reportTimes.get(who) ?? []).filter((t) => now - t < 3_600_000);
+      if (list.length >= 10) return false;
+      list.push(now); reportTimes.set(who, list); return true;
+    };
+    const putShot = async (id, bytes) => { fs.mkdirSync(reportsDir, { recursive: true }); fs.writeFileSync(path.join(reportsDir, id + '.png'), bytes); return `/edit/reports/${id}.png`; };
+    const headers = new Headers({ 'cf-connecting-ip': client });
+    const req = new Request('http://local/report', { method: request.method, headers, body: request.method === 'POST' ? body : undefined });
+    let res;
+    try {
+      const { handleReport } = await import('./cloudflare/functions/_lib/report.js');
+      const token = process.env.GITHUB_REPORT_TOKEN;
+      const local = Object.assign(async (repo, issue, id) => {
+        fs.mkdirSync(reportsDir, { recursive: true });
+        fs.writeFileSync(path.join(reportsDir, id + '.json'), JSON.stringify({ repo, ...issue }, null, 1));
+        return true;
+      }, { local: true });
+      res = await handleReport(req, token ? { token, allow, putShot } : { allow, putShot, fileIssue: local });
+    } catch { res = new Response('{"error":"server error"}', { status: 500 }); }
+    response.writeHead(res.status, { 'Content-Type': 'application/json' }).end(Buffer.from(await res.arrayBuffer()));
+  });
+}
+
+const zlib = require('node:zlib');
+const gzipCache = new Map(); // file -> {etag, body | pending callbacks}
+function gzipped(file, etag, done) {
+  const hit = gzipCache.get(file);
+  if (hit?.etag === etag) { if (hit.body) return done(hit.body); hit.waiting.push(done); return; }
+  const entry = { etag, body: null, waiting: [done] };
+  gzipCache.set(file, entry);
+  fs.readFile(file, (error, raw) => {
+    if (error) { gzipCache.delete(file); entry.waiting.forEach(fn => fn(null)); return; }
+    zlib.gzip(raw, { level: 6 }, (failure, body) => {
+      if (failure) gzipCache.delete(file); else entry.body = body;
+      entry.waiting.forEach(fn => fn(failure ? null : body));
+      entry.waiting = [];
+    });
+  });
+}
+
+const server = http.createServer((request, response) => {
+  const url = request.url.split('?')[0];
+  if (url === '/sync' || url.startsWith('/sync/')) { if (syncAllowedFromOutside(request, response)) proxySync(request, response); return; }
+  if (url === '/report') { report(request, response); return; }
+  if (!allowedFromOutside(request, response, url)) return;
+  // Dialogue edits (ports/kamaitachi-gba/src/text-editor.js): game data in kamaitachi-gba-kor
+  // (port-data/text-edits.json for ja, port-data-ko/text-edits.json for ko), read through the usual
+  // /kamaitachi-gba-kor/ path. Writable from this PC and, with the test password, through the tunnel
+  // (/edit/ is never an open-beta path, so allowedFromOutside has already asked for it).
+  const textEdit = /^\/edit\/text-edits-(ja|ko)\.json$/.exec(url);
+  if (textEdit && request.method === 'PUT') {
+    const file = path.join(__dirname, 'kamaitachi-gba-kor', textEdit[1] === 'ko' ? 'port-data-ko' : 'port-data', 'text-edits.json');
+    const chunks = []; let size = 0, over = false;
+    request.on('data', chunk => { size += chunk.length; if (size > 1024 * 1024) { over = true; request.destroy(); } else chunks.push(chunk); });
+    request.on('end', () => {
+      if (over) return;
+      let value;
+      try { value = JSON.parse(Buffer.concat(chunks).toString('utf8')); } catch { value = null; }
+      if (!value || typeof value !== 'object' || Array.isArray(value)) { response.writeHead(400).end(); return; }
+      const temp = file + '.tmp';
+      fs.writeFile(temp, JSON.stringify(value, null, 1) + '\n', (error) => {
+        if (error) { response.writeHead(500).end(); return; }
+        fs.rename(temp, file, (failure) => response.writeHead(failure ? 500 : 204).end());
+      });
+    });
+    return;
+  }
+  // The admin page's dialogue edits of the PS1 Korean script (admin/adapters/kamaitachi-ps1.js):
+  // { id: { ko, base, at } }, kept next to the game's Korean data, where the game reads it at every
+  // start (ko/text-edits.json). Every save is also added to text-edits.log.jsonl (the history) and
+  // copied into the private repository's working folder (script/ko/owner-edits.json) when it is here.
+  if (url === '/edit/kamaitachi-ps1/text-edits.json' && request.method === 'PUT') {
+    const file = path.join(ps1Data, 'machine', 'ko', 'text-edits.json');
+    const chunks = []; let size = 0, over = false;
+    request.on('data', chunk => { size += chunk.length; if (size > 4 * 1024 * 1024) { over = true; request.destroy(); } else chunks.push(chunk); });
+    request.on('end', () => {
+      if (over) return;
+      let value;
+      try { value = JSON.parse(Buffer.concat(chunks).toString('utf8')); } catch { value = null; }
+      const good = value && typeof value === 'object' && !Array.isArray(value)
+        && Object.entries(value).every(([id, e]) => /^\d{3}-\d{3}-\d{4}$/.test(id) && e && typeof e.ko === 'string' && e.ko.length < 4000);
+      if (!good) { response.writeHead(400).end(); return; }
+      let before = {};
+      try { before = JSON.parse(fs.readFileSync(file, 'utf8')); } catch { /* the first save */ }
+      const changed = [...new Set([...Object.keys(before), ...Object.keys(value)])].filter(id => before[id]?.ko !== value[id]?.ko)
+        .map(id => ({ id, from: before[id]?.ko ?? null, to: value[id]?.ko ?? null }));
+      const body = JSON.stringify(value, null, 1) + '\n', temp = file + '.tmp';
+      try {
+        fs.writeFileSync(temp, body); fs.renameSync(temp, file);
+        if (changed.length) fs.appendFileSync(path.join(path.dirname(file), 'text-edits.log.jsonl'), JSON.stringify({ at: new Date().toISOString(), changed }) + '\n');
+        const repo = path.join(__dirname, 'kamaitachi-ps1-kor', 'script', 'ko');
+        if (fs.existsSync(repo)) fs.writeFileSync(path.join(repo, 'owner-edits.json'), body);
+      } catch (error) { console.error('[text-edits]', error); response.writeHead(500).end(); return; }
+      response.writeHead(204).end();
+    });
+    return;
+  }
+  // scene images from kamaitachi-gba-kor/tools/export_images.py: NNN.png and palette variants NNN-v.png
+  const bg = /^\/kamaitachi-gba-kor\/assets\/bg\/(\d{3}(?:-[1-3])?\.png)$/.exec(url);
+  const route = bg ? [path.join(__dirname, 'kamaitachi-gba-kor', 'assets', 'bg', bg[1]), 'image/png'] : routes.get(url) ?? portRoute(url);
   if (!route || !['HEAD', 'GET'].includes(request.method)) {
     response.writeHead(404).end();
     return;
@@ -30,11 +309,42 @@ http.createServer((request, response) => {
       response.writeHead(404).end();
       return;
     }
-    response.writeHead(200, {'Content-Type': route[1], 'Content-Length': stat.size});
+    // Caching: every file carries a validator and is checked on each use, so a returning visitor gets
+    // small 304s instead of the whole game again, and code and data never drift apart after a deploy.
+    const tag = `${stat.size.toString(36)}-${Math.floor(stat.mtimeMs).toString(36)}`;
+    const etag = `W/"${tag}"`;
+    response.setHeader('ETag', etag);
+    response.setHeader('Last-Modified', stat.mtime.toUTCString());
+    response.setHeader('Cache-Control', 'no-cache');
+    const given = (request.headers['if-none-match'] ?? '').split(',').map(v => v.trim().replace(/^W\//, ''));
+    if (given.includes(`"${tag}"`)) { response.writeHead(304).end(); return; }
+    // Compression for text and the larger data files (kept in memory per version, so it is done once).
+    const compressible = /^(text\/|application\/(json|octet-stream|javascript)|image\/svg)/.test(route[1]);
+    if (compressible && !request.headers.range && /\bgzip\b/.test(request.headers['accept-encoding'] ?? '') && stat.size > 1024 && stat.size < 32 * 1024 * 1024) {
+      return gzipped(route[0], etag, (body) => {
+        if (!body) { response.writeHead(500).end(); return; }
+        response.writeHead(200, {'Content-Type': route[1], 'Content-Encoding': 'gzip', 'Content-Length': body.length, 'Vary': 'Accept-Encoding'});
+        response.end(request.method === 'HEAD' ? undefined : body);
+      });
+    }
+    // Byte ranges (video needs them on iPhone Safari): a single "bytes=a-b" range gets a 206.
+    const range = /^bytes=(\d*)-(\d*)$/.exec(request.headers.range ?? '');
+    let start = 0, end = stat.size - 1, status = 200;
+    if (range && (range[1] || range[2])) {
+      start = range[1] ? Number(range[1]) : Math.max(0, stat.size - Number(range[2]));
+      end = range[1] && range[2] ? Math.min(Number(range[2]), stat.size - 1) : stat.size - 1;
+      if (start > end || start >= stat.size) { response.writeHead(416, {'Content-Range': `bytes */${stat.size}`}).end(); return; }
+      status = 206;
+    }
+    response.writeHead(status, {'Content-Type': route[1], 'Content-Length': end - start + 1, 'Accept-Ranges': 'bytes',
+      ...(status === 206 ? {'Content-Range': `bytes ${start}-${end}/${stat.size}`} : {})});
     if (request.method === 'HEAD') return response.end();
-    const stream = fs.createReadStream(route[0]);
+    const stream = fs.createReadStream(route[0], { start, end });
     stream.on('error', () => response.destroy());
     response.on('close', () => stream.destroy());
     stream.pipe(response);
   });
-}).listen(8770, '127.0.0.1', () => console.log('http://127.0.0.1:8770/'));
+});
+// Required as a module (tools/cloudflare/build.mjs), it only hands over its route tables.
+if (require.main === module) server.listen(8770, '127.0.0.1', () => console.log('http://127.0.0.1:8770/'));
+module.exports = { routes, portRoute, PORT_PREFIXES, cartridges, ps1Data, ps2Web };

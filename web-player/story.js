@@ -10,8 +10,36 @@
 //   page: array of sentences, a single sentence, or an object with `lines` / `sentences`.
 //   sentence: a string, or { ko | text | target, ja? } when the original Japanese is included.
 //   Sentences are normalized to { ko, ja } (ja is null when there is no original).
+//   `join: true` on a sentence object continues the previous sentence's line instead of starting a new one.
+//   `{name:<id>}` inside any text is replaced with names[id] (default names, e.g. the hero's).
+//   Top-level `lang` is the language of the main text (default "ko"); a node's `ending` marks an ending number.
 
 export class StoryFormatError extends Error {}
+
+// Flags: `set` is { name: value } applied on arrival (node) or when picked (option).
+// `next` is a list of { if?: { name: value }, to } checked top to bottom; the first match wins.
+// A plain `to` is the same as next: [{ to }]. Values are strings, numbers or booleans.
+function normalizeSet(raw, where) {
+  if (raw === undefined || raw === null) return null;
+  if (typeof raw !== 'object' || Array.isArray(raw)) throw new StoryFormatError(`${where}.set: 객체가 아닙니다.`);
+  for (const [k, v] of Object.entries(raw)) {
+    if (!['string', 'number', 'boolean'].includes(typeof v)) throw new StoryFormatError(`${where}.set.${k}: 값은 문자열·숫자·참거짓이어야 합니다.`);
+  }
+  return { ...raw };
+}
+
+function normalizeNext(obj, where) {
+  if (Array.isArray(obj.next)) {
+    if (!obj.next.length) throw new StoryFormatError(`${where}.next가 비어 있습니다.`);
+    return obj.next.map((r, i) => {
+      if (!r || typeof r !== 'object') throw new StoryFormatError(`${where}.next[${i}]: 객체가 아닙니다.`);
+      const cond = r.if ?? null;
+      if (cond !== null && (typeof cond !== 'object' || Array.isArray(cond))) throw new StoryFormatError(`${where}.next[${i}].if: 객체가 아닙니다.`);
+      return { if: cond, to: r.to ?? null };
+    });
+  }
+  return [{ if: null, to: obj.to ?? null }];
+}
 
 function firstDefined(obj, keys) {
   for (const k of keys) {
@@ -36,14 +64,71 @@ function normalizePage(page, where) {
   throw new StoryFormatError(`${where}: 문장 목록을 읽을 수 없습니다.`);
 }
 
+let nameMap = {};
+const withNames = (t) => t.replace(/\{name:([^}]+)\}/g, (m, id) => nameMap[id] ?? m);
+
 function toSentence(s, where) {
-  if (typeof s === 'string') return { ko: s, ja: null };
+  if (typeof s === 'string') return { ko: withNames(s), ja: null };
   if (s && typeof s === 'object') {
     const ko = firstDefined(s, ['ko', 'text', 'target']);
     const ja = firstDefined(s, ['ja', 'source', 'original']);
-    if (typeof ko === 'string') return { ko, ja: typeof ja === 'string' && ja ? ja : null };
+    if (typeof ko === 'string') {
+      const out = { ko: withNames(ko), ja: typeof ja === 'string' && ja ? withNames(ja) : null };
+      if (s.join === true) out.join = true;
+      return out;
+    }
   }
   throw new StoryFormatError(`${where}: 문장이 문자열이 아닙니다.`);
+}
+
+// Name entry on a choice node: the typed text picks an option by alias, and is kept in flag "name:<slot>".
+//   input: { slot, maxLength?, match: [{ aliases: [..], option, as? }], fallback }
+// `as` replaces what is shown for the name (the original rewrites some aliases to one spelling).
+// sequential: true runs every rule in order like the original: a hit rewrites the name to `as`,
+// later rules compare against the rewritten name, and the last hit decides the option.
+function normalizeInput(raw, node, id) {
+  const keys = new Set(node.options.map((o) => o.key));
+  if (!raw || typeof raw !== 'object') throw new StoryFormatError(`${id}.input: 객체가 아닙니다.`);
+  const match = (raw.match || []).map((m, i) => {
+    if (!Array.isArray(m.aliases) || !m.aliases.every((a) => typeof a === 'string')) throw new StoryFormatError(`${id}.input.match[${i}].aliases: 문자열 목록이 아닙니다.`);
+    if (!keys.has(String(m.option))) throw new StoryFormatError(`${id}.input.match[${i}].option: 없는 선택지 "${m.option}"`);
+    return { aliases: m.aliases.map((a) => a.normalize('NFKC')), option: String(m.option), as: typeof m.as === 'string' ? m.as : null };
+  });
+  if (!keys.has(String(raw.fallback))) throw new StoryFormatError(`${id}.input.fallback: 없는 선택지 "${raw.fallback}"`);
+  return {
+    slot: String(raw.slot ?? ''),
+    maxLength: Number.isInteger(raw.maxLength) ? raw.maxLength : 8,
+    match,
+    sequential: raw.sequential === true,
+    fallback: String(raw.fallback),
+  };
+}
+
+// Media on a node: `bg` (image) and `bgm` (looping audio), relative to top-level `assets`.
+// They stay until another node changes them; "" or null clears. Kept as "media:*" flags so saves carry them.
+function withMedia(set, n) {
+  const out = { ...(set || {}) };
+  for (const k of ['bg', 'bgm']) {
+    if (n[k] !== undefined && !(k === 'bg' && isBgPick(n[k]))) out[`media:${k}`] = typeof n[k] === 'string' ? n[k] : '';
+  }
+  return Object.keys(out).length ? out : null;
+}
+
+// `bg: { by: "<flag>", map: { "<value>": "<path>" } }` picks the picture by a flag when the node is entered.
+function isBgPick(v) {
+  return !!v && typeof v === 'object' && !Array.isArray(v);
+}
+
+function bgPick(n, id) {
+  if (!isBgPick(n.bg)) return null;
+  const { by, map } = n.bg;
+  if (typeof by !== 'string' || !by || !map || typeof map !== 'object' || Array.isArray(map)) {
+    throw new StoryFormatError(`${id}.bg: { by, map } 형식이어야 합니다.`);
+  }
+  for (const [k, v] of Object.entries(map)) {
+    if (typeof v !== 'string' && v !== null) throw new StoryFormatError(`${id}.bg.map.${k}: 경로 문자열이나 null이어야 합니다.`);
+  }
+  return { by, map: Object.fromEntries(Object.entries(map).map(([k, v]) => [k, v ?? ''])) };
 }
 
 function sceneId(raw) {
@@ -58,6 +143,10 @@ export function normalizeStory(raw) {
   if (schemaVersion === undefined) throw new StoryFormatError('schemaVersion이 없습니다.');
   if (!gameId) throw new StoryFormatError('gameId가 없습니다.');
   if (!entry) throw new StoryFormatError('entry가 없습니다.');
+
+  nameMap = raw.names && typeof raw.names === 'object' && !Array.isArray(raw.names)
+    ? Object.fromEntries(Object.entries(raw.names).filter(([, v]) => typeof v === 'string'))
+    : {};
 
   const nodeList = Array.isArray(raw.nodes)
     ? raw.nodes.map((n) => [n.id, n])
@@ -86,31 +175,40 @@ export function normalizeStory(raw) {
         id,
         kind: 'choice',
         scene,
+        set: withMedia(normalizeSet(n.set, id), n),
         question: toSentence(firstDefined(n, ['question', 'prompt', 'text']) ?? '', `${id}.text`),
         options: options.map((o, i) => ({
           key: String(firstDefined(o, ['key', 'id']) ?? String.fromCharCode(65 + i)),
           label: toSentence(firstDefined(o, ['label', 'text']) ?? '', `${id}.options[${i}].label`),
-          to: o.to ?? null,
+          next: normalizeNext(o, `${id}.options[${i}]`),
+          set: normalizeSet(o.set, `${id}.options[${i}]`),
         })),
       };
+      if (n.input) nodes[id].input = normalizeInput(n.input, nodes[id], id);
     } else {
       const pages = firstDefined(n, ['pages']);
-      if (!Array.isArray(pages) || !pages.length) {
+      // An empty `pages` list is allowed: such a node only applies `set` and moves on (flag checks).
+      if (!Array.isArray(pages)) {
         throw new StoryFormatError(`${id}: options나 pages가 필요합니다.`);
       }
       nodes[id] = {
         id,
         kind: 'text',
         scene,
+        set: withMedia(normalizeSet(n.set, id), n),
         pages: pages.map((p, i) => normalizePage(p, `${id}.pages[${i}]`)),
-        to: n.to ?? null,
+        next: normalizeNext(n, id),
       };
+      if (Number.isInteger(n.ending)) nodes[id].ending = n.ending;
+      const pick = bgPick(n, id);
+      if (pick) nodes[id].bgBy = pick;
+      if (n.keep === true) nodes[id].keep = true; // ends mid-page: its last page stays on screen
     }
   }
 
   if (!nodes[entry]) throw new StoryFormatError(`entry "${entry}" 노드가 없습니다.`);
   for (const n of Object.values(nodes)) {
-    const targets = n.kind === 'choice' ? n.options.map((o) => o.to) : [n.to];
+    const targets = (n.kind === 'choice' ? n.options.flatMap((o) => o.next) : n.next).map((r) => r.to);
     for (const t of targets) {
       if (t !== null && !nodes[t]) throw new StoryFormatError(`${n.id}: 이동할 노드 "${t}"가 없습니다.`);
     }
@@ -127,6 +225,8 @@ export function normalizeStory(raw) {
 
   return {
     schemaVersion,
+    lang: typeof raw.lang === 'string' && raw.lang ? raw.lang : 'ko',
+    assets: typeof raw.assets === 'string' ? raw.assets : '',
     hasOriginal,
     names,
     gameId: String(gameId),

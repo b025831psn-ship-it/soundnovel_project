@@ -5,6 +5,7 @@ import { LoopingMusic } from './music.js';
 import { SePlayer } from './se-player.js';
 import { psychometryRegion } from './psychometry-grid.js';
 import { openSaves, varsToArray, arrayToVars, GAME_ID } from './save.js';
+import { startGate } from '/shared/player/start-gate.js';
 
 const canvas = document.querySelector('canvas');
 const movie = document.querySelector('#movie');
@@ -35,13 +36,16 @@ const music = new LoopingMusic({
 });
 let se = null, seStarting = null, seContext = null;
 const pendingSe = [];
+// Called on every tap / key (shared/player/start-gate.js). resume() is not awaited: a press that may not
+// start audio (iPhone pointerdown) would leave it pending forever and block the sound effects; the next
+// press simply asks again.
 async function unlockAudio() {
   music.unlock();
   if (seContext && seContext.state !== 'running') seContext.resume().catch(() => {});
   if (!seStarting) seStarting = (async () => {
-    seContext = new AudioContext({sampleRate:48000});
-    seContext.resume().catch(() => {});
-    se = await SePlayer.create(seContext, name => asset('se/' + name));
+    const context = seContext = new AudioContext({sampleRate:48000});
+    context.resume().catch(() => {});
+    se = await SePlayer.create(context, name => asset('se/' + name));
     for (const command of pendingSe.splice(0)) se.command(command);
     return se;
   })().catch(error => { console.warn('SE unavailable', error); seStarting = null; seContext = null; });
@@ -298,11 +302,13 @@ function playMovie(file, next, loop = false) {
   movie.onended = next;
   movie.muted = false;
   movie.play().catch(error => {
+    // The game starts before any tap (shared/player/start-gate.js): the browser then only lets a muted
+    // movie play, so it plays muted and the sound comes on with the first tap or key.
     if (error.name === 'NotAllowedError') {
       movie.muted = true;
       movie.play().catch(() => {});
       const unmute = () => { movie.muted = false; };
-      for (const type of ['pointerdown', 'keydown']) addEventListener(type, unmute, {once:true, capture:true});
+      for (const type of ['pointerdown', 'keydown']) addEventListener(type, unmute, { once: true, capture: true });
       return;
     }
     if (error.name !== 'AbortError') fail('브라우저에서 영상을 재생할 수 없습니다.');
@@ -1288,6 +1294,7 @@ try {
   requestAnimationFrame(frame);
 } catch { fail('게임 데이터를 불러오지 못했습니다.'); }
 if (scene === 'ready') {
-  await startImmediately();
+  // shared/player/start-gate.js: every port starts at once; each tap or key wakes the sound.
+  await startGate(stage, { onPress: () => { unlockAudio(); } });
   intro();
 }

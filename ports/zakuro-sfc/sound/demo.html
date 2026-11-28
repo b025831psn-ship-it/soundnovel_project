@@ -1,0 +1,185 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>석류의 맛 사운드</title>
+<style>
+  :root { --bg: #0d0d0f; --fg: #e8e4dc; --muted: #8a857c; --accent: #b3262d; }
+  body { margin: 0; background: var(--bg); color: var(--fg); font: 15px/1.6 "Noto Serif KR", serif; }
+  main { max-width: 640px; margin: 0 auto; padding: 32px 16px; }
+  h1 { font-size: 20px; font-weight: 600; margin: 0 0 8px; }
+  p { color: var(--muted); margin: 0 0 20px; }
+  nav { margin: 0 0 20px; font-size: 14px; }
+  nav a { color: var(--fg); margin-right: 16px; }
+  nav a[aria-current] { color: var(--accent); text-decoration: none; }
+  button, label.file { background: none; color: var(--fg); border: 1px solid var(--accent); padding: 8px 18px; font: inherit; cursor: pointer; margin: 0 8px 8px 0; display: inline-block; }
+  button:disabled { opacity: .4; cursor: default; }
+  input[type=file] { display: none; }
+  #stat { margin-top: 20px; font: 13px/1.6 ui-monospace, monospace; color: var(--muted); white-space: pre-wrap; }
+  progress { width: 100%; accent-color: var(--accent); margin-top: 16px; }
+</style>
+<main>
+  <h1>석류의 맛 SFC · 사운드 재생 확인</h1>
+  <nav><a href="?" id="m-trace">기록 입력</a><a href="?mode=vm" id="m-vm">VM 입력</a></nav>
+  <p id="desc"></p>
+  <label class="file" id="romPick" hidden>ROM 고르기<input type="file" id="rom" accept=".sfc,.smc"></label>
+  <button id="play" disabled>불러오는 중…</button><button id="mute" disabled>음소거</button>
+  <progress id="prog" max="1" value="0"></progress>
+  <div id="stat"></div>
+</main>
+<script type="module">
+  // Data: private zakuro-sfc-kor port-data (?data=URL to override).
+  //   기록 입력: sound/boot-aram.bin, boot-dsp.bin, dsp-gauss.bin, trace/apu-ports.tsv
+  //   VM 입력:  sound/ipl.bin, boot-dsp.bin, dsp-gauss.bin, trace/input.tsv, trace/apu-ports.tsv,
+  //             program/manifest.json + ranges, and the 65c816 VM at ../vm/ (Codex branch
+  //             codex/27-zakuro-65c816-vm). &rom=pick reads a local ROM instead (verification only).
+  import { APU } from './apu.js';
+  import { MasterLink } from './master-link.js';
+  import { createAudioOut } from './output.js';
+  import { bootFromSnapshot } from './snapshot.js';
+  import { APU_TIMING, LINK_TIMING } from './zakuro-timing.js';
+
+  const params = new URLSearchParams(location.search), vmMode = params.get('mode') === 'vm';
+  const romPick = vmMode && params.get('rom') === 'pick'; // verification only: run from a local ROM file
+  const base = new URL(params.get('data') ?? '../../../zakuro-sfc-kor/port-data/', location.href);
+  const ROM_SHA256 = '4e0a7f639c185b49abe70de16bf7ef062a316d986753c7aabd9b98e6b956d0b6';
+  const MASTER_HZ = 21477272.727, SPC_NUM = 15664, SPC_DEN = 328125;
+  const $ = (id) => document.getElementById(id);
+  $(vmMode ? 'm-vm' : 'm-trace').setAttribute('aria-current', 'page');
+  for (const a of document.querySelectorAll('nav a')) if (params.get('data')) a.href += `${a.href.includes('?mode') ? '&' : ''}data=${encodeURIComponent(params.get('data'))}`;
+  $('desc').textContent = vmMode
+    ? '원작 프로그램을 65c816 VM으로 실행하고, VM이 사운드 포트에 접근하는 순간마다 SPC700·S-DSP를 같은 master clock으로 맞춰 소리를 냅니다. 버튼 입력은 기준 녹화의 입력 기록을 씁니다. VM의 포트 접근은 에뮬레이터 기록과 차례로 대조합니다. 게임 프로그램은 ROM 대신 비공개 port-data에 추출한 자료(program/)에서 읽습니다.' + (romPick ? ' 이 화면은 개발 대조용으로 로컬 ROM 파일을 읽습니다(브라우저 밖으로 보내지 않음).' : '')
+    : '원작 사운드 드라이버를 SPC700·S-DSP로 실행하고, 에뮬레이터에 기록된 메인 CPU의 사운드 포트 접근을 원래 시각 그대로 넣어 전원 투입부터 첫 선택지까지 재생합니다. CPU가 읽는 값은 기록과 하나씩 대조합니다. ROM은 쓰지 않습니다.';
+  const get = (p) => fetch(new URL(p, base)).then((r) => { if (!r.ok) throw new Error(`${p}: HTTP ${r.status}`); return r; });
+  const bin = (p) => get(p).then((r) => r.arrayBuffer()).then((b) => new Uint8Array(b));
+  const parseRows = (tsv) => {
+    const rows = [];
+    for (const l of tsv.split('\n')) {
+      if (!l || /^[a-z_]/i.test(l)) continue;
+      const [frame, m, dir, p, v] = l.split('\t');
+      rows.push([Number(m), dir === 'w', Number(p) & 3, parseInt(v, 16), Number(frame)]);
+    }
+    return rows;
+  };
+  const hex = (buf) => [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, '0')).join('');
+
+  let data = null, rom = null, program = null;
+  try {
+    const [dsp, g, tsv, extra] = await Promise.all([bin('sound/boot-dsp.bin'), bin('sound/dsp-gauss.bin'),
+      get('trace/apu-ports.tsv').then((r) => r.text()),
+      vmMode ? Promise.all([bin('sound/ipl.bin'), get('trace/input.tsv').then((r) => r.text())]) : bin('sound/boot-aram.bin')]);
+    data = { dsp, gauss: new Int16Array(g.buffer, g.byteOffset, 512), rows: parseRows(tsv) };
+    if (vmMode) {
+      data.ipl = extra[0];
+      data.input = extra[1].trimEnd().split(/\r?\n/).slice(1).map((l) => parseInt(l.split('\t')[1], 16));
+      if (romPick) { $('romPick').hidden = false; $('play').textContent = 'ROM을 고르세요'; }
+      else {
+        // The game program comes from private port-data (program/manifest.json: the ROM
+        // ranges the VM reads, each checked by SHA-256), so no ROM is needed.
+        const { ProgramImage } = await import('../vm/browser.js');
+        const manifest = await get('program/manifest.json').then((r) => r.json());
+        program = await ProgramImage.load(manifest, async (r) => {
+          const b = await bin(`program/${r.file}`);
+          if (hex(await crypto.subtle.digest('SHA-256', b)) !== r.sha256) throw new Error(`program/${r.file}: SHA-256 differs`);
+          return b;
+        });
+        $('play').textContent = '재생'; $('play').disabled = false;
+      }
+    } else { data.aram = extra; $('play').textContent = '재생'; $('play').disabled = false; }
+  } catch (e) { $('play').textContent = '자료 없음'; $('stat').textContent = String(e); }
+
+  $('rom').onchange = async () => {
+    const f = $('rom').files[0]; if (!f) return;
+    const buf = await f.arrayBuffer(), sum = hex(await crypto.subtle.digest('SHA-256', buf));
+    if (sum !== ROM_SHA256) { $('stat').textContent = `판본이 다릅니다 (SHA-256 ${sum.slice(0, 16)}…)`; return; }
+    rom = new Uint8Array(buf); $('stat').textContent = 'ROM 확인됨'; $('play').textContent = '재생'; $('play').disabled = !data;
+  };
+
+  let running = false, muted = false;
+  $('play').onclick = async () => {
+    if (running || !data) return; running = true; $('play').disabled = true; $('mute').disabled = false;
+    const out = await createAudioOut(); await out.resume();
+    $('mute').onclick = () => { muted = !muted; out.setMuted(muted); $('mute').textContent = muted ? '소리 켜기' : '음소거'; };
+    (vmMode ? await vmPlayer(out) : tracePlayer(out))();
+  };
+
+  // 기록 입력: the recorded CPU accesses drive the APU at their master-clock times.
+  function tracePlayer(out) {
+    const { rows } = data, apu = new APU({ gauss: data.gauss });
+    bootFromSnapshot(apu, { aram: data.aram, dsp: data.dsp, iplClocks: APU_TIMING.iplClocks, timerLead: APU_TIMING.timerLead, dspAccessOffset: APU_TIMING.dspAccessOffset });
+    // Accesses before the driver's first instruction belong to the IPL upload that the
+    // snapshot stands in for: they only set the port latches.
+    const entry = APU_TIMING.iplClocks;
+    const ml = new MasterLink(apu, LINK_TIMING); ml.target = -entry;
+    apu.dsp.onSample = out.sample;
+    const end = rows.at(-1)[0] + MASTER_HZ;
+    let k = 0, reads = 0, bad = 0, frame = 0, silent = 0, t0 = null;
+    const step = (now) => {
+      t0 ??= now - 80; // start with ~80 ms buffered
+      const master = Math.min(end, Math.floor(((now - t0) / 1000) * MASTER_HZ));
+      for (; k < rows.length && rows[k][0] <= master; k++) {
+        const [m, w, p, v, f] = rows[k]; frame = f;
+        if (Math.floor((m * SPC_NUM) / SPC_DEN) < entry) { if (w) apu.cpuWrite(p, v); ml.advanceTo(m); continue; }
+        if (w) ml.write(m, p, v); else { reads++; if (ml.read(m, p) !== v) bad++; }
+      }
+      // The S-DSP is silent through the IPL stage that the snapshot skips; play that
+      // silence so the driver's first sample comes out at its original time.
+      const spc = Math.floor((master * SPC_NUM) / SPC_DEN);
+      for (; silent < Math.min(spc, entry) >> 5; silent++) out.sample(0, 0);
+      ml.sync(master); out.flush();
+      $('prog').value = master / end;
+      const s = out.stats();
+      $('stat').textContent = `${(master / MASTER_HZ).toFixed(1)}초 · 기록 frame ${frame}\n`
+        + `CPU 포트 읽기 ${reads.toLocaleString()}건 · 기록과 다름 ${bad.toLocaleString()}건\n`
+        + `출력 ${out.context.sampleRate} Hz` + (s ? ` · 버퍼 ${s.fill} · 부족 ${s.underruns}` : '');
+      if (master < end) requestAnimationFrame(step); else $('play').textContent = '끝';
+    };
+    return () => requestAnimationFrame(step);
+  }
+
+  // VM 입력: the 65c816 VM runs the game; its APUIO accesses go through the same link.
+  async function vmPlayer(out) {
+    const { ZakuroVM, createApuLink } = await import('../vm/browser.js');
+    const { rows } = data;
+    const { apu, link } = createApuLink({ ipl: data.ipl, gauss: data.gauss, powerOnDsp: data.dsp });
+    // Paced by the audio buffer, not the wall clock: run the VM until ~0.12 s of S-DSP output
+    // is queued ahead of playback (32 kHz), with at most 30 ms of work per video frame.
+    let produced = 0;
+    apu.dsp.onSample = (l, r) => { produced++; out.sample(l, r); };
+    // Live comparison with the recording: rows in order (strict) and CPU writes in order.
+    const refW = rows.filter((r) => r[1]);
+    let strict = 0, strictDone = false, wi = 0, wOk = 0, writes = 0;
+    const trace = ({ master, dir, port, value }) => {
+      const w = dir === 'w';
+      if (!strictDone) { const r = rows[strict]; if (r && r[1] === w && r[2] === port && r[3] === value) strict++; else strictDone = true; }
+      if (w) {
+        writes++;
+        if (refW[wi] && refW[wi][2] === port && refW[wi][3] === value) { wi++; wOk++; }
+      }
+    };
+    const vm = new ZakuroVM({ ...(program ? { program, sram: program.sram } : { rom }), masterLink: link, trace, inputFrames: data.input });
+    vm.reset();
+    const end = rows.at(-1)[0] + MASTER_HZ;
+    const startTime = out.context.currentTime;
+    let slow = false;
+    const step = () => {
+      const started = performance.now(), played = out.context.currentTime - startTime;
+      while (produced / 32000 - played < 0.12 && vm.bus.clock.master < end && !vm.cpu.stopped) {
+        if (performance.now() - started > 30) break;
+        const goal = vm.bus.clock.master + 35791; // ~1/600 s of master clock per slice
+        while (vm.bus.clock.master < goal && !vm.cpu.stopped) vm.step();
+        link.sync(vm.bus.clock.master);
+      }
+      out.flush();
+      slow = produced / 32000 - played < 0;
+      const at = vm.bus.clock.master;
+      $('prog').value = at / end;
+      const s = out.stats();
+      $('stat').textContent = `${(at / MASTER_HZ).toFixed(1)}초 · VM frame ${Math.floor(at / 357366)}` + (slow ? ' · 실시간보다 느림' : '') + '\n'
+        + `기록과 순서·값이 같은 포트 접근 ${strict.toLocaleString()} / ${rows.length.toLocaleString()}행\n`
+        + `CPU 쓰기 ${writes.toLocaleString()}건 · 기록 쓰기 순서와 맞음 ${wOk.toLocaleString()} / ${refW.length.toLocaleString()}\n`
+        + `출력 ${out.context.sampleRate} Hz` + (s ? ` · 버퍼 ${s.fill} · 부족 ${s.underruns}` : '');
+      if (at < end && !vm.cpu.stopped) requestAnimationFrame(step); else $('play').textContent = vm.cpu.stopped ? 'VM 정지' : '끝';
+    };
+    return () => requestAnimationFrame(step);
+  }
+</script>

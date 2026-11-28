@@ -1,0 +1,13 @@
+{
+  "schemaVersion": 1,
+  "gameId": "test-media",
+  "title": "미디어 테스트",
+  "assets": "media/",
+  "entry": "a",
+  "nodes": {
+    "a": { "bg": "red.png", "bgm": "none.ogg", "pages": [["빨간 배경."]], "to": "b" },
+    "b": { "pages": [["배경은 그대로."]], "to": "c" },
+    "c": { "bg": "blue.png", "bgm": "", "pages": [["파란 배경, 음악 끔."]], "to": "d" },
+    "d": { "bg": null, "pages": [["배경 없음."]], "to": null }
+  }
+}
