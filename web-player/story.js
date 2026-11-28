@@ -120,15 +120,17 @@ export function normalizeStory(raw) {
     ? [n.question, ...n.options.map((o) => o.label)]
     : n.pages.flat()).some((t) => t.ja));
 
-  // Optional default names shown on the new-game screen, e.g. { "hero": "토오루", "heroine": "마리" }.
-  const names = raw.names && typeof raw.names === 'object'
-    ? Object.values(raw.names).filter((v) => typeof v === 'string' && v)
-    : [];
+  // Optional default names and [n] token values, e.g. { "0": "민준", "1": "마리" }.
+  const nameTokens = raw.names && typeof raw.names === 'object' && !Array.isArray(raw.names)
+    ? Object.fromEntries(Object.entries(raw.names).filter(([, v]) => typeof v === 'string' && v))
+    : {};
+  const names = Object.values(nameTokens);
 
   return {
     schemaVersion,
     hasOriginal,
     names,
+    nameTokens,
     gameId: String(gameId),
     title: String(raw.title || gameId),
     entry,

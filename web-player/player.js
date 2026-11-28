@@ -14,6 +14,37 @@ const LANGS = [
   { id: 'ja', label: '원문', aria: '원문만 표시' },
 ];
 
+const KOREAN_PARTICLES = {
+  '은(는)': ['은', '는'],
+  '이(가)': ['이', '가'],
+  '을(를)': ['을', '를'],
+  '과(와)': ['과', '와'],
+  '(이)라고': ['이라고', '라고'],
+};
+
+// Names are inserted only on the Korean display path. Translation data keeps
+// both particle forms (for example, "[n]1은(는)") so a changed name remains
+// grammatical without rewriting the sentence.
+export function hasKoreanFinalConsonant(value) {
+  const chars = Array.from(String(value).trim());
+  const code = chars.at(-1)?.codePointAt(0);
+  if (code === undefined) return false;
+  if (code >= 0xac00 && code <= 0xd7a3) return (code - 0xac00) % 28 !== 0;
+  if (code >= 0x3131 && code <= 0x314e) return true;
+  return false;
+}
+
+export function formatKoreanText(value, names = {}) {
+  const paired = /\[n\]([A-Za-z0-9_-]+)(은\(는\)|이\(가\)|을\(를\)|과\(와\)|\(이\)라고)/g;
+  return String(value)
+    .replace(paired, (whole, id, marker) => {
+      const name = names[id];
+      if (typeof name !== 'string' || !name) return whole;
+      return name + KOREAN_PARTICLES[marker][hasKoreanFinalConsonant(name) ? 0 : 1];
+    })
+    .replace(/\[n\]([A-Za-z0-9_-]+)/g, (whole, id) => names[id] || whole);
+}
+
 function safeStorage() {
   try {
     const k = '__wp_probe__';
@@ -169,8 +200,8 @@ export function createPlayer(root, story, { storage = safeStorage(), startMenu =
   // The sentence on screen now (or the question), used as the slot's preview.
   function currentLine() {
     const node = story.nodes[state.node];
-    if (node.kind === 'choice') return node.question.ko;
-    return node.pages[state.page][state.line].ko;
+    if (node.kind === 'choice') return formatKoreanText(node.question.ko, story.nameTokens);
+    return formatKoreanText(node.pages[state.page][state.line].ko, story.nameTokens);
   }
 
   function saveSlot(i) {
@@ -268,7 +299,7 @@ export function createPlayer(root, story, { storage = safeStorage(), startMenu =
       node.textContent = s.ja;
     } else {
       if (lang === 'both' && s.ja) node.append(el('span', { class: 'wp-sub', lang: 'ja', text: s.ja }));
-      node.append(s.ko);
+      node.append(formatKoreanText(s.ko, story.nameTokens));
     }
     return node;
   }

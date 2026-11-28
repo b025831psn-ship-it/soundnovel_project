@@ -1,0 +1,43 @@
+{
+  "schemaVersion": 1,
+  "gameId": "sample-korean-particles",
+  "title": "예문 데모: 이름과 조사",
+  "entry": "intro",
+  "names": {
+    "0": "민준",
+    "1": "마리"
+  },
+  "scenes": {
+    "entrance": { "name": "현관" },
+    "hall": { "name": "복도" }
+  },
+  "nodes": {
+    "intro": {
+      "kind": "choice",
+      "scene": "entrance",
+      "text": "[n]0은(는) [n]1이(가) 온 것을 보았다.",
+      "options": [
+        { "key": "A", "label": "[n]0이(가) 먼저 말을 건다.", "to": "a" },
+        { "key": "B", "label": "[n]1을(를) 기다린다.", "to": "b" }
+      ]
+    },
+    "a": {
+      "scene": "hall",
+      "pages": [
+        "[n]0은(는) 손을 들었다.",
+        "상대는 [n]0을(를) 알아보았다.",
+        "두 사람은 [n]0과(와) 함께 안으로 들어갔다."
+      ],
+      "to": null
+    },
+    "b": {
+      "scene": "hall",
+      "pages": [
+        "[n]1이(가) 천천히 다가왔다.",
+        "사람들은 그를 [n]1(이)라고 불렀다.",
+        "나는 [n]1과(와) 함께 안으로 들어갔다."
+      ],
+      "to": null
+    }
+  }
+}
