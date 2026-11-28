@@ -287,7 +287,7 @@ export class ScenarioVM {
         return {type: "preparePicture", name};
       }
       default:
-        return this.skipToCommand(offset);
+        throw new RangeError(`Unsupported scenario opcode 0x${opcode.toString(16).padStart(2, "0")} at ${offset}`);
     }
   }
 }
