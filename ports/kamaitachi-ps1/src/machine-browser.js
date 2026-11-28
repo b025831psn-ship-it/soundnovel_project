@@ -244,6 +244,7 @@ export async function startMachine({ canvas, dataRoot, audio = true, onProgress 
       const t = menuNow(); if (!t || !n) return;
       const button = t.press?.[t.index() + n];
       if (button) { keys.set(button, HOLD); return; }
+      if (t.place?.(t.index() + n)) { steps = [presses("circle", 1, HOLD, 1)]; return; } // a board that places its own cursor (the name board)
       steps = []; seek = { to: t.index() + n, pick: !t.grid, down: 0, up: 0, last: t.index(), age: 0 };
     },
     // Dragging (the flowchart, the backlog: screens whose rows include direction buttons): what a
@@ -301,7 +302,9 @@ export async function startMachine({ canvas, dataRoot, audio = true, onProgress 
       // unseen and unheard (no picture between them, no sound frame), so the row is simply chosen.
       // The song stands still in them (sound-bridge.js still): it goes on in real time, as it does
       // while the original's cursor walks.
-      if (seek) { machine.sound.still = true; for (let n = 0; seek && n < 400 && !machine.error; n++) machine.frame(held()); machine.sound.still = false; }
+      // They are run a few milliseconds at a time: a long walk in one go would keep the page from
+      // sending sound for that long (a gap). No picture is drawn until the walk is over.
+      if (seek) { machine.sound.still = true; const t0 = performance.now(); for (let n = 0; seek && n < 400 && !machine.error && performance.now() - t0 < 6; n++) machine.frame(held()); machine.sound.still = false; }
       // a debug jump: ○ every 40 frames, unseen and unheard, until the script of the wanted scene is the one running
       for (let n = 0; jump && n < 400 && !machine.error; n++) {
         machine.frame(jump.frames % 40 < 3 ? 0x2000 : 0);
@@ -310,7 +313,7 @@ export async function startMachine({ canvas, dataRoot, audio = true, onProgress 
       }
       machine.frame(held()); soundFrame(); follow?.();
       for (const [k, n] of keys) { if (n !== Infinity) { if (n <= 1) keys.delete(k); else keys.set(k, n - 1); } }
-      acc -= STEP; dirty = true;
+      acc -= STEP; if (!seek) dirty = true;
     }
   };
   const loop = () => {

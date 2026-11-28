@@ -112,6 +112,10 @@ export function* nameEntry(ctx, k) {
     }
     list.push({ index: 100000, left: 0x14, right: 0x52, top: 0x2e, bottom: 0x46 }, { index: 100001, left: 0xee, right: 0x12c, top: 0x2e, bottom: 0x46 });
     offer(ctx, list, () => ordinal(cur), ["left", "right"], { 100000: "cross", 100001: "triangle" });
+    // place: a tap puts the cursor on its cell at once (machine-browser.js moveCursor). Walking there with
+    // left / right passes every cell between, hundreds of frames for a far cell; the cell is on the
+    // board as shown, so the rows do not scroll and the state is the one the walk ends in.
+    if (ctx.touch?.menu) ctx.touch.menu.place = (n) => { if (full()) return false; for (let i = top * 15; i < total; i++) if (!blank(cell(i)) && ordinal(i) === n) { cur = i; return true; } return false; };
   };
   for (;;) {
     if (top !== drawn) {
