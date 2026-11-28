@@ -119,6 +119,7 @@ kbd {
 /* a long, flat logo (SFC, 석류의 맛) takes the card's width on a phone */
 .logo img.wide { width: min(86cqw, 680px) }
 .logo img.tall { width: auto; max-width: 100%; height: min(30vh, 34cqw, 250px) }
+.marquee.long .logo img.tall { height: min(24vh, 28cqw, 200px) }
 .logo:not(.text) .jp, .logo:not(.text) .adv { display: none }
 .logo.text img { display: none }
 .logo .jp {

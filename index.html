@@ -13,7 +13,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+KR:wght@400;500;600&family=Noto+Serif+KR:wght@500;700&family=Noto+Serif+JP:wght@500;700&family=Yusei+Magic&family=Potta+One&family=Anton&display=swap">
-<link rel="stylesheet" href="/style.css?v=18">
+<link rel="stylesheet" href="/style.css?v=19">
 </head>
 <body class="front-on">
 <section id="front" class="front" aria-label="펜션 슈프르">
@@ -138,7 +138,8 @@
     card.querySelector('.ko').textContent = c.ko;
     document.querySelector('#snow').hidden = !c.snow;
     marquee.classList.toggle('light', Boolean(c.light));
-    marquee.classList.toggle('dim', Boolean(c.dim)); // snow only for the snowbound pension
+    marquee.classList.toggle('dim', Boolean(c.dim));
+    marquee.classList.toggle('long', (c.text ?? '').length > 200); // a long intro: the logo gives way // snow only for the snowbound pension
     const lede = card.querySelector('.lede'); lede.hidden = !(c.story || c.text); lede.innerHTML = c.text ?? (c.story ? story : '');
     const start = card.querySelector('.start');
     start.href = c.soon ? '#' : chosen; start.classList.toggle('soon', Boolean(c.soon));
