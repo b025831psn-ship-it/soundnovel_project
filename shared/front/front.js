@@ -3,7 +3,7 @@
 // the port's code (picture-view.js, music-view.js); nothing is copied out of the game.
 // The picture and the song load apart: if one fails on a browser, the other still comes.
 const pictureModule = import("/ports/kamaitachi-ps1/src/picture-view.js");
-const musicModule = import("/ports/kamaitachi-ps1/src/music-view.js?v=6");
+const musicModule = import("/ports/kamaitachi-ps1/src/music-view.js?v=7");
 
 const DATA = "/kamaitachi-ps1-kor/port-data/machine/";
 const PICTURE = 2; // the pension at the end of the snowy road, windows lit
@@ -118,7 +118,12 @@ presses.forEach((t) => addEventListener(t, wake, true));
 sound.addEventListener("click", async (e) => {
   e.stopPropagation(); if (!music || problem) showProblem(); await loading;
   if (!music || problem) { showProblem(); if (!music) return; } else front.querySelector(".front-note")?.remove();
-  if (music.sounding) { music.stop(); wanted = false; } else { wanted = true; await begin(); if (problem) showProblem(); }
+  if (music.sounding) { music.stop(); wanted = false; } else {
+    wanted = true;
+    // a browser that never answers: after 2 seconds the button says what the browser's sound is doing
+    const slow = setTimeout(() => { if (!music.sounding) { problem ||= `음악이 시작되지 않습니다 (브라우저 소리 상태: ${music.state})`; showProblem(); } }, 2000);
+    await begin(); clearTimeout(slow); if (problem && !music.sounding) showProblem(); else if (music.sounding) { problem = ""; front.querySelector(".front-note")?.remove(); }
+  }
   try { localStorage.setItem("front-music", wanted ? "on" : "off"); } catch {}
   showSound();
 });
