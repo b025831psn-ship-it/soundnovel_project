@@ -140,8 +140,6 @@ for (const sound of sounds) sound.addEventListener("click", async (e) => {
   }
   try { localStorage.setItem("front-music", wanted ? "on" : "off"); } catch {}
   showSound();
-// From the start, where the browser lets it.
-if (wanted && !location.hash) loading.then(() => { if (music) { begin().then(showSound); } });
 });
 
 // Into the hub: the front fades away; the song goes on until a game starts.
@@ -152,8 +150,6 @@ window.addEventListener("hashchange", () => {
   if (location.hash) { stopFrontMusic(); if (!front.hidden) { front.hidden = true; document.body.classList.remove("front-on"); } }
   else if (wanted) play(); // back in the hub from a game: the song again
   showSound();
-// From the start, where the browser lets it.
-if (wanted && !location.hash) loading.then(() => { if (music) { begin().then(showSound); } });
 });
 front.addEventListener("dragstart", (e) => e.preventDefault());
 // A link straight to a game skips the front page.
