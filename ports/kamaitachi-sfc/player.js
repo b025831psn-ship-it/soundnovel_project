@@ -88,8 +88,8 @@ function offerSuspend() {
 const ask = (msg) => new Promise((resolve) => {
   const id = ++saves.next; saves.waits.set(id, resolve); saves.worker.postMessage({ ...msg, id });
 });
-async function writeSuspend({ now = false } = {}) {
-  if (!saves.api || !saves.worker || !saves.played) return;
+async function writeSuspend({ now = false, force = false } = {}) {
+  if (!saves.api || !saves.worker || !(saves.played || force)) return;
   saves.played = false;
   const r = await ask({ type: 'snapshot' });
   if (!r.data) return;
@@ -98,7 +98,10 @@ async function writeSuspend({ now = false } = {}) {
   if (now) saves.ui?.sync();
 }
 const suspendBoot = {
+  // Carrying on is possible on any screen (the whole VM state is restored), so always "at the title".
   titleActive: true,
+  // Quick save (disk button): the suspend slot is written the moment it is pressed.
+  saveNow: () => writeSuspend({ force: true }),
   continueLabel: '중단한 곳에서 이어하기',
   canContinue: () => !!(saves.worker && saves.api?.readSuspend()),
   continueNote: () => {
@@ -115,6 +118,15 @@ const suspendBoot = {
   },
   notice: () => (saves.remoteBooks ? '다른 기기에서 저장한 책갈피를 받았습니다. 게임 메뉴의 리셋을 누르면 반영됩니다.' : ''),
 };
+// Report button: where the script is (file offset.bit of the script reader, $00:9A1D with D = $0400)
+// and the frame; the screen itself goes along as the screenshot. The SFC text has no glyph table
+// yet, so the lines are not sent as text.
+globalThis.soundnovelReport = () => {
+  const st = window.kamaitachi?.status; if (!st) return {};
+  const at = st.script;
+  return { scene: at > 0 ? `script 0x${(at >> 3).toString(16).toUpperCase()}.${at & 7}` : null, text: '', frame: st.frame, mode: st.title };
+};
+
 function resetWithBooks(worker) {
   // Bookmarks that came from another device go in at the Reset (the game reads SRAM at power-on).
   let sram = null;
