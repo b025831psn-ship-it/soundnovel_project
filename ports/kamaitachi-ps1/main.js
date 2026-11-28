@@ -17,15 +17,16 @@ try {
       gate: (onPress) => startGate(document.getElementById("stage"), { onPress }),
       onProgress: (n) => { const el = loading(); if (el) el.textContent = `원작 데이터를 불러오는 중 ${Math.min(99, Math.floor((100 * n) / total))}%`; } });
     window.kamaitachiPs1 = player;
-    // The shell's save dialog (../kamaitachi-gba/sync-ui.js) reaches the store and "carry on" through this.
+    // The shell's save dialog, quick save and report buttons (shared/save/sync-ui.js) reaches the store and "carry on" through this.
     // Carrying on restarts the game with ?resume=1; the mark is taken off the address again, so a reload starts at the title.
     if (query.get("resume") === "1") { const u = new URL(location.href); u.searchParams.delete("resume"); history.replaceState(null, "", u); }
     const runtime = player.runtime ?? player;
     if (runtime.saveStore) {
       globalThis.soundnovelSave = { store: runtime.saveStore, gameId: "kamaitachi-ps1",
-        boot: { canContinue: () => runtime.canResume(), titleActive: true, continueSuspended: () => { const u = new URL(location.href); u.searchParams.set("resume", "1"); location.replace(u); return true; } } };
+        boot: { canContinue: () => runtime.canResume(), titleActive: true, saveNow: () => runtime.saveNow(), continueSuspended: () => { const u = new URL(location.href); u.searchParams.set("resume", "1"); location.replace(u); return true; } } };
       globalThis.dispatchEvent(new Event("soundnovel-save-ready"));
     }
+    globalThis.soundnovelReport = () => runtime.report(); // the report button: the scene and the lines on screen
   } else {
     const player = await startBrowserRuntime({ canvas: document.getElementById("screen"), dataRoot, soundRoot });
     window.kamaitachiPs1 = player;

@@ -45,7 +45,9 @@ export function drawString(ctx, x, y, str, step) { // 0x80038658
   const { m } = ctx, sp = ctx.sp - 0x30, sub = { ...ctx, sp }, left = x, STRINGS = 0x8006b030;
   // Korean: the particle after a name follows the name (text/josa.js); `name` is the last glyph of a name just drawn
   let name = m.ko?.josa?.join.has(str >>> 0) ? lastGlyph(m, m.read(STRINGS + 4, 4) >>> 0) : 0;
-  x += m.ko?.centre?.get(str >>> 0) ?? 0; // Korean: a label the original centres stays in the middle
+  // Korean: a label the original centres stays in the middle (pixels to the right; a list: one for each line)
+  const mid = [m.ko?.centre?.get(str >>> 0) ?? 0].flat(); let row = 0;
+  x += mid[0];
   str = m.ko?.moved.get(str >>> 0) ?? str; // Korean: a string that did not fit its place
   step &= 0xff;
   const advance = () => { x = step ? x + step : x + 1 + m.read(GP + 0x19e, 1); };
@@ -68,7 +70,7 @@ export function drawString(ctx, x, y, str, step) { // 0x80038658
     }
     if (c === 0x7338) { x += 8; str += 2; continue; }
     if (c === 0x7373) { x += 0x10; str += 2; continue; }
-    if (c === 0x7272) { x = left; y += 0x10; str += 2; continue; }
+    if (c === 0x7272) { x = left + (mid[++row] ?? 0); y += 0x10; str += 2; continue; }
     ctx.gs.DrawSync(0);
     // Korean: a glyph past the right edge of the screen is left out (a translated line longer than
     // the original's; drawn there it would land in the next page's place and show up later)

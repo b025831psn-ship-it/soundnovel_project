@@ -63,7 +63,10 @@ CENTRE = {0x800110c8, 0x800110d4, 0x800110e4, 0x80010dd0, 0x80010df4, 0x80010e08
           0x80011714, 0x8001172c, 0x800117d8, 0x800117f8, 0x80079228}
 # The title's buttons: the original spreads 説明 and 特報！ over the button with wide spaces, so the width of the
 # string says nothing; these are centred in the button itself: address -> (x the game draws at, button left, button width).
-CENTRE_BOX = {0x800110c8: (0x21, 30, 64), 0x800110d4: (0x86, 123, 64), 0x800110e4: (0xdc, 217, 64)}
+CENTRE_BOX = {0x800110c8: (0x21, 30, 64), 0x800110d4: (0x86, 123, 64), 0x800110e4: (0xdc, 217, 64),
+              # 「저장 중」: 태우's wording (2026-11-28) takes three lines; the Korean build draws a larger box for it
+              # (src/menu/translated.js 0x8002b1f4, SAVING_BOX) and each line stands in its middle
+              0x80011864: (106, 44, 232)}
 CHART_POOL, CHART_ROOM = 0x80009000, 0x3000   # spare kernel RAM for the flowchart title section (263 big-endian offsets, then the strings)
 # The default names: the pointers the game copies string 1 (the hero, [n1]) and string 2 (the
 # companion, [n2]) from (0x8003ab98). The original fields hold one and two glyphs; the Korean
@@ -401,7 +404,10 @@ def main():
             if w != t: rewrapped.append([e['id'], t.count('[rr]') - 1, w.count('[rr]') - 1, max(line_px(l) for l in w.split('[rr]'))]); t = w
         b = encode_exe(t); addr = int(e['addr'], 16); done += 1
         if px(b) > e['widthPx']: wider.append([e['id'], e['widthPx'], px(b)])
-        if addr in CENTRE_BOX: x0, left, room = CENTRE_BOX[addr]; centre.append([addr, left + (room - px(b) + 1) // 2 - x0])
+        if addr in CENTRE_BOX:
+            x0, left, room = CENTRE_BOX[addr]; lines = [left + (room - px(l) + 1) // 2 - x0 for l in bytes(b).split(b'rr')]
+            if min(lines) < left - x0: raise SystemExit('%s does not fit its box: %s' % (e['id'], [px(l) for l in bytes(b).split(b'rr')]))
+            centre.append([addr, lines[0] if len(lines) == 1 else lines])
         elif addr in CENTRE and px(b) < e['widthPx']: centre.append([addr, (e['widthPx'] - px(b)) // 2])
         if len(b) <= e['roomBytes']: patches.append([addr, base64.b64encode(b + b'\0').decode()]); continue
         at = pool; pool += (len(b) + 4) & ~3
