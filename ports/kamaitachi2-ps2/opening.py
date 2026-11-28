@@ -96,7 +96,10 @@ def extend_korean_font(out, metrics, strings, font_path):
     both take the original ``font[ch]`` sprite path, dimensions and tinting.
     """
     cell, columns = 36, 64
-    font = ImageFont.truetype(str(font_path), 30)
+    # 28px yields a 30px stroked Hangul cell (31px with the normal 1px
+    # spacing), close to the retail atlas' 28.75px mean kanji width.  The old
+    # 30px face made every Hangul metric 32px and visibly over-spaced prose.
+    font = ImageFont.truetype(str(font_path), 28)
     # U+0020 is not present in the Japanese SN4 font.  It is advance-only,
     # exactly like the original full-width U+3000 record; falling back to �
     # turns every Korean word separator and empty keyboard cell into a box.
@@ -115,9 +118,9 @@ def extend_korean_font(out, metrics, strings, font_path):
     # The EE draws each bitmap at line_y + top.  Keep a common baseline and
     # derive top from the font's baseline-relative ink box; punctuation then
     # sits at the bottom of the line instead of being pinned to y=0.
-    # 28 leaves room for Latin descenders (g/y) while Hangul still starts at
-    # y=1 and low punctuation remains on the baseline.
-    baseline = 28
+    # 27 leaves room for Latin descenders (g/y) while Hangul still starts at
+    # y=2 and low punctuation remains on the baseline.
+    baseline = 27
     for index, ch in enumerate(chars, used):
         bbox = font.getbbox(ch, stroke_width=1, anchor="ls")
         width = bbox[2] - bbox[0]
