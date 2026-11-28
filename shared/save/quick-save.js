@@ -119,7 +119,7 @@ export function mountQuickSave({ store, gameId, boot, fetchImpl } = {}) {
   }
 
   // --- every save goes up to this player's code by itself ---------------------------------------
-  let timer = 0, last = 0, uploading = null, again = false, failed = "";
+  let timer = 0, last = 0, uploading = null, again = false, failed = "", sent = "", sentTo = "", size = 0;
   async function upload({ keepalive = false } = {}) {
     if (uploading) { again = true; return uploading; }
     uploading = (async () => {
@@ -129,7 +129,12 @@ export function mountQuickSave({ store, gameId, boot, fetchImpl } = {}) {
         try { if (!code) { code = await newCode({ baseUrl: serverBase(), ...fx }); setMyCode(code); } }
         catch (e) { failed = e.reason ?? "server"; break; }
         await store.flush();
-        const r = await putCode({ baseUrl: serverBase(), code, gameId, backup: store.exportBackup(gameId), keepalive, ...fx });
+        const backup = store.exportBackup(gameId);
+        const text = JSON.stringify(backup.saves);
+        if (text === sent && myCode() === sentTo) break; // nothing new since the last upload
+        size = text.length;
+        const r = await putCode({ baseUrl: serverBase(), code, gameId, backup, keepalive, ...fx });
+        if (r.ok) { sent = text; sentTo = code; }
         if (!r.ok && r.reason === "code") { setMyCode(null); again = true; continue; } // expired: a new code next round
         failed = r.ok ? "" : r.reason; last = Date.now();
       } while (again);
@@ -140,7 +145,10 @@ export function mountQuickSave({ store, gameId, boot, fetchImpl } = {}) {
   }
   const schedule = () => {
     if (timer) return;
-    timer = setTimeout(() => { timer = 0; upload(); }, Math.max(5000, 20000 - (Date.now() - last)));
+    // big saves (a VM state of ~180 KB) go up at most every 2 minutes while playing, small ones every 20 s;
+    // leaving or hiding the page sends the latest at once
+    const gap = size > 100_000 ? 120_000 : 20_000;
+    timer = setTimeout(() => { timer = 0; upload(); }, Math.max(5000, gap - (Date.now() - last)));
   };
   store.subscribe((ev) => { if (ev.type === "dirty" && ev.gameId === gameId) schedule(); });
   addEventListener("pagehide", () => { if (timer) { clearTimeout(timer); timer = 0; upload({ keepalive: true }); } });
