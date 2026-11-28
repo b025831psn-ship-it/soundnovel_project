@@ -7,7 +7,7 @@
 //   runtime.menuMode?.()                  "menu" | "back" | "none" (what the corner button does now)
 //   sound.resume() / sound.setVolume?.(0..1)
 // (the contract of src/touch-shell.js, Claude-PS1 / Codex).
-import { fitScale } from "../../shared/player/fit-scale.js";
+import { fitScale, upright } from "../../shared/player/fit-scale.js";
 const W = 320, H = 240;
 const $ = (id) => document.getElementById(id);
 const shell = $("shell");
@@ -24,6 +24,7 @@ const store = {
 function fit() {
   const ratio = devicePixelRatio || 1;
   const box = { width: stage.clientWidth, height: stage.clientHeight };
+  document.documentElement.classList.toggle("upright", upright()); // shell.css: upright layout in a wide hub iframe
   const { scale, whole, steps } = fitScale(box.width, box.height, W, H, ratio);
   canvas.style.width = `${W * scale}px`;
   canvas.style.height = `${H * scale}px`;

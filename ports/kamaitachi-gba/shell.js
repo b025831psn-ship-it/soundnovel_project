@@ -1,6 +1,6 @@
 // The player around the game screen: whole-number scaling, touch buttons, volume and full screen.
 // It only reads window.kamaitachi (set by main.js) and never draws on the game screen.
-import { fitScale } from "../../shared/player/fit-scale.js";
+import { fitScale, upright } from "../../shared/player/fit-scale.js";
 const $ = (id) => document.getElementById(id);
 const shell = $("shell");
 const stage = $("stage");
@@ -15,6 +15,7 @@ function fit() {
   const ratio = devicePixelRatio || 1;
   // Layout size, not the on-screen box: the stage may be drawn turned a quarter (sideways full screen).
   const box = { width: stage.clientWidth, height: stage.clientHeight };
+  document.documentElement.classList.toggle("upright", upright()); // shell.css: upright layout in a wide hub iframe
   const { scale, whole, steps } = fitScale(box.width, box.height, 240, 160, ratio);
   canvas.style.width = `${240 * scale}px`;
   canvas.style.height = `${160 * scale}px`;
