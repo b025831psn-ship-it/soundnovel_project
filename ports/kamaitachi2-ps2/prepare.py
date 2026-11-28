@@ -129,7 +129,7 @@ def title_textures(data, out):
 
 
 def summer_movies(disc, stage):
-    for name in ("my0004", "my0006", "my0008", "my0010", "my0012", "my0014", "my0018"):
+    for name in ("my0004", "my0006", "my0008", "my0010", "my0012", "my0014", "my0018", "my0034"):
         source = stage / f"{name}.m2v"
         source.write_bytes(disc.read(disc.files[f"GRA/MY/{name}.m2v"]))
         video(source, source.with_suffix(".mp4"))
