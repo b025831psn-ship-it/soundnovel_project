@@ -143,7 +143,7 @@ kbd {
 .lede .para { display: block }
 .lede .para + .para { margin-top: .6em }
 .lede .warning { display: inline-block; margin-bottom: 4px; color: var(--text); font-weight: 600; letter-spacing: .02em }
-.lede { margin: 6px 0 12px; max-width: 34em; word-break: keep-all; font-size: clamp(13px, 1.45cqw, 15px); line-height: 1.8; color: #bdbbb5 }
+.lede { margin: 6px 0 12px; max-width: 38em; word-break: keep-all; text-wrap: pretty; font-size: clamp(13px, 1.45cqw, 15px); line-height: 1.8; color: #bdbbb5 }
 .actions { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 18px }
 .start {
   display: inline-flex; align-items: center; gap: 10px;
