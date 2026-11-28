@@ -28,7 +28,7 @@ UINT = c.c_uint
 SIZE = c.c_size_t
 
 
-def run(core_path, cue, frames, presses, scratch, trace):
+def run(core_path, cue, frames, presses, scratch, trace, verify_checkpoint=None):
     core = c.CDLL(str(core_path))
     directory = os.fsencode(scratch)
     options = {}
@@ -118,7 +118,9 @@ def run(core_path, cue, frames, presses, scratch, trace):
             raise RuntimeError("core could not load the CUE")
         try:
             core.retro_set_controller_port_device(0, 1)
-            for frame in range(1, frames + 1):
+            def run_frame(number):
+                nonlocal audio_hash, frame
+                frame = number
                 audio_hash = hashlib.sha256()
                 core.retro_run()
                 row = dict(frame=frame, video=frame_hash, geometry=dimensions,
@@ -129,7 +131,40 @@ def run(core_path, cue, frames, presses, scratch, trace):
                     if not ram or size != 2 * 1024 * 1024:
                         raise RuntimeError("core did not expose PS1 main RAM")
                     row["ram"] = hashlib.sha256(c.string_at(ram, size)).hexdigest()
-                print(json.dumps(row), file=trace)
+                return row
+
+            replay = hashlib.sha256()
+            if verify_checkpoint is not None:
+                core.retro_serialize_size.restype = SIZE
+                for name in ("retro_serialize", "retro_unserialize"):
+                    method = getattr(core, name)
+                    method.argtypes = [PTR, SIZE]
+                    method.restype = c.c_bool
+            for number in range(1, frames + 1):
+                row = run_frame(number)
+                encoded = json.dumps(row)
+                print(encoded, file=trace)
+                if verify_checkpoint is None:
+                    continue
+                if number == verify_checkpoint:
+                    size = core.retro_serialize_size()
+                    if not size:
+                        raise RuntimeError("core does not support checkpoints")
+                    state = c.create_string_buffer(size)
+                    if not core.retro_serialize(state, size):
+                        raise RuntimeError("could not capture checkpoint")
+                    previous_video = frame_hash, dimensions
+                elif number > verify_checkpoint:
+                    replay.update(encoded.encode("utf8"))
+            if verify_checkpoint is not None:
+                if not core.retro_unserialize(state, size):
+                    raise RuntimeError("could not restore checkpoint")
+                frame_hash, dimensions = previous_video
+                restored = hashlib.sha256()
+                for number in range(verify_checkpoint + 1, frames + 1):
+                    restored.update(json.dumps(run_frame(number)).encode("utf8"))
+                if replay.digest() != restored.digest():
+                    raise RuntimeError("checkpoint replay differs in video, audio or RAM")
         finally:
             core.retro_unload_game()
     finally:
@@ -143,7 +178,11 @@ def main():
     parser.add_argument("trace", type=Path)
     parser.add_argument("--frames", type=int, default=600)
     parser.add_argument("--press", action="append", default=[], metavar="FRAME:BUTTON")
+    parser.add_argument("--verify-checkpoint", type=int, metavar="FRAME",
+                        help="restore this frame and compare the remaining trace and final RAM")
     args = parser.parse_args()
+    if args.verify_checkpoint is not None and not 1 <= args.verify_checkpoint < args.frames:
+        parser.error("checkpoint must precede the last frame")
     if args.frames < 1:
         parser.error("--frames must be positive")
     presses = {}
@@ -157,7 +196,7 @@ def main():
         previous = Path.cwd()
         os.chdir(scratch)
         try:
-            run(core, cue, args.frames, presses, scratch, trace)
+            run(core, cue, args.frames, presses, scratch, trace, args.verify_checkpoint)
         finally:
             os.chdir(previous)
 
