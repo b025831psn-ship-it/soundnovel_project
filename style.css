@@ -115,7 +115,7 @@ kbd {
 .logo img { display: block; width: clamp(266px, 53.2cqw, 608px); height: auto }
 /* an upright logo (the PS1 title) keeps to the card's height instead of its width */
 /* a long, flat logo (SFC, 석류의 맛) takes the card's width on a phone */
-.logo img.wide { width: min(100%, 680px) }
+.logo img.wide { width: min(86cqw, 680px) }
 .logo img.tall { width: auto; max-width: 100%; height: min(30vh, 34cqw, 250px) }
 .logo:not(.text) .jp, .logo:not(.text) .adv { display: none }
 .logo.text img { display: none }
