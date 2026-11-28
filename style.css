@@ -272,3 +272,49 @@ main.game-pane { width: 100%; padding: 8px 10px }
 /* The port page's own full screen where the browser has none (iPhone): the frame covers the window. */
 body.filled { overflow: hidden }
 body.filled .theatre iframe { position: fixed; inset: 0; z-index: 60; width: 100vw; height: 100dvh; border-radius: 0 }
+
+/* The hub's front page: the pension, the weather of this visit, the song. Over the hub until entered. */
+body.front-on { overflow: hidden }
+.front {
+  position: fixed; inset: 0; z-index: 100; overflow: hidden; isolation: isolate;
+  display: grid; place-items: center; background: #04050a; color: var(--text);
+  transition: opacity .7s var(--ease), transform .7s var(--ease);
+}
+.front[hidden] { display: none }
+.front.leaving { opacity: 0; transform: scale(1.03); pointer-events: none }
+.front-picture {
+  position: absolute; inset: -3%; width: 106%; height: 106%; object-fit: cover; z-index: -3;
+  image-rendering: pixelated; opacity: 0; transition: opacity 1.6s ease, filter 30s linear;
+  animation: front-drift 60s ease-in-out infinite alternate;
+}
+.front.ready .front-picture { opacity: 1 }
+@keyframes front-drift { from { transform: scale(1) } to { transform: scale(1.08) translate(-1%, -1%) } }
+.front-sky { position: absolute; inset: 0; z-index: -2; pointer-events: none; transition: background 30s linear }
+.front-snow { position: absolute; inset: 0; z-index: -1; width: 100%; height: 100%; pointer-events: none }
+/* The hour of the visitor's clock: the night picture as it is, dusk warmer, day lifted and cooled. */
+.front[data-hour="night"] .front-picture { filter: saturate(.9) brightness(.85) }
+.front[data-hour="night"] .front-sky { background: radial-gradient(120% 90% at 50% 40%, transparent 40%, rgba(0,0,0,.75)), linear-gradient(rgba(4,6,14,.55), rgba(4,5,10,.2) 40%, rgba(4,5,10,.85)) }
+.front[data-hour="dusk"] .front-picture { filter: brightness(1.35) saturate(1.1) sepia(.35) hue-rotate(-12deg) }
+.front[data-hour="dusk"] .front-sky { background: linear-gradient(rgba(120,60,90,.45), rgba(230,120,70,.25) 45%, rgba(10,8,14,.8)); mix-blend-mode: normal }
+.front[data-hour="day"] .front-picture { filter: brightness(2.1) contrast(.8) saturate(.55) hue-rotate(185deg) sepia(.1) }
+.front[data-hour="day"] .front-sky { background: linear-gradient(rgba(170,200,235,.55), rgba(225,235,245,.25) 50%, rgba(20,24,32,.7)) }
+.front[data-weather="blizzard"] .front-sky::after { content: ""; position: absolute; inset: 0; background: rgba(220,228,240,.22); backdrop-filter: blur(1.5px) }
+.front-title { position: relative; display: grid; justify-items: center; gap: 14px; padding: 24px; text-align: center; text-shadow: 0 2px 18px rgba(0,0,0,.8) }
+.front-kicker { margin: 0; color: rgba(236,232,225,.7); font: 500 11px/1 "IBM Plex Sans KR", sans-serif; letter-spacing: .32em }
+.front h1 { margin: 0; font: 700 clamp(44px, 9vw, 104px)/1.05 "Noto Serif KR", serif; letter-spacing: -.02em; color: #f4f0ea }
+.front-lede { margin: 0; color: rgba(236,232,225,.85); font: 500 clamp(14px, 1.6vw, 17px)/1.8 "Noto Serif KR", serif; word-break: keep-all }
+.front-enter {
+  margin-top: 14px; display: inline-flex; align-items: center; min-height: 48px; padding: 0 30px; border-radius: 999px;
+  border: 1px solid rgba(244,240,234,.55); background: rgba(8,9,11,.35); backdrop-filter: blur(6px);
+  color: #f4f0ea; font: 600 15px/1 "IBM Plex Sans KR", sans-serif; letter-spacing: .08em; text-shadow: none;
+  transition: background .2s ease, border-color .2s ease;
+}
+.front-enter:hover { background: var(--accent); border-color: var(--accent); color: var(--on-accent) }
+.front-sound {
+  position: absolute; right: max(16px, env(safe-area-inset-right)); bottom: max(16px, env(safe-area-inset-bottom));
+  width: 44px; height: 44px; display: grid; place-items: center; border: 1px solid rgba(244,240,234,.35); border-radius: 50%;
+  background: rgba(8,9,11,.4); color: #f4f0ea; cursor: pointer; backdrop-filter: blur(6px);
+}
+.front-sound svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round }
+.front-sound[aria-pressed="true"] .off { display: none }
+@media (prefers-reduced-motion: reduce) { .front-picture { animation: none } }
