@@ -13,7 +13,7 @@ const el = (tag, props = {}, ...kids) => {
 const SIGN = '<svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4 2.8 19.5h18.4z"/><path d="M12 10v4.5M12 17.2v.1"/></svg>';
 const css = `
 #report-dialog{--r-line:var(--line,#343a41);--r-surface:var(--surface,#101215);--r-raised:var(--raised,#14171b);--r-text:var(--text,#d5d8dc);--r-muted:var(--muted,#8b939b);--r-accent:var(--accent,#c8333a);
-  border:1px solid var(--r-line);background:var(--r-surface);color:var(--r-text);border-radius:10px;padding:18px;width:min(380px,calc(100vw - 32px));font:15px/1.5 "IBM Plex Sans KR",system-ui,sans-serif;text-align:left}
+  border:1px solid var(--r-line);background:var(--r-surface);color:var(--r-text);border-radius:10px;padding:22px;width:min(460px,calc(100vw - 32px));font:15px/1.5 "IBM Plex Sans KR",system-ui,sans-serif;text-align:left;word-break:keep-all}
 #report-dialog::backdrop{background:rgba(0,0,0,.6)}
 #report-dialog h2{margin:0 0 12px;font-size:17px}
 #report-dialog .row{display:flex;gap:8px}

@@ -17,7 +17,7 @@ const css = `
 .sn-tool{position:absolute;z-index:5;display:grid;place-items:center;padding:0;cursor:pointer}
 .sn-tool svg{width:22px;height:22px}
 #quick-save{--qs-line:var(--line,#343a41);--qs-surface:var(--surface,#101215);--qs-raised:var(--raised,#14171b);--qs-text:var(--text,#d5d8dc);--qs-muted:var(--muted,#8b939b);--qs-accent:var(--accent,#c8333a);
-  border:1px solid var(--qs-line);background:var(--qs-surface);color:var(--qs-text);border-radius:10px;padding:18px;width:min(340px,calc(100vw - 32px));font:15px/1.5 "IBM Plex Sans KR",system-ui,sans-serif;text-align:left}
+  border:1px solid var(--qs-line);background:var(--qs-surface);color:var(--qs-text);border-radius:10px;padding:22px;width:min(460px,calc(100vw - 32px));font:15px/1.5 "IBM Plex Sans KR",system-ui,sans-serif;text-align:left;word-break:keep-all}
 #quick-save::backdrop{background:rgba(0,0,0,.6)}
 #quick-save h2{margin:0 0 14px;font-size:17px}
 #quick-save .row{display:flex;gap:8px}
@@ -25,7 +25,7 @@ const css = `
 #quick-save button.primary{border-color:var(--qs-accent);color:var(--qs-accent)}
 #quick-save input{font:600 24px/1 "IBM Plex Mono",monospace;letter-spacing:.3em;text-align:center;min-width:0}
 #quick-save .code{font:600 34px/1 "IBM Plex Mono",monospace;letter-spacing:.25em;text-align:center;padding:12px 0 8px}
-#quick-save .note{color:var(--qs-muted);font-size:13px;margin:10px 0 0}
+#quick-save .note{color:var(--qs-muted);font-size:13px;margin:10px 0 16px}
 #quick-save .warn{color:var(--qs-accent);font-size:13px;margin:10px 0 0}
 #quick-save .close{margin-top:14px;width:100%}
 `;
