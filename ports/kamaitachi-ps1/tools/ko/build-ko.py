@@ -4,6 +4,10 @@ translation (kamaitachi-ps1-kor script/ja/script.ja.json, script/ko/script.ko.js
 
   python3 tools/ko/build-ko.py EXE_DATA.bin SCRIPT_JA.json SCRIPT_KO.json FONT.ttf OUT_DIR
       [--widths ORIG_WIDTHS.json] [--exe-strings LIST.json --exe-ko KO.json]
+      [--edits TEXT_EDITS.json] [--editor KO_EDITOR.json]
+
+--edits: the owner's edits ({id: {ko}}, written by tools/text-editor): they replace the translation.
+--editor: writes the dialogue editor's data (ids, Japanese, the translation, the original glyph widths).
 
 --widths ({"sjis code": width}, read from the original font in BIN.PAC) makes the layout check
 exact for the original glyphs; without it kana count as 15 and kanji as 16.
@@ -157,6 +161,12 @@ def main():
     report['duplicates'] = len(kids) - len(set(kids))
     report['missing'] = len(set(ids) - set(kids)); report['extra'] = len(set(kids) - set(ids))
     if ids != kids: raise SystemExit('ids differ from the Japanese script')
+    # the owner's edits (tools/text-editor): they win over the translation, as in the game (src/ko-text.js applyEdits)
+    edits = json.load(open(opt['--edits'], encoding='utf-8')) if '--edits' in opt else {}
+    translated = {k['id']: k['ko'] for k in ko}
+    for k in ko:
+        if isinstance(edits.get(k['id'], {}).get('ko'), str): k['ko'] = edits[k['id']]['ko']
+    report['ownerEdits'] = sum(1 for i in edits if i in translated)
 
     # the characters of the translation
     used = collections.Counter()
@@ -224,6 +234,7 @@ def main():
     hang = {0x8142, 0x8149, 0x8148, 0x8141, 0x8145, 0x8176, 0x8178, 0x816a, 0x8163, 0x815c, 0x8160} | {code[c] for c in HANG if c in code}
     res = collections.defaultdict(list)
     rev = {c: ch for ch, c in orig.items()}
+    NAME_W = {str(i + 1): len(n[3]) * (HANGUL_W + 1) for i, n in enumerate(NAMES)}
     def layout(texts, dump=None):
         """ids whose text runs below the last line of the page, the widest line end, and the
         number of pages by their line count. dump: a list that takes (first id, lines) per page."""
@@ -260,7 +271,9 @@ def main():
                 if c == 0x67:
                     st['y'] = y; close(st); x, y, after = LEFT, TOP, False; i += 1; continue
                 if c < 0x78:
-                    if c == 0x6e: st['line'] += '[n%s]' % chr(b[i + 1]); after = True; st['typed'] = True; st['first'] = st['first'] or eid
+                    if c == 0x6e:   # a name: counted with the default name's width
+                        if x >= RIGHT: down()
+                        st['line'] += '[n%s]' % chr(b[i + 1]); x += NAME_W.get(chr(b[i + 1]), 0); after = True; st['typed'] = True; st['first'] = st['first'] or eid
                     i += 2 if chr(c) in 'cChsvnw' else 1; continue
                 g = c << 8 | b[i + 1]; i += 2
                 if g in (0x8175, 0x8177): q += 1
@@ -409,8 +422,14 @@ def main():
     open(os.path.join(out, 'ko-font.bin'), 'wb').write(blob)
     json.dump({'schema': 'kamaitachi.ps1.ko-script.v1', 'source': ja.get('source'), 'offsets': json.load(open(opt['--offsets'])), 'culprit': [[int(a, 16), [base64.b64encode(b''.join(struct.pack('>H', code[c]) for c in v)).decode() for v in vs]] for a, vs in culprit['names'].items()], 'glyphs': len(new), 'chars': ''.join(new), 'josaJoin': [JOIN], 'space': SPACE, 'hang': [code[c] for c in HANG if c in code],
                'patches': patches, 'moved': moved, 'chart': chart_patch, 'endings': endings_patch,
-               'resources': {str(r): v for r, v in sorted(res.items())}}, open(os.path.join(out, 'ko-script.json'), 'w'), separators=(',', ':'))
+               'resources': {str(r): v for r, v in sorted(res.items())},
+               # the original font's characters and codes: the owner's edits are encoded in the browser (src/ko-text.js)
+               'orig': {'chars': ''.join(orig), 'codes': list(orig.values())}, 'names': NAME_W}, open(os.path.join(out, 'ko-script.json'), 'w'), separators=(',', ':'))
     json.dump(report, open(os.path.join(out, 'ko-report.json'), 'w'), ensure_ascii=False, indent=1)
+    if '--editor' in opt:   # the dialogue editor's data (tools/text-editor): game text, so it stays out of this repository
+        json.dump({'schema': 'kamaitachi.ps1.ko-editor.v1', 'widths': {str(c): w for c, w in sorted(owidth.items())},
+                   'items': [[e['id'], e['ja'], translated[e['id']]] for e in items]},
+                  open(opt['--editor'], 'w', encoding='utf-8'), ensure_ascii=False, separators=(',', ':'))
     print(json.dumps({k: v for k, v in report.items() if k not in ('pageOverflow',)}, ensure_ascii=False))
     print('page overflow', len(overflow), overflow[:20])
 

@@ -61,6 +61,11 @@ function portRoute(url) {
     ['/ports/zakuro-sfc/', path.join(__dirname, 'ports', 'zakuro-sfc'), ['.html', '.js', '.css']],
     ['/zakuro-sfc-kor/port-data/', path.join(__dirname, 'zakuro-sfc-kor', 'port-data'), ['.json', '.bin']],
     ['/kamaitachi-ps1-kor/port-data/', ps1Data, ['.json', '.bin', '.PAC', '.pac', '.ch0', '.mp4']],
+    // 펜션 슈프르 관리자 (admin/): the owner's page, under /edit/ so that it asks for the password from outside.
+    ['/edit/admin/', path.join(__dirname, 'admin'), ['.html', '.js', '.css']],
+    // The admin page's data of the PS1 script (ko-editor.json: the whole Japanese and Korean script side by
+    // side). It is read only through /edit/, never through the open data path above.
+    ['/edit/kamaitachi-ps1/', path.join(ps1Data, 'machine', 'ko'), ['.json']],
     ['/kamaitachi2-ps2/', ps2Web, ['.html', '.js', '.mjs', '.css', '.json', '.bin', '.pac', '.wd', '.png', '.jpg', '.webp', '.svg', '.wasm', '.ogg', '.mp3', '.wav', '.mp4', '.woff2', '.txt']],
   ]) {
     if (!url.startsWith(prefix) || !dir) continue;
@@ -68,6 +73,7 @@ function portRoute(url) {
     try { rest = decodeURIComponent(url.slice(prefix.length)); } catch { return null; } // a malformed %-escape is a 404, never a crash
     const file = path.join(dir, rest || 'index.html');
     const ext = path.extname(file);
+    if (prefix === '/kamaitachi-ps1-kor/port-data/' && path.basename(file) === 'ko-editor.json') return null;
     if (!file.startsWith(dir + path.sep) || !exts.includes(ext) || /(^|[\\/])(tests?|tools|server)[\\/]/.test(file.slice(dir.length))) return null;
     return [file, portTypes[ext]];
   }
@@ -187,6 +193,36 @@ http.createServer((request, response) => {
         if (error) { response.writeHead(500).end(); return; }
         fs.rename(temp, file, (failure) => response.writeHead(failure ? 500 : 204).end());
       });
+    });
+    return;
+  }
+  // The admin page's dialogue edits of the PS1 Korean script (admin/adapters/kamaitachi-ps1.js):
+  // { id: { ko, base, at } }, kept next to the game's Korean data, where the game reads it at every
+  // start (ko/text-edits.json). Every save is also added to text-edits.log.jsonl (the history) and
+  // copied into the private repository's working folder (script/ko/owner-edits.json) when it is here.
+  if (url === '/edit/kamaitachi-ps1/text-edits.json' && request.method === 'PUT') {
+    const file = path.join(ps1Data, 'machine', 'ko', 'text-edits.json');
+    const chunks = []; let size = 0, over = false;
+    request.on('data', chunk => { size += chunk.length; if (size > 4 * 1024 * 1024) { over = true; request.destroy(); } else chunks.push(chunk); });
+    request.on('end', () => {
+      if (over) return;
+      let value;
+      try { value = JSON.parse(Buffer.concat(chunks).toString('utf8')); } catch { value = null; }
+      const good = value && typeof value === 'object' && !Array.isArray(value)
+        && Object.entries(value).every(([id, e]) => /^\d{3}-\d{3}-\d{4}$/.test(id) && e && typeof e.ko === 'string' && e.ko.length < 4000);
+      if (!good) { response.writeHead(400).end(); return; }
+      let before = {};
+      try { before = JSON.parse(fs.readFileSync(file, 'utf8')); } catch { /* the first save */ }
+      const changed = [...new Set([...Object.keys(before), ...Object.keys(value)])].filter(id => before[id]?.ko !== value[id]?.ko)
+        .map(id => ({ id, from: before[id]?.ko ?? null, to: value[id]?.ko ?? null }));
+      const body = JSON.stringify(value, null, 1) + '\n', temp = file + '.tmp';
+      try {
+        fs.writeFileSync(temp, body); fs.renameSync(temp, file);
+        if (changed.length) fs.appendFileSync(path.join(path.dirname(file), 'text-edits.log.jsonl'), JSON.stringify({ at: new Date().toISOString(), changed }) + '\n');
+        const repo = path.join(__dirname, 'kamaitachi-ps1-kor', 'script', 'ko');
+        if (fs.existsSync(repo)) fs.writeFileSync(path.join(repo, 'owner-edits.json'), body);
+      } catch (error) { console.error('[text-edits]', error); response.writeHead(500).end(); return; }
+      response.writeHead(204).end();
     });
     return;
   }

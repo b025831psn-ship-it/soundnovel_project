@@ -7,6 +7,8 @@
 // Memory card: a virtual card in slot 1 (memory-card.js, the raw 128 KB image as a real card
 // holds it), kept in localStorage after every write; runtime.exportCard() / importCard(bytes)
 // hand the image to and from the shell (e.g. the save server).
+import { applyEdits } from "./ko-text.js";
+import { patchScePac } from "./ko.js";
 import { Machine } from "./machine.js";
 import { current } from "./touch.js";
 import { machineSound } from "./machine-sound.js";
@@ -85,6 +87,16 @@ export async function startMachine({ canvas, dataRoot, audio = true, onProgress 
     try {
       const [script, font] = await Promise.all([fetch(new URL("ko/ko-script.json", base)).then((r) => { if (!r.ok) throw new Error(`ko-script.json ${r.status}`); return r.json(); }), fetchBytes(new URL("ko/ko-font.bin", base), progress)]);
       ko = { script, font };
+      // The owner's dialogue edits (the admin page, admin/): ko/text-edits.json, read fresh on every start
+      // and laid over the translation, so a saved edit shows after a reload with no rebuild.
+      try {
+        const r = await fetch(new URL(`ko/text-edits.json?v=${Date.now()}`, base), { cache: "no-store" });
+        if (r.ok) {
+          const edits = await r.json(), plain = JSON.stringify(script.resources), { applied, skipped } = applyEdits(script, edits);
+          if (skipped.length) console.warn("[kamaitachi-ps1 machine] dialogue edits left out", skipped);
+          if (applied.length) { try { patchScePac(pacs.SCE, script); } catch (e) { console.warn("[kamaitachi-ps1 machine] dialogue edits do not fit, running without them", e); script.resources = JSON.parse(plain); } }
+        }
+      } catch (e) { console.warn("[kamaitachi-ps1 machine] no dialogue edits", e); }
     } catch (e) { console.warn("[kamaitachi-ps1 machine] no Korean data, running in Japanese", e); }
   }
   cardKey = ko ? `${CARD_KEY}.ko` : CARD_KEY;
