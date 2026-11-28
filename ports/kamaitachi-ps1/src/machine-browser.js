@@ -138,7 +138,19 @@ export async function startMachine({ canvas, dataRoot, audio = true, onProgress 
     else key = t.keys[seek.to < at ? 0 : 1];
     seek.down++; seek.last = at; return BUTTON[key];
   };
+  // The unattended demo (auto mode, 0x800792c6) ends at a button and the title comes back. On the
+  // console that takes a disc load, so the button is up again by then; here the title is there in
+  // a few frames and would read the same press as its own (and start the game). A button pressed
+  // during auto mode therefore reaches the game for one frame only, and not again until it is let go.
+  let muted = 0;
   const held = () => {
+    let b = pressed();
+    const fresh = b & ~muted;
+    if (machine.read(0x800792c6, 1) === 1) { muted |= b; return fresh; }
+    muted &= b;
+    return b & ~muted;
+  };
+  const pressed = () => {
     let b = 0; for (const [k, n] of keys) { if (n > 0) b |= BUTTON[k]; }
     if (seek) return b | seekKey();
     const s = steps[0];
@@ -162,8 +174,9 @@ export async function startMachine({ canvas, dataRoot, audio = true, onProgress 
     busy: () => steps.length > 0 || Boolean(seek),
     touchRows: () => menuNow()?.rows ?? [],
     cursorIndex: () => menuNow()?.index() ?? -1,
-    // A tap on another row: the cursor goes there with the original's own pad presses (one frame
-    // each) and, in a plain list, the row is chosen at once (태우 2026-11-28: a tap picks the row).
+    // A tap on another row: the cursor goes there with the original's own pad presses, in frames
+    // the player does not see (tick), and, in a plain list, the row is chosen at once (태우
+    // 2026-11-28: a tap picks the row, with no cursor walking there).
     // In a grid (the flowchart) the tap only moves the cursor; a second tap chooses.
     moveCursor(n) {
       const t = menuNow(); if (!t || !n) return;
@@ -202,6 +215,9 @@ export async function startMachine({ canvas, dataRoot, audio = true, onProgress 
     const t = now(); acc = Math.min(acc + t - last, STEP * 8); last = t;
     while (acc >= STEP && !machine.error) {
       if (hold > 0) { hold--; acc -= STEP; continue; } // the sound driver is waiting (its samples are already queued)
+      // a tap on another row: the frames in which the original's cursor walks there are run at once,
+      // unseen and unheard (no picture between them, no sound frame), so the row is simply chosen
+      for (let n = 0; seek && n < 400 && !machine.error; n++) machine.frame(held());
       machine.frame(held()); soundFrame();
       for (const [k, n] of keys) { if (n !== Infinity) { if (n <= 1) keys.delete(k); else keys.set(k, n - 1); } }
       acc -= STEP; dirty = true;
