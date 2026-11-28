@@ -36,7 +36,8 @@ function ready() {
 }
 
 export async function mountSyncUi({ api = ready(), fetchImpl } = {}) {
-  const { store, boot } = await api;
+  const { store, boot, debug } = await api;
+  if (debug) return;
   document.head.append(el("style", { textContent: css }));
   const dialog = el("dialog", { id: "save-dialog" });
   const button = el("button", { className: "icon", type: "button", title: "저장 동기화", ariaLabel: "저장 동기화" });

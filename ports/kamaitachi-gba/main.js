@@ -8,6 +8,8 @@ import { Boot, KEY } from "./src/boot.js";
 import { startGate } from "../../shared/player/start-gate.js";
 import { createSound } from "./sound/output.js";
 import { Silhouettes } from "./src/silhouette.js";
+import { fetchDebugSave } from "../../shared/player/debug-save.js";
+import { MemoryBackend } from "../../shared/save/backends.js";
 import { openBooks } from "./src/books-store.js";
 import { restoreData, restorePosition } from "./src/save.js";
 import { TextEdits, TextCodec, openTextEditor, untranslated } from "./src/text-editor.js";
@@ -91,10 +93,22 @@ const vm = new VM({ banks, scene, text, musicMap: music.request_to_song, audio: 
 const page = new PageText(screen, font, text);
 // Opcode 1D's native screens (1D 00: logo, copyright, title menu, bookmarks; 1D 03/04: names).
 // Bookmarks live in the shared SaveStore (IndexedDB), opened before the game starts.
-const books = await openBooks();
+const debugSave = await fetchDebugSave("kamaitachi-gba", "json");
+const books = debugSave
+  ? await openBooks({ edition: language, storage: null, backend: new MemoryBackend() })
+  : await openBooks();
+if (debugSave) {
+  const book = (await debugSave.json())[language];
+  const state = book?.state;
+  if (!banks[state?.bank] || !Number.isInteger(state.offset) || state.offset < 0 ||
+      state.offset >= banks[state.bank].length || !state.ram?.flags?.$bytes?.[0x36]) {
+    throw new Error("이 언어의 금책갈피 세이브를 읽을 수 없습니다.");
+  }
+  books.write(0, book);
+}
 const boot = await new Boot({ vm, screen, assets, font, sound: vm.sound, books }).load();
 // The shell's save dialog (sync-ui.js) reaches the store and the title through this.
-globalThis.soundnovelSave = { store: books.store, boot, gameId: "kamaitachi-gba" };
+globalThis.soundnovelSave = { store: books.store, boot, debug: Boolean(debugSave), gameId: "kamaitachi-gba" };
 globalThis.dispatchEvent?.(new Event("soundnovel-save-ready"));
 // The cartridge's loading pauses (black while a picture decodes or the flash is read) are cut
 // in the web version; ?timing=original keeps them for frame comparisons with mGBA.
@@ -222,9 +236,9 @@ addEventListener("keydown", (event) => {
 // (tools/scene-index.mjs, git-ignored) and a jump to any of them. It is the owner's: the list is read
 // only behind the /edit/ password (serve.cjs), so for anyone else ?debug=1 does nothing. The admin
 // page (admin/) opens the game this way.
-const debugMode = new URLSearchParams(location.search).get("debug") === "1";
 let debugScenes = null;
 function debugJump(target) {
+  if (!debugScenes) return false;
   const entry = typeof target === "string" ? debugScenes?.find((scene) => scene.site === target) : target;
   if (!entry) return false;
   const state = replayTo(vm.banks, entry, { names: boot.names });
@@ -237,7 +251,7 @@ function debugJump(target) {
   page.drawn = -1;
   return true;
 }
-const debugList = debugMode ? await fetch(`/edit/kamaitachi-gba/debug-scenes-${language}.json`, { headers: { "X-Quiet-Auth": "1" } }).then((r) => (r.ok ? r.json() : null)).catch(() => null) : null;
+const debugList = debugSave ? await fetch(`/edit/kamaitachi-gba/debug-scenes-${language}.json`, { headers: { "X-Quiet-Auth": "1" } }).then((r) => (r.ok ? r.json() : null)).catch(() => null) : null;
 if (debugList) {
   const codec = new TextCodec(language, font);
   const japanese = new TextCodec("ja", { find: () => 0 });
