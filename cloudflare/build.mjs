@@ -23,11 +23,11 @@ const PAGES_MAX = 25 * 1024 * 1024 - 1;
 const RANGED = /\.(PAC|pac|ch0|mp4)$/;
 // The dialogue edits the owner saves from /edit/: they change after a deploy, so they live in R2.
 const LIVE = /(^|\/)text-edits\.json$/;
-// Verification traces in the data folders are not part of the game.
-const SKIP = /\/trace\//;
+// Not part of the site: verification traces, old hub-art tries in sub-folders, old PS1 test captures.
+const SKIP = /\/trace\/|^\/art\/hub\/[^/]+\/|^\/kamaitachi-ps1-kor\/port-data\/machine-[^/]*\.png$/;
 
 const files = new Map(); // url -> [file, type]
-const add = (url, route) => { if (route && !cartridges.has(url) && !SKIP.test(url)) files.set(url, route); };
+const add = (url, route) => { if (route && fs.existsSync(route[0]) && !cartridges.has(url) && !SKIP.test(decodeURIComponent(url))) files.set(url, route); };
 for (const [url, route] of routes) {
   if (url.startsWith("/play/") || url.startsWith("/web-player/")) continue; // the old ROM players: not shipped
   add(url, route);
