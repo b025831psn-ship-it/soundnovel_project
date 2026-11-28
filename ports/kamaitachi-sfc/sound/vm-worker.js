@@ -3,6 +3,7 @@
 //   { type: 'buttons', mask }  held keys    { type: 'pause', on }
 //   { type: 'tap', x, y }      screen pixels; pressed as planTap() decides
 //   { type: 'press', name }    one button press (menu icon actions)
+//   { type: 'reset' }          the console Reset button
 // Messages out: { type: 'status', frame, time, cost, keyboard, cursor, title } about four
 //               times a second (keyboard: a name keyboard is up, so the menu button hides),
 //               { type: 'frame', frame, pixels } (256x224 RGBA) when the picture changed,
@@ -15,7 +16,7 @@ import { VmSound, PAD } from './vm-sound.js';
 import { tapTarget, storyChoice, PressQueue, isKeyboard, keyboardTarget, keyboardStep } from './touch.js';
 import { SfcMachine } from '../../../sfc-vm/machine.js';
 
-let machine = null, run = null, held = 0, seek = null;
+let machine = null, vm = null, run = null, held = 0, seek = null;
 // The option the game last took from a story choice (its cursor when the choice closed), for status.
 let choiceCursor = null, picked = null;
 const watchChoice = () => { const c = storyChoice(machine.bus.wram); if (c) choiceCursor = c.current; else if (choiceCursor != null) { picked = choiceCursor; choiceCursor = null; } };
@@ -72,6 +73,8 @@ onmessage = ({ data }) => {
     }
   }
   else if (data.type === 'press' && PAD[data.name]) queue.push(PAD[data.name]);
+  // The console's Reset button (陰謀編 is entered with it, as on the original).
+  else if (data.type === 'reset' && vm) { seek = null; queue.clear?.(); vm.reset(); choiceCursor = null; }
   // A vertical drag or the wheel: on a name keyboard it pages the kanji list; on the story it
   // goes back a sentence (X) when dragged down / wheeled up.
   else if (data.type === 'scroll' && machine && !queue.busy && !seek) {
@@ -102,7 +105,7 @@ function start({ game, gauss, port, sram }) {
     if (!same) { kept = live.slice(); dirty = true; return; }
     if (dirty) { dirty = false; const bytes = kept.slice(); postMessage({ type: 'sram', bytes }, [bytes.buffer]); }
   };
-  const vm = new VmSound(machine);
+  vm = new VmSound(machine);
   let cost = 0, reportAt = 0;
   run = runRealtime({
     get time() { return vm.time; }, end: null,

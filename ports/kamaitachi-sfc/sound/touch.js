@@ -105,6 +105,7 @@ export function planTap(w, io, x, y) {
 export class PressQueue {
   constructor({ down = 3, up = 3 } = {}) { this.q = []; this.down = down; this.up = up; this.t = 0; this.mask = 0; }
   push(...masks) { this.q.push(...masks); }
+  clear() { this.q.length = 0; this.t = 0; this.mask = 0; }
   get busy() { return this.t > 0 || this.q.length > 0; }
   // Call once per frame; returns the mask to OR with held buttons.
   frame() {

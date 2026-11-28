@@ -195,6 +195,26 @@ export function bootSlot(s, seed) {
   s.pending = s.accepted = s.terminal = null;
 }
 
+// END24 (陰謀編): on the clue page the game sets flag 0x7E (bit 6 of 0x1F); once it has copied
+// it into bookmark one (0x81F), the console Reset button takes the alternate boot path, which
+// consumes 0x7E and writes 0x7F (bits 6-7 = 10). As the original run (guide_reset.py).
+export function conspiracyReset(s, budget = 30000) {
+  const sram = s.m.bus.sram, start = s.frames;
+  while (!(sram[0x1f] & sram[0x81f] & 0x40)) {
+    if (s.frames - start >= budget) throw new Error('SFC reset clue was not saved inside the frame budget');
+    if (s.pending != null || s.terminal != null) throw new Error('Reached a different event before the SFC reset clue');
+    s.press('A', 8);
+  }
+  const trigger = s.frames;
+  s.m.reset();
+  s.resetSignals?.();
+  for (let i = 0; i < 300; i++) {
+    s.step(2);
+    if ((sram[0x1f] & 0xc0) === 0x80 && (sram[0x81f] & 0xc0) === 0x80) return { trigger_frame: trigger, confirmed_frame: s.frames };
+  }
+  throw new Error('SFC reset did not activate the conspiracy route');
+}
+
 export function runRoute(s, guide, seed, { repeat = false } = {}) {
   const ending = +guide.id.slice(3), route = new Route(guide);
   bootSlot(s, seed);
@@ -202,7 +222,7 @@ export function runRoute(s, guide, seed, { repeat = false } = {}) {
   let event;
   for (let i = 0; ; i++) {
     if (i >= 150) throw new Error('Exceeded guide step limit');
-    if ('reset' in (route.steps[route.next]?.moves ?? {})) throw new Error('Console reset route is not supported yet');
+    if ('reset' in (route.steps[route.next]?.moves ?? {})) { route.log.push({ step: route.next, reset: conspiracyReset(s) }); route.next = 'END'; }
     event = s.advance();
     if (event.status === 'choice') { const c = route.choice(event.id, event.options); s.step(20); s.select(c); }
     else if (event.status === 'name') { enterCulprit(s, route.name()); s.lastName = null; }

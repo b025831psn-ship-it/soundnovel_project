@@ -134,7 +134,7 @@ function wireControls(worker, out) {
     if (event.code !== 'KeyS' || event.repeat || event.ctrlKey || event.metaKey || event.altKey || menu.classList.contains('unavailable')) return;
     event.preventDefault(); toggleSheet(sheet.hidden); if (!sheet.hidden) sheet.querySelector('button').focus();
   });
-  for (const el of sheet.querySelectorAll('button')) el.addEventListener('click', () => { worker.postMessage({ type: 'press', name: el.dataset.b }); toggleSheet(false); });
+  for (const el of sheet.querySelectorAll('button')) el.addEventListener('click', () => { worker.postMessage(el.dataset.action === 'reset' ? { type: 'reset' } : { type: 'press', name: el.dataset.b }); toggleSheet(false); });
 
   let held = 0;
   const key = (down) => (event) => {
