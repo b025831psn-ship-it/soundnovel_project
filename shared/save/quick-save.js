@@ -137,7 +137,7 @@ export function mountQuickSave({ store, gameId, boot, fetchImpl } = {}) {
   let pending = false;
   try { pending = sessionStorage.getItem(CONTINUE + gameId) === "1"; sessionStorage.removeItem(CONTINUE + gameId); } catch { /* none */ }
   if (pending && boot) {
-    const until = Date.now() + 60_000;
+    const until = Date.now() + 30 * 60_000; // the title may come only after a logo and an opening movie (PS2)
     const tryContinue = async () => {
       if (Date.now() > until) return;
       if (boot.titleActive && boot.canContinue?.() && await boot.continueSuspended()) return;

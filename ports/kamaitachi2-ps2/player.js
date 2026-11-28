@@ -1218,7 +1218,7 @@ if (saves.store) {
   import('./sync-ui.js').then(({mountSyncUi}) => mountSyncUi({store:saves.store, gameId:GAME_ID, parent:document.querySelector('main'),
     onPaint:bad => savesButton.classList.toggle('attention', bad), onClose:() => canvas.focus(), boot})).then(ui => { syncUi = ui; }).catch(error => console.warn('Sync dialog unavailable', error));
   // 빠른 저장: the disk button left of the menu button (저장 → 4-digit code, 불러오기 → carry on).
-  import('/shared/save/quick-save.js').then(m => m.mountQuickSave({store:saves.store, gameId:GAME_ID, boot}))
+  import('/shared/save/quick-save.js').then(m => m.mountQuickSave({store:saves.store, gameId:GAME_ID, boot})).then(() => import('/shared/player/report-button.js')).then(m => m.mountReport({gameId:GAME_ID, boot}))
     .catch(error => console.warn('Quick save unavailable', error));
 } else gameMenu.querySelector('[data-menu="saves"]').hidden = true;
 document.addEventListener('fullscreenchange', () => {
