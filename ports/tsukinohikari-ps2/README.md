@@ -25,3 +25,8 @@ ED 하나에 JSON 파일 하나를 생성한다. 페이지마다 장면명, ED �
 
 `python prepare_media.py "<원본 BIN>" "<로컬 리소스 디렉터리>"`로 디스크 경로를 보존한 리소스를 준비한다. image.mjs의 parts와 decodeImage는 CFP의 팔레트와 압축된 인덱스 이미지를 RGBA로 변환한다. SLPS-20196의 CFP 2,181개에서 압축 스트림 길이·픽셀 수·색 심도를 검사했다. 픽셀과 원본 화면의 대조는 별도 검증 항목이다.
 로컬 리소스 폴더에 대해 python av.py "<로컬 리소스 디렉터리>"를 실행하면 movies에 H.264 MP4, sound에 원본 순서의 PCM WAV가 생성된다. FFmpeg가 필요하다. PSS의 독립 PCM 패킷에서 좌우 채널을 재배열한다.
+## 시나리오 실행 코어
+
+scenario.mjs는 ED 페이지·명령 커서, 두 플래그 뱅크, 선택지와 분기를 다룬다. SLPS_201.96의 STORY.BIN 심벌 eveComBranch, eveExeBranch, eveComFlag, eveFlagPointerGet을 기준으로 작성했다. 선택 확정 시 선택 번호는 1부터 기록한다. 비교 분기는 원본 순서대로 첫 일치 목적지를 사용한다. 선택 대기 중 저장한 상태를 복원할 수 있다.
+
+검증은 `node scenario.test.mjs`와 `node audit-flow.mjs "<비공개 source/ja>"`로 실행한다. 후자는 원본 18개 ED의 분기·플래그 명령 위치에서 시작하여 목적지와 선택 후 커서를 검사한다. 특수 분기 0x51, 조건부 선택지 표시, 엔딩·연출 및 시스템 메뉴는 실행 코어 외부에 남아 있다.
