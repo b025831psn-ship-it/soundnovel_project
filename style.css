@@ -139,6 +139,8 @@ kbd {
   paint-order: stroke fill;
 }
 .marquee .ko { display: flex; align-items: center; gap: 14px; margin: 0; color: var(--text); font: 500 clamp(15px, 2cqw, 21px)/1.4 "Noto Serif KR", serif }
+.marquee .ko .name { word-break: keep-all }
+.subt { display: inline-block; word-break: keep-all }
 .marquee .ko::after { content: ""; width: 48px; height: 1px; background: var(--accent) }
 .lede .para { display: block }
 .lede .para + .para { margin-top: .6em }

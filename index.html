@@ -126,6 +126,14 @@
   const card = document.querySelector('#marquee .card');
   const story = card.querySelector('.lede').innerHTML;
   let chosen = DEFAULT_CARD;
+  function titled(el, name, subt) {
+    el.textContent = name;
+    if (subt) el.append(' ', Object.assign(document.createElement('span'), { className: 'subt', textContent: subt }));
+  }
+  document.querySelectorAll('.entry .title, .edition .title').forEach(t => {
+    const [name, subt] = t.textContent.split(/ (?=~)/);
+    if (subt) titled(t, name, subt);
+  });
   function showCard(hash) {
     const c = CARDS[hash] ?? CARDS[DEFAULT_CARD];
     chosen = CARDS[hash] ? hash : DEFAULT_CARD;
@@ -135,7 +143,9 @@
     img.classList.toggle('tall', Boolean(c.tall));
     img.onload = () => { img.classList.toggle('tall', img.naturalHeight > img.naturalWidth * .6); img.classList.toggle('wide', img.naturalWidth > img.naturalHeight * 3.5); };
     if (c.logo) { img.alt = c.ko; img.onerror = () => { logo.hidden = true; }; if (img.getAttribute('src') !== c.logo) img.src = c.logo; }
-    card.querySelector('.ko').textContent = c.ko;
+    const [name, subt] = c.ko.split(/ (?=~)/);
+    card.querySelector('.ko').replaceChildren(Object.assign(document.createElement('span'), { className: 'name' }));
+    titled(card.querySelector('.ko .name'), name, subt);
     document.querySelector('#snow').hidden = !c.snow;
     marquee.classList.toggle('light', Boolean(c.light));
     marquee.classList.toggle('dim', Boolean(c.dim));
