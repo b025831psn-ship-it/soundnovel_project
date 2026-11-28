@@ -65,6 +65,7 @@ export function moduleSound(mod, m = null) {
     for (let i = 0; i < 12; i++) m.write(BANKS + 2 * i, mod.vabIds[i] & 0xffff, 2);
   };
   const run = (f) => (...a) => { pull(); const r = f(...a); push(); return r; };
+  const vsync = run(() => mod.vsync());
   return {
     play: run((id, fade) => mod.play(id, fade)),
     stop: run((id, fade) => mod.stop(id, fade)),
@@ -77,7 +78,11 @@ export function moduleSound(mod, m = null) {
     lib: (addr, args) => mod.lib?.(addr, args) ?? LIB_DEFAULT(addr),
     keyOn: run((vab, prog, tone, note, fine, voll, volr) => { if (mod.inited === 1) mod.ss.SsUtKeyOn(vab, prog, tone, note, fine, voll, volr); }),
     start: () => {}, // the module starts the library when it is made
-    vsync: m ? run(() => mod.vsync()) : () => {}, // without m the audio thread runs the module's VSync part on its own clock
+    // without m the audio thread runs the module's VSync part on its own clock.
+    // still: frames run at once and unheard (a tap that walks the cursor, machine-browser.js) do not move the
+    // song on: no samples are made in them, so the sequencer would leave out that part of the music
+    still: false,
+    vsync: m ? function () { if (!this.still) vsync(); } : () => {},
     song: () => s16(mod.music.song),
     effectPlaying: (n) => mod.ch.some((c) => s16(c.id) === n),
     done: (n) => mod.done[n] === 1,

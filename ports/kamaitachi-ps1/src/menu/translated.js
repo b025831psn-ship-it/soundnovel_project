@@ -4771,7 +4771,7 @@ export function* f80014d68(ctx, a0 = 0, a1 = 0, a2 = 0, a3 = 0) {
   case 0x800150b8:
      [v0, v1] = yield* call(ctx, sp, 0x80039288, a0, a1, a2, a3);
   case 0x800150c0:
-    offer(ctx, [box(100000, 0x90, 0xd0, 0x18, 0x12), box(100001, 0x90, 0x40, 0x18, 0x10), box(100002, 0x7c, 0x2c, 0x42, 0x13)], () => 0, ["up", "down"], { 100000: "down", 100001: "up", 100002: "cross" });
+    offer(ctx, [box(100000, 0x60, 0xc0, 0x80, 0x30), box(100001, 0x60, 0x38, 0x80, 0x14), box(100002, 0x7c, 0x22, 0x48, 0x16)], () => 0, ["up", "down"], { 100000: "down", 100001: "up", 100002: "cross" });
      [v0, v1] = yield* call(ctx, sp, 0x80013f34, a0, a1, a2, a3);
   case 0x800150c8:
      pc = 0x80014e2c; continue;
@@ -4985,7 +4985,8 @@ export function* f8001511c(ctx, a0 = 0, a1 = 0, a2 = 0, a3 = 0) {
   case 0x800153e0:
      [v0, v1] = yield* call(ctx, sp, 0x80039288, a0, a1, a2, a3);
   case 0x800153e8:
-    withdraw(ctx);
+    // the ending list: its arrows (drawn at 144,54 and 144,203) and the back label are buttons
+    offer(ctx, [box(100000, 0x60, 0xc0, 0x80, 0x30), box(100001, 0x60, 0x38, 0x80, 0x14), box(100002, 0x7c, 0x22, 0x48, 0x16)], () => 0, ["up", "down"], { 100000: "down", 100001: "up", 100002: "cross" });
      [v0, v1] = yield* call(ctx, sp, 0x80013f34, a0, a1, a2, a3);
   case 0x800153f0:
      pc = 0x80015204; continue;

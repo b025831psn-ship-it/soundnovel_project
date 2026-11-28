@@ -261,6 +261,7 @@ export async function startMachine({ canvas, dataRoot, audio = true, onProgress 
     onCardChange: null, // set by the shell: called after the game writes the card
     get error() { return machine.error; },
   };
+  if (debugCard) window.ps1Debug = runtime; // the owner's debug run: the running game, for checks from the console
   const STEP = 1000 / 60;
   let last = now(), acc = 0, stopped = false, hold = 0, played = 0;
   // One frame of sound. The driver's own waits come back as extra frames: the game is held for as long.
@@ -297,12 +298,15 @@ export async function startMachine({ canvas, dataRoot, audio = true, onProgress 
     while (acc >= STEP && !machine.error) {
       if (hold > 0) { hold--; acc -= STEP; continue; } // the sound driver is waiting (its samples are already queued)
       // a tap on another row: the frames in which the original's cursor walks there are run at once,
-      // unseen and unheard (no picture between them, no sound frame), so the row is simply chosen
-      for (let n = 0; seek && n < 400 && !machine.error; n++) machine.frame(held());
+      // unseen and unheard (no picture between them, no sound frame), so the row is simply chosen.
+      // The song stands still in them (sound-bridge.js still): it goes on in real time, as it does
+      // while the original's cursor walks.
+      if (seek) { machine.sound.still = true; for (let n = 0; seek && n < 400 && !machine.error; n++) machine.frame(held()); machine.sound.still = false; }
       // a debug jump: ○ every 40 frames, unseen and unheard, until the script of the wanted scene is the one running
       for (let n = 0; jump && n < 400 && !machine.error; n++) {
         machine.frame(jump.frames % 40 < 3 ? 0x2000 : 0);
         if (machine.read(0x8007929c, 2) === jump.resource || ++jump.frames > 30000) jump = null;
+        snd.js.out.length = 0; // the driver's own waits on the way (music changes) made samples: they are not played
       }
       machine.frame(held()); soundFrame(); follow?.();
       for (const [k, n] of keys) { if (n !== Infinity) { if (n <= 1) keys.delete(k); else keys.set(k, n - 1); } }

@@ -15,13 +15,17 @@ const rows = [];
 editor.items.forEach(([id, ja, ko], k) => {
   const [res, rec, off] = id.split("-").map(Number), b = raw.get(res); if (!b) return;
   const at = (b[2 * rec] | b[2 * rec + 1] << 8) + off;
-  if (b[at - 3] === 0x18) { const v = b[at - 2] | b[at - 1] << 8; rows.push({ k, id, x: v + (v >> 2), ja, ko, w: px(ko), wja: px(ja) }); }
+  if (b[at - 3] === 0x18) {
+    // the Korean build's own operand (ko-script.json operands); 0xffff: the piece follows the one before it, no fixed place
+    const set = script.operands?.[res]?.find(([r, o]) => r === rec && o === off - 2), v = set ? set[2] : b[at - 2] | b[at - 1] << 8;
+    rows.push({ k, id, x: v + (v >> 2), ja, ko, w: px(ko), wja: px(ja), flow: v === 0xffff });
+  }
 });
 let bad = 0;
 rows.forEach((r, i) => {
   const n = rows[i + 1];
   // the next fixed place is on this line: the same record, further right, and no line break typed in between
-  if (!n || n.id.slice(0, 7) !== r.id.slice(0, 7) || n.x <= r.x || editor.items.slice(r.k, n.k).some((it) => /\[[@rg]\]/.test(it[2]))) return;
+  if (r.flow || !n || n.flow || n.id.slice(0, 7) !== r.id.slice(0, 7) || n.x <= r.x || editor.items.slice(r.k, n.k).some((it) => /\[[@rg]\]/.test(it[2]))) return;
   const room = n.x - r.x, lead = r.ko.startsWith(" ");
   // wider than the room by more than the original is (its own glyphs run a pixel or two over)
   if (r.w - room > Math.max(0, r.wja - room) + 2 || lead) { bad++; console.log(`${r.id} x ${r.x}, room ${room}px, Korean ${r.w}px (Japanese ${r.wja}px)${lead ? ", starts with a space" : ""}: ${JSON.stringify(r.ko)}`); }

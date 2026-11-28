@@ -51,8 +51,11 @@ SPECIAL = {'デュアルショック': 0x8440, '○': 0x8485, '△': 0x8486, '×
 # piece): (resource, record, the plain piece that starts the line or None, the pieces placed with
 # 0x18 in order). The Korean build lets them follow one another as plain text does (see operands below).
 FLOW_X = [(0, 2, None, [71, 78, 85]), (0, 70, None, [39, 46, 53]), (0, 98, None, [39, 46, 53]),
-          (0, 101, 0, [7, 14, 21, 28]), (0, 101, 61, [68, 75, 82]), (0, 101, 108, [115, 122, 129, 136]), (0, 101, None, [168, 175, 182, 189]),
-          (0, 101, 227, [234, 241, 248, 255]), (0, 101, 283, [290, 297, 304]), (0, 101, None, [338, 345, 352, 359, 366])]
+          (0, 101, 0, [7, 14, 21, 28]), (0, 101, 61, [68, 75, 82]), (0, 101, 108, [115, 122, 129, 136]), (0, 101, None, [168, 175, 182, 189], {175: 1}),
+          (0, 101, 227, [234, 241, 248, 255]), (0, 101, 283, [290, 297, 304]), (0, 101, None, [338, 345, 352, 359, 366], {345: 1})]
+# a fifth member {offset: column}: that piece is put at the place of the line's glyph of that number (0 the first), as
+# the original's fixed places did for the line that opens with a bracket: the glyph after the narrow 「 stands in
+# the column of the second glyphs of the other lines
 CHART_POOL, CHART_ROOM = 0x80009000, 0x3000   # spare kernel RAM for the flowchart title section (263 big-endian offsets, then the strings)
 # The default names: the pointers the game copies string 1 (the hero, [n1]) and string 2 (the
 # companion, [n2]) from (0x8003ab98). The original fields hold one and two glyphs; the Korean
@@ -169,6 +172,17 @@ def main():
     if ids != kids: raise SystemExit('ids differ from the Japanese script')
     # the owner's edits (tools/text-editor): they win over the translation, as in the game (src/ko-text.js applyEdits)
     edits = json.load(open(opt['--edits'], encoding='utf-8')) if '--edits' in opt else {}
+    # the ending marks 完 and 終 stay as the original's (태우 2026-11-28): the mark alone in the script, the two EXE
+    # strings, and the mark at the head of a flowchart title; the original font's glyphs are used
+    marks = []
+    for e, k in zip(items, ko):
+        if re.fullmatch(r'[\u3000 ]*[完終]', e['ja']) and k['ko'] != e['ja']: marks.append(k['id']); k['ko'] = e['ja']
+    for e in exe_list:
+        t, head = exe_ko.get(e['id']), re.match(r'((?:\[[^\]]*\])*)([完終])(?=\[c0\]|$)', e['ja'])
+        if t is None or not head: continue
+        new = re.sub(r'^((?:\[[^\]]*\])*)[^\[]', lambda m: m.group(1) + head.group(2), t, count=1)
+        if new != t: marks.append(e['id']); exe_ko[e['id']] = new
+    report['endingMarksKept'] = marks
     translated = {k['id']: k['ko'] for k in ko}
     for k in ko:
         if isinstance(edits.get(k['id'], {}).get('ko'), str): k['ko'] = edits[k['id']]['ko']
@@ -428,8 +442,11 @@ def main():
     # 0xffff, which the set-x command of the port leaves alone (src/scenario/basic.js), so they are
     # typed where the piece before them ended. No widths are involved: an edited line flows as well.
     operands = collections.defaultdict(list)
-    for rid, rec, lead, offs in FLOW_X:
-        for k, o in enumerate(offs): operands[str(rid)].append([rec, o - 2, 7 if lead is None and k == 0 else 0xffff])
+    def set_x(x): return x // 5 * 4 + min(x % 5, 3)   # the operand v of the place x = v + (v >> 2)
+    for rid, rec, lead, offs, *col in FLOW_X:
+        for k, o in enumerate(offs):
+            at = col[0].get(o) if col else None
+            operands[str(rid)].append([rec, o - 2, set_x(8 + at * (HANGUL_W + 1)) if at is not None else 7 if lead is None and k == 0 else 0xffff])
     report['flowX'] = dict(operands)
     os.makedirs(out, exist_ok=True)
     open(os.path.join(out, 'ko-font.bin'), 'wb').write(blob)
