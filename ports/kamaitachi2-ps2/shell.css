@@ -344,7 +344,7 @@ html.filled, html.filled body { overflow: hidden; }
 /* Kamaitachi 2 (PS2): the box is the PlayStation 2's 640x480 frame; the game draws 640x448 lines in its
    middle (black above and below, as on the console). The scene movies play in the same 448 lines. */
 .screen-box { background: #000; }
-.screen-box #movie { position: absolute; left: 0; width: 100%; object-fit: fill; background: #000; pointer-events: none; }
-.screen-box #movie[hidden] { display: none; }
+.screen-box .scene-movie { position: absolute; left: 0; width: 100%; object-fit: fill; background: #000; pointer-events: none; }
+.screen-box .scene-movie[hidden] { display: none; }
 #screen { image-rendering: auto; }
 #screen:focus { outline: none; }

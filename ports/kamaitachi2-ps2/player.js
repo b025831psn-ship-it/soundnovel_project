@@ -8,7 +8,8 @@ import { openSaves, varsToArray, arrayToVars, GAME_ID } from './save.js';
 import { originalStoryBox } from './text-layout.js';
 
 const canvas = document.querySelector('#screen');
-const movie = document.querySelector('#movie');
+const movies = [document.querySelector('#movie'), document.querySelector('#movie-buffer')];
+let movie = movies[0], movieRequest = 0;
 const loading = document.querySelector('#loading');
 const status = document.querySelector('#status');
 const menuButton = document.querySelector('#menu-button');
@@ -68,12 +69,13 @@ let sn4Mode = false, sn4Event, sn4WaitUntil = 0;
 let specialInput = null;
 // EE 0x112610: one character every max(1, speed) frames; CommandSpeed stores speed at +0x2a4.
 let sn4SpeedMarks = [], sn4Shown = '';
-const sn4Style = {speed:1, letterSpacing:0, lineSpacing:7, fontType:0, fontSize:33,
-  marginLeft:32, marginRight:32, marginTop:32, marginBottom:32,
-  moves:[], lines:[], styles:[], effects:[], centers:[], rubies:[], scene:null, scenePack:null, caption:null, retainMovie:false,
+const sn4Style = {speed:1, letterSpacing:0, lineSpacing:0, fontType:0, fontSize:33,
+  marginLeft:16, marginRight:16, marginTop:16, marginBottom:16,
+  moves:[], lines:[], styles:[], effects:[], centers:[], rubies:[], pageMarks:[], scene:null, scenePack:null, caption:null, retainMovie:false,
   sceneCommands:[], unknown:[], sceneFx:{layers:new Map(), filters:new Map(), models:new Map(), resources:new Map(),
     screen:null, staffRoll:null, trigger:null}};
 let scene = 'loading', index = 0, role = 0, page = 0, revealed = 0;
+let sn4Effect = null, sn4Wipe = null;
 const KOREAN_DEFAULT_NAMES = ['토오루', '마리'];
 let names = [], autosave = false, slot = 0, entered = 0, lastFrame, userNotice = '';
 let idleMovie = 'opening';
@@ -268,30 +270,56 @@ function cue(name) {
 }
 
 function stopMovie() {
-  movie.onended = null;
-  movie.onerror = null;
-  movie.pause();
-  movie.hidden = true;
+  movieRequest++;
+  for (const element of movies) {
+    element.onended = null;
+    element.onerror = null;
+    element.pause();
+    element.hidden = true;
+  }
+}
+
+function loadMovie(element, file) {
+  if (element.dataset.file === file) return;
+  element.pause();
+  element.dataset.file = file;
+  element.src = asset(file + '.mp4');
+  element.load();
+}
+
+function preloadMovie(file) {
+  if (!file || movies.some(element => element.dataset.file === file)) return;
+  loadMovie(movies.find(element => element !== movie) ?? movies[0], file);
 }
 
 function playMovie(file, next, loop = false) {
-  stopMovie();
-  movie.src = asset(file + '.mp4');
-  movie.hidden = false;
-  movie.loop = loop;
-  movie.onerror = () => fail('게임 영상을 불러오지 못했습니다.');
-  movie.onended = next;
-  movie.muted = false;
-  movie.play().catch(error => {
+  const request = ++movieRequest;
+  const previous = movie.hidden ? null : movie;
+  const target = movies.find(element => element.dataset.file === file) ??
+    movies.find(element => element !== movie) ?? movie;
+  loadMovie(target, file);
+  target.loop = loop;
+  target.onerror = () => request === movieRequest && fail('게임 영상을 불러오지 못했습니다.');
+  target.muted = false;
+  const show = () => target.play().then(() => {
+    if (request !== movieRequest) { target.pause(); return; }
+    target.hidden = false;
+    if (previous && previous !== target) { previous.pause(); previous.hidden = true; }
+    movie = target;
+    target.onended = next;
+    preloadMovie(({'opening':'title-1','title-1':'title','my0003-1':'my0003-2','my0005-1':'my0005-2'})[file]);
+  }).catch(error => {
     if (error.name === 'NotAllowedError') {
-      movie.muted = true;
-      movie.play().catch(() => {});
-      const unmute = () => { movie.muted = false; };
+      target.muted = true;
+      target.play().then(() => { target.hidden = false; movie = target; target.onended = next; }).catch(() => {});
+      const unmute = () => { target.muted = false; };
       for (const type of ['pointerdown', 'keydown']) addEventListener(type, unmute, {once:true, capture:true});
       return;
     }
-    if (error.name !== 'AbortError') fail('브라우저에서 영상을 재생할 수 없습니다.');
+    if (error.name !== 'AbortError' && request === movieRequest) fail('브라우저에서 영상을 재생할 수 없습니다.');
   });
+  if (target.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA) show();
+  else target.addEventListener('loadeddata', show, {once:true});
 }
 
 function intro() {
@@ -406,6 +434,10 @@ function showSn4(event) {
     // and type only the new characters. The wait (0x50/0x51) starts once typed.
     const text = event.text?.trimEnd() ?? '';
     revealed = sn4Shown && text.startsWith(sn4Shown) ? sn4Shown.length : 0;
+    sn4Effect = event.reason === 'text-effect' ? sn4Style.effects.at(-1) : null;
+    sn4Wipe = event.type === 'wait' ? sn4Style.pendingWipe ?? null : null;
+    sn4Style.pendingWipe = null;
+    if (sn4Effect?.name === 'MojiAfterParam2') revealed = text.length;
     textWaits = [];
     textSpeeds = [{offset:0, speed:sn4SpeedMarks.carry ?? sn4Style.speed}, ...sn4SpeedMarks];
     sn4SpeedMarks = [];
@@ -819,6 +851,11 @@ function drawStory(time) {
   const retainMovie = block.retainMovie || (sn4Mode && sn4Style.retainMovie);
   if (!block.movie && !retainMovie) screen.background(background, background === 'my0645', time);
   const storyBox = sn4Mode ? originalStoryBox(sn4.label, sn4Style) : sn4Style;
+  if (sn4Mode && sn4Event?.type === 'wait' && sn4Wipe) {
+    const frames = Math.max(1, sn4Wipe.frames || sn4Event.ticks || 1);
+    const progress = Math.min(1, (performance.now() - entered) / (frames * 1000 / 59.94));
+    screen.rect(0, 0, 640, 448, `rgba(0,0,0,${1 - progress})`);
+  }
   const origin = sn4Mode ? {x:storyBox.marginLeft, y:storyBox.marginTop}
     : (block.background === 'my0000' ? data.invitationOrigin : {x:32, y:31});
   const scale = block.center || (background === 'my0645' && !block.movie && !block.retainMovie) ? .96 : .91;
@@ -831,6 +868,11 @@ function drawStory(time) {
     if (start >= 0) ruby.readings.forEach((reading, i) => readings.set(start + i, reading));
   }
   screen.c.save();
+  if (sn4Effect && sn4Event?.reason === 'text-effect') {
+    const frames = Math.max(1, sn4Effect.value || sn4Event.ticks || 1);
+    const progress = Math.min(1, (performance.now() - entered) / (frames * 1000 / 59.94));
+    screen.c.globalAlpha = sn4Effect.name === 'MojiAllInOutParam' ? 1 - progress : progress;
+  }
   if (!block.movie && !block.retainMovie && ['my0007', 'my0645'].includes(background)) {
     screen.c.filter = 'brightness(86%)';
   }
@@ -856,13 +898,13 @@ function drawStory(time) {
     return width < max ? x + (max - width) / 2 : x;
   } : undefined;
   const textOptions = {...metrics, scale, max, readings, colors:textColors, lineStart, styleAt,
-    moves:sn4Mode ? sn4Style.moves : [], lines:sn4Mode ? sn4Style.lines : []};
+    moves:sn4Mode ? sn4Style.moves : [], lines:sn4Mode ? sn4Style.lines : [],
+    maxBottom:sn4Mode ? 448 - storyBox.marginBottom : 448};
   // The EE message window scrolls ordinary flowing text when a new line passes
   // the physical 448px bottom. Absolute-position title/lyric layouts do not scroll.
   const measured = sn4Mode ? screen.text(text, x, y, {...textOptions, measureOnly:true}) : null;
-  const finalStyle = sn4Mode ? styleAt(text.length) : null;
   const scrollY = sn4Mode && !sn4Style.moves.some(move => move.absolute)
-    ? Math.max(0, measured.y + 33 * finalStyle.scale - 448) : 0;
+    ? Math.max(0, measured.bottom - (448 - storyBox.marginBottom)) : 0;
   const end = screen.text(text, x, y - scrollY, textOptions);
   screen.c.restore();
   const fade = sn4Mode && sn4Style.sceneFx.screen;
@@ -872,16 +914,16 @@ function drawStory(time) {
     const alpha = fade.from + (fade.to - fade.from) * progress;
     if (alpha > 0) screen.rect(0, 0, 640, 448, `rgba(0,0,0,${alpha})`);
   }
-  if (revealed >= storyText().length) {
+  if (revealed >= storyText().length && sn4Event?.type === 'pause' && (movie.hidden || storyText().length > 0)) {
     const tick = Math.floor(time * 6);
-    if (block.book) {
+    if (block.book || (sn4Mode && sn4Style.pageMarks.includes(storyText().length))) {
       const nextLine = block.nextLine || end.x + 25 > 610;
       const frame = tick % 7;
       screen.sprite('mark', (frame % 5) * 24, 48 + Math.floor(frame / 5) * 24, 24, 24,
                     block.advanceMark?.x ?? (nextLine ? 36 : end.x + 7),
                     block.advanceMark?.y ?? (end.y + (nextLine ? 46 : 5)));
     } else {
-      const mark = block.advanceMark ?? {x:34, y:end.y + 44};
+      const mark = block.advanceMark ?? (sn4Mode ? {x:end.x + 7, y:end.y + 5} : {x:34, y:end.y + 44});
       screen.sprite('mark', tick % 8 * 16, 0, 16, 24, mark.x, mark.y);
     }
   }
@@ -1241,22 +1283,24 @@ try {
     marginBottom:value => { sn4Style.marginBottom = value; },
     command5a:value => sn4Style.effects.push({name:'MojiAfterParam2', value, offset:sn4.text.length}),
     command5c:value => sn4Style.effects.push({name:'MojiAllInOutParam', value, offset:sn4.text.length}),
+    pageMark:offset => sn4Style.pageMarks.push(offset),
     ruby:(word, readings, offset) => { sn4Style.rubies.push({word, readings, offset}); },
-    mojiSync:() => sn4Style.effects.length ? 1 : 0,
+    mojiSync:() => sn4Style.effects.at(-1)?.value ?? 0,
     clearText:() => {
       sn4Shown = ''; sn4Style.moves = []; sn4Style.lines = []; sn4Style.styles = []; sn4Style.effects = [];
-      sn4Style.fontType = 0; sn4Style.fontSize = 33;
-      sn4Style.centers = []; sn4Style.rubies = []; markStyle(0);
+      sn4Style.fontType = 0; sn4Style.fontSize = 33; sn4Style.lineSpacing = 0;
+      sn4Style.centers = []; sn4Style.rubies = []; sn4Style.pageMarks = []; markStyle(0);
     },
     scene:value => { sn4Style.scenePack = value; },
     caption:value => { sn4Style.caption = value; return applyScenePack(value); },
+    wipe:(kind, frames) => { sn4Style.pendingWipe = {kind, frames}; },
     command:(name, args, context) => {
       sn4Style.sceneCommands.push({kind:'sn4', name, args, ...context});
       if (name === 'End') systemDue = true;
       // EE 0x136f30: measure the rest of the line and move the cursor by half the free width.
       if (name === 'Center') sn4Style.centers.push(sn4.text.length);
       else if (name === 'Default') {
-        const value = args[0] ?? 32;
+        const value = args[0] ?? 16;
         if (context.op === 0x5e) sn4Style.marginLeft = value;
         else if (context.op === 0x60) sn4Style.marginRight = value;
         else if (context.op === 0x62) sn4Style.marginTop = value;

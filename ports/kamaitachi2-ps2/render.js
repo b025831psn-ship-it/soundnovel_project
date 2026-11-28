@@ -62,17 +62,31 @@ export class Screen {
   }
 
   text(str, x, y, { scale = 1, max = Infinity, leading = 40, spacing = 1, widthScale = scale,
-    readings, colors, tint, lineStart, styleAt, moves = [], lines = [], measureOnly = false } = {}) {
+    readings, colors, tint, lineStart, styleAt, moves = [], lines = [], measureOnly = false,
+    maxBottom = this.c.canvas.height } = {}) {
     // lineStart(offset) may move the first glyph of a line (SN4 CommandCenter).
-    let px = lineStart?.(0) ?? x, py = y, offset = 0;
+    let px = lineStart?.(0) ?? x, py = y, offset = 0, bottom = y;
     const korean = this.data.language === 'ko';
     const noStart = korean ? KOREAN_NO_START : JAPANESE_NO_START;
     const chars = Array.from(str);
     for (let at = 0; at < chars.length; at++) {
       const ch = chars[at];
-      for (const move of moves.filter(item => item.offset === offset)) {
+      const movesHere = moves.filter(item => item.offset === offset);
+      for (const move of movesHere) {
         if (move.absolute) { px = move.x; py = move.y; }
         else { px += move.x; py += move.y; }
+      }
+      if (korean && movesHere.some(move => move.absolute)) {
+        const nextMove = moves.find(move => move.offset > offset)?.offset ?? str.length;
+        let segmentWidth = 0, segmentOffset = offset;
+        for (const part of chars.slice(at, at + nextMove - offset).join('').split('\n')[0]) {
+          const partStyle = styleAt?.(segmentOffset) ?? {widthScale, spacing, scale};
+          segmentWidth += (this.metric(part)[2] + (partStyle.spacing ?? spacing)) *
+            (partStyle.widthScale ?? widthScale);
+          segmentOffset += part.length;
+        }
+        px = Math.max(x, Math.min(px, x + max - segmentWidth));
+        py = Math.min(py, maxBottom - 33 * (styleAt?.(offset)?.scale ?? scale));
       }
       for (const line of lines.filter(item => item.offset === offset)) {
         const width = Math.max(0, line.width ?? 0);
@@ -115,9 +129,10 @@ export class Screen {
         if (tint && w && h) this.c.drawImage(this.tintedGlyph(ch, tint, gx, gy, w, h), x, y, w * glyphWidthScale, h * glyphScale);
         else this.sprite('font', gx, gy, w, h, x, y, w * glyphWidthScale, h * glyphScale);
       }
+      bottom = Math.max(bottom, py + Math.max(33, glyph?.[3] ?? 0) * glyphScale);
       px += advance;
     }
-    return {x:px, y:py};
+    return {x:px, y:py, bottom};
   }
 
   centered(str, mid, y, scale = 1) {

@@ -253,7 +253,7 @@ export class Sn4Vm {
             offset:command.offset, ticks, text:this.text};
           break;
         }
-        case 0x32: break;
+        case 0x32: this.hooks.pageMark?.(this.text.length); break;
         case 0x68:
         case 0x69: {
           const spec = args[0] ?? {};
