@@ -103,13 +103,13 @@
   // The title card of each playable edition; the marquee shows the one chosen in the list (the PS1 edition
   // until one is chosen). A logo is shown only as the work's own picture, never drawn in a font.
   const CARDS = {
-    '#kamaitachi-ps1': { kicker: ['PLAYSTATION', '1998', '춘소프트'], logo: '/kamaitachi-ps1-kor/port-data/machine/hub-logo.png', tall: true, ko: '카마이타치의 밤 특별편',
+    '#kamaitachi-ps1': { snow: true, kicker: ['PLAYSTATION', '1998', '춘소프트'], logo: '/kamaitachi-ps1-kor/port-data/machine/hub-logo.png', tall: true, ko: '카마이타치의 밤 특별편',
       still: '/kamaitachi-ps1-kor/port-data/machine/front-pension.png', story: true, hint: '시험판 · 헤드폰 권장', },
-    '#kamaitachi': { kicker: ['GAME BOY ADVANCE', '2002', '춘소프트'], logo: '/art/kamaitachi-logo.svg', ko: '카마이타치의 밤 어드밴스',
+    '#kamaitachi': { snow: true, kicker: ['GAME BOY ADVANCE', '2002', '춘소프트'], logo: '/art/kamaitachi-logo.svg', ko: '카마이타치의 밤 어드밴스',
       still: '/art/kamaitachi-still.png', story: true, hint: '일본어 원문 · 헤드폰 권장', },
-    '#kamaitachi-sfc': { kicker: ['SUPER FAMICOM', '1994', '춘소프트'], ko: '카마이타치의 밤', still: '/art/kamaitachi-still.png', story: true, hint: '시험판 · 헤드폰 권장' },
-    '#kamaitachi2-ps2': { kicker: ['PLAYSTATION 2', '2002', '춘소프트'], ko: '카마이타치의 밤 2', hint: '시험판 · 헤드폰 권장' },
-    '#zakuro-sfc': { kicker: ['SUPER FAMICOM', '1995', '이매지니어'], ko: '석류의 맛', still: '/art/covers/zakuro.jpg', hint: '시험판 · 헤드폰 권장' },
+    '#kamaitachi-sfc': { snow: true, kicker: ['SUPER FAMICOM', '1994', '춘소프트'], logo: '/art/hub/kamaitachi-sfc-logo.png', ko: '카마이타치의 밤', still: '/art/hub/kamaitachi-sfc.png', story: true, hint: '시험판 · 헤드폰 권장' },
+    '#kamaitachi2-ps2': { kicker: ['PLAYSTATION 2', '2002', '춘소프트'], logo: '/art/hub/kamaitachi2-ps2-logo.png', ko: '카마이타치의 밤 2', still: '/art/hub/kamaitachi2-ps2.png', hint: '시험판 · 헤드폰 권장' },
+    '#zakuro-sfc': { kicker: ['SUPER FAMICOM', '1995', '이매지니어'], logo: '/art/hub/zakuro-sfc-logo.png', ko: '석류의 맛', still: '/art/hub/zakuro-sfc.png', hint: '시험판 · 헤드폰 권장' },
   };
   const DEFAULT_CARD = '#kamaitachi-ps1';
   const card = document.querySelector('#marquee .card');
@@ -122,8 +122,10 @@
     const logo = card.querySelector('.logo'), img = logo.querySelector('img');
     logo.hidden = !c.logo; logo.classList.remove('text');
     img.classList.toggle('tall', Boolean(c.tall));
+    img.onload = () => img.classList.toggle('tall', img.naturalHeight > img.naturalWidth * .6);
     if (c.logo) { img.alt = c.ko; img.onerror = () => { logo.hidden = true; }; if (img.getAttribute('src') !== c.logo) img.src = c.logo; }
     card.querySelector('.ko').textContent = c.ko;
+    document.querySelector('#snow').hidden = !c.snow; // snow only for the snowbound pension
     const lede = card.querySelector('.lede'); lede.hidden = !c.story; if (c.story) lede.innerHTML = story;
     card.querySelector('.start').href = chosen;
     card.querySelector('.hint').textContent = c.hint ?? '';

@@ -64,6 +64,9 @@ function portRoute(url) {
     // 석류의 맛 SFC port: its page and the private data (program, sound) from zakuro-sfc-kor.
     ['/ports/zakuro-sfc/', path.join(__dirname, 'ports', 'zakuro-sfc'), ['.html', '.js', '.css']],
     ['/zakuro-sfc-kor/port-data/', path.join(__dirname, 'zakuro-sfc-kor', 'port-data'), ['.json', '.bin']],
+    // The hub's title-card pictures (each game's own title background and logo, made on this PC from the
+    // ports' data; kept outside git in ../../_claude-work/hub-art).
+    ['/art/hub/', path.resolve(__dirname, '..', '..', '_claude-work', 'hub-art'), ['.png', '.jpg']],
     ['/kamaitachi-ps1-kor/port-data/', ps1Data, ['.json', '.bin', '.PAC', '.pac', '.ch0', '.mp4', '.png']],
     // 펜션 슈프르 관리자 (admin/): the owner's page, under /edit/ so that it asks for the password from outside.
     ['/edit/admin/', path.join(__dirname, 'admin'), ['.html', '.js', '.css']],
