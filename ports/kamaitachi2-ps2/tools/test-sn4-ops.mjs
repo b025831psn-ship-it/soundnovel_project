@@ -13,6 +13,18 @@ function run(ops, hooks = {}) {
 }
 const value = (ops, v = 1) => run(ops).vm.variables.get(v);
 
+// The opening/date cards are animation-driven, not input pauses: 0x32 only
+// selects the page-end mark and 0x15 waits for the active text effect duration.
+const marks = [];
+const animated = run([
+  {op:0x5a, offset:0, args:[90]}, {op:0x02, offset:1, args:['8월 15일\n정오']},
+  {op:0x32, offset:2, args:[]}, {op:0x15, offset:3, args:[]},
+], {command5a:() => {}, pageMark:offset => marks.push(offset), mojiSync:() => 90});
+assert.equal(animated.event.type, 'wait');
+assert.equal(animated.event.reason, 'text-effect');
+assert.equal(animated.event.ticks, 90);
+assert.deepEqual(marks, ['8월 15일\n정오'.length]);
+
 assert.equal(value([set(1, 6, 10), set(1, 2, 3)]), 7, '2 subtracts');
 assert.equal(value([set(1, 6, 10), set(1, 3, 3)]), 13, '3 adds');
 assert.equal(value([set(1, 6, 10), set(1, 4, 3)]), 30, '4 multiplies');
