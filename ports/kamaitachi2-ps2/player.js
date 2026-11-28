@@ -1191,6 +1191,11 @@ gameMenu.addEventListener('click', event => {
   else if (action === 'title') { closeMenu(); title(false); }
   else if (action === 'saves') { closeMenu(); syncUi?.open(); }
 });
+// 오류 신고 (/shared/player/report-button.js): where the player is and the sentence on screen.
+globalThis.soundnovelReport = () => ({
+  scene: sn4Mode ? `${sn4.label}+${sn4.pc}` : scene,
+  text: scene === 'choice' && sn4Mode ? sn4Event.targets.map(t => sn4.choiceText(t)).join(' / ') : storyText(),
+});
 // 저장과 기기 연결 (sync-ui.js): only with the shared store, i.e. when the build is served by the hub.
 let syncUi = null;
 if (saves.store) {
@@ -1212,7 +1217,7 @@ if (saves.store) {
   import('./sync-ui.js').then(({mountSyncUi}) => mountSyncUi({store:saves.store, gameId:GAME_ID, parent:document.querySelector('main'),
     onPaint:bad => savesButton.classList.toggle('attention', bad), onClose:() => canvas.focus(), boot})).then(ui => { syncUi = ui; }).catch(error => console.warn('Sync dialog unavailable', error));
   // 빠른 저장: the disk button left of the menu button (저장 → 4-digit code, 불러오기 → carry on).
-  import('/shared/save/quick-save.js').then(m => m.mountQuickSave({store:saves.store, gameId:GAME_ID, boot}))
+  import('/shared/save/quick-save.js').then(m => m.mountQuickSave({store:saves.store, gameId:GAME_ID, boot})).then(() => import('/shared/player/report-button.js')).then(m => m.mountReport({gameId:GAME_ID, boot}))
     .catch(error => console.warn('Quick save unavailable', error));
 } else gameMenu.querySelector('[data-menu="saves"]').hidden = true;
 document.addEventListener('fullscreenchange', () => {
