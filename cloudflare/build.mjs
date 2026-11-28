@@ -74,6 +74,8 @@ let include = ["/sync/*", "/edit/*", ...fnPaths];
 if (include.length > 100) include = ["/sync/*", "/edit/*", ...new Set(fnPaths.map((p) => p.slice(0, p.lastIndexOf("/") + 1) + "*"))];
 if (include.length > 100) throw new Error(`${include.length} function routes: over 100`);
 fs.writeFileSync(path.join(dist, "_routes.json"), JSON.stringify({ version: 1, include, exclude: [] }, null, 1));
+// a real 404 for unknown paths (without it Pages answers them with the hub page)
+fs.writeFileSync(path.join(dist, "404.html"), '<!doctype html><meta charset="utf-8"><title>404</title><p>페이지를 찾을 수 없어요. <a href="/">펜션 슈프르</a>\n');
 fs.writeFileSync(path.join(dist, "_headers"), "/*\n  X-Robots-Tag: noindex, nofollow\n");
 fs.writeFileSync(path.join(out, "r2.json"), JSON.stringify(r2, null, 1));
 

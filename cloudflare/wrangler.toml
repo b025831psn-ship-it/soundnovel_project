@@ -10,5 +10,5 @@ bucket_name = "pension-spur-data"
 [[d1_databases]]
 binding = "SAVES"
 database_name = "pension-spur-saves"
-database_id = "SET-BY-deploy.mjs"
+database_id = "b8049d5c-e36a-4d6b-a388-a9995078bb2c"
 # EDIT_PASSWORD is a secret: npx wrangler pages secret put EDIT_PASSWORD --project-name pension-spur

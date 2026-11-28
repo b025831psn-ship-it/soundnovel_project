@@ -14,10 +14,11 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 const args = new Set(process.argv.slice(2));
 const dry = args.has("--dry");
 const BUCKET = "pension-spur-data", DB = "pension-spur-saves", PROJECT = "pension-spur";
+// wrangler's own script run by node: no shell, so paths with spaces and "text/javascript; charset=utf-8" stay whole
 const wrangler = (...a) => {
   console.log("> wrangler " + a.join(" "));
   if (dry) return "";
-  return execFileSync(process.platform === "win32" ? "npx.cmd" : "npx", ["--yes", "wrangler", ...a], { cwd: here, encoding: "utf8", stdio: ["inherit", "pipe", "inherit"], shell: process.platform === "win32" });
+  return execFileSync(process.execPath, [path.join(here, "node_modules", "wrangler", "bin", "wrangler.js"), ...a], { cwd: here, encoding: "utf8", stdio: ["ignore", "pipe", "inherit"] });
 };
 
 if (args.has("--setup")) {
