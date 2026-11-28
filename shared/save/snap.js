@@ -29,3 +29,30 @@ export async function loadSnap({ baseUrl, gameId, code, fetchImpl = fetch }) {
   if (!r.ok) return { ok: false, reason: "server" };
   try { return { ok: true, backup: await unpack((await r.json()).data) }; } catch { return { ok: false, reason: "server" }; }
 }
+
+// --- save codes (6 digits, one per player for every game; /v1/code on the save server) ---------------
+const reasonOf = (status) => (status === 404 ? "code" : status === 429 ? "limited" : status === 413 ? "large" : "server");
+export async function newCode({ baseUrl, fetchImpl = fetch }) {
+  const r = await fetchImpl(`${baseUrl}/v1/code`, { method: "POST" });
+  if (!r.ok) throw Object.assign(new Error(`code ${r.status}`), { status: r.status, reason: reasonOf(r.status) });
+  return (await r.json()).code;
+}
+// Uploads a game's backup under the code. Returns { ok } or { ok: false, reason }.
+export async function putCode({ baseUrl, code, gameId, backup, fetchImpl = fetch, keepalive = false }) {
+  try {
+    const data = await pack(backup);
+    const r = await fetchImpl(`${baseUrl}/v1/code/${code}/${gameId}`, { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify({ data }), keepalive: keepalive && data.length < 60_000 });
+    return r.ok ? { ok: true } : { ok: false, reason: reasonOf(r.status) };
+  } catch { return { ok: false, reason: "server" }; }
+}
+// Loads a game's backup: { ok: true, backup | null } or { ok: false, reason: "code" | "limited" | "server" }.
+export async function getCode({ baseUrl, code, gameId, fetchImpl = fetch }) {
+  const c = String(code ?? "").trim();
+  if (!/^\d{6}$/.test(c)) return { ok: false, reason: "code" };
+  try {
+    const r = await fetchImpl(`${baseUrl}/v1/code/${c}/${gameId}`, { method: "POST" });
+    if (!r.ok) return { ok: false, reason: reasonOf(r.status) };
+    const { data } = await r.json();
+    return { ok: true, backup: data ? await unpack(data) : null };
+  } catch { return { ok: false, reason: "server" }; }
+}

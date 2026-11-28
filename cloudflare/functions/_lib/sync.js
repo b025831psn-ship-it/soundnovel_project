@@ -5,7 +5,8 @@
 const LIMITS = { maxBody: 256 * 1024, maxSlots: 20, maxVaultBytes: 5 * 1024 * 1024, maxVaults: 200, maxVaultsPerClientPerHour: 10,
   maxPairBlob: 2048, maxPairs: 1000, maxFailsPerClient: 10, maxFailsGlobal: 200, failWindowMs: 10 * 60 * 1000,
   maxRequestsPerMinute: 300, pairTtlMs: null, pairSingleUse: false, now: Date.now,
-  snapTtlMs: 90 * 24 * 3600 * 1000, maxSnapsPerGame: 9000, maxSnapsPerClientPerHour: 20 };
+  snapTtlMs: 90 * 24 * 3600 * 1000, maxSnapsPerGame: 9000, maxSnapsPerClientPerHour: 20,
+  maxCodes: 500_000, maxCodesPerClientPerHour: 20, codeHistory: 5 };
 // Per-minute request counts are kept per running copy of the Function (each Cloudflare location has its own).
 const rates = new WeakMap(); // database binding -> client -> { start, count }
 const HEX = /^[0-9a-f]{64}$/, ID = /^[a-z0-9][a-z0-9:_-]{0,63}$/, PAIR = /^[0-9A-HJKMNP-TV-Z]{4}$/;
@@ -98,6 +99,8 @@ export async function handleSync(request, env, pathname, opts = {}) {
 
     const sm = /^\/v1\/snap\/([a-z0-9][a-z0-9:_-]{0,63})(?:\/(\d{4}))?$/.exec(pathname);
     if (sm) return snap(request, db, L, now, sm[1], sm[2]);
+    const cm = /^\/v1\/code(?:\/(\d{6})(?:\/([a-z0-9][a-z0-9:_-]{0,63}))?)?$/.exec(pathname);
+    if (cm) return saveCode(request, db, L, now, cm[1], cm[2]);
 
     const m = /^\/v1\/vaults\/([0-9a-f]{64})(\/saves(?:\/([^/]+)\/([^/]+))?)?$/.exec(pathname);
     if (!m) return send(404, { error: "not found" });
@@ -210,4 +213,53 @@ async function snap(request, db, L, now, game, code) {
     return send(200, { data: row.data });
   }
   return send(405, { error: "method" });
+}
+
+// Save codes (shared/save/code-save.js, 태우 2026-11-28): one 6-digit code per player, for every game.
+// The code itself is the key, so unknown codes count as failed attempts (like pairing claims).
+//   POST /v1/code                 -> 201 { code }           a new code
+//   PUT  /v1/code/<code>/<game>   { data } -> 200           that game's saves under the code; the last
+//                                                             codeHistory versions are kept for restoring
+//   POST /v1/code/<code>/<game>   -> 200 { data | null }    load (null: the code has nothing for this game)
+// A code nobody saved or loaded for snapTtlMs is deleted with its saves.
+async function saveCode(request, db, L, now, code, game) {
+  const who = clientOf(request);
+  await db.prepare("DELETE FROM code_saves WHERE code IN (SELECT code FROM codes WHERE used <= ?)").bind(now - L.snapTtlMs).run();
+  await db.prepare("DELETE FROM code_hist WHERE code IN (SELECT code FROM codes WHERE used <= ?)").bind(now - L.snapTtlMs).run();
+  await db.prepare("DELETE FROM codes WHERE used <= ?").bind(now - L.snapTtlMs).run();
+  if (!code) {
+    if (request.method !== "POST") return send(405, { error: "method" });
+    if ((await db.prepare("SELECT COUNT(*) AS n FROM codes WHERE client = ? AND created > ?").bind(who, now - 3600_000).first()).n >= L.maxCodesPerClientPerHour) return send(429, { error: "too many codes" });
+    if ((await db.prepare("SELECT COUNT(*) AS n FROM codes").first()).n >= L.maxCodes) return send(429, { error: "server full" });
+    for (let i = 0; i < 40; i++) {
+      const c = String(crypto.getRandomValues(new Uint32Array(1))[0] % 1_000_000).padStart(6, "0");
+      const put = await db.prepare("INSERT OR IGNORE INTO codes (code, used, created, client) VALUES (?, ?, ?, ?)").bind(c, now, now, who).run();
+      if (put.meta.changes === 1) return send(201, { code: c });
+    }
+    return send(503, { error: "busy, try again" });
+  }
+  if (!game || !["PUT", "POST"].includes(request.method)) return send(405, { error: "method" });
+  await db.prepare("DELETE FROM fails WHERE at <= ?").bind(now - L.failWindowMs).run();
+  const mine = (await db.prepare("SELECT COUNT(*) AS n FROM fails WHERE client = ?").bind(who).first()).n;
+  const all = (await db.prepare("SELECT COUNT(*) AS n FROM fails").first()).n;
+  if (mine >= L.maxFailsPerClient || all >= L.maxFailsGlobal) return send(429, { error: "too many attempts" });
+  if (!(await db.prepare("SELECT 1 FROM codes WHERE code = ?").bind(code).first())) {
+    await db.prepare("INSERT INTO fails (client, at) VALUES (?, ?)").bind(who, now).run();
+    return send(404, { error: "no such code" });
+  }
+  await db.prepare("UPDATE codes SET used = ? WHERE code = ?").bind(now, code).run();
+  if (request.method === "POST") {
+    const row = await db.prepare("SELECT data FROM code_saves WHERE code = ? AND game = ?").bind(code, game).first();
+    return send(200, { data: row?.data ?? null });
+  }
+  let b;
+  try { b = JSON.parse(await body(request, L.maxBody)); } catch (e) { return send(e instanceof TooLarge ? 413 : 400, { error: "bad body" }); }
+  if (typeof b?.data !== "string" || !b.data) return send(400, { error: "bad body" });
+  const old = await db.prepare("SELECT data, used FROM code_saves WHERE code = ? AND game = ?").bind(code, game).first();
+  if (old && old.data !== b.data) {
+    await db.prepare("INSERT INTO code_hist (code, game, data, at) VALUES (?, ?, ?, ?)").bind(code, game, old.data, old.used).run();
+    await db.prepare("DELETE FROM code_hist WHERE code = ? AND game = ? AND at NOT IN (SELECT at FROM code_hist WHERE code = ? AND game = ? ORDER BY at DESC LIMIT ?)").bind(code, game, code, game, L.codeHistory).run();
+  }
+  await db.prepare("INSERT INTO code_saves (code, game, data, used) VALUES (?, ?, ?, ?) ON CONFLICT (code, game) DO UPDATE SET data = excluded.data, used = excluded.used").bind(code, game, b.data, now).run();
+  return send(200, {});
 }
