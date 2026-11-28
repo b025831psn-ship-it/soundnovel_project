@@ -4,12 +4,13 @@
 // Limits as in server.mjs; createServer-style overrides come in opts (tests: cloudflare/tests/d1-server.mjs).
 const LIMITS = { maxBody: 256 * 1024, maxSlots: 20, maxVaultBytes: 5 * 1024 * 1024, maxVaults: 200, maxVaultsPerClientPerHour: 10,
   maxPairBlob: 2048, maxPairs: 1000, maxFailsPerClient: 10, maxFailsGlobal: 200, failWindowMs: 10 * 60 * 1000,
-  maxRequestsPerMinute: 300, pairTtlMs: null, pairSingleUse: false, now: Date.now };
+  maxRequestsPerMinute: 300, pairTtlMs: null, pairSingleUse: false, now: Date.now,
+  snapTtlMs: 90 * 24 * 3600 * 1000, maxSnapsPerGame: 9000, maxSnapsPerClientPerHour: 20 };
 // Per-minute request counts are kept per running copy of the Function (each Cloudflare location has its own).
 const rates = new WeakMap(); // database binding -> client -> { start, count }
 const HEX = /^[0-9a-f]{64}$/, ID = /^[a-z0-9][a-z0-9:_-]{0,63}$/, PAIR = /^[0-9A-HJKMNP-TV-Z]{4}$/;
 
-const CORS = { "access-control-allow-origin": "*", "access-control-allow-headers": "authorization,content-type,if-match,x-vault-id", "access-control-allow-methods": "GET,PUT,DELETE,OPTIONS" };
+const CORS = { "access-control-allow-origin": "*", "access-control-allow-headers": "authorization,content-type,if-match,x-vault-id", "access-control-allow-methods": "GET,PUT,POST,DELETE,OPTIONS" };
 const send = (code, body) => new Response(body === undefined || code === 204 ? null : JSON.stringify(body), { status: code, headers: { "content-type": "application/json", ...CORS } });
 const sha = async (t) => [...new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(t)))].map((b) => b.toString(16).padStart(2, "0")).join("");
 const same = (a, b) => { if (a.length !== b.length) return false; let d = 0; for (let i = 0; i < a.length; i++) d |= a.charCodeAt(i) ^ b.charCodeAt(i); return d === 0; };
@@ -95,6 +96,9 @@ export async function handleSync(request, env, pathname, opts = {}) {
       return send(405, { error: "method" });
     }
 
+    const sm = /^\/v1\/snap\/([a-z0-9][a-z0-9:_-]{0,63})(?:\/(\d{4}))?$/.exec(pathname);
+    if (sm) return snap(request, db, L, now, sm[1], sm[2]);
+
     const m = /^\/v1\/vaults\/([0-9a-f]{64})(\/saves(?:\/([^/]+)\/([^/]+))?)?$/.exec(pathname);
     if (!m) return send(404, { error: "not found" });
     const [, vaultId, savesPart, gameId, slot] = m;
@@ -164,4 +168,46 @@ export async function handleSync(request, env, pathname, opts = {}) {
   } catch (e) {
     return send(e instanceof TooLarge ? 413 : 500, { error: "server error" });
   }
+}
+
+// Quick save (shared/save/snap.js): the whole game's saves under a 4-digit code, per game.
+//   PUT  /v1/snap/<game>         { data, code?, token? } -> { code, token }  (same code again when the token matches)
+//   POST /v1/snap/<game>/<code>  -> { data }  (failed codes count like failed pairing claims)
+// A code nobody saved or loaded for snapTtlMs is deleted, so the 10,000 codes of a game do not run out.
+async function snap(request, db, L, now, game, code) {
+  await db.prepare("DELETE FROM snaps WHERE used <= ?").bind(now - L.snapTtlMs).run();
+  if (request.method === "PUT" && !code) {
+    let b;
+    try { b = JSON.parse(await body(request, L.maxBody)); } catch (e) { return send(e instanceof TooLarge ? 413 : 400, { error: "bad body" }); }
+    if (typeof b?.data !== "string" || !b.data) return send(400, { error: "bad body" });
+    if (typeof b.code === "string" && /^\d{4}$/.test(b.code) && typeof b.token === "string") {
+      const row = await db.prepare("SELECT token FROM snaps WHERE game = ? AND code = ?").bind(game, b.code).first();
+      if (row && same(row.token, await sha(b.token))) {
+        await db.prepare("UPDATE snaps SET data = ?, used = ? WHERE game = ? AND code = ?").bind(b.data, now, game, b.code).run();
+        return send(200, { code: b.code, token: b.token });
+      }
+    }
+    const who = clientOf(request);
+    if ((await db.prepare("SELECT COUNT(*) AS n FROM snaps WHERE client = ? AND created > ?").bind(who, now - 3600_000).first()).n >= L.maxSnapsPerClientPerHour) return send(429, { error: "too many codes" });
+    if ((await db.prepare("SELECT COUNT(*) AS n FROM snaps WHERE game = ?").bind(game).first()).n >= L.maxSnapsPerGame) return send(429, { error: "server full" });
+    const token = [...crypto.getRandomValues(new Uint8Array(16))].map((x) => x.toString(16).padStart(2, "0")).join("");
+    for (let i = 0; i < 40; i++) {
+      const c = String(crypto.getRandomValues(new Uint16Array(1))[0] % 10000).padStart(4, "0");
+      const put = await db.prepare("INSERT OR IGNORE INTO snaps (game, code, token, data, used, created, client) VALUES (?, ?, ?, ?, ?, ?, ?)").bind(game, c, await sha(token), b.data, now, now, who).run();
+      if (put.meta.changes === 1) return send(201, { code: c, token });
+    }
+    return send(503, { error: "busy, try again" });
+  }
+  if (request.method === "POST" && code) {
+    const who = clientOf(request);
+    await db.prepare("DELETE FROM fails WHERE at <= ?").bind(now - L.failWindowMs).run();
+    const mine = (await db.prepare("SELECT COUNT(*) AS n FROM fails WHERE client = ?").bind(who).first()).n;
+    const all = (await db.prepare("SELECT COUNT(*) AS n FROM fails").first()).n;
+    if (mine >= L.maxFailsPerClient || all >= L.maxFailsGlobal) return send(429, { error: "too many attempts" });
+    const row = await db.prepare("SELECT data FROM snaps WHERE game = ? AND code = ?").bind(game, code).first();
+    if (!row) { await db.prepare("INSERT INTO fails (client, at) VALUES (?, ?)").bind(who, now).run(); return send(404, { error: "no such code" }); }
+    await db.prepare("UPDATE snaps SET used = ? WHERE game = ? AND code = ?").bind(now, game, code).run();
+    return send(200, { data: row.data });
+  }
+  return send(405, { error: "method" });
 }
