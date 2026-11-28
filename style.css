@@ -168,6 +168,13 @@ kbd {
 }
 a.entry:hover, summary.entry:hover { background: var(--hover); border-color: var(--line-strong) }
 div.entry { grid-template-columns: 84px minmax(0, 1fr); cursor: default }
+/* works not playable yet still show their card on a press */
+.entry.soon, .edition.soon { cursor: pointer }
+.entry.soon[aria-current] .cover { filter: none }
+.edition.soon[aria-current] { background: var(--raised); box-shadow: inset 2px 0 0 var(--accent) }
+.start.soon { background: rgba(255,255,255,.08); color: var(--muted); box-shadow: none; cursor: default; pointer-events: auto }
+.start.soon:hover { background: rgba(255,255,255,.08); transform: none; box-shadow: none }
+.start.soon svg { display: none }
 div.entry .cover, a.entry:not([aria-current]) .cover { filter: saturate(.75) }
 .entry[aria-current] { border-color: color-mix(in srgb, var(--accent) 70%, transparent); background: var(--raised) }
 .series { border-radius: 12px }
