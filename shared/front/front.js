@@ -33,15 +33,24 @@ const forcedHour = new URLSearchParams(location.search).get("hour");
 if (["day", "dusk", "night"].includes(forcedHour)) { front.dataset.hour = forcedHour; }
 
 // A sharper copy of the same picture (AI 4x with the original texture laid back, made on the PC, kept with
-// the port data) is used when the server has it; otherwise the port draws the original 320x240.
-function drawSharp() {
-  return new Promise((resolve, reject) => {
-    const img = new Image();
-    img.onload = () => { picture.width = img.naturalWidth; picture.height = img.naturalHeight; picture.getContext("2d").drawImage(img, 0, 0); picture.classList.add("sharp"); resolve(); };
-    img.onerror = reject; img.src = DATA + "front-pension.png";
-  });
+// the port data) is used when the server has it; day and dusk have their own pictures made from it
+// (front-pension-day.png, -dusk.png). Without them the night picture is tinted; without any, the port
+// draws the original 320x240.
+const load = (name) => new Promise((resolve, reject) => {
+  const img = new Image(); img.onload = () => resolve(img); img.onerror = reject; img.src = DATA + name;
+});
+let shown = "";
+async function drawHour() {
+  const hour = front.dataset.hour;
+  if (shown === hour) return;
+  let img = null, own = false;
+  if (hour !== "night") { img = await load(`front-pension-${hour}.png`).catch(() => null); own = Boolean(img); }
+  img ??= await load("front-pension.png");
+  picture.width = img.naturalWidth; picture.height = img.naturalHeight; picture.getContext("2d").drawImage(img, 0, 0);
+  picture.classList.add("sharp"); picture.classList.toggle("own-hour", own); shown = hour;
 }
-drawSharp().catch(() => pictureModule.then(({ drawPicture }) => drawPicture(picture, DATA, PICTURE))).then(() => front.classList.add("ready")).catch((e) => { console.error("front picture", e); front.classList.add("ready", "no-picture"); });
+drawHour().catch(() => pictureModule.then(({ drawPicture }) => drawPicture(picture, DATA, PICTURE))).then(() => front.classList.add("ready")).catch((e) => { console.error("front picture", e); front.classList.add("ready", "no-picture"); });
+setInterval(() => { if (picture.classList.contains("sharp")) drawHour().catch(() => {}); }, 60000);
 
 // Snow in three depths; how much and how hard the wind blows depends on the weather.
 (function snowfall() {
