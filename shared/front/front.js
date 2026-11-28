@@ -1,8 +1,9 @@
 // The hub's front page: the pension at the visitor's hour, the weather of this visit, and the song of the
 // greeting / name screen. The picture and the song come from the PS1 port's own data, drawn and played by
 // the port's code (picture-view.js, music-view.js); nothing is copied out of the game.
-import { drawPicture } from "/ports/kamaitachi-ps1/src/picture-view.js";
-import { songPlayer } from "/ports/kamaitachi-ps1/src/music-view.js";
+// The picture and the song load apart: if one fails on a browser, the other still comes.
+const pictureModule = import("/ports/kamaitachi-ps1/src/picture-view.js");
+const musicModule = import("/ports/kamaitachi-ps1/src/music-view.js");
 
 const DATA = "/kamaitachi-ps1-kor/port-data/machine/";
 const PICTURE = 2; // the pension at the end of the snowy road, windows lit
@@ -31,7 +32,7 @@ front.dataset.weather = weather;
 const forcedHour = new URLSearchParams(location.search).get("hour");
 if (["day", "dusk", "night"].includes(forcedHour)) { front.dataset.hour = forcedHour; }
 
-drawPicture(picture, DATA, PICTURE).then(() => front.classList.add("ready")).catch(() => front.classList.add("ready", "no-picture"));
+pictureModule.then(({ drawPicture }) => drawPicture(picture, DATA, PICTURE)).then(() => front.classList.add("ready")).catch((e) => { console.error("front picture", e); front.classList.add("ready", "no-picture"); });
 
 // Snow in three depths; how much and how hard the wind blows depends on the weather.
 (function snowfall() {
@@ -76,7 +77,7 @@ drawPicture(picture, DATA, PICTURE).then(() => front.classList.add("ready")).cat
 
 // The song: browsers sound only after a press, so the first tap or key anywhere starts it.
 let music = null, wanted = (() => { try { return localStorage.getItem("front-music") !== "off"; } catch { return true; } })();
-const loading = songPlayer(DATA, { song: 8, volume: .45 }).then((m) => (music = m)).catch(() => null);
+const loading = musicModule.then(({ songPlayer }) => songPlayer(DATA, { song: 8, volume: .45 })).then((m) => (music = m)).catch((e) => { console.error("front music", e); return null; });
 function showSound() { sound.setAttribute("aria-pressed", String(Boolean(music?.playing))); sound.title = music?.playing ? "음악 끄기" : "음악 켜기"; }
 async function play() { await loading; if (!music || music.playing) return; await music.start(); showSound(); }
 function wake() { if (wanted && !front.hidden) play(); }
