@@ -24,3 +24,20 @@ Node.js와 Python용 Unicorn 2.1.4가 있는 환경에서 아래 명령으로 JS
 python -B tools/compare_scenario.py /path/to/SLPS_018.63
 python -B tools/compare_handlers.py /path/to/SLPS_018.63
 ```
+
+## 브라우저 프레임 검증
+
+아래 예시는 포트 폴더에서 실행한다. Python용 Playwright와 설치된 Chromium 계열 브라우저를 사용한다. `boot_oracle.py`는 새 파일에만 기록하므로 `$trace`에는 저장소 밖의 새 경로를 지정한다. 6,000번째 프레임부터 13,500번째 프레임까지 60프레임마다 Start를 한 번 누르고, 각각 20프레임 뒤에 ○를 누른다.
+
+```powershell
+$buttons = foreach ($n in 100..225) {
+    '--press'
+    '{0}:start' -f ($n * 60)
+    '--press'
+    '{0}:circle' -f ($n * 60 + 20)
+}
+python -B tools/boot_oracle.py $core $cue $trace --frames 15000 @buttons
+python -B tools/compare_background.py $files $trace 7313=TITLE.P 9448=ATOGAKI.P 12987=TEL.P 13026=BK.P 13349=OFFICE.P --text-window 9977,70,A10.BIN,1682,OFFICE.P --browser $browser
+```
+
+배경은 압축된 그림에서 직접 팔레트와 픽셀을 해독한다. 본문 검사는 지정한 시나리오 오프셋에서 VM을 한 번 실행하고 원본 KF1 글꼴·글꼴 색인·웹 텍스트 렌더러로 매 VSync의 화면을 만든다. 캔버스에서 다시 읽은 320×240 픽셀을 RGB565로 변환해 원본 기록과 비교한다. 이 명령으로 정지 화면 5개와 본문이 두 번째 줄로 넘어가는 연속 70프레임(9,977~10,046)을 검증했다. 이는 장면 위치를 지정한 검증이며, 타이틀부터 동일한 입력으로 장면에 도달하는 전체 플레이와 오디오 동기는 이후 검증 범위다.
