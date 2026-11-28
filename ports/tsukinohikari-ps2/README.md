@@ -21,3 +21,6 @@ ED 하나에 JSON 파일 하나를 생성한다. 페이지마다 장면명, ED �
 - command의 opcode는 10진수, args는 바이트 순서 그대로의 16진수다.
 
 직접 작성한 형식 예문은 example.json에 있다. 실제 데이터는 비공개 저장소 tsuki-no-hikari-ps2-kor의 source/ja에 둔다. 기준 공통 가이드 커밋은 c3f480d58f688046813f035acad185342c9449c6이다.
+## 로컬 그래픽
+
+`python prepare_media.py "<원본 BIN>" "<로컬 리소스 디렉터리>"`로 디스크 경로를 보존한 리소스를 준비한다. image.mjs의 parts와 decodeImage는 CFP의 팔레트와 압축된 인덱스 이미지를 RGBA로 변환한다. SLPS-20196의 CFP 2,181개에서 압축 스트림 길이·픽셀 수·색 심도를 검사했다. 픽셀과 원본 화면의 대조는 별도 검증 항목이다.
