@@ -138,10 +138,10 @@ kbd {
   -webkit-text-stroke: clamp(3px, .45cqw, 6px) var(--rim);
   paint-order: stroke fill;
 }
-.marquee .ko { display: flex; align-items: center; gap: 14px; margin: 0; color: var(--text); font: 500 clamp(15px, 2cqw, 21px)/1.4 "Noto Serif KR", serif }
+.marquee .ko { margin: 0; color: var(--text); font: 500 clamp(15px, 2cqw, 21px)/1.4 "Noto Serif KR", serif }
 .marquee .ko .name { word-break: keep-all }
 .subt { display: inline-block; word-break: keep-all }
-.marquee .ko::after { content: ""; width: 48px; height: 1px; background: var(--accent) }
+.marquee .ko .name::after { content: ""; display: inline-block; width: 48px; height: 1px; margin-left: 14px; vertical-align: .35em; background: var(--accent) }
 .lede .para { display: block }
 .lede .para + .para { margin-top: .6em }
 .lede .warning { display: inline-block; margin-bottom: 4px; color: var(--text); font-weight: 600; letter-spacing: .02em }
