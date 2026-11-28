@@ -388,11 +388,21 @@ class Voice {
       this.pos = this.samples.loop + (this.pos - d.length);
     }
     const env = this.env.tick();
-    // 4-point interpolation (the SPU2 uses a gaussian kernel; cubic is a close stand-in).
-    const i = this.pos, f = this.counter / 0x1000;
-    const at = k => { k = i + k; if (k >= d.length) k = this.samples.loop < 0 ? d.length - 1 : this.samples.loop + (k - d.length) % Math.max(1, d.length - this.samples.loop); return d[k] || 0; };
-    const y0 = i > 0 ? d[i - 1] : 0, y1 = at(0), y2 = at(1), y3 = at(2);
-    const s = y1 + 0.5 * f * (y2 - y0 + f * (2 * y0 - 5 * y1 + 4 * y2 - y3 + f * (3 * (y1 - y2) + y3 - y0)));
+    const i = this.pos;
+    let s;
+    if (GAUSS) {
+      // SPU2 gaussian: the four newest decoded samples weighted by the hardware table at
+      // phase (counter >> 4), pairwise products >> 14, then >> 1 (as in DuckStation).
+      const g = GAUSS, p = this.counter >> 4, at = k => (k >= 0 ? d[k] : 0);
+      s = (((at(i - 3) * g[0xff - p] + at(i - 2) * g[0x1ff - p]) >> 14)
+        + ((at(i - 1) * g[0x100 + p] + d[i] * g[p]) >> 14)) >> 1;
+    } else {
+      // Without the table (not shipped in the public repository): 4-point cubic stand-in.
+      const f = this.counter / 0x1000;
+      const at = k => { k = i + k; if (k >= d.length) k = this.samples.loop < 0 ? d.length - 1 : this.samples.loop + (k - d.length) % Math.max(1, d.length - this.samples.loop); return d[k] || 0; };
+      const y0 = i > 0 ? d[i - 1] : 0, y1 = at(0), y2 = at(1), y3 = at(2);
+      s = y1 + 0.5 * f * (y2 - y0 + f * (2 * y0 - 5 * y1 + 4 * y2 - y3 + f * (3 * (y1 - y2) + y3 - y0)));
+    }
     this.counter += this.pitch;
     this.pos += this.counter >> 12; this.counter &= 0xfff;
     return s * env / 0x8000 / 32768;
@@ -400,6 +410,11 @@ class Voice {
 }
 
 // ---- engine ------------------------------------------------------------------------------
+// The 512-entry SPU interpolation table is a hardware constant kept with the private game
+// data (assets/se/gauss.bin, int16 LE). setGaussTable(null) falls back to cubic.
+let GAUSS = null;
+export function setGaussTable(table) { GAUSS = table && table.length === 512 ? table : null; }
+export const TRACK_SLOTS = 24;
 export class SeEngine {
   // banks: Map<bankId, WdBank> or a function(bankId) -> WdBank|null
   constructor(sep, banks) {
@@ -411,7 +426,21 @@ export class SeEngine {
     const rec = this.sep.get(id);
     if (!rec) return null;
     const bank = this.bank(rec.bank);
-    const seq = {id, engine: this, volume: new Slide(fadeFrames ? 0 : volume), pan, pitch, stopping: false};
+    // IOP 0x91a0 -> 0x8d54: one track slot per track out of 24 (0x13C each). When too few
+    // are free, 0x8ac0 frees every track of the longest-playing instance (track +0xF8 counts
+    // ticks) whose priority (record byte 3, slot +0x138) is <= t, for t = 0..priority; an
+    // instance with a group mask (byte 4, slot +0x139) is never taken. Same id is not checked,
+    // so a replay stacks. If nothing can be freed the request is dropped.
+    const priority = rec.flag & 0xff, mask = rec.flag >> 8, need = rec.tracks.length;
+    if (mask) for (const s of [...this.playing]) if (s.priority <= priority && (s.mask & mask)) this.release(s);
+    for (let t = 0; this.usedTracks() + need > TRACK_SLOTS;) {
+      const victim = this.playing.filter(s => !s.mask && s.priority <= t && s.tracks.some(k => !k.done))
+        .reduce((a, s) => (!a || s.ticks > a.ticks ? s : a), null);
+      if (victim) this.release(victim);
+      else if (++t > priority) return null;
+    }
+    const seq = {id, engine: this, volume: new Slide(fadeFrames ? 0 : volume), pan, pitch, stopping: false,
+      priority, mask, ticks: 0};
     if (fadeFrames) seq.volume.to(volume, fadeFrames);
     seq.tracks = rec.tracks.map(t => new Track(seq, t, bank));
     this.playing.push(seq);
@@ -428,6 +457,7 @@ export class SeEngine {
       else s[key] = value;
     }
   }
+  usedTracks() { return this.playing.reduce((n, s) => n + s.tracks.filter(t => !t.done).length, 0); }
   release(seq) {
     for (const t of seq.tracks) { t.done = true; t.voice?.kill(); }
     this.playing = this.playing.filter(s => s !== seq);
@@ -442,6 +472,7 @@ export class SeEngine {
     for (const seq of [...this.playing]) {
       seq.volume.tick();
       if (seq.stopping && seq.volume.n === 0) { this.release(seq); continue; }
+      seq.ticks++;
       for (const t of seq.tracks) {
         t.acc -= 120;
         while (t.acc <= 0) { t.acc += 300; t.step(); }

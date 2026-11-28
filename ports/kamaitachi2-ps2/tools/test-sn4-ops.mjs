@@ -2,7 +2,7 @@
 // (calc 0x00219670, compare 0x002196B0). Uses a synthetic program only.
 //   node ports/kamaitachi2-ps2/tools/test-sn4-ops.mjs
 import assert from 'node:assert/strict';
-import { Sn4Vm } from '../sn4.js';
+import { CIPHER_SOLUTION, Sn4Vm, SN4_SPECIAL_EXECUTE, criminalNameIndex } from '../sn4.js';
 
 const set = (v, op, value) => ({op: 0x68, offset: 0, args: [{var: v, op, value}]});
 const copy = (v, op, source) => ({op: 0x69, offset: 0, args: [{var: v, op, source}]});
@@ -58,14 +58,47 @@ const classes = new Map([
 ]);
 for (const [op, name] of classes) {
   const called = [];
-  const event = run([{op, offset:0x123, args:[7]}], {
+  const interactiveArgs = {
+    0x1f:[11], 0x7a:[{targets:['no']}],
+    0x7e:[{panels:[0x4c],targets:['no'],fallback:'no'}],
+    0x7f:[{targets:['no'],fallback:'no'}], 0x82:[{targets:['no']}],
+  };
+  const event = run([{op, offset:0x123, args:interactiveArgs[op] ?? [7]}], {
     command:(actual, args, context) => { called.push({actual,args,context}); return 0; },
   }).event;
   assert.equal(called[0].actual, name, `0x${op.toString(16)} dispatches ${name}`);
-  assert.deepEqual(called[0].args, [7]);
+  assert.deepEqual(called[0].args, interactiveArgs[op] ?? [7]);
   assert.equal(called[0].context.offset, 0x123);
-  assert.ok(['end','pause','break'].includes(event.type));
+  assert.ok(['end','pause','break','special'].includes(event.type));
 }
+
+function specialVm(op, args, targets) {
+  const labels = [{label:'a', offset:0, ops:[{op, offset:0x123, args}]}]
+    .concat(targets.map(label => ({label, offset:0, ops:[]})));
+  return new Sn4Vm({entry:'a', labels});
+}
+const mapVm = specialVm(0x7a, [{targets:['map0','map1']}], ['map0','map1']);
+assert.equal(mapVm.run().kind, 'click-map');
+assert.equal(mapVm.chooseSpecial(1).label, 'map1', 'click map selects the packed label index');
+const panelVm = specialVm(0x7e, [{panels:[0x4c],targets:['panel0'],fallback:'panel-back'}], ['panel0','panel-back']);
+assert.equal(panelVm.run().kind, 'panel');
+assert.equal(panelVm.chooseSpecial(-1).label, 'panel-back', 'panel cancel uses the packed fallback');
+const delusionVm = specialVm(0x7f, [{targets:['delusion0'],fallback:'delusion-back'}], ['delusion0','delusion-back']);
+assert.equal(delusionVm.run().kind, 'delusion-panel');
+assert.equal(delusionVm.chooseSpecial(0).label, 'delusion0');
+const nameTargets = Array.from({length:25}, (_, i) => `name${i}`);
+const nameVm = specialVm(0x82, [{mode:0, targets:nameTargets}], nameTargets);
+nameVm.setNames(['とおる','まり']);
+assert.equal(nameVm.run().kind, 'criminal-name');
+assert.equal(nameVm.submitCriminalName('きょうこ').label, 'name15', 'correct criminal name selects group 15');
+assert.equal(criminalNameIndex('トオル', ['とおる','まり']), 0, 'katakana player name is normalized');
+const cipherVm = specialVm(0x1f, [11], []);
+assert.equal(cipherVm.run().length, 12, 'cipher operand 11 is the final zero-based slot');
+assert.equal(cipherVm.submitCipher([...CIPHER_SOLUTION]).type, 'end');
+assert.equal(cipherVm.variables.get(230), 1, 'the original 12-button cipher sets v230');
+const wrongCipherVm = specialVm(0x1f, [11], []);
+wrongCipherVm.run(); wrongCipherVm.submitCipher(Array(12).fill('cross'));
+assert.equal(wrongCipherVm.variables.get(230), 0, 'a wrong cipher leaves v230 clear');
 const lines = [];
 run([{op:0x4d, offset:0x123, args:[2,58]}], {line:(type, width, offset) => lines.push({type,width,offset})});
 assert.deepEqual(lines, [{type:2, width:58, offset:0}], '0x4d dispatches the EE line operands');
@@ -88,4 +121,6 @@ run([{op:0x02, offset:0, args:['底']}, {op:0x106, offset:1, args:['　',['そ']
   {ruby:(word, readings, offset) => ruby.push({word,readings,offset})});
 assert.deepEqual(ruby, [{word:'　', readings:['そ'], offset:1}], 'ruby keeps its absolute text offset');
 assert.equal(classes.size + 3, 47, 'all 47 formerly unknown opcodes are covered');
+assert.equal(Object.keys(SN4_SPECIAL_EXECUTE).length, 37, 'all 37 EE special commands have Execute addresses');
+assert.ok(Object.values(SN4_SPECIAL_EXECUTE).every(address => address >= 0x100000), 'special Execute addresses are EE VAs');
 console.log('sn4 variable/condition semantics: PASS');

@@ -29,6 +29,16 @@ export class LoopingMusic {
     this.voice = null;
     const Context = globalThis.AudioContext || globalThis.webkitAudioContext;
     this.context = Context ? new Context() : null;
+    // The player's volume slider (shell.js), over the script's own levels.
+    this.masterLevel = 1;
+    this.master = this.context?.createGain() ?? null;
+    this.master?.connect(this.context.destination);
+  }
+
+  setMaster(level) {
+    this.masterLevel = Math.max(0, Math.min(1, level));
+    if (this.master) this.master.gain.value = this.masterLevel;
+    if (this.voice?.element) this.voice.element.volume = Math.min(1, (this.voice.level ?? 1) * this.masterLevel);
   }
 
   get playing() {
@@ -56,7 +66,7 @@ export class LoopingMusic {
       source.loop = true;
       source.loopStart = Math.min((this.loopFrames[file] ?? 0) / RATE, buffer.duration);
       source.loopEnd = buffer.duration;
-      source.connect(gain).connect(this.context.destination);
+      source.connect(gain).connect(this.master);
       this.voice = { source, gain };
       // A volume change that arrived while decoding replaces the start level.
       const target = this.target;
@@ -104,7 +114,8 @@ export class LoopingMusic {
 
   ramp(voice, level, fadeFrames) {
     if (voice.element) {
-      voice.element.volume = Math.min(1, level);
+      voice.level = level;
+      voice.element.volume = Math.min(1, level * this.masterLevel);
       return 0;
     }
     const now = this.context.currentTime;
@@ -133,12 +144,12 @@ export class LoopingMusic {
 
   playElement(file, level) {
     const element = new Audio(this.asset(file));
-    element.volume = Math.min(1, level);
+    element.volume = Math.min(1, level * this.masterLevel);
     element.onended = () => {
       element.currentTime = (this.loopFrames[file] ?? 0) / RATE;
       element.play().catch(this.onBlocked);
     };
     element.play().catch(this.onBlocked);
-    this.voice = { element };
+    this.voice = { element, level };
   }
 }

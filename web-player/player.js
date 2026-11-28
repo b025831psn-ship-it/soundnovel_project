@@ -41,9 +41,11 @@ export function storageKey(story) {
 }
 
 // options.startMenu: show a title screen (새 게임 / 이어하기) inside the 4:3 screen before playing.
-export function createPlayer(root, story, { storage = safeStorage(), startMenu = false } = {}) {
+// options.base: URL of the story file; `assets` paths are resolved against it.
+export function createPlayer(root, story, { storage = safeStorage(), startMenu = false, base = document.baseURI } = {}) {
   const sceneIds = Object.keys(story.scenes);
   const key = storageKey(story);
+  const globalKey = `${key}.global`;
   const uid = Math.random().toString(36).slice(2, 8);
 
   const sceneLabel = el('p', { class: 'wp-scene', 'aria-live': 'polite' });
@@ -57,8 +59,10 @@ export function createPlayer(root, story, { storage = safeStorage(), startMenu =
   const endMsg = el('p', { class: 'wp-end-msg', text: '이 테스트 구간은 여기까지입니다.' });
   const end = el('div', { class: 'wp-end' }, [endMsg, resetBtn]);
   const menu = el('div', { class: 'wp-menu' });
+  const bgImg = el('img', { class: 'wp-bg', alt: '', 'aria-hidden': 'true' });
+  const bgm = el('audio', { class: 'wp-bgm', loop: '', preload: 'auto' });
   const stage = el('section', { class: 'wp-stage', 'aria-label': story.title }, [
-    sceneLabel, advanceBtn, text, nextHint, choices, end, menu,
+    bgImg, bgm, sceneLabel, advanceBtn, text, nextHint, choices, end, menu,
   ]);
 
   const langBtn = el('button', { type: 'button', class: 'wp-tool wp-lang' });
@@ -94,8 +98,51 @@ export function createPlayer(root, story, { storage = safeStorage(), startMenu =
   let state = saved || initial();
   let lastScene = null;
 
+  // Flags named "g:..." survive new games (e.g. endings seen, which unlock choices on later plays).
+  function loadGlobal() {
+    try { return validFlags(JSON.parse(storage?.getItem(globalKey) || 'null')); } catch { return {}; }
+  }
+  function saveGlobal(flags) {
+    const g = Object.fromEntries(Object.entries(flags).filter(([k]) => k.startsWith('g:')));
+    if (!Object.keys(g).length) return;
+    try { storage?.setItem(globalKey, JSON.stringify({ ...loadGlobal(), ...g })); } catch { /* ignore */ }
+  }
+
   function initial() {
-    return { node: story.entry, page: 0, line: 0, done: false, trail: [] };
+    return settle({ node: story.entry, page: 0, line: 0, done: false, trail: [], flags: enter({ ...loadGlobal() }, story.entry, true) });
+  }
+
+  // Arriving at a node applies its `set`, then a `bg` that depends on a flag (`{ by, map }`):
+  // the flag's value picks the picture, and a value missing from `map` keeps the current one.
+  function enter(flags, id, globalsWin = false) {
+    const node = story.nodes[id];
+    const out = globalsWin ? { ...node.set, ...flags } : { ...flags, ...node.set };
+    const pick = node.bgBy;
+    if (pick && Object.hasOwn(pick.map, String(out[pick.by]))) out['media:bg'] = pick.map[String(out[pick.by])];
+    return out;
+  }
+
+  // Nodes without sentences only set flags and branch: pass through them right away.
+  function settle(st) {
+    for (let guard = 0; guard < 1000; guard++) {
+      const node = story.nodes[st.node];
+      if (node.kind !== 'text' || node.pages.length || st.done) return st;
+      const to = resolve(node.next, st.flags);
+      if (!to) return { ...st, done: true };
+      st = { ...st, node: to, trail: [...st.trail, { node: st.node }], flags: enter(st.flags, to) };
+    }
+    return { ...st, done: true };
+  }
+
+  // First rule whose `if` matches every listed flag; its `to` (null means the data ends here).
+  function resolve(rules, flags) {
+    const hit = rules.find((r) => !r.if || Object.entries(r.if).every(([k, v]) => flags[k] === v));
+    return hit ? hit.to : null;
+  }
+
+  function validFlags(flags) {
+    if (!flags || typeof flags !== 'object' || Array.isArray(flags)) return {};
+    return Object.fromEntries(Object.entries(flags).filter(([, v]) => ['string', 'number', 'boolean'].includes(typeof v)));
   }
 
   function loadSettings() {
@@ -139,6 +186,8 @@ export function createPlayer(root, story, { storage = safeStorage(), startMenu =
     }
     return {
       node: saved.node, page: saved.page | 0, line: saved.line | 0, done: !!saved.done, trail: validTrail(saved.trail),
+      flags: { ...validFlags(saved.flags), ...loadGlobal() },
+      carry: Array.isArray(saved.carry) ? saved.carry.filter((id) => story.nodes[id]?.kind === 'text') : [],
     };
   }
 
@@ -152,6 +201,8 @@ export function createPlayer(root, story, { storage = safeStorage(), startMenu =
       line: state.line,
       done: state.done,
       trail: state.trail,
+      flags: state.flags,
+      carry: state.carry || [],
     };
   }
 
@@ -170,7 +221,7 @@ export function createPlayer(root, story, { storage = safeStorage(), startMenu =
   function currentLine() {
     const node = story.nodes[state.node];
     if (node.kind === 'choice') return node.question.ko;
-    return node.pages[state.page][state.line].ko;
+    return node.pages[state.page]?.[state.line]?.ko ?? "";
   }
 
   function saveSlot(i) {
@@ -225,19 +276,27 @@ export function createPlayer(root, story, { storage = safeStorage(), startMenu =
 
   function setState(next, { focus = true } = {}) {
     state = next;
+    saveGlobal(state.flags);
     save();
     render(focus);
   }
 
-  function goTo(nodeId, step) {
-    setState({ node: nodeId, page: 0, line: 0, done: false, trail: [...state.trail, step] });
+  // Arriving at a node applies its `set`.
+  // `carry`: earlier nodes whose last page stays on screen (a node marked `keep` ends mid-page).
+  function goTo(nodeId, step, flags = state.flags, carry = []) {
+    setState(settle({
+      node: nodeId, page: 0, line: 0, done: false, trail: [...state.trail, step], flags: enter(flags, nodeId), carry,
+    }));
   }
 
-  // An option without `to` is where the data ends: record the pick and show the end screen.
-  function choose(option) {
+  // Picking applies the option's `set`, then its `next` rules decide where to go.
+  // No destination means the data ends here: record the pick and show the end screen.
+  function choose(option, extra = {}) {
     const step = { node: state.node, pick: option.key };
-    if (option.to) goTo(option.to, step);
-    else setState({ ...state, done: true, trail: [...state.trail, step] });
+    const flags = { ...state.flags, ...option.set, ...extra };
+    const to = resolve(option.next, flags);
+    if (to) goTo(to, step, flags);
+    else setState({ ...state, done: true, trail: [...state.trail, step], flags });
   }
 
   function advance() {
@@ -245,8 +304,10 @@ export function createPlayer(root, story, { storage = safeStorage(), startMenu =
     if (node.kind !== 'text' || state.done) return;
     const page = node.pages[state.page];
     if (state.line < page.length - 1) return setState({ ...state, line: state.line + 1 });
-    if (state.page < node.pages.length - 1) return setState({ ...state, page: state.page + 1, line: 0 });
-    if (node.to) return goTo(node.to, { node: state.node });
+    if (state.page < node.pages.length - 1) return setState({ ...state, page: state.page + 1, line: 0, carry: [] });
+    const to = resolve(node.next, state.flags);
+    const carry = node.keep ? [...(state.page === 0 ? state.carry || [] : []), state.node] : [];
+    if (to) return goTo(to, { node: state.node }, state.flags, carry);
     setState({ ...state, done: true });
   }
 
@@ -263,14 +324,69 @@ export function createPlayer(root, story, { storage = safeStorage(), startMenu =
   function sentence(tag, s, cls) {
     const node = el(tag, cls ? { class: cls } : {});
     const lang = settings.lang;
+    if (!s.ja && story.lang !== 'ko') node.lang = story.lang;
     if (lang === 'ja' && s.ja) {
       node.lang = 'ja';
-      node.textContent = s.ja;
+      node.textContent = withSlots(s.ja);
     } else {
-      if (lang === 'both' && s.ja) node.append(el('span', { class: 'wp-sub', lang: 'ja', text: s.ja }));
-      node.append(s.ko);
+      if (lang === 'both' && s.ja) node.append(el('span', { class: 'wp-sub', lang: 'ja', text: withSlots(s.ja) }));
+      node.append(withSlots(s.ko));
     }
     return node;
+  }
+
+  // Names typed during play ("name:<slot>" flags) fill the {name:<slot>} tokens left in the text.
+  function withSlots(t) {
+    return t.includes('{name:') ? t.replace(/\{name:([^}]+)\}/g, (m, id) => state.flags[`name:${id}`] ?? '？？？') : t;
+  }
+
+  // Name entry: alias match picks the option; the typed (or rewritten) name is kept in its slot.
+  function submitName(node, value) {
+    const typed = value.normalize('NFKC').trim().slice(0, node.input.maxLength);
+    if (!typed) return;
+    let name = typed;
+    let key = node.input.fallback;
+    if (node.input.sequential) {
+      for (const m of node.input.match) {
+        if (m.aliases.includes(name)) { name = m.as ?? name; key = m.option; }
+      }
+    } else {
+      const hit = node.input.match.find((m) => m.aliases.includes(typed));
+      if (hit) { name = hit.as ?? typed; key = hit.option; }
+    }
+    const option = node.options.find((o) => o.key === key);
+    choose(option, node.input.slot ? { [`name:${node.input.slot}`]: name } : {});
+  }
+
+  function carried() {
+    if (state.page !== 0) return [];
+    return (state.carry || []).flatMap((id) => story.nodes[id]?.pages.at(-1) || []);
+  }
+
+  // Sentences shown on screen: a `join` sentence continues the previous one's line.
+  function lines(list) {
+    const out = [];
+    for (const s of list) {
+      if (s.join && out.length) out[out.length - 1].append(...sentence('span', s).childNodes);
+      else out.push(sentence('p', s));
+    }
+    return out;
+  }
+
+  // Background and music follow the "media:*" flags; music only starts after a click (autoplay rules).
+  function renderMedia() {
+    const url = (v) => (v ? new URL(story.assets + v, base).href : '');
+    const bg = url(state.flags['media:bg']);
+    if (bgImg.dataset.src !== bg) {
+      bgImg.dataset.src = bg;
+      if (bg) bgImg.src = bg; else bgImg.removeAttribute('src');
+      bgImg.hidden = !bg;
+    }
+    const music = url(state.flags['media:bgm']);
+    if (bgm.dataset.src !== music) {
+      bgm.dataset.src = music;
+      if (music) { bgm.src = music; bgm.play?.().catch(() => { /* waits for a user gesture */ }); } else { bgm.pause?.(); bgm.removeAttribute('src'); }
+    }
   }
 
   function renderScene(node) {
@@ -337,12 +453,26 @@ export function createPlayer(root, story, { storage = safeStorage(), startMenu =
     renderTools();
     const node = story.nodes[state.node];
     renderScene(node);
+    renderMedia();
     stage.dataset.mode = state.done ? 'end' : node.kind === 'choice' ? 'choice' : 'text';
 
     if (state.done) {
       if (node.kind === 'choice') text.replaceChildren();
-      else text.replaceChildren(...node.pages[state.page].slice(0, state.line + 1).map((s) => sentence('p', s)));
+      else text.replaceChildren(...lines((node.pages[state.page] || []).slice(0, state.line + 1)));
+      endMsg.textContent = node.ending !== undefined ? `엔딩 ${node.ending}` : '이 테스트 구간은 여기까지입니다.';
       if (focus) resetBtn.focus({ preventScroll: true });
+      return;
+    }
+
+    if (node.kind === 'choice' && node.input) {
+      text.replaceChildren();
+      question.replaceChildren(...sentence('span', node.question).childNodes);
+      const field = el('input', { type: 'text', class: 'wp-name-input', maxlength: String(node.input.maxLength), placeholder: `이름 입력 (${node.input.maxLength}글자까지)`, 'aria-label': node.question.ko || '이름 입력', autocomplete: 'off', lang: story.lang });
+      const ok = el('button', { type: 'submit', class: 'wp-option wp-name-ok', text: '확인' });
+      const form = el('form', { class: 'wp-name-form' }, [field, ok]);
+      form.addEventListener('submit', (e) => { e.preventDefault(); submitName(node, field.value); });
+      optionList.replaceChildren(form);
+      if (focus) field.focus();
       return;
     }
 
@@ -365,8 +495,7 @@ export function createPlayer(root, story, { storage = safeStorage(), startMenu =
       return;
     }
 
-    const page = node.pages[state.page];
-    text.replaceChildren(...page.slice(0, state.line + 1).map((s) => sentence('p', s)));
+    text.replaceChildren(...lines([...carried(), ...node.pages[state.page].slice(0, state.line + 1)]));
     if (focus) (state.done ? resetBtn : advanceBtn).focus({ preventScroll: true });
   }
 

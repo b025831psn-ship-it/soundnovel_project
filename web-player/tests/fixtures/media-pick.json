@@ -1,0 +1,14 @@
+{
+  "schemaVersion": 1,
+  "gameId": "test-media-pick",
+  "title": "배경 선택 테스트",
+  "assets": "media/",
+  "entry": "a",
+  "nodes": {
+    "a": { "set": { "v:group": 0 }, "bg": { "by": "v:group", "map": { "0": "red.png", "1": "blue.png" } }, "pages": [["묶음 0: 빨강."]], "to": "b" },
+    "b": { "set": { "v:group": 1 }, "pages": [["묶음만 바뀌고 그림 요청은 없음: 빨강 유지."]], "to": "c" },
+    "c": { "bg": { "by": "v:group", "map": { "0": "red.png", "1": "blue.png" } }, "pages": [["같은 요청, 묶음 1: 파랑."]], "to": "d" },
+    "d": { "bg": { "by": "v:group", "map": { "0": "red.png" } }, "pages": [["묶음 1에 해당 그림 없음: 파랑 유지."]], "to": "e" },
+    "e": { "set": { "v:group": 0 }, "bg": { "by": "v:group", "map": { "0": "red.png" } }, "pages": [["묶음 0: 빨강."]], "to": null }
+  }
+}

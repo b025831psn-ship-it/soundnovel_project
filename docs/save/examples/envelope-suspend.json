@@ -1,0 +1,13 @@
+{
+  "format": 1,
+  "gameId": "kamaitachi-gba",
+  "slot": "suspend",
+  "schema": 1,
+  "dataVersion": 1,
+  "edition": "ko",
+  "revision": 12,
+  "savedAt": "2026-11-25T10:41:20Z",
+  "deviceId": "dev-3f9a1c",
+  "label": "ゲレンデにて (중단 저장)",
+  "payload": { "_note": "예시 값. 책 슬롯과 같은 모양이되 원작 책갈피 화면에는 나타나지 않는다." }
+}

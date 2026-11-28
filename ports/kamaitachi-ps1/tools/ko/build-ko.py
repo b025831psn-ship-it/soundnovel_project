@@ -1,0 +1,485 @@
+#!/usr/bin/env python3
+"""Korean text for the PS1 machine: the font and the script patch, made from the private
+translation (kamaitachi-ps1-kor script/ja/script.ja.json, script/ko/script.ko.json).
+
+  python3 tools/ko/build-ko.py EXE_DATA.bin SCRIPT_JA.json SCRIPT_KO.json FONT.ttf OUT_DIR
+      [--widths ORIG_WIDTHS.json] [--exe-strings LIST.json --exe-ko KO.json]
+      [--edits TEXT_EDITS.json] [--editor KO_EDITOR.json]
+
+--edits: the owner's edits ({id: {ko}}, written by tools/text-editor): they replace the translation.
+--editor: writes the dialogue editor's data (ids, Japanese, the translation, the original glyph widths).
+
+--widths ({"sjis code": width}, read from the original font in BIN.PAC) makes the layout check
+exact for the original glyphs; without it kana count as 15 and kanji as 16.
+--offsets: the list of tools/ko/offset-operands.mjs (required): the operands that hold an offset
+into their resource, moved with the text by src/ko.js.
+--culprit: {"names": {"0xADDR": [Korean names]}, "display": {"0xADDR": name}}: the Korean names the
+culprit judge accepts for each name of its table (0x80011fdc...), and the names it stores on a match.
+--exe-strings / --exe-ko: the strings of the EXE (menus, card screens, ending titles: ids
+"EXE-address") and the flowchart titles (ids "CHART-nnn", the LZS table at 0x800680bb) with
+their translations [{id, ko}]. A string that fits its place is written there; a longer one goes
+to unused kernel RAM, pointers to it in the EXE data follow, and the drawing routines look it
+up (`moved`). The flowchart titles are rebuilt as one section that must not grow.
+
+Writes OUT_DIR/ko-font.bin, OUT_DIR/ko-script.json and OUT_DIR/ko-report.json. The two data
+files hold glyphs and the translated script: they are port data (not committed to this
+repository), served next to the PAC files as ko/ko-font.bin and ko/ko-script.json.
+
+Font: the game's own format (src/text/glyph.js): big-endian u16 offsets (x4), then per glyph
+width, height and 4-bit pixels (0 empty, 1 the dark outline, 2..14 the stroke, 0xf a run).
+Korean glyph i has the text code (0xa0 + (i >> 7)) << 8 | 0x80 + (i & 0x7f); those lead bytes
+are not used by the original font. Characters the original font has keep their SJIS code.
+
+Script: per resource a list of [record, offset, base64 text bytes]: the bytes that replace the
+text payload of the command at that offset of the record (the ids of script.ja.json).
+An ASCII space stays the byte 0x20; the Korean build of the text routine gives it a width
+and breaks lines at it (src/text/text.js).
+"""
+import base64, collections, hashlib, json, os, re, struct, sys
+from PIL import Image, ImageDraw, ImageFont
+
+H = 19            # glyph height of the original font
+HANGUL_W = 14     # the Hangul cell (advance = width + 1); the original's kana are 15 wide
+SIZE = 12         # raster size: one pixel under the original's kana, so a translated page keeps to the original's lines (태우 2026-11-28)
+SPACE = 6         # the width of the byte 0x20 in the Korean build (src/text/text.js KO_SPACE)
+LEFT, RIGHT, TOP, LINE, LINES = 8, 0x120, 0x11, 0x16, 10
+HASH = 0x8006b754
+ENDINGS = 0x80067914
+JOIN = 0x800118e4    # the と between the two names of a bookmark: its particle follows the hero's name (src/text/josa.js)
+SPECIAL = {'デュアルショック': 0x8440, '○': 0x8485, '△': 0x8486, '×': 0x8487, '□': 0x8488, 'メモリーカード': 0x848f, 'オプション': 0x8490, 'R1:スクロール': 0x8491}
+# Lines whose first glyphs the original types at fixed x places (script command 0x18 before each
+# piece): (resource, record, the plain piece that starts the line or None, the pieces placed with
+# 0x18 in order). The Korean build lets them follow one another as plain text does (see operands below).
+FLOW_X = [(0, 2, None, [71, 78, 85]), (0, 70, None, [39, 46, 53]), (0, 98, None, [39, 46, 53]),
+          (0, 101, 0, [7, 14, 21, 28]), (0, 101, 61, [68, 75, 82]), (0, 101, 108, [115, 122, 129, 136]), (0, 101, None, [168, 175, 182, 189], {175: 1}),
+          (0, 101, 227, [234, 241, 248, 255]), (0, 101, 283, [290, 297, 304]), (0, 101, None, [338, 345, 352, 359, 366], {345: 1})]
+# a fifth member {offset: column}: that piece is put at the place of the line's glyph of that number (0 the first), as
+# the original's fixed places did for the line that opens with a bracket: the glyph after the narrow 「 stands in
+# the column of the second glyphs of the other lines
+# Labels and messages the original draws centred in a box or on the screen (the title's three buttons, the card
+# buttons and messages, the unused book): a shorter translation is moved right by half the difference in width
+# (src/title.js drawString), so it stands in the middle as the original does. 태우 2026-11-28.
+CENTRE = {0x800110c8, 0x800110d4, 0x800110e4, 0x80010dd0, 0x80010df4, 0x80010e08, 0x80010e1c, 0x80010e44, 0x80010e58, 0x80010e94,
+          0x80011714, 0x8001172c, 0x800117d8, 0x800117f8, 0x80079228}
+# The title's buttons: the original spreads 説明 and 特報！ over the button with wide spaces, so the width of the
+# string says nothing; these are centred in the button itself: address -> (x the game draws at, button left, button width).
+CENTRE_BOX = {0x800110c8: (0x21, 30, 64), 0x800110d4: (0x86, 123, 64), 0x800110e4: (0xdc, 217, 64),
+              # 「저장 중」: 태우's wording (2026-11-28) takes three lines; the Korean build draws a larger box for it
+              # (src/menu/translated.js 0x8002b1f4, SAVING_BOX) and each line stands in its middle
+              0x80011864: (106, 44, 232)}
+CHART_POOL, CHART_ROOM = 0x80009000, 0x3000   # spare kernel RAM for the flowchart title section (263 big-endian offsets, then the strings)
+# The default names: the pointers the game copies string 1 (the hero, [n1]) and string 2 (the
+# companion, [n2]) from (0x8003ab98). The original fields hold one and two glyphs; the Korean
+# names go to unused kernel RAM and the pointers follow.
+NAMES = [(0x8006b74c, 0x800792d4, 0x8000c010, '토오루'), (0x8006b750, 0x800792cc, 0x8000c000, '마리')]
+JAMO = 'ㄱㄲㄴㄷㄸㄹㅁㅂㅃㅅㅆㅇㅈㅉㅊㅋㅌㅍㅎㅏㅐㅑㅒㅓㅔㅕㅖㅗㅘㅙㅚㅛㅜㅝㅞㅟㅠㅡㅢㅣ'   # the cells of the Korean name board (src/name-entry.js)
+HANG = '.,?!~)]}\u2026\u00b7\u2019\u201d'   # may hang past the right edge once, as the original's punctuation
+TOKEN = re.compile(r'(\[[^\]]*\])')
+SINGLE = set('@rRLpPgko')
+
+
+def exe_reader(path):
+    b = open(path, 'rb').read()
+    assert b[:4] == b'KPXD', 'not an EXE data asset'
+    parts, o = [], 8
+    for _ in range(struct.unpack_from('<I', b, 4)[0]):
+        addr, n = struct.unpack_from('<II', b, o); parts.append((addr, b[o + 8:o + 8 + n])); o += 8 + n
+    def read(a, n):
+        for addr, data in parts:
+            if addr <= a and a + n <= addr + len(data): return data[a - addr:a - addr + n]
+        raise SystemExit('EXE data: 0x%x is not in the asset' % a)
+    return read
+
+
+def original_codes(read):
+    """character -> SJIS code for every glyph of the original font (the hash table)."""
+    out = {}
+    t = read(HASH, 0x4000)
+    for i in range(0x1000):
+        code = struct.unpack_from('<H', t, i * 4)[0]
+        if code < 0x8140 or code == 0xffff: continue
+        try: ch = struct.pack('>H', code).decode('cp932')
+        except UnicodeDecodeError: continue
+        if len(ch) == 1: out.setdefault(ch, code)
+    return out
+
+
+def ksx1001():
+    s = []
+    for lead in range(0xb0, 0xc9):
+        for trail in range(0xa1, 0xff):
+            try: s.append(bytes([lead, trail]).decode('euc_kr'))
+            except UnicodeDecodeError: pass
+    return s
+
+
+def rasterize(font, ch, ss=4):
+    """One glyph in the original's style: width, rows of values 0..14."""
+    big = ImageFont.truetype(font, SIZE * ss)
+    hangul = '가' <= ch <= '힣'
+    adv = big.getlength(ch) / ss
+    w = HANGUL_W if hangul else max(3, min(HANGUL_W, int(round(adv)) + 2))
+    im = Image.new('L', (w * ss, H * ss), 0); d = ImageDraw.Draw(im)
+    bb = d.textbbox((0, 0), ch, font=big)
+    x = (w * ss - (bb[2] - bb[0])) // 2 - bb[0] if bb[2] > bb[0] else 0
+    d.text((x, 0), ch, font=big, fill=255)
+    px = list(im.resize((w, H), Image.BOX).tobytes())
+    lv = [0 if v < 18 else min(14, 2 + v * 13 // 256) for v in px]
+    out = lv[:]
+    for y in range(H):
+        for xx in range(w):
+            if lv[y * w + xx]: continue
+            if any(0 <= y + dy < H and 0 <= xx + dx < w and px[(y + dy) * w + xx + dx] >= 60 for dy in (-1, 0, 1) for dx in (-1, 0, 1)):
+                out[y * w + xx] = 1
+    return w, out
+
+
+def pack_glyph(w, px):
+    nib = []
+    i = 0
+    while i < len(px):
+        v = px[i]; n = 1
+        while i + n < len(px) and px[i + n] == v and n < 19: n += 1
+        if n >= 4: nib += [0xf, v, n - 4]; i += n
+        else: nib.append(v); i += 1
+    if len(nib) & 1: nib.append(0)
+    return bytes([w, H]) + bytes(nib[k] << 4 | nib[k + 1] for k in range(0, len(nib), 2))
+
+
+def build_font(font, chars):
+    table = (2 * len(chars) + 3) & ~3
+    blob, offsets, widths = bytearray(), [], {}
+    for ch in chars:
+        w, px = rasterize(font, ch)
+        widths[ch] = w
+        offsets.append((table + len(blob)) // 4)
+        g = pack_glyph(w, px); blob += g + bytes(-len(g) & 3)
+    if offsets and offsets[-1] > 0xffff: raise SystemExit('font too large for the 16-bit offsets')
+    head = b''.join(struct.pack('>H', o) for o in offsets)
+    return head + bytes(table - len(head)) + bytes(blob), widths
+
+
+def ko_code(i): return (0xa0 + (i >> 7)) << 8 | 0x80 + (i & 0x7f)
+
+
+def main():
+    exe, ja_path, ko_path, font, out = sys.argv[1:6]
+    opt = dict(zip(sys.argv[6::2], sys.argv[7::2]))
+    exe_list = json.load(open(opt['--exe-strings'], encoding='utf-8'))['items'] if '--exe-strings' in opt else []
+    exe_ko = {e['id']: e['ko'] for e in json.load(open(opt['--exe-ko'], encoding='utf-8'))} if '--exe-ko' in opt else {}
+    culprit = json.load(open(opt['--culprit'], encoding='utf-8')) if '--culprit' in opt else {'names': {}, 'display': {}}
+    if '--size' in opt:   # a smaller Korean glyph (a trial): the raster size, and the cell two pixels wider than it
+        global SIZE, HANGUL_W
+        SIZE = int(opt['--size']); HANGUL_W = SIZE + 2
+    read = exe_reader(exe)
+    orig = original_codes(read)
+    ja = json.load(open(ja_path, encoding='utf-8')); items = ja['items']
+    ko = json.load(open(ko_path, encoding='utf-8'))
+    report = {'entries': len(ko), 'source': ja.get('source')}
+    ids = [e['id'] for e in items]; kids = [e['id'] for e in ko]
+    report['idsMatch'] = ids == kids
+    report['duplicates'] = len(kids) - len(set(kids))
+    report['missing'] = len(set(ids) - set(kids)); report['extra'] = len(set(kids) - set(ids))
+    if ids != kids: raise SystemExit('ids differ from the Japanese script')
+    # the owner's edits (tools/text-editor): they win over the translation, as in the game (src/ko-text.js applyEdits)
+    edits = json.load(open(opt['--edits'], encoding='utf-8')) if '--edits' in opt else {}
+    # the ending marks 完 and 終 stay as the original's (태우 2026-11-28): the mark alone in the script, the two EXE
+    # strings, and the mark at the head of a flowchart title; the original font's glyphs are used
+    marks = []
+    for e, k in zip(items, ko):
+        if re.fullmatch(r'[\u3000 ]*[完終]', e['ja']) and k['ko'] != e['ja']: marks.append(k['id']); k['ko'] = e['ja']
+    for e in exe_list:
+        t, head = exe_ko.get(e['id']), re.match(r'((?:\[[^\]]*\])*)([完終])(?=\[c0\]|$)', e['ja'])
+        if t is None or not head: continue
+        new = re.sub(r'^((?:\[[^\]]*\])*)[^\[]', lambda m: m.group(1) + head.group(2), t, count=1)
+        if new != t: marks.append(e['id']); exe_ko[e['id']] = new
+    report['endingMarksKept'] = marks
+    translated = {k['id']: k['ko'] for k in ko}
+    for k in ko:
+        if isinstance(edits.get(k['id'], {}).get('ko'), str): k['ko'] = edits[k['id']]['ko']
+    report['ownerEdits'] = sum(1 for i in edits if i in translated)
+
+    # the characters of the translation
+    used = collections.Counter()
+    control, empty, japanese = [], [], []
+    jp = re.compile(r'[ぁ-ゖァ-ヺ一-鿿]')
+    for e, k in zip(items, ko):
+        tj, tk = TOKEN.findall(e['ja']), TOKEN.findall(k['ko'])
+        if tj != tk: control.append(e['id'])
+        body = TOKEN.sub('', k['ko'])
+        if not body.strip() and TOKEN.sub('', e['ja']).strip(): empty.append(e['id'])
+        if jp.search(body): japanese.append(e['id'])
+        used.update(body)
+    report['controlMismatch'] = control; report['empty'] = empty
+    report['japaneseLeft'] = dict(collections.Counter(i[:3] for i in japanese)); report['japaneseLeftTotal'] = len(japanese)
+
+    hangul = ksx1001()
+    extra = sorted(c for c in used if '가' <= c <= '힣' and c not in set(hangul))
+    new = hangul + extra
+    used.update(''.join(n[3] for n in NAMES)); used.update(JAMO)
+    for v in culprit['names'].values(): used.update(''.join(v))
+    used.update(''.join(culprit['display'].values()))
+    for v in exe_ko.values(): used.update(re.sub(r'\[[^\]]*\]|\{[^}]*\}', '', v))
+    new += [chr(c) for c in range(0x20, 0x7f)]                       # narrow ASCII; the space glyph is for the EXE strings (0x20 is the script's space byte)
+    new += sorted(c for c in used if ord(c) >= 0x80 and c not in orig and c not in set(new) and c != '　')
+    probe = ImageFont.truetype(font, SIZE)
+    missing = [c for c in new if not probe.getmask(c).getbbox()]
+    report['notInFontFile'] = missing
+    blob, widths = build_font(font, new)
+    code = {c: ko_code(i) for i, c in enumerate(new)}
+    report['glyphs'] = {'korean': len(new), 'hangul': len(hangul) + len(extra), 'hangulUsed': sum(1 for c in used if '가' <= c <= '힣'),
+                        'originalReused': sum(1 for c in used if ord(c) >= 0x80 and c in orig), 'fontBytes': len(blob)}
+
+    def encode(s):
+        b = bytearray()
+        for part in TOKEN.split(s):
+            if not part: continue
+            if part[0] == '[' and part[-1] == ']':
+                t = part[1:-1]
+                if t == 'sp': b.append(0x20)
+                elif t in SINGLE: b.append(ord(t))
+                else:
+                    arg = t[1:]
+                    b += bytes([ord(t[0]), ord(arg) if len(arg) == 1 else int(arg, 16)])
+                continue
+            for ch in part:
+                if ch == ' ': b.append(0x20)
+                elif ch == '　': b += b'\x81\x40'
+                elif ord(ch) < 0x80 or ch not in orig: b += struct.pack('>H', code[ch])
+                else: b += struct.pack('>H', orig[ch])
+        return bytes(b)
+
+    # layout: the lines of every page, as the text routine types them (src/text/text.js)
+    owidth = {}
+    def width(c):
+        if 0xa000 <= c < 0xe000: return widths[new[((c >> 8) - 0xa0) << 7 | (c & 0x7f)]]
+        return owidth.get(c, 15)
+    try:
+        font_ptr_data = None  # the original widths are read by the browser; here kana/kanji count as 15 or 16
+    except Exception: pass
+    for ch, c in orig.items(): owidth[c] = 16 if '一' <= ch <= '鿿' else 15
+    for c in (0x8175, 0x8176, 0x8177, 0x8178): owidth[c] = 7
+    if '--widths' in opt: owidth.update({int(k): v for k, v in json.load(open(opt['--widths'])).items()})
+    owidth[0x8140] = 2
+
+    hang = {0x8142, 0x8149, 0x8148, 0x8141, 0x8145, 0x8176, 0x8178, 0x816a, 0x8163, 0x815c, 0x8160} | {code[c] for c in HANG if c in code}
+    res = collections.defaultdict(list)
+    rev = {c: ch for ch, c in orig.items()}
+    NAME_W = {str(i + 1): len(n[3]) * (HANGUL_W + 1) for i, n in enumerate(NAMES)}
+    def layout(texts, dump=None):
+        """ids whose text runs below the last line of the page, the widest line end, and the
+        number of pages by their line count. dump: a list that takes (first id, lines) per page."""
+        over, widest, state, pages = [], 0, {}, collections.Counter()
+        def close(st):
+            if st['typed']:
+                pages[(st['y'] - TOP) // LINE + 1] += 1
+                if dump is not None: dump.append((st['first'], st['lines'] + [st['line']]))
+            st.update(typed=False, first=None, lines=[], line='')
+        for (rid, rec, eid), b in texts:
+            st = state.setdefault((rid, rec), {'x': LEFT, 'y': TOP, 'q': 0, 'k': 0, 'a': False, 'typed': False, 'first': None, 'lines': [], 'line': ''})
+            x, y, q, kin, after = st['x'], st['y'], st['q'], st['k'], st['a']
+            def down():
+                nonlocal x, y, after
+                x = LEFT; y += LINE; after = False; st['lines'].append(st['line']); st['line'] = ''
+            i = 0
+            while i < len(b):
+                c = b[i]
+                if c == 0x20:
+                    i += 1
+                    if after:   # a space counts only right after a glyph of the line
+                        n, last, j = 0, 0, i
+                        while j < len(b) and b[j] >= 0x78: last = width(b[j] << 8 | b[j + 1]) + 1; n += last; j += 2
+                        if n and x + SPACE + n - last >= RIGHT: down()
+                        else: x += SPACE; st['line'] += ' '
+                        after = False
+                    continue
+                if c in (0x72, 0x40):
+                    if c == 0x40 or not q: down()
+                    i += 1; continue
+                if c == 0x4c:
+                    if x >= 0x100: down()
+                    i += 1; continue
+                if c == 0x67:
+                    st['y'] = y; close(st); x, y, after = LEFT, TOP, False; i += 1; continue
+                if c < 0x78:
+                    if c == 0x6e:   # a name: counted with the default name's width
+                        if x >= RIGHT: down()
+                        st['line'] += '[n%s]' % chr(b[i + 1]); x += NAME_W.get(chr(b[i + 1]), 0); after = True; st['typed'] = True; st['first'] = st['first'] or eid
+                    i += 2 if chr(c) in 'cChsvnw' else 1; continue
+                g = c << 8 | b[i + 1]; i += 2
+                if g in (0x8175, 0x8177): q += 1
+                if g in (0x8176, 0x8178): q = max(0, q - 1)
+                if g in hang:
+                    if x >= RIGHT:
+                        if kin: down(); kin = 0
+                        else: kin = 1
+                else:
+                    if x >= RIGHT: down()
+                    kin = 0
+                x += width(g) + 1; widest = max(widest, x); after = True
+                st['typed'] = True; st['first'] = st['first'] or eid
+                st['line'] += new[((g >> 8) - 0xa0) << 7 | (g & 0x7f)] if 0xa000 <= g < 0xe000 else rev.get(g, '?')
+                if y > TOP + LINE * (LINES - 1) and (not over or over[-1] != eid): over.append(eid)
+            st['x'], st['y'], st['q'], st['k'], st['a'] = x, y, q, kin, after
+        for st in state.values(): close(st)
+        return over, widest, pages
+    kt, jt = [], []
+    for e, k in zip(items, ko):
+        rid, rec, off = (int(x) for x in e['id'].split('-'))
+        b = encode(k['ko'])
+        if b'\x00' in b: raise SystemExit('a zero byte in ' + e['id'])
+        res[rid].append([rec, off, base64.b64encode(b).decode()])
+        kt.append(((rid, rec, e['id']), b))
+        try: jt.append(((rid, rec, e['id']), encode(e['ja'])))
+        except KeyError: pass
+    lines = [] if '--lines' in opt else None
+    overflow, widest, kpages = layout(kt, lines)
+    jlines = [] if '--lines-ja' in opt else None
+    jo, _, jpages = layout(jt, jlines)
+    jover = set(jo)
+    report['pagesByLines'] = {'ko': dict(sorted(kpages.items())), 'ja': dict(sorted(jpages.items()))}
+    for key, pages in (('--lines', lines), ('--lines-ja', jlines)):   # the lines as the screen shows them (game text: keep the files out of this repository)
+        if pages is None: continue
+        with open(opt[key], 'w', encoding='utf-8') as f:
+            for first, ls in pages: f.write('%s (%d)\n' % (first, len(ls)) + ''.join('  |' + l + '\n' for l in ls))
+    report['pageOverflowAlsoInJapanese'] = sum(1 for i in overflow if i in jover)
+    overflow = [i for i in overflow if i not in jover]
+    report['pageOverflow'] = {'count': len(overflow), 'ids': overflow[:200]}
+    report['widestLineEndX'] = widest
+    sizes = {r: sum(len(base64.b64decode(t[2])) for t in v) for r, v in res.items()}
+    report['textBytes'] = sum(sizes.values())
+
+    patches = []
+    for ptr, old, at, name in NAMES:
+        if struct.unpack('<I', read(ptr, 4))[0] != old: raise SystemExit('the name pointer at 0x%x is not 0x%x' % (ptr, old))
+        patches += [[at, base64.b64encode(encode(name) + b'\0').decode()], [ptr, base64.b64encode(struct.pack('<I', at)).decode()]]
+    # the strings of the EXE and the flowchart titles
+    def encode_exe(t):
+        b = bytearray()
+        for part in re.split(r'(\[[^\]]*\]|\{[^}]*\})', t):
+            if not part: continue
+            if part[0] == '[' and part[-1] == ']': b += (b' ' if part == '[sp]' else part[1:-1].encode('ascii')); continue
+            if part[0] == '{' and part[-1] == '}':     # a special glyph of the original font (button pictures, word pictures)
+                b += struct.pack('>H', SPECIAL[part[1:-1]] if part[1:-1] in SPECIAL else int(part[2:-1], 16)); continue
+            for ch in part:
+                if ch == '\u3000': b += b'\x81\x40'
+                elif ord(ch) < 0x80 or ch not in orig: b += struct.pack('>H', code[ch])
+                else: b += struct.pack('>H', orig[ch])
+        return bytes(b)
+    def px(b):
+        n, i = 0, 0
+        while i + 1 < len(b):
+            c = b[i] << 8 | b[i + 1]
+            if b[i] >= 0x78: n += width(c) + 1
+            i += 2 if b[i] >= 0x78 or b[i:i + 2].isalnum() else 1
+        return n
+    # The character profiles (group "intro", opening with the name): lines are broken by hand ([rr]) and nothing wraps or
+    # clips them, so a Korean line longer than the original's longest runs off the screen. Such a
+    # line is broken again at its spaces (the words stay as they are; the page has room below).
+    NAME_PX = 3 * (HANGUL_W + 1)   # an inserted name counts as the default hero name
+    def line_px(t): return px(encode_exe(t)) + NAME_PX * len(re.findall(r'\[n[12]\]', t))
+    profile = lambda e: e.get('group') == 'intro' and e['ja'].startswith('[c4]')   # a profile opens with the name in colour 4
+    intro_w = max((line_px(l) for e in exe_list if profile(e) for l in e['ja'].split('[rr]')[2:]), default=0)
+    rewrapped = []
+    def rewrap(t):
+        out = []
+        for l in t.split('[rr]'):
+            if line_px(l) <= intro_w: out.append(l); continue
+            cur = ''
+            for word in l.split(' '):
+                if cur and line_px(cur + ' ' + word) > intro_w: out.append(cur); cur = word
+                else: cur = cur + ' ' + word if cur else word
+            out.append(cur)
+        return '[rr]'.join(out)
+    moved, pool, wider, chart = [], 0x80002000, [], {}
+    exe_bytes = b''.join(read(a, n) for a, n in ((0x80010000, 16180), (0x800677e8, 73752)))
+    done = 0
+    centre = []
+    for e in exe_list:
+        t = exe_ko.get(e['id'])
+        if e['id'].startswith('CHART-'): chart[int(e['id'][6:])] = encode_exe(t if t is not None and e.get('translate', True) else e['ja']); done += t is not None; continue
+        if not t or not e.get('translate', True): continue
+        if profile(e):
+            w = rewrap(t)
+            if w != t: rewrapped.append([e['id'], t.count('[rr]') - 1, w.count('[rr]') - 1, max(line_px(l) for l in w.split('[rr]'))]); t = w
+        b = encode_exe(t); addr = int(e['addr'], 16); done += 1
+        if px(b) > e['widthPx']: wider.append([e['id'], e['widthPx'], px(b)])
+        if addr in CENTRE_BOX:
+            x0, left, room = CENTRE_BOX[addr]; lines = [left + (room - px(l) + 1) // 2 - x0 for l in bytes(b).split(b'rr')]
+            if min(lines) < left - x0: raise SystemExit('%s does not fit its box: %s' % (e['id'], [px(l) for l in bytes(b).split(b'rr')]))
+            centre.append([addr, lines[0] if len(lines) == 1 else lines])
+        elif addr in CENTRE and px(b) < e['widthPx']: centre.append([addr, (e['widthPx'] - px(b)) // 2])
+        if len(b) <= e['roomBytes']: patches.append([addr, base64.b64encode(b + b'\0').decode()]); continue
+        at = pool; pool += (len(b) + 4) & ~3
+        if pool > CHART_POOL: raise SystemExit('the EXE strings do not fit the spare RAM')
+        patches.append([at, base64.b64encode(b + b'\0').decode()]); moved.append([addr, at])
+        want = struct.pack('<I', addr); i = exe_bytes.find(want)
+        while i >= 0:                              # pointers to the string in the EXE data
+            if i % 4 == 0: patches.append([(0x80010000 + i) if i < 16180 else 0x800677e8 + i - 16180, base64.b64encode(struct.pack('<I', at)).decode()])
+            i = exe_bytes.find(want, i + 1)
+    for a, t in culprit['display'].items():   # the name the judge stores on a match: kept in the pool, found through `moved` (menu/calls.js)
+        b = encode_exe(t); at = pool; pool += (len(b) + 4) & ~3
+        if len(b) > 12 or pool > CHART_POOL: raise SystemExit('culprit display name %s does not fit' % t)
+        patches.append([at, base64.b64encode(b + b'\0').decode()]); moved.append([int(a, 16), at])
+    # the ending list: 46 pairs of big-endian offsets (the "第N話：" label, the title) from the table's
+    # own address, then the strings. The game copies table and strings (1898 bytes) to its work
+    # buffer before reading them, so the Korean list is a whole new block written over that copy
+    # (menu/calls.js) and may be longer than the original.
+    table = read(ENDINGS, 8 * 46); offs = struct.unpack('>92I', table)
+    ends = {}
+    for o in offs:
+        e = o
+        while read(ENDINGS + e, 1) != b'\0': e += 1
+        ends[o] = e
+    ko_at = {int(e['addr'], 16): exe_ko[e['id']] for e in exe_list if e['id'].startswith('EXE-') and exe_ko.get(e['id'])}
+    endings_patch = None
+    if any(ENDINGS + o in ko_at for o in offs):
+        body, place = bytearray(), {}
+        for o in sorted(set(offs)):
+            place[o] = len(table) + len(body)
+            t = ko_at.get(ENDINGS + o)
+            body += (encode_exe(t) if t else read(ENDINGS + o, ends[o] - o)) + b'\0'
+        if len(table) + len(body) > 0xffff: raise SystemExit('the ending list is too long')
+        gone = {ENDINGS + o for o in offs}
+        patches[:] = [q for q in patches if q[0] not in gone and q[0] not in {n for a_, n in moved if a_ in gone}]
+        moved[:] = [q for q in moved if q[0] not in gone]
+        endings_patch = {'addr': ENDINGS, 'bytes': base64.b64encode(b''.join(struct.pack('>I', place[o]) for o in offs) + bytes(body)).decode()}
+        report['endingListBytes'] = len(table) + len(body)
+    chart_patch = None
+    if chart and any(i.startswith('CHART-') for i in exe_ko):
+        n = len(chart); body, offs = bytearray(), []
+        for i in range(n): offs.append(4 * n + len(body)); body += chart[i] + b'\0'
+        sec = b''.join(struct.pack('>I', o) for o in offs) + bytes(body)
+        # the memory after the table is in use, so a larger section goes to spare RAM: the hook
+        # writes it there and turns the flowchart's title pointer to it (src/menu/calls.js)
+        if len(sec) > CHART_ROOM: raise SystemExit('the flowchart titles are %d bytes, over %d' % (len(sec), CHART_ROOM))
+        chart_patch = {'addr': CHART_POOL, 'bytes': base64.b64encode(sec).decode()}
+    report['exeStrings'] = {'listed': len(exe_list), 'translated': done, 'moved': len(moved), 'profileLineWidth': intro_w, 'profilesRewrapped': rewrapped, 'widerThanOriginal': wider, 'flowchartBytes': len(base64.b64decode(chart_patch['bytes'])) if chart_patch else None}
+    # FLOW_X: a piece that starts its line is put at the left edge (x = 8: operand 7); the others get
+    # 0xffff, which the set-x command of the port leaves alone (src/scenario/basic.js), so they are
+    # typed where the piece before them ended. No widths are involved: an edited line flows as well.
+    operands = collections.defaultdict(list)
+    def set_x(x): return x // 5 * 4 + min(x % 5, 3)   # the operand v of the place x = v + (v >> 2)
+    for rid, rec, lead, offs, *col in FLOW_X:
+        for k, o in enumerate(offs):
+            at = col[0].get(o) if col else None
+            operands[str(rid)].append([rec, o - 2, set_x(8 + at * (HANGUL_W + 1)) if at is not None else 7 if lead is None and k == 0 else 0xffff])
+    report['flowX'] = dict(operands)
+    os.makedirs(out, exist_ok=True)
+    open(os.path.join(out, 'ko-font.bin'), 'wb').write(blob)
+    json.dump({'schema': 'kamaitachi.ps1.ko-script.v1', 'source': ja.get('source'), 'offsets': json.load(open(opt['--offsets'])), 'culprit': [[int(a, 16), [base64.b64encode(b''.join(struct.pack('>H', code[c]) for c in v)).decode() for v in vs]] for a, vs in culprit['names'].items()], 'glyphs': len(new), 'chars': ''.join(new), 'josaJoin': [JOIN], 'space': SPACE, 'hang': [code[c] for c in HANG if c in code],
+               'patches': patches, 'moved': moved, 'chart': chart_patch, 'endings': endings_patch,
+               'resources': {str(r): v for r, v in sorted(res.items())},
+               # the original font's characters and codes: the owner's edits are encoded in the browser (src/ko-text.js)
+               'orig': {'chars': ''.join(orig), 'codes': list(orig.values())}, 'names': NAME_W, 'operands': dict(operands), 'centre': centre}, open(os.path.join(out, 'ko-script.json'), 'w'), separators=(',', ':'))
+    json.dump(report, open(os.path.join(out, 'ko-report.json'), 'w'), ensure_ascii=False, indent=1)
+    if '--editor' in opt:   # the dialogue editor's data (tools/text-editor): game text, so it stays out of this repository
+        json.dump({'schema': 'kamaitachi.ps1.ko-editor.v1', 'widths': {str(c): w for c, w in sorted(owidth.items())},
+                   'items': [[e['id'], e['ja'], translated[e['id']]] for e in items]},
+                  open(opt['--editor'], 'w', encoding='utf-8'), ensure_ascii=False, separators=(',', ':'))
+    print(json.dumps({k: v for k, v in report.items() if k not in ('pageOverflow',)}, ensure_ascii=False))
+    print('page overflow', len(overflow), overflow[:20])
+
+
+if __name__ == '__main__':
+    main()

@@ -3,17 +3,33 @@ import { Screen } from './render.js';
 import { Sn4Vm } from './sn4.js';
 import { LoopingMusic } from './music.js';
 import { SePlayer } from './se-player.js';
+import { psychometryRegion } from './psychometry-grid.js';
+import { openSaves, varsToArray, arrayToVars, GAME_ID } from './save.js';
 
-const canvas = document.querySelector('canvas');
+const canvas = document.querySelector('#screen');
 const movie = document.querySelector('#movie');
-const cover = document.querySelector('#cover');
-const start = document.querySelector('#start');
+const loading = document.querySelector('#loading');
 const status = document.querySelector('#status');
-const shell = document.querySelector('main');
 const menuButton = document.querySelector('#menu-button');
-const gameMenu = document.querySelector('#game-menu');
 const asset = name => new URL('assets/' + name, import.meta.url).href;
 const requestedLanguage = new URLSearchParams(location.search).get('lang') === 'ja' ? 'ja' : 'ko';
+// shared/player/start-gate.js: every port starts at once (새로하기 / 이어하기 first); each tap or key wakes
+// the sound. Without the hub's /shared/ the build starts straight away.
+async function startImmediately() {
+  try {
+    const {startGate} = await import('/shared/player/start-gate.js');
+    await startGate(document.querySelector('#stage'), {onPress: () => { unlockAudio(); }});
+  } catch (error) {
+    console.warn('Start gate unavailable', error);
+    document.querySelector('#loading').hidden = true;
+  }
+}
+const SCENEPACK_EFFECT_HANDLER = Object.freeze({
+  0x05:0x1abb18,0x08:0x1abc38,0x09:0x1abc88,0x0a:0x1abcd8,
+  0x0b:0x1abcf0,0x0e:0x1abd78,0x12:0x1abee8,0x13:0x1abf18,
+  0x16:0x1abfc8,0x19:0x1ac088,0x1a:0x1ac0e8,0x1b:0x1ac138,
+  0x1c:0x1ac150,0x1f:0x1ac1b8,0x23:0x1ac210,0x24:0x1ac228,
+});
 // L= comments in the Special Box Vorbis tracks, in 48 kHz PCM frames.
 const loopFrames = {
   'k1a001.ogg': 1017889, 'k1a004.ogg': 36359, 'k2h002.ogg': 461348,
@@ -22,34 +38,46 @@ const loopFrames = {
 const music = new LoopingMusic({
   asset, loopFrames, onBlocked: () => { status.textContent = '오디오를 재생하려면 화면을 눌러 주세요.'; },
 });
-let se = null, seStarting = null;
+let se = null, seStarting = null, seContext = null, seGain = null;
 const pendingSe = [];
 async function unlockAudio() {
   music.unlock();
+  if (seContext && seContext.state !== 'running') seContext.resume().catch(() => {});
   if (!seStarting) seStarting = (async () => {
-    const context = new AudioContext({sampleRate:48000});
-    await context.resume();
-    se = await SePlayer.create(context, name => asset('se/' + name));
+    seContext = new AudioContext({sampleRate:48000});
+    seContext.resume().catch(() => {});
+    seGain = seContext.createGain();
+    seGain.gain.value = masterVolume;
+    seGain.connect(seContext.destination);
+    se = await SePlayer.create(seContext, name => asset('se/' + name), seGain);
     for (const command of pendingSe.splice(0)) se.command(command);
     return se;
-  })().catch(error => { console.warn('SE unavailable', error); seStarting = null; });
+  })().catch(error => { console.warn('SE unavailable', error); seStarting = null; seContext = null; });
   return seStarting;
 }
 const cues = Object.fromEntries(['confirm','cancel','move'].map(name => [name, new Audio(asset(name + '.wav'))]));
-const saveKey = 'soundnovel.slps25132.opening.v1';
-let saved = readSave();
+// Saves (save.js): the story save on the chosen card, the carry-over variables written at each ending,
+// and the web-only suspend slot, kept by the shared store and synced through /sync.
+const saves = await openSaves();
+let saved = saves.latest();
+// The last place play can resume from: each choice or input screen (SN4 label and the command index).
+let resumePoint = null, systemDue = false;
 let data, screen, groups, editor, pages, sn4;
 let sn4Mode = false, sn4Event, sn4WaitUntil = 0;
+let specialInput = null;
 // EE 0x112610: one character every max(1, speed) frames; CommandSpeed stores speed at +0x2a4.
 let sn4SpeedMarks = [], sn4Shown = '';
 const sn4Style = {speed:1, letterSpacing:0, lineSpacing:7, fontType:0, fontSize:33,
   marginLeft:32, marginRight:32, marginTop:32, marginBottom:32,
   moves:[], lines:[], styles:[], effects:[], centers:[], rubies:[], scene:null, scenePack:null, caption:null, retainMovie:false,
-  sceneCommands:[], unknown:[]};
+  sceneCommands:[], unknown:[], sceneFx:{layers:new Map(), filters:new Map(), models:new Map(), resources:new Map(),
+    screen:null, staffRoll:null, trigger:null}};
 let scene = 'loading', index = 0, role = 0, page = 0, revealed = 0;
+const KOREAN_DEFAULT_NAMES = ['토오루', '마리'];
 let names = [], autosave = false, slot = 0, entered = 0, lastFrame, userNotice = '';
 let idleMovie = 'opening';
-let menuOpen = false, filled = false;
+// The player's volume (shell.js slider, 0..1) over every sound of the game.
+let masterVolume = 1;
 let textWaits = [];
 let textSpeeds = [];
 let textColors;
@@ -60,6 +88,26 @@ const heldArrows = new Set();
 const keyboardEdits = new Set();
 const editPriority = ['circle', 'cross', 'triangle'];
 const confirmPriority = ['circle', 'cross', 'square', 'up', 'down'];
+const criminalHeads = Array.from('あかさたなはまやらわがざだばぱ');
+const criminalRows = [
+  Array.from('あかさたなはまやらわがざだばぱ'),
+  Array.from('いきしちにひみ　りゐぎじぢびぴ'),
+  Array.from('うくすつぬふむゆる　ぐずづぶぷ'),
+  Array.from('えけせてねへめ　れゑげぜでべぺ'),
+  Array.from('おこそとのほもよろをごぞどぼぽ'),
+  ['ぁ','','','っ','','','', 'ゃ','', 'ー','','','','',''],
+];
+
+function beginSpecial(event) {
+  specialInput = {kind:event.kind, targets:event.targets ?? [], fallback:event.fallback,
+    panels:event.panels ?? [], index:0, x:320, y:224, row:0, column:0, value:'', buttons:[], length:event.length};
+  enter(event.kind === 'click-map' ? 'click-map' :
+    event.kind === 'criminal-name' ? 'criminal-name' : event.kind === 'cipher' ? 'cipher' : 'panel');
+}
+
+function criminalGlyph() {
+  return criminalRows[specialInput.row][specialInput.column] || '';
+}
 
 function titleAction(actions) {
   const confirm = actions.find(key => ['circle', 'start', 'l2'].includes(key));
@@ -94,41 +142,16 @@ function enter(next, selected = 0) {
   entered = performance.now();
   canvas.dataset.scene = next;
   userNotice = '';
-  closeMenu();
-  menuButton.hidden = !['story','complete','choice','choice-wait','autosave','slot',
-    'file-select','created','save-note','name','confirm'].includes(next);
+  // The corner button (the shared shell's, as in the PS1 port): × inside the game's own screens that
+  // go back with ×; elsewhere the original has no menu this build opens, so it rests unavailable.
+  // It is hidden during the logo and movies, and the quick-save and report buttons beside it with it.
+  menuButton.hidden = !['title','story','complete','choice','choice-wait','autosave','slot',
+    'file-select','created','save-note','name','confirm','click-map','panel','criminal-name','cipher'].includes(next);
+  const back = ['autosave','slot','file-select','name','confirm'].includes(next) ||
+    (next === 'criminal-name') || (next === 'panel' && Boolean(specialInput?.fallback));
+  menuButton.classList.toggle('unavailable', !back);
+  menuButton.classList.toggle('is-back', back);
   announce();
-}
-
-function closeMenu() {
-  menuOpen = false;
-  gameMenu.hidden = true;
-  menuButton.classList.remove('is-back');
-}
-
-function openMenu() {
-  if (!['story','complete','choice','choice-wait'].includes(scene)) return;
-  menuOpen = true;
-  gameMenu.hidden = false;
-  menuButton.classList.add('is-back');
-}
-
-async function toggleFullscreen() {
-  if (filled) {
-    filled = false;
-    document.documentElement.classList.remove('filled');
-    return;
-  }
-  if (document.fullscreenElement) return document.exitFullscreen();
-  if (document.fullscreenEnabled && shell.requestFullscreen) {
-    try {
-      await shell.requestFullscreen({navigationUI:'hide'});
-      await globalThis.screen.orientation?.lock?.('landscape').catch(() => {});
-      return;
-    } catch { /* iPhone and embedded browsers use the rotated fill fallback. */ }
-  }
-  filled = true;
-  document.documentElement.classList.add('filled');
 }
 
 function announce() {
@@ -148,6 +171,33 @@ function choiceRoute(target) {
 
 function playMusic(file, options) {
   music.play(file, options);
+}
+
+// ScenePack executor dispatches op 0x00..0x25 through the EE jump table at
+// 0x00220380 (dispatcher 0x001AB960). Preserve its layer/resource lifetime and
+// timed screen effects even where the PS2-specific 3D subsystem has no web peer.
+function applySceneEffect(name, command) {
+  const fx = sn4Style.sceneFx, op = command.op, now = performance.now();
+  if (!SCENEPACK_EFFECT_HANDLER[op]) throw new Error(`Unmapped ScenePack effect ${op}`);
+  const frames = command.fadeFrames ?? command.data?.values?.[0] ?? 0;
+  const timed = {op, name, command, ee:SCENEPACK_EFFECT_HANDLER[op], start:now, end:now + frames * 1000 / 60};
+  if (op === 0x05) { fx.layers.clear(); fx.filters.clear(); }
+  else if (op === 0x08) fx.layers.set(command.layer ?? 0, timed);
+  else if (op === 0x09) fx.layers.delete(command.layer ?? 0);
+  else if (op === 0x0a) fx.filters.set(command.layer ?? 0, timed);
+  else if (op === 0x0b) fx.filters.set(command.id, timed);
+  else if (op === 0x0e) return Math.max(0, ...[...fx.layers.values(), ...fx.filters.values()].map(x => Math.ceil((x.end - now) * 60 / 1000)));
+  else if (op === 0x12) fx.screen = {...timed, from:0, to:1};
+  else if (op === 0x13) fx.screen = {...timed, from:1, to:0};
+  else if (op === 0x16) { fx.screen = null; fx.filters.clear(); }
+  else if (op === 0x19) fx.resources.set(command.id, command.file);
+  else if (op === 0x1a) fx.trigger = command.id;
+  else if (op === 0x1b) fx.trigger = null;
+  else if (op === 0x1c) fx.models.set(command.file, {motion:command.motion, vector:command.vector});
+  else if (op === 0x1f) fx.models.clear();
+  else if (op === 0x23) fx.staffRoll = command.data;
+  else if (op === 0x24) fx.resources.set(command.file, command.file);
+  return command.wait ? frames + 1 : 0;
 }
 
 function applyScenePack(name) {
@@ -192,12 +242,10 @@ function applyScenePack(name) {
       case 0x0c: case 0x0d: case 0x0f: case 0x10: case 0x11:
         if (se) se.command(command); else pendingSe.push(command);
         break;
-      // Preserve all non-audio effects in source order and continue. Renderer
-      // hooks can consume these records as their EE semantics are confirmed.
       case 0x05: case 0x08: case 0x09: case 0x0a: case 0x0b:
       case 0x0e: case 0x12: case 0x13: case 0x16: case 0x19:
       case 0x1a: case 0x1b: case 0x1c: case 0x1f: case 0x23: case 0x24:
-        sn4Style.unknown.push({name, command}); break;
+        wait = Math.max(wait, applySceneEffect(name, command)); break;
       default:
         sn4Style.unknown.push({name, command, kind:'unknown-op'}); break;
     }
@@ -214,7 +262,7 @@ function stopMusic(options) {
 function cue(name) {
   const sound = cues[name];
   sound.currentTime = 0;
-  sound.volume = .6;
+  sound.volume = .6 * masterVolume;
   sound.play().catch(() => {});
 }
 
@@ -232,11 +280,20 @@ function playMovie(file, next, loop = false) {
   movie.loop = loop;
   movie.onerror = () => fail('게임 영상을 불러오지 못했습니다.');
   movie.onended = next;
-  movie.play().catch(error => { if (error.name !== 'AbortError') fail('브라우저에서 영상을 재생할 수 없습니다.'); });
+  movie.muted = false;
+  movie.play().catch(error => {
+    if (error.name === 'NotAllowedError') {
+      movie.muted = true;
+      movie.play().catch(() => {});
+      const unmute = () => { movie.muted = false; };
+      for (const type of ['pointerdown', 'keydown']) addEventListener(type, unmute, {once:true, capture:true});
+      return;
+    }
+    if (error.name !== 'AbortError') fail('브라우저에서 영상을 재생할 수 없습니다.');
+  });
 }
 
 function intro() {
-  cover.hidden = true;
   canvas.focus();
   enter('logo');
   playMovie('chunlogo', () => { stopMovie(); enter('copyright'); });
@@ -251,6 +308,8 @@ function opening(attract = false) {
 }
 
 function title(animate) {
+  saved = saves.latest();
+  sn4Mode = false;
   pendingSe.length = 0;
   se?.stop(null);
   playMusic(data.titleMusic);
@@ -263,24 +322,61 @@ function title(animate) {
   }
 }
 
-function readSave() {
-  try {
-    const value = JSON.parse(localStorage.getItem(saveKey));
-    return Array.isArray(value?.names) && value.names.length === 2 &&
-      value.names.every(n => typeof n === 'string' && n.length > 0 && n.length <= 6) ? value : null;
-  } catch { return null; }
-}
 
 function newGame() {
   stopMovie(); stopMusic();
-  names = [...data.defaults];
+  // The ELF's defaults are 透 / 真理; the Korean build (data.language 'ko') starts with their Korean names.
+  names = data.language === 'ko' ? [...KOREAN_DEFAULT_NAMES] : [...data.defaults];
   editor = null;
   enter('autosave');
 }
 
 function beginStory() {
-  startSn4('my01_0000');
+  resumePoint = null;
+  // The carry-over variables of the chosen card (the original reads its SYSTEM file); none without a card.
+  startSn4('my01_0000', autosave ? saves.system(slot) : null);
 }
+
+// Snapshot at a choice or input screen: the command that stopped, so resuming shows it again.
+function markResume(event) {
+  resumePoint = {names:[...names], resume:{label:sn4.label, pc:Math.max(0, sn4.pc - 1)},
+    variables:varsToArray(sn4.variables), scene:sn4Style.scene ?? null, music:music.file ?? null,
+    // A looping scene movie (ScenePack .m2v) stands behind the text instead of the still.
+    movie:sn4Style.retainMovie && !movie.hidden && movie.loop ? decodeURIComponent(movie.src.split('/').at(-1)).replace(/\.mp4$/, '') : null};
+  if (autosave) { if (saves.writeStory(slot, resumePoint)) saved = saves.latest(); }
+}
+
+// EndFlow writes the variable block after the ending's own flag updates, which run in the same frame:
+// write it at the next stop.
+function writeSystemIfDue() {
+  if (!systemDue) return;
+  systemDue = false;
+  if (autosave) saves.writeSystem(slot, varsToArray(sn4.variables));
+}
+
+function resumeAt(point) {
+  names = [...point.names];
+  stopMovie();
+  sn4Mode = true;
+  sn4.reset(point.resume.label);
+  sn4.pc = point.resume.pc;
+  if (point.variables) sn4.variables = arrayToVars(point.variables);
+  sn4.setNames(names);
+  sn4Style.scene = point.scene ?? null;
+  sn4Style.retainMovie = Boolean(point.movie);
+  if (point.movie) playMovie(point.movie, null, true);
+  if (point.music) playMusic(point.music); else stopMusic();
+  resumePoint = null;
+  showSn4(sn4.run());
+}
+
+// Web only: the player left the page (another device can carry on from here).
+function suspend() {
+  if (!sn4Mode || !resumePoint) return;
+  saves.writeSuspend({...resumePoint, card:slot, autosave});
+}
+addEventListener('pagehide', suspend);
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') suspend(); });
 
 function storyText() {
   if (sn4Mode) return sn4Event?.text?.trimEnd() ?? '';
@@ -289,6 +385,8 @@ function storyText() {
 
 function showSn4(event) {
   sn4Event = event;
+  writeSystemIfDue();
+  if (event.type === 'choice' || event.type === 'special') markResume(event);
   if (event.type === 'break') {
     // CommandBreak tears down the active scenario state and yields the EE
     // frame. end05_0000 contains no following command, so return to title.
@@ -300,6 +398,8 @@ function showSn4(event) {
     enter('name');
   } else if (event.type === 'choice') {
     enter('choice');
+  } else if (event.type === 'special') {
+    beginSpecial(event);
   } else {
     // Text after 0x09 Pause continues the same page: keep what is already shown
     // and type only the new characters. The wait (0x50/0x51) starts once typed.
@@ -315,9 +415,10 @@ function showSn4(event) {
   }
 }
 
-function startSn4(label) {
+function startSn4(label, variables = null) {
   sn4Mode = true;
   sn4.reset(label);
+  if (variables) sn4.variables = arrayToVars(variables);
   sn4.setNames(names);
   showSn4(sn4.run());
 }
@@ -540,7 +641,7 @@ function makePages(s) {
 }
 
 function step(key) {
-  if (scene === 'ready') { if (['circle','start'].includes(key)) intro(); return; }
+  if (scene === 'ready') return;
   if (['logo','copyright','opening','attract','title-entry'].includes(scene)) {
     if (['circle','start','l2'].includes(key)) title(false);
     return;
@@ -557,10 +658,9 @@ function step(key) {
       cue('confirm');
       if (!index) newGame();
       else if (index === 1 && saved) {
-        names = [...saved.names]; stopMovie(); playMusic('k1a001.ogg');
-        slot = saved.slot;
+        slot = saved.card;
         autosave = true;
-        startSn4('my01_0070');
+        resumeAt(saved);
       } else {
         userNotice = index === 1 ? '이 브라우저에 이어할 기록이 없습니다.' : '이 빌드는 스키 여행 회상의 첫 분기까지 플레이할 수 있습니다.';
         status.textContent = userNotice;
@@ -584,6 +684,50 @@ function step(key) {
   }
   if (scene === 'created') { if (key === 'circle') enter('save-note'); return; }
   if (scene === 'save-note') { if (key === 'circle') beginStory(); return; }
+  if (scene === 'click-map') {
+    const delta = {left:[-3,0],right:[3,0],up:[0,-3],down:[0,3]}[key];
+    if (delta) {
+      specialInput.x = Math.max(0, Math.min(640, specialInput.x + delta[0]));
+      specialInput.y = Math.max(0, Math.min(448, specialInput.y + delta[1]));
+    } else if (key === 'circle') {
+      const picked = psychometryRegion(specialInput.x, specialInput.y);
+      cue('confirm'); showSn4(sn4.chooseSpecial(picked));
+    }
+    return;
+  }
+  if (scene === 'panel') {
+    const length = specialInput.targets.length;
+    if (key === 'left') specialInput.index = (specialInput.index - 1 + length) % length;
+    else if (key === 'right') specialInput.index = (specialInput.index + 1) % length;
+    else if (key === 'up') specialInput.index = (specialInput.index - 4 + length) % length;
+    else if (key === 'down') specialInput.index = (specialInput.index + 4) % length;
+    else if (key === 'circle') { cue('confirm'); showSn4(sn4.chooseSpecial(specialInput.index)); }
+    else if (key === 'cross' && specialInput.fallback) { cue('cancel'); showSn4(sn4.chooseSpecial(-1)); }
+    return;
+  }
+  if (scene === 'criminal-name') {
+    if (key === 'left') specialInput.column = (specialInput.column + 1) % 15;
+    else if (key === 'right') specialInput.column = (specialInput.column + 14) % 15;
+    else if (key === 'up') specialInput.row = (specialInput.row + 5) % 6;
+    else if (key === 'down') specialInput.row = (specialInput.row + 1) % 6;
+    else if (key === 'circle') {
+      const glyph = criminalGlyph();
+      if (glyph && specialInput.value.length < 8) specialInput.value += glyph;
+    } else if (key === 'cross') specialInput.value = specialInput.value.slice(0, -1);
+    else if (key === 'triangle' && specialInput.value) {
+      cue('confirm'); showSn4(sn4.submitCriminalName(specialInput.value));
+    }
+    return;
+  }
+  if (scene === 'cipher') {
+    if (['cross','triangle','square'].includes(key)) {
+      specialInput.buttons.push(key);
+      if (specialInput.buttons.length === specialInput.length) {
+        cue('confirm'); showSn4(sn4.submitCipher(specialInput.buttons));
+      }
+    }
+    return;
+  }
   if (scene === 'choice') {
     if (key === 'up' || key === 'down') {
       const length = sn4Mode ? sn4Event.targets.length : pages[page].choice.length;
@@ -645,14 +789,11 @@ function step(key) {
         showSn4(sn4.resume(editor.value));
       } else { page++; printPage(); }
       if (role === 1 && autosave) {
-        const checkpoint = {names:[...names], slot};
-        try {
-          localStorage.setItem(saveKey, JSON.stringify(checkpoint));
-          saved = checkpoint;
-        } catch {
-          userNotice = '자동 저장에 실패했습니다. 현재 게임은 계속할 수 있습니다.';
-          announce();
-        }
+        // Before the first choice the story save resumes where the two names have been given.
+        const checkpoint = {names:[...names], resume:{label:'my01_0070', pc:0}, variables:varsToArray(sn4.variables),
+          scene:null, music:'k1a001.ogg'};
+        if (saves.writeStory(slot, checkpoint)) saved = saves.latest();
+        else { userNotice = '자동 저장에 실패했습니다. 현재 게임은 계속할 수 있습니다.'; announce(); }
       }
     }
   }
@@ -721,6 +862,13 @@ function drawStory(time) {
     ? Math.max(0, measured.y + 33 * finalStyle.scale - 448) : 0;
   const end = screen.text(text, x, y - scrollY, textOptions);
   screen.c.restore();
+  const fade = sn4Mode && sn4Style.sceneFx.screen;
+  if (fade) {
+    const span = Math.max(1, fade.end - fade.start);
+    const progress = Math.max(0, Math.min(1, (performance.now() - fade.start) / span));
+    const alpha = fade.from + (fade.to - fade.from) * progress;
+    if (alpha > 0) screen.rect(0, 0, 640, 448, `rgba(0,0,0,${alpha})`);
+  }
   if (revealed >= storyText().length) {
     const tick = Math.floor(time * 6);
     if (block.book) {
@@ -734,6 +882,52 @@ function drawStory(time) {
       screen.sprite('mark', tick % 8 * 16, 0, 16, 24, mark.x, mark.y);
     }
   }
+}
+
+function drawSpecialInput(time) {
+  screen.background(sn4Style.scene ?? 'my0645', true, time);
+  if (scene === 'click-map') {
+    screen.rect(0, 0, 640, 34, 'rgba(0,0,0,.72)');
+    screen.text('方向キーで調べる場所を選び、○で決定', 18, 5, {scale:.72});
+    screen.c.strokeStyle = '#fff'; screen.c.lineWidth = 2;
+    screen.c.beginPath();
+    screen.c.moveTo(specialInput.x - 10, specialInput.y); screen.c.lineTo(specialInput.x + 10, specialInput.y);
+    screen.c.moveTo(specialInput.x, specialInput.y - 10); screen.c.lineTo(specialInput.x, specialInput.y + 10);
+    screen.c.stroke();
+    return;
+  }
+  if (scene === 'panel') {
+    screen.rect(40, 35, 560, 378, 'rgba(0,0,0,.62)');
+    specialInput.targets.forEach((target, i) => {
+      const x = 68 + i % 4 * 134, y = 68 + Math.floor(i / 4) * 78;
+      if (i === specialInput.index) screen.rect(x - 5, y - 5, 124, 58, 'rgba(90,150,220,.78)');
+      screen.text(String(i + 1), x + 44, y + 5, {scale:.88});
+    });
+    screen.text('○ 決定　× 戻る', 220, 382, {scale:.72});
+    return;
+  }
+  if (scene === 'criminal-name') {
+    screen.rect(34, 26, 572, 390, 'rgba(0,0,0,.70)');
+    screen.text(`犯人の名前：${specialInput.value}`, 55, 40, {scale:.82});
+    for (let column = 0; column < 15; column++) {
+      const x = 548 - column * 33;
+      screen.text(criminalHeads[column], x, 84, {scale:.72});
+      for (let row = 0; row < 6; row++) {
+        const y = 126 + row * 39;
+        if (column === specialInput.column && row === specialInput.row)
+          screen.rect(x - 5, y - 4, 34, 35, 'rgba(90,150,220,.80)');
+        const glyph = criminalRows[row][column];
+        if (glyph) screen.text(glyph, x, y, {scale:.78});
+      }
+    }
+    screen.text('○ 入力　× 削除　△ 終了', 176, 381, {scale:.70});
+    return;
+  }
+  screen.rect(68, 116, 504, 204, 'rgba(0,0,0,.72)');
+  screen.text('暗号を入力してください', 176, 142, {scale:.86});
+  const marks = specialInput.buttons.map(button => ({cross:'×',triangle:'△',square:'□'})[button]).join(' ');
+  screen.text(marks, 104, 205, {scale:.83, max:440});
+  screen.text(`× / △ / □　${specialInput.buttons.length}/${specialInput.length}`, 181, 278, {scale:.70});
 }
 
 function frame(now) {
@@ -751,6 +945,7 @@ function frame(now) {
     screen.title(index, Boolean(saved));
     if (now - entered >= 4801 * 1000 / 59.94) opening(true);
   } else if (['autosave','slot','file-select','created','save-note'].includes(scene)) screen.autosave(scene, index, slot, names[0]);
+  else if (['click-map','panel','criminal-name','cipher'].includes(scene)) drawSpecialInput(time);
   else if (scene === 'choice-wait') {
     drawStory(time);
     if (now - entered >= pages[page].choiceWait * 1000 / 59.94) enter('choice');
@@ -829,13 +1024,16 @@ function frame(now) {
 }
 
 function fail(message) {
-  stopMovie(); stopMusic(); enter('error'); cover.hidden = false;
-  start.textContent = message + ' 다시 시도';
-  start.disabled = false;
+  stopMovie(); stopMusic(); enter('error');
+  loading.hidden = false; loading.textContent = '';
+  const retry = document.createElement('button');
+  retry.type = 'button'; retry.textContent = message + ' 다시 시도';
+  retry.addEventListener('click', () => location.reload());
+  loading.append(retry);
 }
 
 const keys = {ArrowLeft:'left',ArrowRight:'right',ArrowUp:'up',ArrowDown:'down',Enter:'circle',
-  Space:'start',KeyX:'circle',KeyZ:'cross',Escape:'cross',KeyA:'square',KeyS:'triangle',KeyQ:'l1',KeyW:'r1',Digit2:'l2'};
+  Space:'start',KeyZ:'circle',KeyX:'cross',Escape:'cross',KeyA:'square',KeyS:'triangle',KeyQ:'l1',KeyW:'r1',Digit2:'l2'};
 for (const type of ['pointerdown', 'keydown']) addEventListener(type, unlockAudio, {capture:true, once:true});
 document.addEventListener('keydown', e => {
   const action = keys[e.code];
@@ -866,9 +1064,9 @@ window.addEventListener('blur', () => {
 });
 function canvasPoint(event) {
   const box = canvas.getBoundingClientRect();
-  // Portrait "filled" mode rotates <main> by 90deg (player.css): the canvas x axis
+  // Portrait "filled" mode turns the player a quarter round (shell.css): the canvas x axis
   // then runs down the screen and its y axis runs right to left.
-  if (filled && matchMedia('(orientation: portrait)').matches)
+  if (document.documentElement.classList.contains('filled') && innerHeight > innerWidth)
     return {x:(event.clientY - box.top) * 640 / box.height,
       y:(box.right - event.clientX) * 448 / box.width};
   return {x:(event.clientX - box.left) * 640 / box.width,
@@ -876,13 +1074,37 @@ function canvasPoint(event) {
 }
 
 function touchGame(event) {
-  if (menuOpen) return;
   const {x, y} = canvasPoint(event);
   // render.js footer(): ○ 決定 at 112..180 and × 戻る at 197..267 on the memory-card,
   // slot and name-confirm screens (the created/save-note screens show ○ only).
   if (y >= 386 && y < 420 && ['autosave','slot','file-select','created','save-note','confirm'].includes(scene)) {
     if (x >= 104 && x < 188) { step('circle'); return; }
     if (x >= 188 && x < 275 && !['created','save-note'].includes(scene)) { step('cross'); return; }
+  }
+  if (scene === 'click-map') {
+    specialInput.x = x; specialInput.y = y; step('circle'); return;
+  }
+  if (scene === 'panel') {
+    const column = Math.floor((x - 63) / 134), row = Math.floor((y - 63) / 78);
+    const picked = row * 4 + column;
+    if (column >= 0 && column < 4 && picked >= 0 && picked < specialInput.targets.length) {
+      specialInput.index = picked; step('circle');
+    } else if (y >= 370 && specialInput.fallback) step('cross');
+    return;
+  }
+  if (scene === 'criminal-name') {
+    if (y >= 116 && y < 360 && x >= 78 && x <= 570) {
+      specialInput.column = Math.max(0, Math.min(14, Math.round((548 - x) / 33)));
+      specialInput.row = Math.max(0, Math.min(5, Math.floor((y - 116) / 39)));
+      step('circle');
+    } else if (y >= 370) {
+      if (x < 280) step('circle'); else if (x < 395) step('cross'); else step('triangle');
+    }
+    return;
+  }
+  if (scene === 'cipher') {
+    if (y >= 250) step(x < 214 ? 'cross' : x < 426 ? 'triangle' : 'square');
+    return;
   }
   if (scene === 'title') {
     if (y >= 360) { index = Math.max(0, Math.min(2, Math.floor((x - 79) / 152))); step('circle'); }
@@ -939,26 +1161,49 @@ function touchGame(event) {
   step('circle');
 }
 canvas.addEventListener('click', touchGame);
-menuButton.addEventListener('click', event => {
-  event.stopPropagation();
-  if (menuOpen) closeMenu();
-  else if (['story','complete','choice','choice-wait'].includes(scene)) openMenu();
-  else step('cross');
+for (const type of ['pointerdown', 'pointerup', 'click']) menuButton.addEventListener(type, event => event.stopPropagation());
+menuButton.addEventListener('click', () => {
+  if (menuButton.classList.contains('is-back')) step('cross');
   canvas.focus();
 });
-gameMenu.addEventListener('click', event => {
-  const action = event.target.dataset.menu;
-  if (action === 'resume') closeMenu();
-  else if (action === 'fullscreen') { closeMenu(); toggleFullscreen(); }
-  else if (action === 'title') { closeMenu(); title(false); }
+// 오류 신고 (/shared/player/report-button.js): where the player is and the sentence on screen.
+globalThis.soundnovelReport = () => ({
+  scene: sn4Mode ? `${sn4.label}+${sn4.pc}` : scene,
+  text: scene === 'choice' && sn4Mode ? sn4Event.targets.map(t => sn4.choiceText(t)).join(' / ') : storyText(),
 });
-document.addEventListener('fullscreenchange', () => {
-  if (!document.fullscreenElement) globalThis.screen.orientation?.unlock?.();
-});
-start.addEventListener('click', () => {
-  if (scene === 'error') location.reload();
-  else intro();
-});
+// Saves (shared/save/sync-ui.js, as every port): the quick-save disk and the report button beside the
+// corner button, background sync of a linked device. Only when the hub serves /shared/.
+if (saves.store) {
+  saves.store.subscribe(event => { if (event.type === 'remote') saved = saves.latest(); });
+  const boot = {
+    canContinue:() => Boolean(saves.suspended()),
+    get titleActive() { return scene === 'title'; },
+    continueSuspended:() => {
+      const point = saves.suspended();
+      if (!point || scene !== 'title') return false;
+      slot = point.card ?? 0; autosave = Boolean(point.autosave);
+      resumeAt(point);
+      return true;
+    },
+    continueLabel:'마지막 장면에서 이어하기',
+    // Quick save (/shared/save/quick-save.js) calls this just before it uploads: the current resume point.
+    saveNow:() => suspend(),
+  };
+  // 이어하기 before the game (start-choice.js) puts a typed code's saves straight into this store.
+  globalThis.soundnovelSave = {store:saves.store, gameId:GAME_ID, boot};
+  import('/shared/save/sync-ui.js').then(m => m.mountSyncUi({api:globalThis.soundnovelSave}))
+    .catch(error => console.warn('Save dialog unavailable', error));
+}
+// shell.js (the shared player bar): volume and the press that wakes the sound.
+globalThis.kamaitachi2Ps2 = {
+  setVolume(level) {
+    masterVolume = Math.max(0, Math.min(1, level));
+    music.setMaster(masterVolume);
+    if (seGain) seGain.gain.value = masterVolume;
+    movie.volume = masterVolume;
+  },
+  resume: () => unlockAudio(),
+};
 try {
   const localized = await fetch(asset(`sn4-${requestedLanguage}.json`));
   const sn4Request = localized.ok ? localized : await fetch(asset('sn4.json'));
@@ -1004,6 +1249,7 @@ try {
     caption:value => { sn4Style.caption = value; return applyScenePack(value); },
     command:(name, args, context) => {
       sn4Style.sceneCommands.push({kind:'sn4', name, args, ...context});
+      if (name === 'End') systemDue = true;
       // EE 0x136f30: measure the rest of the line and move the cursor by half the free width.
       if (name === 'Center') sn4Style.centers.push(sn4.text.length);
       else if (name === 'Default') {
@@ -1022,6 +1268,10 @@ try {
   // retained only for old save compatibility and is never used for new play.
   pages = [];
   screen = new Screen(canvas, images, data);
-  enter('ready'); start.disabled = false; start.textContent = '게임 시작';
+  enter('ready');
   requestAnimationFrame(frame);
 } catch { fail('게임 데이터를 불러오지 못했습니다.'); }
+if (scene === 'ready') {
+  await startImmediately();
+  intro();
+}

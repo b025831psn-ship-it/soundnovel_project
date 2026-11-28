@@ -1,12 +1,15 @@
 // AudioWorklet side of the SE engine. Runs the driver-faithful SeEngine at 48 kHz.
-import { SepPack, WdBank, SeEngine } from './se.js';
+import { SepPack, WdBank, SeEngine, setGaussTable } from './se.js';
 
 class SeProcessor extends AudioWorkletProcessor {
   constructor() {
     super();
     this.banks = new Map(); this.engine = null;
     this.port.onmessage = ({data}) => {
-      if (data.type === 'init') this.engine = new SeEngine(new SepPack(data.sep), this.banks);
+      if (data.type === 'init') {
+        if (data.gauss) setGaussTable(new Int16Array(data.gauss));
+        this.engine = new SeEngine(new SepPack(data.sep), this.banks);
+      }
       else if (data.type === 'bank') this.banks.set(data.id, new WdBank(data.buffer));
       else if (!this.engine) return;
       else if (data.type === 'play') this.engine.play(data.id, data.params);

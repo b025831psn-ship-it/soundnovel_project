@@ -1,3 +1,44 @@
+// Execute addresses recovered from the command vtables at EE 0x0021A240.
+export const SN4_SPECIAL_EXECUTE = Object.freeze({
+  0x10:0x127b88,0x11:0x127b88,0x17:0x1286e0,0x1a:0x1373b8,0x1b:0x135208,
+  0x1f:0x133538,0x23:0x1314b0,0x27:0x12f048,0x28:0x12f048,0x29:0x12fb60,
+  0x2d:0x133bc0,0x2e:0x132fd0,0x2f:0x12de30,0x31:0x12e1d8,0x34:0x135d50,
+  0x35:0x135d50,0x3a:0x136a78,0x3b:0x136a78,0x3c:0x136f30,0x3d:0x1317c8,
+  0x3e:0x1317c8,0x47:0x1314b0,0x48:0x136000,0x57:0x12de30,0x59:0x12e1d8,
+  0x5b:0x12d9f0,0x76:0x12f2f8,0x79:0x12fb60,0x7a:0x12fe10,0x7b:0x133bc0,
+  0x7c:0x130248,0x7e:0x130a18,0x7f:0x130f80,0x81:0x131d08,0x82:0x131d08,
+  0x83:0x132fd0,0x84:0x132fd0,
+});
+
+export const CIPHER_SOLUTION = Object.freeze([
+  'cross','triangle','cross','square','cross','triangle','triangle','square','cross','triangle','square','cross',
+]);
+
+const normalizeKana = value => Array.from(String(value ?? '').trim()).map(ch => {
+  const code = ch.codePointAt(0);
+  return code >= 0x30a1 && code <= 0x30f6 ? String.fromCodePoint(code - 0x60) : ch;
+}).join('').replace(/[\s　・]/g, '').replace(/(さん|ちゃん|くん)$/u, '');
+
+// EE mode 3 presents the criminal-name board and returns one of the 25 packed
+// labels. The first 19 entries are the named answers used by the scenario;
+// arbitrary names remain distributed over the six generic response groups.
+export function criminalNameIndex(value, names = ['', '']) {
+  const key = normalizeKana(value);
+  const player = names.map(normalizeKana);
+  if (key && key === player[0]) return 0;
+  if (key && key === player[1]) return 1;
+  const known = new Map([
+    ['こばやし',2],['としお',3],['みどり',4],['けいこ',5],['かなこ',6],
+    ['むらかみ',7],['まさおか',8],['かやま',9],['なつみ',10],['みきもと',11],
+    ['きよ',12],['あき',13],['せんちょう',14],['きょうこ',15],['かまいたち',16],
+    ['あびこたけまる',17],['はるこ',18],
+  ]);
+  if (known.has(key)) return known.get(key);
+  let hash = 0;
+  for (const ch of key) hash = (Math.imul(hash, 31) + ch.codePointAt(0)) >>> 0;
+  return 19 + hash % 6;
+}
+
 // Strict SN4 virtual machine. Presentation stays in player.js; this module
 // owns scenario control flow and refuses commands it cannot execute.
 export class Sn4Vm {
@@ -18,6 +59,29 @@ export class Sn4Vm {
     this.clearBeforeRun = false;
     this.pendingName = null;
     this.variables = new Map();
+    this.special = {autoRead:false, record:false, inbou:false, miniGameArea:false,
+      endings:[], effects:[], events:[], clickMap:null, pageLoop:false, panel:null,
+      tMemory:null, nameInput:null};
+  }
+
+  applySpecial(op, name, args, context) {
+    const s = this.special;
+    s.events.push({op, name, args, address:SN4_SPECIAL_EXECUTE[op], label:context.label, offset:context.offset});
+    if (op === 0x27 || op === 0x28) s.endings.push(op);
+    else if (op === 0x29 || op === 0x79) s.autoRead = args[0] ?? true;
+    else if (op === 0x34) s.record = true;
+    else if (op === 0x35) s.record = false;
+    else if (op === 0x3a) s.inbou = true;
+    else if (op === 0x3b) s.inbou = false;
+    else if (op === 0x3d) s.miniGameArea = true;
+    else if (op === 0x3e) s.miniGameArea = false;
+    else if ([0x2f,0x31,0x57,0x59,0x5b].includes(op)) s.effects.push({op,args,offset:this.text.length});
+    else if (op === 0x7a) s.clickMap = args[0];
+    else if (op === 0x7c) s.pageLoop = true;
+    else if (op === 0x7e || op === 0x7f) s.panel = {op,args};
+    else if (op === 0x81 || op === 0x82) s.nameInput = {op,args};
+    else if (op === 0x83) s.tMemory = new Map(this.variables);
+    else if (op === 0x84 && s.tMemory) this.variables = new Map(s.tMemory);
   }
 
   // EE 0x0017ED10: a uniform draw over [0, max + 1) truncated and clamped
@@ -83,6 +147,43 @@ export class Sn4Vm {
     return this.run();
   }
 
+  chooseSpecial(index) {
+    if (this.pending?.type !== 'special') throw new Error('SN4 is not waiting for special input');
+    if (!['click-map','panel','delusion-panel'].includes(this.pending.kind))
+      throw new Error(`SN4 ${this.pending.kind} does not accept a target index`);
+    const target = index === -1 ? this.pending.fallback : this.pending.targets[index];
+    if (!target) throw new Error(`Invalid SN4 ${this.pending.kind} index ${index}`);
+    this.pending = null;
+    this.text = '';
+    this.jump(target);
+    return this.run();
+  }
+
+  submitCriminalName(value) {
+    if (this.pending?.type !== 'special' || this.pending.kind !== 'criminal-name')
+      throw new Error('SN4 is not waiting for a criminal name');
+    const resolver = this.hooks.criminalNameIndex ?? criminalNameIndex;
+    const index = resolver(value, this.names, this.pending.targets);
+    const target = this.pending.targets[index];
+    if (!target) throw new Error(`Invalid SN4 criminal-name index ${index}`);
+    this.pending = null;
+    this.text = '';
+    this.jump(target);
+    return this.run();
+  }
+
+  submitCipher(sequence) {
+    if (this.pending?.type !== 'special' || this.pending.kind !== 'cipher')
+      throw new Error('SN4 is not waiting for the cipher');
+    const length = this.pending.length;
+    if (!Array.isArray(sequence) || sequence.length !== length)
+      throw new Error(`SN4 cipher requires ${length} buttons`);
+    const solution = CIPHER_SOLUTION.slice(0, length);
+    this.variables.set(230, sequence.every((button, i) => button === solution[i]) ? 1 : 0);
+    this.pending = null;
+    return this.run();
+  }
+
   resume(value) {
     if (this.pending?.type !== 'name') throw new Error('SN4 is not waiting for a name');
     this.names[this.pending.role] = value;
@@ -109,10 +210,14 @@ export class Sn4Vm {
       const unknown = () => this.hooks.unknown?.(command.op, args, {
         label:this.label, offset:command.offset, variables:this.variables,
       });
-      const invoke = name => this.hooks.command?.(name, args, {
+      const invoke = name => {
+        const context = {
         op:command.op, label:this.label, offset:command.offset,
         variables:this.variables, text:this.text,
-      });
+        };
+        if (SN4_SPECIAL_EXECUTE[command.op]) this.applySpecial(command.op, name, args, context);
+        return this.hooks.command?.(name, args, context);
+      };
       switch (command.op) {
         case 0x02:
           this.text += this.pendingName ? this.resolveParticle(args[0], this.pendingName) : args[0];
@@ -247,7 +352,11 @@ export class Sn4Vm {
           invoke('Break');
           return {type:'break', label:this.label, offset:command.offset, text:this.text};
         case 0x1b: invoke('ManualJump'); break;
-        case 0x1f: invoke('Cipher'); break;
+        case 0x1f:
+          invoke('Cipher');
+          // The operand is the final zero-based slot: 11 means 12 presses.
+          this.pending = {type:'special', kind:'cipher', length:(args[0] ?? 0) + 1};
+          return {...this.pending, label:this.label, offset:command.offset, text:this.text};
         case 0x23: invoke('MiniGame'); break;
         // CommandEnd::Execute (0x0012EF80) only records the ending through
         // 0x001B56F0 (0x27) or 0x001B5730 (0x28) and returns 0, so the
@@ -283,12 +392,24 @@ export class Sn4Vm {
         case 0x5b: invoke('MojiAllInOut'); break;
         case 0x76: invoke('AddSelect'); break;
         case 0x79: invoke('AutoReadParam'); break;
-        case 0x7a: invoke('ClickMap'); break;
+        case 0x7a:
+          invoke('ClickMap');
+          this.pending = {type:'special', kind:'click-map', targets:args[0].targets};
+          return {...this.pending, label:this.label, offset:command.offset, text:this.text};
         case 0x7c: invoke('PageLoopStart'); break;
-        case 0x7e: invoke('Panel'); break;
-        case 0x7f: invoke('DelusionPanel'); break;
+        case 0x7e:
+          invoke('Panel');
+          this.pending = {type:'special', kind:'panel', ...args[0]};
+          return {...this.pending, label:this.label, offset:command.offset, text:this.text};
+        case 0x7f:
+          invoke('DelusionPanel');
+          this.pending = {type:'special', kind:'delusion-panel', ...args[0]};
+          return {...this.pending, label:this.label, offset:command.offset, text:this.text};
         case 0x81: invoke('NameInputGeneral'); break;
-        case 0x82: invoke('NameInputCriminal'); break;
+        case 0x82:
+          invoke('NameInputCriminal');
+          this.pending = {type:'special', kind:'criminal-name', targets:args[0].targets};
+          return {...this.pending, label:this.label, offset:command.offset, text:this.text};
         case 0x83: invoke('TMemorySave'); break;
         case 0x84: invoke('TMemoryLoad'); break;
         default:

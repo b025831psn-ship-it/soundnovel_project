@@ -1,0 +1,108 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SFC VM 사운드</title>
+<style>
+  :root { --bg: #0d0d0f; --fg: #e8e4dc; --muted: #8a857c; --accent: #b3262d; }
+  body { margin: 0; background: var(--bg); color: var(--fg); font: 15px/1.6 "Noto Serif KR", serif; }
+  main { max-width: 800px; margin: 0 auto; padding: 32px 16px; }
+  h1 { font-size: 20px; font-weight: 600; margin: 0 0 8px; }
+  p { color: var(--muted); margin: 0 0 20px; }
+  button { background: none; color: var(--fg); border: 1px solid var(--accent); padding: 8px 18px; font: inherit; cursor: pointer; margin: 0 8px 8px 0; }
+  button:disabled { opacity: .4; cursor: default; }
+  .box { position: relative; width: fit-content; margin: 0 auto 16px; }
+  .screen { display: block; background: #000; image-rendering: pixelated; touch-action: manipulation; cursor: pointer; }
+  .menu-button { position: absolute; right: 8px; bottom: 8px; width: 40px; height: 40px; margin: 0; padding: 8px;
+    border-radius: 50%; border: 1px solid rgba(255,255,255,.35); background: rgba(13,13,15,.55); }
+  .menu-button svg { width: 100%; height: 100%; stroke: var(--fg); fill: none; stroke-width: 1.8; }
+  .sheet { position: absolute; right: 8px; bottom: 56px; display: grid; gap: 6px; padding: 10px; background: rgba(13,13,15,.92);
+    border: 1px solid var(--accent); min-width: 200px; }
+  .sheet[hidden] { display: none; }
+  .sheet button { margin: 0; text-align: left; border-color: rgba(255,255,255,.2); }
+  #stat { margin-top: 20px; font: 13px/1.6 ui-monospace, monospace; color: var(--muted); white-space: pre; }
+</style>
+<main>
+  <h1>카마이타치의 밤 SFC · VM</h1>
+  <p>원작 65c816 코드를 VM에서 그대로 실행합니다. 화면은 VM의 PPU 출력, 소리는 SPC700·S-DSP입니다. 화면은 아직 원작과 픽셀 단위로 같지 않습니다. 화면을 탭하면 진행, 선택지는 항목을 탭해 고르고 한 번 더 탭하면 결정합니다. 키보드: 방향키, X=A, Z=B, Enter=START.</p>
+  <!-- Touch works as in the GBA player: tap an item to move to it, tap it again to choose,
+       tap anywhere else to go on. The other original buttons are under the menu icon. -->
+  <div class="box">
+    <canvas id="screen" class="screen" width="256" height="224" aria-label="게임 화면 256×224"></canvas>
+    <button type="button" class="menu-button" id="menu" aria-label="게임 메뉴" aria-expanded="false">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
+    </button>
+    <div class="sheet" id="sheet" hidden>
+      <button type="button" data-b="X">앞 문장 다시 보기 (X)</button>
+      <button type="button" data-b="SELECT">글자 숨기기 (SELECT)</button>
+      <button type="button" data-b="START">START</button>
+      <button type="button" data-b="B">B</button>
+      <button type="button" data-b="Y">Y</button>
+    </div>
+  </div>
+  <button id="play" disabled>불러오는 중…</button><button id="pause" disabled>일시정지</button><button id="mute" disabled>음소거</button>
+  <div id="stat"></div>
+</main>
+<script type="module">
+  import { createAudioOut } from './output.js';
+  import { PAD, DEFAULT_KEYS } from './vm-sound.js';
+
+  const q = new URLSearchParams(location.search);
+  const base = new URL(q.get('data') ?? '../../../kamaitachi-sfc-kor/port-data/', location.href);
+  const gameUrl = new URL(q.get('game') ?? 'game/kamaitachi.sfc', base);
+  const $ = (id) => document.getElementById(id);
+  const get = (u) => fetch(u).then((r) => { if (!r.ok) throw new Error(`${u.pathname}: ${r.status}`); return r.arrayBuffer(); });
+  let game, gauss;
+  try {
+    [game, gauss] = await Promise.all([get(gameUrl), get(new URL('sound/dsp-gauss.bin', base))]);
+    $('play').textContent = '시작'; $('play').disabled = false;
+  } catch (e) { $('play').textContent = '자료 없음'; $('stat').textContent = String(e); }
+
+  let held = 0;
+  $('play').onclick = async () => {
+    $('play').disabled = true; $('pause').disabled = false; $('mute').disabled = false;
+    const out = await createAudioOut(); await out.resume();
+    // The VM and APU run in a Worker; samples go from there straight to the worklet.
+    const worker = new Worker(new URL('./vm-worker.js', import.meta.url), { type: 'module' });
+    const port = out.connectPort();
+    worker.postMessage({ type: 'start', game, gauss, port }, [game, gauss, port]);
+    let status = null, error = '';
+    const ctx = $('screen').getContext('2d'); let picture = null;
+    worker.onmessage = ({ data }) => {
+      if (data.type === 'frame') picture = data.pixels;
+      else if (data.type === 'status') status = data;
+      else if (data.type === 'error') error = data.message;
+    };
+    worker.onerror = (e) => { error = e.message; };
+    let muted = false, paused = false;
+    $('mute').onclick = () => { muted = !muted; out.setMuted(muted); $('mute').textContent = muted ? '소리 켜기' : '음소거'; };
+    $('pause').onclick = () => { paused = !paused; worker.postMessage({ type: 'pause', on: paused }); $('pause').textContent = paused ? '계속' : '일시정지'; };
+    const key = (down) => (e) => {
+      const b = PAD[DEFAULT_KEYS[e.code]]; if (!b) return;
+      e.preventDefault(); held = down ? held | b : held & ~b; worker.postMessage({ type: 'buttons', mask: held });
+    };
+    addEventListener('keydown', key(true)); addEventListener('keyup', key(false));
+    const screen = $('screen');
+    screen.addEventListener('pointerdown', (e) => {
+      e.preventDefault();
+      if (!$('sheet').hidden) { toggleSheet(false); return; }
+      const box = screen.getBoundingClientRect();
+      worker.postMessage({ type: 'tap', x: Math.floor((e.clientX - box.left) * 256 / box.width), y: Math.floor((e.clientY - box.top) * 224 / box.height) });
+    });
+    const toggleSheet = (open) => { $('sheet').hidden = !open; $('menu').setAttribute('aria-expanded', String(open)); };
+    $('menu').onclick = () => toggleSheet($('sheet').hidden);
+    for (const el of $('sheet').querySelectorAll('button')) el.onclick = () => { worker.postMessage({ type: 'press', name: el.dataset.b }); toggleSheet(false); };
+    // Largest whole-number scale that fits; on a phone held upright (where that would be 1x)
+    // the screen fills the column width instead, as in the GBA player.
+    const fit = () => { const main = $('screen').closest('main'), cs = getComputedStyle(main), col = main.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight), k = Math.floor(Math.min(col / 256, (innerHeight * 0.7) / 224));
+      const w = k >= 2 ? 256 * k : Math.max(256, col); $('screen').style.width = `${w}px`; $('screen').style.height = `${w * 224 / 256}px`; };
+    fit(); addEventListener('resize', fit);
+    const show = () => {
+      if (picture) { ctx.putImageData(new ImageData(picture, 256, 224), 0, 0); picture = null; }
+      const s = out.stats();
+      $('stat').textContent = (status ? `frame ${status.frame}  ${status.time.toFixed(1)}초\n계산 ${status.cost.toFixed(1)} ms(8 ms마다)` : '시작 중…') +
+        (s ? `\n출력 ${out.context.sampleRate} Hz  버퍼 ${s.fill}  부족 ${s.underruns}` : '') + (error ? `\n오류: ${error}` : '');
+      requestAnimationFrame(show);
+    };
+    requestAnimationFrame(show);
+  };
+</script>

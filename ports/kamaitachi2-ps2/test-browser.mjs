@@ -19,7 +19,7 @@ try {
     if (response.status() >= 400 && !response.url().endsWith('/favicon.ico')) errors.push(response.url());
   });
   await page.goto(base);
-  await page.waitForFunction(() => document.querySelector('canvas')?.dataset.scene === 'ready');
+  await page.waitForFunction(() => document.querySelector('canvas')?.dataset.scene === 'logo');
 
   const result = await page.evaluate(async () => {
     const [{Sn4Vm}, program, opening] = await Promise.all([
@@ -84,8 +84,6 @@ try {
     }
     throw new Error(`click-only flow did not reach ${target}`);
   };
-  await page.getByRole('button', {name:'게임 시작'}).click();
-  await at('logo');
   console.log('click flow: logo');
   await tap();
   await at('title');
