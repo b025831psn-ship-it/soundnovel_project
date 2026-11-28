@@ -58,6 +58,7 @@ export async function songPlayer(dataRoot, { song = 8, volume = 0.5 } = {}) {
     // true once the browser really lets it sound (a swipe or a too-early call leaves it suspended)
     get sounding() { return on && out?.ctx.state === "running"; },
     start() {
+      out?.ctx.resume(); // each press asks again, even while an earlier start still waits for the browser
       // one start at a time: two quick calls (a press and its click) make one sound, not two
       return (starting ??= (async () => {
         const first = !out; out ??= await open();
