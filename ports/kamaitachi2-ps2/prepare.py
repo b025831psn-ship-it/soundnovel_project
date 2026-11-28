@@ -233,6 +233,7 @@ def prepare(image, output):
             elif file.name == "sn4-opcodes.md":
                 os.replace(file, output / file.name)
     for filename in ("index.html", "player.css", "player.js", "render.js", "names.js", "sn4.js", "music.js",
+                     "psychometry-grid.js",
                      "se-player.js", "se-worklet.js", "se.js"):
         shutil.copyfile(Path(__file__).with_name(filename), output / filename)
 

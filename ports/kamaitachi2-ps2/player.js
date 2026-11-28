@@ -3,6 +3,7 @@ import { Screen } from './render.js';
 import { Sn4Vm } from './sn4.js';
 import { LoopingMusic } from './music.js';
 import { SePlayer } from './se-player.js';
+import { psychometryRegion } from './psychometry-grid.js';
 
 const canvas = document.querySelector('canvas');
 const movie = document.querySelector('#movie');
@@ -72,10 +73,6 @@ const heldArrows = new Set();
 const keyboardEdits = new Set();
 const editPriority = ['circle', 'cross', 'triangle'];
 const confirmPriority = ['circle', 'cross', 'square', 'up', 'down'];
-const clickMapAnchors = [
-  [134,220],[92,112],[176,104],[272,112],[362,126],
-  [454,150],[510,226],[392,292],[213,177],
-];
 const criminalHeads = Array.from('あかさたなはまやらわがざだばぱ');
 const criminalRows = [
   Array.from('あかさたなはまやらわがざだばぱ'),
@@ -91,18 +88,6 @@ function beginSpecial(event) {
     panels:event.panels ?? [], index:0, x:320, y:224, row:0, column:0, value:'', buttons:[], length:event.length};
   enter(event.kind === 'click-map' ? 'click-map' :
     event.kind === 'criminal-name' ? 'criminal-name' : event.kind === 'cipher' ? 'cipher' : 'panel');
-}
-
-function clickMapRegion(x, y) {
-  if (x >= 133 && x <= 135 && Math.abs(y - 220) <= 3) return 0;
-  if (Math.hypot(x - 213, y - 177) <= 14) return 8;
-  let best = 9, distance = 28;
-  clickMapAnchors.forEach(([cx, cy], i) => {
-    if (i === 0 || i === 8) return;
-    const next = Math.hypot(x - cx, y - cy);
-    if (next < distance) { best = i; distance = next; }
-  });
-  return best;
 }
 
 function criminalGlyph() {
@@ -674,7 +659,7 @@ function step(key) {
       specialInput.x = Math.max(0, Math.min(640, specialInput.x + delta[0]));
       specialInput.y = Math.max(0, Math.min(448, specialInput.y + delta[1]));
     } else if (key === 'circle') {
-      const picked = clickMapRegion(specialInput.x, specialInput.y);
+      const picked = psychometryRegion(specialInput.x, specialInput.y);
       cue('confirm'); showSn4(sn4.chooseSpecial(picked));
     }
     return;
@@ -876,9 +861,6 @@ function drawSpecialInput(time) {
   if (scene === 'click-map') {
     screen.rect(0, 0, 640, 34, 'rgba(0,0,0,.72)');
     screen.text('方向キーで調べる場所を選び、○で決定', 18, 5, {scale:.72});
-    clickMapAnchors.forEach(([x, y], i) => {
-      screen.rect(x - 6, y - 6, 12, 12, i === 0 || i === 8 ? 'rgba(245,210,60,.65)' : 'rgba(100,170,230,.48)');
-    });
     screen.c.strokeStyle = '#fff'; screen.c.lineWidth = 2;
     screen.c.beginPath();
     screen.c.moveTo(specialInput.x - 10, specialInput.y); screen.c.lineTo(specialInput.x + 10, specialInput.y);
