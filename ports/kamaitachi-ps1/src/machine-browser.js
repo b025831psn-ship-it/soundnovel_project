@@ -112,7 +112,7 @@ export async function startMachine({ canvas, dataRoot, audio = true, onProgress 
   // does nothing; it is kept apart from the player's own card.
   let debugCard = null;
   if (debug) {
-    try { const r = await fetch("/edit/kamaitachi-ps1/debug-card.bin", { cache: "no-store" }); const b = r.ok ? new Uint8Array(await r.arrayBuffer()) : null; if (b?.length === CARD_BYTES) debugCard = b; }
+    try { const r = await fetch("/edit/kamaitachi-ps1/debug-card.bin", { cache: "no-store", headers: { "X-Quiet-Auth": "1" } }); const b = r.ok ? new Uint8Array(await r.arrayBuffer()) : null; if (b?.length === CARD_BYTES) debugCard = b; }
     catch (e) { console.warn("[kamaitachi-ps1 machine] no debug card", e); }
     if (debugCard) cardKey += ".debug";
   }

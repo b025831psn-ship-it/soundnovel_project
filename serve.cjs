@@ -78,8 +78,10 @@ function portRoute(url) {
     try { rest = decodeURIComponent(url.slice(prefix.length)); } catch { return null; } // a malformed %-escape is a 404, never a crash
     const file = path.join(dir, rest || 'index.html');
     const ext = path.extname(file);
-    if (prefix === '/kamaitachi-ps1-kor/port-data/' && path.basename(file) === 'ko-editor.json') return null;
-    if (prefix.startsWith('/kamaitachi-gba-kor/') && path.basename(file) === 'debug-scenes.json') return null;
+    // Owner-only files never go out through the open data paths. Lower-cased: Windows file names ignore case.
+    const base = path.basename(file).toLowerCase();
+    if (prefix === '/kamaitachi-ps1-kor/port-data/' && (base === 'ko-editor.json' || base === 'debug-card.bin')) return null;
+    if (prefix.startsWith('/kamaitachi-gba-kor/') && base === 'debug-scenes.json') return null;
     if (!file.startsWith(dir + path.sep) || !exts.includes(ext) || /(^|[\\/])(tests?|tools|server)[\\/]/.test(file.slice(dir.length))) return null;
     return [file, portTypes[ext]];
   }
@@ -115,7 +117,13 @@ function allowedFromOutside(request, response, url) {
   const given = scheme === 'Basic' && token ? Buffer.from(token, 'base64').toString().split(':').slice(1).join(':') : '';
   const a = Buffer.from(given), b = Buffer.from(password);
   if (a.length !== b.length || !require('node:crypto').timingSafeEqual(a, b)) {
-    response.writeHead(401, {'WWW-Authenticate': 'Basic realm="soundnovel test", charset="UTF-8"'}).end();
+    // The password cookie (left by a page opened with the password, e.g. the admin page) also lets in
+    // the owner's quiet data reads, such as a debug run's scene list or card.
+    if (gateCookieOk(request)) return true;
+    // A quiet read (X-Quiet-Auth: 1, the debug runs' own fetches) is refused without the browser's
+    // password prompt, so that ?debug=1 simply does nothing for anyone else.
+    const quiet = request.headers['x-quiet-auth'] === '1';
+    response.writeHead(401, quiet ? {} : {'WWW-Authenticate': 'Basic realm="soundnovel test", charset="UTF-8"'}).end();
     return false;
   }
   if (cartridges.has(url)) { response.writeHead(404).end(); return false; }
@@ -125,6 +133,11 @@ function allowedFromOutside(request, response, url) {
   return true;
 }
 const gateCookie = require('node:crypto').createHash('sha256').update('soundnovel-gate:' + password).digest('hex');
+function gateCookieOk(request) {
+  const given = /(?:^|;\s*)sn_gate=([0-9a-f]{64})/.exec(request.headers.cookie ?? '')?.[1] ?? '';
+  const a = Buffer.from(given), b = Buffer.from(gateCookie);
+  return Boolean(password) && a.length === b.length && require('node:crypto').timingSafeEqual(a, b);
+}
 function syncAllowedFromOutside(request, response) {
   if (!['cf-connecting-ip', 'x-forwarded-for', 'x-forwarded-host'].some(name => name in request.headers)) return true;
   if (openBeta()) return true;

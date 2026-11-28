@@ -237,7 +237,7 @@ function debugJump(target) {
   page.drawn = -1;
   return true;
 }
-const debugList = debugMode ? await fetch(`/edit/kamaitachi-gba/debug-scenes-${language}.json`).then((r) => (r.ok ? r.json() : null)).catch(() => null) : null;
+const debugList = debugMode ? await fetch(`/edit/kamaitachi-gba/debug-scenes-${language}.json`, { headers: { "X-Quiet-Auth": "1" } }).then((r) => (r.ok ? r.json() : null)).catch(() => null) : null;
 if (debugList) {
   const codec = new TextCodec(language, font);
   const japanese = new TextCodec("ja", { find: () => 0 });
