@@ -43,7 +43,7 @@ let mounted = false;
 export async function mountSyncUi({ api = ready(), fetchImpl, initialTimeoutMs = 4000 } = {}) {
   mounted = true;
   const { store, boot, gameId: GAME } = await api;
-  mountQuickSave({ store, gameId: GAME, boot, fetchImpl });
+  const quick = mountQuickSave({ store, gameId: GAME, boot, fetchImpl });
   mountReport({ gameId: GAME, boot });
   document.head.append(el("style", { textContent: css }));
   const dialog = el("dialog", { id: "save-dialog" });
@@ -208,7 +208,8 @@ export async function mountSyncUi({ api = ready(), fetchImpl, initialTimeoutMs =
   button.addEventListener("click", () => { render(); dialog.showModal(); });
   paint();
   const open = () => { if (!dialog.open) { render(); dialog.showModal(); } };
-  return { dialog, button, sync, initial, paint, open };
+  // quick.upload(): send this game's saves to the player's code now (e.g. a suspend written as the tab hides)
+  return { dialog, button, sync, initial, paint, open, quick };
 }
 
 // Pages that load this file with a <script type="module"> (GBA, PS1, 석류의 맛) get the dialog once the
