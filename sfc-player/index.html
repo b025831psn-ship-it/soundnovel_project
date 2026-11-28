@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="color-scheme" content="dark">
+<title>카마이타치의 밤 SFC 웹 포트</title>
+<link rel="stylesheet" href="/sfc-player/player.css">
+</head>
+<body>
+<main>
+  <header>
+    <div><p class="eyebrow">SUPER FAMICOM · DATA-DRIVEN WEB PORT</p><h1>카마이타치의 밤</h1></div>
+    <button id="start" disabled>입력 / 다음</button>
+  </header>
+  <section id="stage" aria-label="게임 화면"><canvas id="screen"></canvas></section>
+  <p id="status" role="status">비공개 추출 데이터를 불러오는 중…</p>
+  <details>
+    <summary>현재 관통 범위와 조작</summary>
+    <p>Enter·Space·X·S 또는 ‘입력 / 다음’으로 진행합니다. 현재 빌드는 원본 ROM을 요구하지 않으며, 원본 PPU probe에서 추출한 첫 구간 데이터를 재생합니다.</p>
+  </details>
+</main>
+<script type="module" src="/sfc-player/main.js"></script>
+</body>
+</html>
