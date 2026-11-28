@@ -13,7 +13,7 @@ import { musMember } from "../sound/members.js";
 import { soundTables } from "../sound/container.js";
 import { PcmQueue } from "../sound/web/pcm-queue.js";
 import { unpack, reader } from "./exe-data.js";
-import { fetchPacMember } from "./picture-view.js";
+import { fetchPacMember } from "./picture-view.js?v=9";
 
 const AHEAD = 0.3; // seconds of sound kept queued
 

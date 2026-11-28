@@ -43,8 +43,9 @@ const heads = new Map(), wholes = new Map();
 export async function fetchPacMember(url, id) {
   const range = async (from, to) => {
     if (wholes.has(url)) return (await wholes.get(url)).subarray(from, to);
-    // a browser or something on its way that refuses the byte range: then the whole file, once
-    const r = await fetch(url, { headers: { Range: `bytes=${from}-${to - 1}` } }).catch(() => fetch(url, { cache: "reload" }));
+    // no-store: Chrome mixes a range with the whole (gzip) file it kept from the game and hands back wrong
+    // bytes; a browser or something on its way that refuses the byte range: then the whole file, once
+    const r = await fetch(url, { headers: { Range: `bytes=${from}-${to - 1}` }, cache: "no-store" }).catch(() => fetch(url, { cache: "reload" }));
     if (!r.ok) throw new Error(`${url}: ${r.status}`);
     const b = new Uint8Array(await r.arrayBuffer());
     if (r.status !== 200) return b;

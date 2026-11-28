@@ -2,8 +2,8 @@
 // greeting / name screen. The picture and the song come from the PS1 port's own data, drawn and played by
 // the port's code (picture-view.js, music-view.js); nothing is copied out of the game.
 // The picture and the song load apart: if one fails on a browser, the other still comes.
-const pictureModule = import("/ports/kamaitachi-ps1/src/picture-view.js");
-const musicModule = import("/ports/kamaitachi-ps1/src/music-view.js?v=8");
+const pictureModule = import("/ports/kamaitachi-ps1/src/picture-view.js?v=9");
+const musicModule = import("/ports/kamaitachi-ps1/src/music-view.js?v=9");
 
 const DATA = "/kamaitachi-ps1-kor/port-data/machine/";
 const PICTURE = 2; // the pension at the end of the snowy road, windows lit
