@@ -13,7 +13,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+KR:wght@400;500;600&family=Noto+Serif+KR:wght@500;700&family=Noto+Serif+JP:wght@500;700&family=Yusei+Magic&family=Potta+One&family=Anton&display=swap">
-<link rel="stylesheet" href="/style.css?v=11">
+<link rel="stylesheet" href="/style.css?v=12">
 </head>
 <body class="front-on">
 <section id="front" class="front" aria-label="펜션 슈프르">
@@ -106,7 +106,7 @@
   // The title card of each playable edition; the marquee shows the one chosen in the list (the PS1 edition
   // until one is chosen). A logo is shown only as the work's own picture, never drawn in a font.
   const CARDS = {
-    '#kamaitachi-ps1': { kicker: ['PLAYSTATION', '1998', '춘소프트'], logo: '/kamaitachi-ps1-kor/port-data/machine/hub-logo.png', ko: '카마이타치의 밤 특별편',
+    '#kamaitachi-ps1': { kicker: ['PLAYSTATION', '1998', '춘소프트'], logo: '/kamaitachi-ps1-kor/port-data/machine/hub-logo.png', tall: true, ko: '카마이타치의 밤 특별편',
       still: '/kamaitachi-ps1-kor/port-data/machine/front-pension.png', story: true, hint: '시험판 · 헤드폰 권장',
       facts: [['320×240', '원본 해상도, 정수 배율'], ['libsnd', '원작 사운드 모듈'], ['R3000', '원작 프로그램 루틴 이식']] },
     '#kamaitachi': { kicker: ['GAME BOY ADVANCE', '2002', '춘소프트'], logo: '/art/kamaitachi-logo.svg', ko: '카마이타치의 밤 어드밴스',
@@ -126,6 +126,7 @@
     card.querySelector('.kicker').replaceChildren(...c.kicker.map(t => Object.assign(document.createElement('span'), { textContent: t })));
     const logo = card.querySelector('.logo'), img = logo.querySelector('img');
     logo.hidden = !c.logo; logo.classList.remove('text');
+    img.classList.toggle('tall', Boolean(c.tall));
     if (c.logo) { img.alt = c.ko; img.onerror = () => { logo.hidden = true; }; if (img.getAttribute('src') !== c.logo) img.src = c.logo; }
     card.querySelector('.ko').textContent = c.ko;
     const lede = card.querySelector('.lede'); lede.hidden = !c.story; if (c.story) lede.innerHTML = story;
