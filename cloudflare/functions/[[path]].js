@@ -4,6 +4,7 @@
 //   /edit/*   the owner's pages and writes, behind the password           -> owner files in R2 edit/
 //   others    big or ranged game files (R2 data/) and the editable dialogue edits (R2 live/)
 import { handleSync } from "./_lib/sync.js";
+import { handleReport } from "./_lib/report.js";
 
 const textEdits = /^\/edit\/text-edits-(ja|ko)\.json$/;
 
@@ -11,6 +12,7 @@ export async function onRequest({ request, env, next }) {
   const url = new URL(request.url);
   const p = decodeURIComponent(url.pathname);
   if (p === "/sync" || p.startsWith("/sync/")) return handleSync(request, env, p.slice("/sync".length) || "/");
+  if (p === "/report") return report(request, env, url);
   if (p.startsWith("/edit/")) return edit(request, env, p);
   if (!["GET", "HEAD"].includes(request.method)) return new Response(null, { status: 405 });
   if (/(^|\/)text-edits\.json$/.test(p)) return (await object(env, request, "live" + p, "no-store")) ?? new Response("{}", { headers: { "content-type": "application/json", "cache-control": "no-store" } });
@@ -104,4 +106,25 @@ async function putJson(request, env, key, max, valid, log = false) {
   }
   await env.DATA.put(key, body, { httpMetadata: { contentType: "application/json; charset=utf-8" } });
   return new Response(null, { status: 204 });
+}
+
+// /report: a tester's report becomes an issue (_lib/report.js). At most 10 an hour from one address and
+// 300 a day in all; the screenshot goes to R2 edit/reports/, readable with the owner's password.
+async function report(request, env, url) {
+  const db = env.SAVES, now = Date.now();
+  return handleReport(request, {
+    token: env.GITHUB_REPORT_TOKEN,
+    allow: async (client) => {
+      await db.prepare("DELETE FROM reports WHERE at <= ?").bind(now - 86_400_000).run();
+      const mine = (await db.prepare("SELECT COUNT(*) AS n FROM reports WHERE client = ? AND at > ?").bind(client, now - 3_600_000).first()).n;
+      const all = (await db.prepare("SELECT COUNT(*) AS n FROM reports").first()).n;
+      if (mine >= 10 || all >= 300) return false;
+      await db.prepare("INSERT INTO reports (client, at) VALUES (?, ?)").bind(client, now).run();
+      return true;
+    },
+    putShot: async (id, bytes) => {
+      await env.DATA.put(`edit/reports/${id}.png`, bytes, { httpMetadata: { contentType: "image/png" } });
+      return `${url.origin}/edit/reports/${id}.png`;
+    },
+  });
 }

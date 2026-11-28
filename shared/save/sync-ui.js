@@ -6,6 +6,7 @@
 //   { canContinue(), titleActive, continueSuspended(), continueLabel?, continueNote?, notice? }
 import { deriveKeys, SyncClient, startPairing, claimPairing, renewPairing, newSecret } from "./sync.js";
 import { mountQuickSave } from "./quick-save.js";
+import { mountReport } from "../player/report-button.js";
 
 const el = (tag, props = {}, ...kids) => {
   const e = Object.assign(document.createElement(tag), props);
@@ -43,6 +44,7 @@ export async function mountSyncUi({ api = ready(), fetchImpl, initialTimeoutMs =
   mounted = true;
   const { store, boot, gameId: GAME } = await api;
   mountQuickSave({ store, gameId: GAME, boot, fetchImpl });
+  mountReport({ gameId: GAME, boot });
   document.head.append(el("style", { textContent: css }));
   const dialog = el("dialog", { id: "save-dialog" });
   const button = el("button", { className: "icon", type: "button", title: "저장 동기화", ariaLabel: "저장 동기화" });
